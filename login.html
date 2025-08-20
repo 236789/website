@@ -39,6 +39,10 @@
     }
     .brand{ font-weight:600; letter-spacing:.6px; user-select:none; }
     .brand:hover{ color:var(--neon); text-shadow:var(--neon-glow); }
+    #loginBtn{ font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer;
+      background:linear-gradient(90deg, #1df7ff, #59ffd9); color:#05212a;
+      border:none; font-weight:600; }
+    #loginBtn:hover{ filter:brightness(1.1); }
 
     /* Card */
     .auth{
@@ -85,13 +89,20 @@
     .actions-tip{ text-align:center; font-size:12px; color:var(--muted); }
     #err{ color:#ff8b8b; font-size:12px; min-height:1em; text-align:center; }
 
+    /* Account popup */
+    #accountPopup{
+      position:fixed; inset:0; display:none; place-items:center;
+      background:rgba(0,0,0,.65); z-index:1000;
+    }
+    #accountPopup .auth{ width:320px; }
+
     @keyframes dropIn{ 0%{ transform: translateY(-26vh) scale(.96); opacity:0; } 60%{ transform: translateY(6px) scale(1.005); opacity:1; } 100%{ transform: translateY(0) scale(1); } }
   </style>
 </head>
 <body>
   <div class="topbar" role="navigation" aria-label="Top navigation">
     <div class="brand">KSDA</div>
-    <div style="opacity:.8; font-size:12px;">Welcome — please authenticate</div>
+    <button id="loginBtn">Log in</button>
   </div>
 
   <main class="auth" role="main" aria-labelledby="title">
@@ -152,18 +163,27 @@
     </section>
   </main>
 
+  <!-- Account Popup -->
+  <div id="accountPopup">
+    <div class="auth">
+      <div class="auth__header"><h1 class="auth__title">Your Account</h1></div>
+      <div class="auth__body">
+        <p id="accEmail"></p>
+        <p id="accUid"></p>
+        <button id="logoutBtn" class="btn btn-outline">Log out</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Firebase Auth integration -->
   <script type="module">
-    // SDKs (CDN ESM)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
     import { 
-      getAuth, onAuthStateChanged,
+      getAuth, onAuthStateChanged, signOut,
       signInWithEmailAndPassword, createUserWithEmailAndPassword,
       GoogleAuthProvider, signInWithPopup 
     } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-    // (Analytics optional) import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-analytics.js";
 
-    // --- Your Firebase config (fixed storageBucket) ---
     const firebaseConfig = {
       apiKey: "AIzaSyBUL1GeTyYKEMiqHCz3Rs2P018OE-Qe3OA",
       authDomain: "website-c6fef.firebaseapp.com",
@@ -174,19 +194,17 @@
       measurementId: "G-9940X053JX"
     };
 
-    // Init
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    // const analytics = getAnalytics(app);
 
-    // UI helpers
     const $ = (sel) => document.querySelector(sel);
     const showErr = (msg) => { const e = $('#err'); if(e){ e.textContent = msg || ""; } };
 
-    // Tabs
     const tabSignIn = $('#tabSignIn'), tabCreate = $('#tabCreate');
     const formSignIn = $('#formSignIn'), formCreate = $('#formCreate');
     const title = $('#title');
+    const loginBtn = $('#loginBtn');
+    const popup = $('#accountPopup');
 
     function switchMode(mode){
       const isCreate = mode === 'create';
@@ -216,10 +234,7 @@
       const password = $('#si-pass').value;
       try{
         await signInWithEmailAndPassword(auth, email, password);
-        window.location.href = "index.html";
-      }catch(err){
-        showErr(cleanError(err));
-      }
+      }catch(err){ showErr(cleanError(err)); }
     });
 
     // Email/Password — Create
@@ -231,10 +246,7 @@
       const password = $('#cr-pass').value;
       try{
         await createUserWithEmailAndPassword(auth, email, password);
-        window.location.href = "index.html";
-      }catch(err){
-        showErr(cleanError(err));
-      }
+      }catch(err){ showErr(cleanError(err)); }
     });
 
     // Google
@@ -243,22 +255,37 @@
     $('#googleCreate').addEventListener('click', ()=> googleFlow());
     async function googleFlow(){
       showErr("");
-      try{
-        await signInWithPopup(auth, provider);
-        window.location.href = "index.html";
-      }catch(err){
-        showErr(cleanError(err));
-      }
+      try{ await signInWithPopup(auth, provider); }
+      catch(err){ showErr(cleanError(err)); }
     }
 
-    // Auto-redirect dacă ești deja logat
+    // Account Popup logic
+    function showAccountPopup(){
+      const user = auth.currentUser;
+      if(!user) return;
+      $('#accEmail').textContent = "Email: " + user.email;
+      $('#accUid').textContent = "UID: " + user.uid;
+      popup.style.display = "grid";
+    }
+    $('#logoutBtn').addEventListener('click', async ()=>{
+      await signOut(auth);
+      popup.style.display = "none";
+    });
+    popup.addEventListener('click', (e)=>{
+      if(e.target === popup){ popup.style.display = "none"; }
+    });
+
+    // Change button on auth state
     onAuthStateChanged(auth, (user)=>{
-      if(user){ /* deja autentificat */
-        // window.location.href = "index.html";
+      if(user){
+        loginBtn.textContent = "Account";
+        loginBtn.onclick = showAccountPopup;
+      } else {
+        loginBtn.textContent = "Log in";
+        loginBtn.onclick = ()=> window.location.href = "login.html";
       }
     });
 
-    // Mapare mesaje mai curate
     function cleanError(err){
       const code = (err && err.code) ? String(err.code) : "";
       switch(code){
@@ -273,7 +300,6 @@
       }
     }
 
-    // Start
     switchMode('signin');
   </script>
 </body>
