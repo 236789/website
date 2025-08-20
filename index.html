@@ -69,8 +69,13 @@
       backdrop-filter: blur(12px) saturate(120%);
       padding:20px; box-shadow: 0 20px 60px rgba(0,0,0,.55);
       animation: dropIn .35s cubic-bezier(.2,.9,.2,1.05) both;
+      font-family: system-ui, Arial, sans-serif; /* font clar pentru detalii */
+      font-size:15px; line-height:1.6;
     }
-    #accountPopup h2{ margin-top:0; text-align:center; }
+    #accountPopup h2{
+      margin-top:0; text-align:center;
+      font-family:'Orbitron', system-ui, sans-serif; /* titlul rămâne Orbitron */
+    }
     #logoutBtn{
       width:100%; margin-top:14px;
       padding:10px; border-radius:12px;
@@ -105,7 +110,8 @@
     <div class="card">
       <h2>Your Account</h2>
       <p id="accEmail"></p>
-      <p id="accUid"></p>
+      <p id="accPhone"></p>
+      <p id="accUsername"></p>
       <button id="logoutBtn">Log out</button>
     </div>
   </div>
@@ -116,6 +122,9 @@
     import { 
       getAuth, onAuthStateChanged, signOut
     } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+    import { 
+      getFirestore, doc, getDoc 
+    } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBUL1GeTyYKEMiqHCz3Rs2P018OE-Qe3OA",
@@ -129,14 +138,27 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
+    const db = getFirestore(app);
 
     const btn = document.getElementById("accountBtn");
     const popup = document.getElementById("accountPopup");
     const logoutBtn = document.getElementById("logoutBtn");
 
-    function showPopup(user){
+    async function showPopup(user){
       document.getElementById("accEmail").textContent = "Email: " + user.email;
-      document.getElementById("accUid").textContent = "UID: " + user.uid;
+
+      // Citește extra info din Firestore (username, phone)
+      const ref = doc(db, "users", user.uid);
+      const snap = await getDoc(ref);
+      if(snap.exists()){
+        const data = snap.data();
+        document.getElementById("accPhone").textContent = data.phone ? "Phone: " + data.phone : "";
+        document.getElementById("accUsername").textContent = data.username ? "Username: " + data.username : "";
+      } else {
+        document.getElementById("accPhone").textContent = "";
+        document.getElementById("accUsername").textContent = "";
+      }
+
       popup.style.display = "grid";
     }
 
