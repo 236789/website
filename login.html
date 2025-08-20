@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KSDA — Login</title>
+  <meta name="color-scheme" content="dark" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ========== BASE ========== */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height:100%; overflow-x:hidden; } /* no side scroll */
+    :root{
+      --bg:#061522;
+      --glass:rgba(10,23,34,.55);
+      --stroke:rgba(255,255,255,.06);
+      --text:#e6f1ff;
+      --muted:#cfe6ffcc;
+      --neon:#29f3ff;
+      --neon-glow:0 0 8px #29f3ff, 0 0 16px #29f3ff;
+      --radius:12px; /* compact, consistent */
+    }
+
+    body{
+      margin:0;
+      background:
+        radial-gradient(1200px 600px at 20% -10%, #0e3a5a 0%, transparent 55%),
+        url('https://images.unsplash.com/photo-1504384308090-c894fdcc538d?q=80&w=1600&auto=format&fit=crop') center/cover no-repeat,
+        var(--bg);
+      font-family:'Orbitron', system-ui, sans-serif;
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      padding:24px;
+    }
+
+    /* ========== TOP BAR (compact, no overflow) ========== */
+    .topbar{
+      position:fixed; top:16px; left:50%; transform:translateX(-50%);
+      width:min(1100px, calc(100vw - 32px));
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+      padding:10px 16px;
+      background:var(--glass);
+      border:1px solid var(--stroke);
+      border-radius:14px;
+      backdrop-filter: blur(10px) saturate(130%);
+      -webkit-backdrop-filter: blur(10px) saturate(130%);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35) inset, 0 6px 24px rgba(0,0,0,.25);
+    }
+    .brand{ font-weight:600; letter-spacing:.6px; user-select:none; }
+    .brand:hover{ color:var(--neon); text-shadow:var(--neon-glow); }
+
+    /* ========== AUTH CARD ========== */
+    .auth{
+      width:min(420px, calc(100vw - 32px)); /* symmetric breathing room */
+      max-height:90vh;
+      overflow:auto;
+      background:linear-gradient(180deg, rgba(7,18,28,.85), rgba(7,18,28,.7));
+      border:1px solid var(--stroke);
+      border-radius:16px;
+      backdrop-filter: blur(12px) saturate(120%);
+      -webkit-backdrop-filter: blur(12px) saturate(120%);
+      box-shadow: 0 20px 60px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.03);
+      animation: dropIn .45s cubic-bezier(.2,.9,.2,1.05) both;
+    }
+    .auth__edge{ pointer-events:none; border-radius:inherit; box-shadow: 0 0 0 1px rgba(41,243,255,.08), 0 0 24px rgba(41,243,255,.12) inset; }
+
+    .auth__header{
+      position:sticky; top:0; z-index:1;
+      text-align:center;
+      padding:18px 20px 10px;
+      border-bottom:1px solid var(--stroke);
+      background:linear-gradient(180deg, rgba(7,18,28,.92), rgba(7,18,28,.8));
+    }
+    .auth__title{ margin:0; font-size:22px; letter-spacing:.6px; }
+
+    .auth__body{ padding:18px 20px; display:grid; gap:14px; }
+
+    /* ========== TABS ========== */
+    .tabs{
+      display:flex; gap:8px; padding:4px;
+      border-radius:18px; border:1px solid var(--stroke);
+      background:rgba(255,255,255,.03);
+    }
+    .tabs button{
+      flex:1; padding:8px 12px; border-radius:14px; border:1px solid transparent;
+      background:transparent; color:var(--muted); font-weight:600; cursor:pointer;
+      transition: color .15s ease, background .2s ease, box-shadow .2s ease, transform .1s ease;
+    }
+    .tabs button[aria-pressed="true"]{
+      color:#05212a;
+      background:linear-gradient(90deg, #1df7ff, #59ffd9);
+      box-shadow: 0 6px 18px rgba(41,243,255,.3), inset 0 1px 0 rgba(255,255,255,.35);
+    }
+    .tabs button:active{ transform: translateY(1px); }
+
+    /* ========== FORMS ========== */
+    form{ display:grid; gap:12px; margin:0; }
+    .hidden{ display:none; }
+
+    .field{ display:grid; gap:6px; }
+    .label{ font-size:12px; color:var(--muted); letter-spacing:.35px; }
+
+    .input{
+      width:100%; padding:10px 12px; border-radius:var(--radius);
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.04);
+      color:var(--text); outline:none;
+      transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    .input::placeholder{ color:#a7c4d9a8; }
+    .input:focus{
+      border-color: rgba(41,243,255,.45);
+      box-shadow: 0 0 0 2px rgba(41,243,255,.22);
+      background: rgba(255,255,255,.06);
+      position:relative; z-index:1; /* sits above neighbors */
+    }
+
+    .row{
+      display:grid; grid-template-columns:1fr 1fr; gap:16px; /* bigger gap: no collisions */
+      isolation:isolate; /* separate focus ring stacking */
+    }
+    @media (max-width:480px){ .row{ grid-template-columns:1fr; } }
+
+    .btn{
+      appearance:none; border:none; cursor:pointer; font-weight:700;
+      padding:10px 14px; border-radius:var(--radius);
+      background:linear-gradient(90deg, #1df7ff, #59ffd9);
+      color:#05212a;
+      box-shadow: 0 10px 24px rgba(41,243,255,.3), inset 0 1px 0 rgba(255,255,255,.35);
+      transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+    }
+    .btn:hover{ transform: translateY(-1px); filter: brightness(1.05); }
+    .btn:active{ transform: translateY(0); filter: brightness(.98); }
+    .btn-outline{
+      background:transparent; color:var(--text); border:1px solid var(--stroke);
+      box-shadow:none;
+    }
+
+    .divider{
+      display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px;
+      color:var(--muted); font-size:12px;
+    }
+    .divider::before, .divider::after{ content:""; height:1px; background:var(--stroke); }
+
+    .actions-tip{ text-align:center; font-size:12px; color:var(--muted); }
+
+    @keyframes dropIn{
+      0%{ transform: translateY(-26vh) scale(.96); opacity:0; }
+      60%{ transform: translateY(6px) scale(1.005); opacity:1; }
+      100%{ transform: translateY(0) scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Top brand bar -->
+  <div class="topbar" role="navigation" aria-label="Top navigation">
+    <div class="brand">KSDA</div>
+    <div style="opacity:.8; font-size:12px;">Welcome — please authenticate</div>
+  </div>
+
+  <!-- Auth card -->
+  <main class="auth" role="main" aria-labelledby="title">
+    <div class="auth__edge"></div>
+    <header class="auth__header">
+      <h1 class="auth__title" id="title">Welcome back</h1>
+    </header>
+
+    <section class="auth__body">
+      <!-- Tabs -->
+      <div class="tabs" role="tablist" aria-label="Auth mode">
+        <button id="tabSignIn" role="tab" aria-selected="true" aria-pressed="true">Sign in</button>
+        <button id="tabCreate" role="tab" aria-selected="false" aria-pressed="false">Create account</button>
+      </div>
+
+      <!-- Sign in -->
+      <form id="formSignIn" novalidate>
+        <div class="field">
+          <label class="label" for="si-user">Username or Email</label>
+          <input class="input" id="si-user" name="username" type="text" autocomplete="username" placeholder="yourname or you@mail.com" required />
+        </div>
+        <div class="field">
+          <label class="label" for="si-pass">Password</label>
+          <input class="input" id="si-pass" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required minlength="6" />
+        </div>
+
+        <button type="submit" class="btn" id="btnSignIn">Sign in</button>
+
+        <div class="divider">or</div>
+        <button type="button" class="btn btn-outline" id="googleSignIn" aria-label="Continue with Google">
+          Continue with Google
+        </button>
+
+        <p class="actions-tip">
+          No account? <a href="#" id="linkToCreate" style="color:var(--neon); text-decoration:none;">Create it here</a>
+        </p>
+      </form>
+
+      <!-- Create -->
+      <form id="formCreate" class="hidden" novalidate>
+        <div class="row">
+          <div class="field">
+            <label class="label" for="cr-username">Username</label>
+            <input class="input" id="cr-username" name="username" type="text" autocomplete="username" placeholder="yourname" required />
+          </div>
+          <div class="field">
+            <label class="label" for="cr-phone">Phone number</label>
+            <input class="input" id="cr-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+40 712 345 678" />
+          </div>
+        </div>
+        <div class="field">
+          <label class="label" for="cr-email">Email</label>
+          <input class="input" id="cr-email" name="email" type="email" autocomplete="email" placeholder="you@mail.com" required />
+        </div>
+        <div class="field">
+          <label class="label" for="cr-pass">Password</label>
+          <input class="input" id="cr-pass" name="password" type="password" autocomplete="new-password" placeholder="min 6 characters" required minlength="6" />
+        </div>
+
+        <button type="submit" class="btn" id="btnCreate">Create account</button>
+
+        <div class="divider">or</div>
+        <button type="button" class="btn btn-outline" id="googleCreate" aria-label="Sign up with Google">
+          Sign up with Google
+        </button>
+
+        <p class="actions-tip">
+          Already have an account? <a href="#" id="linkToSignIn" style="color:var(--neon); text-decoration:none;">Sign in</a>
+        </p>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (function(){
+      const tabSignIn = document.getElementById('tabSignIn');
+      const tabCreate = document.getElementById('tabCreate');
+      const formSignIn= document.getElementById('formSignIn');
+      const formCreate= document.getElementById('formCreate');
+      const linkToCreate = document.getElementById('linkToCreate');
+      const linkToSignIn = document.getElementById('linkToSignIn');
+      const title = document.getElementById('title');
+
+      function switchMode(mode){
+        const isCreate = mode === 'create';
+        tabSignIn.setAttribute('aria-pressed', String(!isCreate));
+        tabSignIn.setAttribute('aria-selected', String(!isCreate));
+        tabCreate.setAttribute('aria-pressed', String(isCreate));
+        tabCreate.setAttribute('aria-selected', String(isCreate));
+        formCreate.classList.toggle('hidden', !isCreate);
+        formSignIn.classList.toggle('hidden', isCreate);
+        title.textContent = isCreate ? 'Create your account' : 'Welcome back';
+        const first = (isCreate ? formCreate : formSignIn).querySelector('input');
+        if(first) first.focus();
+      }
+
+      tabSignIn.addEventListener('click', ()=>switchMode('signin'));
+      tabCreate.addEventListener('click', ()=>switchMode('create'));
+      linkToCreate.addEventListener('click', (e)=>{ e.preventDefault(); switchMode('create'); });
+      linkToSignIn.addEventListener('click', (e)=>{ e.preventDefault(); switchMode('signin'); });
+
+      // Demo submit handlers — replace with real API/OAuth
+      const onSubmit = (form, message) => form.addEventListener('submit', e => {
+        e.preventDefault();
+        if (!form.checkValidity()){ form.reportValidity(); return; }
+        const data = Object.fromEntries(new FormData(form).entries());
+        console.log(message, data);
+        alert('TODO: ' + message);
+      });
+      onSubmit(formSignIn, 'POST /auth/login');
+      onSubmit(formCreate, 'POST /auth/register');
+      document.getElementById('googleSignIn').addEventListener('click', ()=>alert('TODO: Google OAuth login'));
+      document.getElementById('googleCreate').addEventListener('click', ()=>alert('TODO: Google OAuth signup'));
+
+      switchMode('signin'); // default
+    })();
+  </script>
+</body>
+</html>
