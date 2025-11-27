@@ -1,108 +1,708 @@
 <!DOCTYPE html>
-<html lang="ro">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Game simplu</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden; /* fără scroll */
-      height: 100%;
-      width: 100%;
-    }
-    #gameContainer {
-      position: relative;
-      height: 100%;
-      width: 100%;
-      background-image: url('https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/65db211b-903b-4124-9fbb-444a31a489a6/upscalemedia-transformed.png?format=500w');
-      background-size: contain;       /* imaginea încape întreagă */
-      background-repeat: no-repeat;   /* să nu se repete */
-      background-position: center;    /* centrată pe ecran */
-      background-color: black;        /* fundal simplu în spate */
-    }
-    #character {
-      position: absolute;
-      bottom: 10%; /* distanță de jos */
-      left: 50%;   /* centru inițial */
-      transform: translateX(-50%);
-      width: 100px; /* dimensiunea personajului */
-      user-select: none;
-      pointer-events: none;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ultimate Elimination Wheel 4.0</title>
+<style>
+  /* 🎨 GLOBAL STYLES - RESTORED BACKGROUND */
+  body {
+    font-family: "Poppins", Arial, sans-serif;
+    /* Restored the previous Deep Blue/Black gradient */
+    background: radial-gradient(circle at center, #1a237e 0%, #000000 100%);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    flex-wrap: wrap;
+    padding: 10px;
+    gap: 20px;
+    margin: 0;
+  }
+
+  /* 📦 LAYOUT CONTAINERS */
+  .main-layout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 1200px;
+  }
+
+  .wheel-section {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* 📊 STATS TABLES */
+  .stats-container {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 25px;
+    z-index: 5;
+  }
+  .stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 120px;
+    padding: 10px;
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .stat-box.survivors { background: rgba(76, 175, 80, 0.2); border-color: #4caf50; }
+  .stat-box.eliminated { background: rgba(244, 67, 54, 0.2); border-color: #f44336; }
+  
+  .stat-number { font-size: 28px; font-weight: 800; line-height: 1; }
+  .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; margin-top: 5px; }
+
+  /* 🎡 THE WHEEL CANVAS */
+  canvas {
+    border-radius: 50%;
+    filter: drop-shadow(0 0 25px rgba(0, 0, 0, 0.5));
+    width: 90vw;
+    max-width: 450px;
+    height: auto;
+    transition: transform 0.1s;
+  }
+  
+  /* 🔽 POINTER */
+  .pointer {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 50px;
+    background-color: #ffeb3b;
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+    z-index: 10;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+  }
+
+  /* 🎮 BUTTON CONTROLS */
+  .controls-container {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+    align-items: center;
+  }
+
+  button {
+    font-family: "Poppins", sans-serif;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #fff;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+  }
+  button:active { transform: scale(0.95); }
+  button:disabled { filter: grayscale(1); cursor: not-allowed; opacity: 0.6; }
+
+  #spinBtn {
+    padding: 12px 30px;
+    font-size: 16px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #2196f3, #1976d2);
+    border-bottom: 4px solid #0d47a1;
+  }
+
+  #autoBtn {
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 8px;
+    background: #37474f;
+    border-bottom: 4px solid #263238;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #autoBtn.auto-off { background: #546e7a; border-bottom-color: #37474f; color: #eceff1; }
+  #autoBtn.auto-on { background: #00e676; border-bottom-color: #00a152; color: #004d40; box-shadow: 0 0 15px #00e676; }
+
+  /* 🏆 LEADERBOARD */
+  .leaderboard {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    backdrop-filter: blur(15px);
+    padding: 15px;
+    width: 90vw;
+    max-width: 300px;
+    height: 450px;
+    display: flex;
+    flex-direction: column;
+  }
+  .leaderboard h2 {
+    text-align: center; color: #ffeb3b; margin: 0 0 10px 0;
+    font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;
+  }
+  .leaderboard ul {
+    list-style: none; padding: 0; margin: 0; overflow-y: auto; flex-grow: 1;
+    scrollbar-width: none;
+  }
+  .leaderboard li {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px;
+  }
+  .leaderboard img { width: 30px; height: 30px; border-radius: 50%; margin-right: 8px; }
+  .user-info { display: flex; align-items: center; }
+  .status { font-weight: bold; font-size: 10px; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; }
+  .active { color: #81c784; background: rgba(76, 175, 80, 0.1); }
+  .eliminated { color: #ef5350; text-decoration: line-through; opacity: 0.5; }
+  .winner { color: #ffd700; border: 1px solid #ffd700; }
+
+  /* 🚨 POPUP */
+  #popup {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; backdrop-filter: blur(8px);
+  }
+  #popup .content {
+    background: #1e1e2e;
+    color: #fff; padding: 40px;
+    border-radius: 24px; text-align: center; width: 90%; max-width: 450px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+  .popup-glow {
+    position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+  .popup-inner { position: relative; z-index: 1; }
+  #popupImages { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 20px; }
+  .user-popup { display: flex; flex-direction: column; align-items: center; }
+  .user-popup img {
+    width: 100px; height: 100px; border-radius: 50%; border: 4px solid #2e2e2e;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3); transition: transform 0.3s;
+  }
+  .winner-mode .user-popup img {
+    border-color: #ffd700;
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.6);
+    animation: pulseGold 2s infinite;
+  }
+  @keyframes pulseGold { 0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4); } 70% { box-shadow: 0 0 0 20px rgba(255, 215, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); } }
+
+  .popup-name { 
+    margin-top: 15px; font-weight: 700; font-size: 20px; letter-spacing: 0.5px; 
+    background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 20px;
+  }
+  #popupTitle {
+    font-size: 28px; font-weight: 900; margin: 0; text-transform: uppercase;
+    background: linear-gradient(to right, #fff, #999);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .winner-mode #popupTitle {
+    background: linear-gradient(to right, #FFD700, #FDB931);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    font-size: 32px;
+  }
+  #popup button {
+    margin-top: 30px; padding: 12px 40px; background: #fff;
+    color: #000; border: none; border-radius: 50px; font-size: 16px;
+    font-weight: bold; cursor: pointer; transition: transform 0.2s;
+  }
+  #popup button:hover { transform: scale(1.05); }
+
+  .confetti {
+    position: fixed; width: 10px; height: 10px;
+    top: -10px; z-index: 200; pointer-events: none;
+    animation: fall linear forwards;
+  }
+  @keyframes fall { to { transform: translateY(100vh) rotate(720deg); } }
+  
+  @media (max-width: 700px) {
+    .main-layout { flex-direction: column-reverse; gap: 20px; }
+    canvas { width: 95vw; }
+  }
+</style>
 </head>
 <body>
-  <div id="gameContainer">
-    <img id="character" 
-         src="https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/183049e2-ae44-412d-b4d0-978ff6419751/ChatGPT+Image+May+28%2C+2025%2C+01_06_54+AM-Photoroom.png?format=500w" 
-         alt="Character">
+
+<div class="main-layout">
+  
+  <!-- LEADERBOARD SIDE -->
+  <div class="leaderboard">
+    <h2>Participants</h2>
+    <ul id="leaderboardList"></ul>
   </div>
 
-  <script>
-    const character = document.getElementById('character');
-    const container = document.getElementById('gameContainer');
+  <!-- WHEEL SIDE -->
+  <div class="wheel-section">
+    <!-- STATS TABLE -->
+    <div class="stats-container">
+      <div class="stat-box survivors">
+        <span class="stat-number" id="aliveCount">0</span>
+        <span class="stat-label">Survivors</span>
+      </div>
+      <div class="stat-box eliminated">
+        <span class="stat-number" id="deadCount">0</span>
+        <span class="stat-label">Eliminated</span>
+      </div>
+    </div>
 
-    const speed = 300; // pixeli/secundă
-    let positionX; 
-    let containerWidth;
-    let characterWidth;
+    <div class="pointer"></div>
+    <canvas id="wheel" width="500" height="500"></canvas>
+    
+    <!-- CONTROLS -->
+    <div class="controls-container">
+      <button id="spinBtn">SPIN</button>
+      <button id="autoBtn" class="auto-off">
+        <span id="autoIcon">▶</span> AUTO: OFF
+      </button>
+    </div>
+  </div>
 
-    let moveLeft = false;
-    let moveRight = false;
+</div>
 
-    function init() {
-      containerWidth = container.clientWidth;
-      characterWidth = character.clientWidth;
-      positionX = (containerWidth - characterWidth) / 2;
-      character.style.left = positionX + 'px';
+<!-- POPUP -->
+<div id="popup">
+  <div class="content" id="popupContent">
+    <div class="popup-glow"></div>
+    <div class="popup-inner">
+      <h2 id="popupTitle">ELIMINATED</h2>
+      <div id="popupImages"></div>
+      <button id="continueBtn">CONTINUE</button>
+      <button id="restartBtn" style="display:none; background:#2196f3; color:#fff;">NEW GAME</button>
+    </div>
+  </div>
+</div>
+
+<!-- SOUNDS -->
+<audio id="tickSound" src="https://actions.google.com/sounds/v1/tools/ratchet_wrench.ogg" preload="auto"></audio>
+<audio id="elimSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+<audio id="winSound" src="https://actions.google.com/sounds/v1/crowds/battle_crowd_celebrate_stutter.ogg" preload="auto"></audio>
+<audio id="drumRoll" src="https://actions.google.com/sounds/v1/human_voices/drum_roll.ogg" preload="auto"></audio>
+
+<script>
+/* 🔥 ULTIMATE RIGGED WHEEL SCRIPT 4.0 🔥 */
+
+const neverEliminate = [
+    "RedEye", 
+    "teamsammy2e", 
+    "EMMY123456789987654"
+];
+
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+const spinBtn = document.getElementById("spinBtn");
+const autoBtn = document.getElementById("autoBtn");
+const autoIcon = document.getElementById("autoIcon");
+
+const popup = document.getElementById("popup");
+const popupTitle = document.getElementById("popupTitle");
+const continueBtn = document.getElementById("continueBtn");
+const restartBtn = document.getElementById("restartBtn");
+const leaderboardList = document.getElementById("leaderboardList");
+const popupImages = document.getElementById("popupImages");
+const popupContent = document.getElementById("popupContent");
+
+const aliveCountDisplay = document.getElementById("aliveCount");
+const deadCountDisplay = document.getElementById("deadCount");
+
+const tickSound = document.getElementById("tickSound");
+const elimSound = document.getElementById("elimSound");
+const winSound = document.getElementById("winSound");
+const drumRoll = document.getElementById("drumRoll");
+
+let users = [
+  // Original
+  { name: "Great_boy945", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-038BE5F44DC16D18EB5B5509B3507B26-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "durearu", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-207771A8793AC66A2D213E820EE59FCC-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Prayashsth517", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-3F385585C2F9E668D5C1C62AD49B8EE5-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "123ybalover", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-8A19E3109E857AF54482776D4E30D792-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Badbadbadbas6", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-002102D9C842DAFA2905381F4A48D3E9-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Kawaii_puppylover45", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-C5D1ABEEF882097206364F0C82E41CCA-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  // Added
+  { name: "Cadeishere365", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-D41E5A50E7C0F4E4E757D3D006171BD9-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Bipugadi", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-CF77FB08C462B73EFDBB56BE7E548BD1-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Battlecrab1234", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-589D95F1B3DA54F562B1E324701DBBC0-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Yusmaller32000p", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-26F523A6707FEC6A00EA5A6ADBB8451E-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Rip_simon265", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-ED44C8E1B57E03A9FDF977E5FD76BDA1-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "1234noob813", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-C0C70B21F8FC03203B133B9E0DB65B00-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Ozzy_botty", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-2AB37F6344018DFCDEBEEAF0CAAB8901-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Ta_vision", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-523C20B1B5AA7111B77644DE3C39D68D-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  // New
+  { name: "EMMY123456789987654", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-334AF8DAA6069A038B65F410524C62F7-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "baohangchen", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-48E6063B8799998312D1D2CA75AB8D29-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Macska198", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-1773C7A91F3477D6CD3FCB147B9593C3-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Aysmen2012", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-EB0CD2103077237B2E9D196580EF32E6-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "teamsammy2e", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-61DD88484D0CB3869E1A9624F084AB0D-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "RedEye", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-CFCAA29672325CF3BADD4ACC50938E76-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  // Your new users
+  { name: "Coopsfoz", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-EB0CD2103077237B2E9D196580EF32E6-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "2222fortnitegamerr", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-FE2DC999CD86E8DA712C39826211D843-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "yuiogc12", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-F5142EDA76416F250D4618086382C688-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Adamlzn", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-03BA8319797DD643C6A58009CA75788C-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "supte_6", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-E9AF5D4A5DC97CA16F9434A450576EC3-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "010jack07", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-AC1C5613752F70B0E540B1BCD20A8964-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "bottigli55", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-264D83F8A523F3FE25D3BB779B396B54-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "Im_reallygood27", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-FF34DFE8B21A6FFE0C077B35DD4A0478-Png/150/150/AvatarHeadshot/Webp/noFilter" },
+  { name: "ni22578", status: "active", img: "https://tr.rbxcdn.com/30DAY-AvatarHeadshot-F1B2B89481056FD4D2D56B906BDB0D14-Png/150/150/AvatarHeadshot/Webp/noFilter" }
+];
+
+
+let rotation = 0, spinning = false, showWinnersNext = false;
+let isAutoSpinning = false;
+let autoSpinTimeout = null;
+const loadedImages = {};
+
+function preloadImages(callback) {
+  let loaded = 0;
+  const total = users.length;
+  users.forEach(u => {
+    const img = new Image();
+    img.src = u.img;
+    img.crossOrigin = "Anonymous";
+    img.onload = () => { loadedImages[u.name] = img; if (++loaded === total) callback(); };
+    img.onerror = () => { loadedImages[u.name] = null; if (++loaded === total) callback(); };
+  });
+}
+
+function activeUsers() { return users.filter(u => u.status === "active"); }
+function eliminatedUsers() { return users.filter(u => u.status === "eliminated"); }
+
+function updateStats() {
+  const activeCount = activeUsers().length;
+  const elimCount = eliminatedUsers().length;
+  aliveCountDisplay.textContent = activeCount;
+  deadCountDisplay.textContent = elimCount;
+}
+
+function drawWheel() {
+  const active = activeUsers();
+  const numSegments = active.length;
+  const arc = (2 * Math.PI) / numSegments;
+  const centerX = 250;
+  const centerY = 250;
+  const outerRadius = 230;
+  const innerRadius = 30;
+
+  const colors = [
+    ['#FF5252', '#D32F2F'], ['#7C4DFF', '#512DA8'],
+    ['#448AFF', '#1976D2'], ['#69F0AE', '#388E3C'],
+    ['#FFD740', '#FF8F00'], ['#E040FB', '#7B1FA2'],
+    ['#FF6E40', '#D84315'], ['#18FFFF', '#0097A7']
+  ];
+
+  ctx.clearRect(0, 0, 500, 500);
+
+  active.forEach((user, i) => {
+    const angle = i * arc + rotation;
+    const colorSet = colors[i % colors.length];
+    
+    const gradient = ctx.createRadialGradient(centerX, centerY, innerRadius, centerX, centerY, outerRadius);
+    gradient.addColorStop(0, colorSet[1]);
+    gradient.addColorStop(1, colorSet[0]);
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, outerRadius, angle, angle + arc);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(angle + arc / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 14px Poppins";
+    
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 4;
+    ctx.fillText(user.name.substring(0, 10) + (user.name.length>10?"..":""), 160, 5);
+    ctx.shadowBlur = 0;
+
+    const img = loadedImages[user.name];
+    if (img) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(190, 0, 22, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(img, 168, -22, 44, 44);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(190, 0, 22, 0, Math.PI * 2);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.restore();
+  });
+
+  // Gold Rim
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = "#FFD700";
+  ctx.lineWidth = 12;
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = "#FFD700";
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  /* 💡 RESTORED LIGHTS ON THE WHEEL */
+  const bulbCount = 24;
+  for(let i=0; i<bulbCount; i++) {
+    const angle = (i / bulbCount) * 2 * Math.PI + rotation; // rotate bulbs with wheel
+    const bx = centerX + (outerRadius) * Math.cos(angle);
+    const by = centerY + (outerRadius) * Math.sin(angle);
+    ctx.beginPath();
+    ctx.arc(bx, by, 5, 0, Math.PI * 2);
+    ctx.fillStyle = (i % 2 === 0) ? "#FFF" : "#FFEB3B"; // Alternating white/yellow
+    ctx.fill();
+  }
+
+  // Center Hub
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 35, 0, Math.PI * 2);
+  ctx.fillStyle = "#212121";
+  ctx.fill();
+  ctx.strokeStyle = "#FFD700";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  
+  ctx.fillStyle = "#FFD700";
+  ctx.font = "30px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("★", centerX, centerY + 2);
+}
+
+function updateLeaderboard() {
+  leaderboardList.innerHTML = "";
+  users.forEach(u => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div class="user-info">
+        <img src="${u.img}" alt="?">
+        <span>${u.name}</span>
+      </div>
+      <span class="status ${u.status}">
+        ${u.status === "active" ? "Active" :
+         u.status === "eliminated" ? "Out" : "WINNER"}
+      </span>`;
+    leaderboardList.appendChild(li);
+  });
+  updateStats();
+}
+
+function showConfetti() {
+  const colors = ["#ffd700", "#fff", "#f00"];
+  for (let i = 0; i < 150; i++) {
+    const conf = document.createElement("div");
+    conf.classList.add("confetti");
+    conf.style.left = Math.random() * 100 + "vw";
+    conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    conf.style.animationDuration = 2 + Math.random() * 3 + "s";
+    conf.style.animationDelay = Math.random() * 2 + "s";
+    document.body.appendChild(conf);
+    setTimeout(() => conf.remove(), 5000);
+  }
+}
+
+function toggleAutoSpin() {
+  isAutoSpinning = !isAutoSpinning;
+  if (isAutoSpinning) {
+    autoBtn.classList.remove("auto-off");
+    autoBtn.classList.add("auto-on");
+    autoBtn.innerHTML = `<span>❚❚</span> AUTO: ON`;
+    if (!spinning && popup.style.display === "none") spinWheel();
+  } else {
+    autoBtn.classList.remove("auto-on");
+    autoBtn.classList.add("auto-off");
+    autoBtn.innerHTML = `<span id="autoIcon">▶</span> AUTO: OFF`;
+    clearTimeout(autoSpinTimeout);
+  }
+}
+autoBtn.addEventListener("click", toggleAutoSpin);
+
+function spinWheel() {
+  if (spinning || activeUsers().length < 1) return;
+  spinning = true;
+  spinBtn.disabled = true;
+
+  const active = activeUsers();
+  const arc = 360 / active.length;
+  
+  const killableUsers = active.filter(u => !neverEliminate.includes(u.name));
+  let victim = killableUsers.length > 0 
+    ? killableUsers[Math.floor(Math.random() * killableUsers.length)]
+    : active[Math.floor(Math.random() * active.length)];
+
+  const victimIndex = active.findIndex(u => u.name === victim.name);
+  const segmentOffset = (Math.random() * (arc * 0.6)) + (arc * 0.2); 
+  const segmentAngle = (victimIndex * arc) + segmentOffset;
+  
+  let targetRotation = 270 - segmentAngle;
+  if (targetRotation < 0) targetRotation += 360;
+  
+  const currentRotDeg = (rotation * 180) / Math.PI;
+  const extraSpins = 360 * 8;
+  const finalDeg = currentRotDeg + extraSpins + (targetRotation - (currentRotDeg % 360));
+
+  const duration = 4000;
+  const start = performance.now();
+  let lastSoundTick = 0;
+
+  drumRoll.currentTime = 0;
+  drumRoll.loop = true;
+  drumRoll.play().catch(()=>{});
+
+  function animate(now) {
+    const elapsed = now - start;
+    const t = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    
+    const currentDeg = currentRotDeg + (finalDeg - currentRotDeg) * ease;
+    rotation = (currentDeg * Math.PI) / 180;
+    
+    drawWheel();
+
+    const degTraveled = currentDeg;
+    if (Math.floor(degTraveled / arc) > lastSoundTick) {
+      lastSoundTick = Math.floor(degTraveled / arc);
+      tickSound.currentTime = 0;
+      tickSound.play().catch(()=>{});
     }
 
-    function update(deltaTime) {
-      if (moveLeft) {
-        positionX -= speed * deltaTime;
-        if (positionX < 0) positionX = 0;
+    if (t < 1) requestAnimationFrame(animate);
+    else {
+      drumRoll.pause();
+      
+      const eliminatedUser = victim;
+      const u = users.find(x => x.name === eliminatedUser.name);
+      u.status = "eliminated";
+      
+      spinning = false;
+      spinBtn.disabled = false;
+
+      elimSound.currentTime = 0;
+      elimSound.play();
+      
+      popupContent.classList.remove("winner-mode");
+      popupTitle.textContent = "ELIMINATED";
+      popupImages.innerHTML = "";
+      restartBtn.style.display = "none";
+      continueBtn.style.display = "inline-block";
+      showWinnersNext = false;
+
+      const wrapper = document.createElement("div");
+      wrapper.classList.add("user-popup");
+      const img = document.createElement("img");
+      img.src = eliminatedUser.img;
+      const nameTag = document.createElement("p");
+      nameTag.textContent = eliminatedUser.name;
+      nameTag.classList.add("popup-name");
+      wrapper.appendChild(img);
+      wrapper.appendChild(nameTag);
+      popupImages.appendChild(wrapper);
+
+      popup.style.display = "flex";
+
+      const remaining = activeUsers();
+      if (remaining.length === 3) showWinnersNext = true;
+      updateLeaderboard();
+
+      if (isAutoSpinning && !showWinnersNext) {
+        autoSpinTimeout = setTimeout(() => {
+          handleContinue();
+        }, 1500); 
       }
-      if (moveRight) {
-        positionX += speed * deltaTime;
-        if (positionX > containerWidth - characterWidth)
-          positionX = containerWidth - characterWidth;
-      }
-      character.style.left = positionX + 'px';
     }
+  }
+  requestAnimationFrame(animate);
+}
 
-    let lastTime = null;
-    function gameLoop(timestamp) {
-      if (!lastTime) lastTime = timestamp;
-      const delta = (timestamp - lastTime) / 1000;
-      lastTime = timestamp;
+function handleContinue() {
+  if (showWinnersNext) {
+    popupImages.innerHTML = "";
+    const remaining = activeUsers();
+    remaining.forEach(x => x.status = "winner");
+    
+    popupContent.classList.add("winner-mode");
+    popupTitle.textContent = "THE CHAMPIONS";
 
-      update(delta);
-      requestAnimationFrame(gameLoop);
+    remaining.forEach(winner => {
+      const wrapper = document.createElement("div");
+      wrapper.classList.add("user-popup");
+      const img = document.createElement("img");
+      img.src = winner.img;
+      const nameTag = document.createElement("p");
+      nameTag.textContent = winner.name;
+      nameTag.classList.add("popup-name");
+      wrapper.appendChild(img);
+      wrapper.appendChild(nameTag);
+      popupImages.appendChild(wrapper);
+    });
+
+    updateLeaderboard();
+    showConfetti();
+    winSound.currentTime = 0;
+    winSound.play();
+    
+    spinBtn.disabled = true;
+    continueBtn.style.display = "none";
+    restartBtn.style.display = "inline-block";
+
+    isAutoSpinning = false;
+    autoBtn.classList.remove("auto-on");
+    autoBtn.classList.add("auto-off");
+    autoBtn.innerHTML = `<span id="autoIcon">▶</span> AUTO: OFF`;
+
+  } else {
+    popup.style.display = "none";
+    popupImages.innerHTML = "";
+    drawWheel();
+    
+    if (isAutoSpinning) {
+      setTimeout(spinWheel, 500); 
     }
+  }
+}
 
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = true;
-      if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = true;
-    });
+continueBtn.addEventListener("click", handleContinue);
 
-    window.addEventListener('keyup', (e) => {
-      if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = false;
-      if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = false;
-    });
+restartBtn.addEventListener("click", () => {
+  users.forEach(u => u.status = "active");
+  rotation = 0;
+  spinBtn.disabled = false;
+  popup.style.display = "none";
+  continueBtn.style.display = "inline-block";
+  restartBtn.style.display = "none";
+  drawWheel();
+  updateLeaderboard();
+});
 
-    window.addEventListener('resize', () => {
-      containerWidth = container.clientWidth;
-      characterWidth = character.clientWidth;
-      if (positionX > containerWidth - characterWidth)
-        positionX = containerWidth - characterWidth;
-      character.style.left = positionX + 'px';
-    });
+spinBtn.addEventListener("click", spinWheel);
 
-    window.onload = () => {
-      init();
-      requestAnimationFrame(gameLoop);
-    };
-  </script>
+preloadImages(() => { 
+  drawWheel(); 
+  updateLeaderboard(); 
+});
+
+</script>
 </body>
 </html>
