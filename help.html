@@ -21,6 +21,7 @@
       --text-muted: #a5b1c2;
       --glass-border: rgba(255, 255, 255, 0.08);
       --transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      --discord-color: #5865F2;
     }
 
     * { box-sizing: border-box; outline: none; }
@@ -51,9 +52,27 @@
     }
 
     /* Orbitron pe toate elementele UI */
-    h1, h2, h3, .logo, .stat-number, .btn, .bubbleBtn, #sideMenu a { 
+    h1, h2, h3, .logo, .stat-number, .btn, .bubbleBtn, #sideMenu a, .login-btn-header, .ban-title { 
         font-family: 'Orbitron', sans-serif; 
     }
+
+    /* --- BANNED SCREEN STYLES --- */
+    #bannedOverlay {
+        display: none;
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(10, 0, 0, 0.98);
+        z-index: 10000;
+        flex-direction: column; justify-content: center; align-items: center;
+        text-align: center; padding: 20px;
+    }
+    
+    .ban-icon { font-size: 80px; color: #ff4757; margin-bottom: 20px; animation: pulseRed 2s infinite; }
+    @keyframes pulseRed { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+    
+    .ban-title { font-size: 32px; color: #ff4757; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+    .ban-details { background: rgba(255, 0, 0, 0.1); border: 1px solid #ff4757; padding: 30px; border-radius: 20px; max-width: 500px; width: 100%; }
+    .ban-info-label { color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; display: block; }
+    .ban-info-val { color: #fff; font-size: 18px; font-weight: 600; margin-bottom: 20px; display: block; }
 
     /* --- HEADER --- */
     .header-container {
@@ -80,16 +99,39 @@
       text-transform: uppercase; text-decoration: none;
     }
 
-    nav { display: flex; gap: 32px; }
+    nav { display: flex; gap: 32px; align-items: center; }
     nav a {
       color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 600;
       transition: var(--transition); position: relative;
     }
     nav a:hover { color: var(--primary); }
 
+    /* LOGIN BUTTON IN HEADER */
+    .login-btn-header {
+        background: transparent;
+        border: 1.5px solid var(--primary);
+        color: var(--primary);
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-transform: uppercase;
+        transition: 0.3s;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .login-btn-header:hover {
+        background: var(--primary); color: #000;
+        box-shadow: 0 0 15px rgba(41, 243, 255, 0.4);
+    }
+    .user-avatar-small {
+        width: 24px; height: 24px; border-radius: 50%;
+        border: 1px solid #fff; display: none;
+    }
+
     .hamburger { display: none; background: none; border: none; color: #fff; font-size: 26px; cursor: pointer; }
 
-    /* --- SIDE MENU (CONFORM SCREENSHOT) --- */
+    /* --- SIDE MENU --- */
     #sideMenu {
       position: fixed; inset: 0; left: auto; width: 320px;
       background: #08101b; 
@@ -199,6 +241,11 @@
     .footer-links a:hover { color: var(--primary); }
     .copyright { color: #556; font-size: 11px; margin-top: 40px; }
 
+    .made-by-wrapper { margin-top: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+    .footer-pfp-img { width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); transition: 0.3s; }
+    .discord-footer { width: 45px; height: auto; transition: 0.3s; filter: drop-shadow(0 0 8px var(--discord-color)); margin-top: 10px; }
+    .discord-footer:hover { transform: scale(1.2); }
+
     /* --- POPUP --- */
     .popup-overlay { display: none; place-items: center; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 3000; backdrop-filter: blur(5px); }
     .popup-card { background: #061522; border: 1px solid rgba(255,255,255,.1); border-radius: 24px; padding: 30px; width: 90%; max-width: 420px; position: relative; }
@@ -215,6 +262,26 @@
 </head>
 <body>
 
+<!-- BANNED OVERLAY (ASCUNS INITIAL) -->
+<div id="bannedOverlay">
+    <i class="fas fa-ban ban-icon"></i>
+    <h1 class="ban-title">ACCES INTERZIS</h1>
+    <div class="ban-details">
+        <span class="ban-info-label">Statut Cont:</span>
+        <span class="ban-info-val" style="color:#ff4757;">BANAT PERMANENT</span>
+        
+        <span class="ban-info-label">Motiv:</span>
+        <span class="ban-info-val" id="globalBanReason">Încălcare regulament comunitate</span>
+        
+        <p style="font-size:12px; color:#999; margin:0;">
+            Adresa ta IP (<span id="globalBanIp">...</span>) a fost blocată.
+        </p>
+    </div>
+</div>
+
+<!-- CONTENT WRAPPER -->
+<div id="siteContent">
+
   <!-- HEADER -->
   <div class="header-container">
     <header>
@@ -224,12 +291,17 @@
         <a href="#services">Servicii</a>
         <a href="despre_noi.html">Despre Noi</a>
         <a href="doneaza.html" style="color:var(--primary)">Susține-ne</a>
+        <!-- NEW LOGIN BUTTON -->
+        <button id="headerLoginBtn" class="login-btn-header">
+            <img id="headerUserImg" src="" class="user-avatar-small">
+            <span id="headerLoginText">LOGIN</span>
+        </button>
       </nav>
       <button id="menuBtn" class="hamburger">☰</button>
     </header>
   </div>
 
-  <!-- SIDE MENU (STILIZAT CA ÎN SCREENSHOT) -->
+  <!-- SIDE MENU -->
   <aside id="sideMenu">
     <div class="menu-header">
       <div class="logo menu-logo">KSDA</div>
@@ -241,6 +313,8 @@
       <a href="#services">Servicii</a>
       <a href="despre_noi.html">Despre Noi</a>
       <a href="doneaza.html" class="cyan-link">Susține-ne</a>
+      <!-- MOBILE LOGIN LINK -->
+      <a href="#" id="mobileLoginBtn" style="color:#ff4757; margin-top:20px;">LOGIN / LOGOUT</a>
     </div>
   </aside>
 
@@ -320,14 +394,28 @@
   <!-- FOOTER -->
   <footer>
     <div class="logo" style="font-size: 24px; margin-bottom: 10px;">KSDA</div>
+    
     <div class="footer-links">
       <a href="#">Termeni și Condiții</a>
       <a href="#">Politica de Confidențialitate</a>
       <a href="contact.html">Contact</a>
       <a href="doneaza.html">Susține-ne</a>
     </div>
+
+    <div class="made-by-wrapper">
+        <p style="color: var(--text-muted); font-size: 15px;">Website made by Lost Soul/Nica emmanuel</p>
+        <a href="https://www.tiktok.com/@lost_soul_zzz" target="_blank">
+          <img src="https://iili.io/f1ddIfe.png" alt="Lost Soul Profile" class="footer-pfp-img">
+        </a>
+        <br>
+        <a href="https://discord.com/users/1063511180376817755" target="_blank">
+          <img src="https://logo.svgcdn.com/logos/discord.svg" alt="Discord" class="discord-footer">
+        </a>
+    </div>
     <p class="copyright">&copy; 2024 KSDAPromovari. Toate drepturile rezervate.</p>
   </footer>
+
+</div> <!-- End Site Content -->
 
   <script>
     const menuBtn = document.getElementById("menuBtn");
@@ -342,9 +430,9 @@
     const saltPopup = document.getElementById("saltPopup");
     const closeSalt = document.getElementById("closeSalt");
     
-    saltBtn.onclick = () => saltPopup.style.display = "grid";
-    closeSalt.onclick = () => saltPopup.style.display = "none";
-    saltPopup.onclick = (e) => { if(e.target === saltPopup) saltPopup.style.display = "none"; };
+    if(saltBtn) saltBtn.onclick = () => saltPopup.style.display = "grid";
+    if(closeSalt) closeSalt.onclick = () => saltPopup.style.display = "none";
+    if(saltPopup) saltPopup.onclick = (e) => { if(e.target === saltPopup) saltPopup.style.display = "none"; };
 
     async function copyToClipboard(textElement, buttonElement) {
       try {
@@ -353,8 +441,100 @@
         setTimeout(() => buttonElement.innerText = "Copiază", 2000);
       } catch (err) { alert("Eroare la copiere."); }
     }
-    document.getElementById("copyIbanBtn").onclick = function(){ copyToClipboard(document.getElementById("ibanText"), this); };
-    document.getElementById("copySwiftBtn").onclick = function(){ copyToClipboard(document.getElementById("swiftText"), this); };
+    
+    const copyIban = document.getElementById("copyIbanBtn");
+    const copySwift = document.getElementById("copySwiftBtn");
+    if(copyIban) copyIban.onclick = function(){ copyToClipboard(document.getElementById("ibanText"), this); };
+    if(copySwift) copySwift.onclick = function(){ copyToClipboard(document.getElementById("swiftText"), this); };
   </script>
+
+  <!-- FIREBASE GLOBAL LOGIC (BAN & AUTH) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // --- CONFIGURATIA TA ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
+      authDomain: "ksda-7546f.firebaseapp.com",
+      projectId: "ksda-7546f",
+      storageBucket: "ksda-7546f.firebasestorage.app",
+      messagingSenderId: "306437513808",
+      appId: "1:306437513808:web:28479810e3fdf71b32e755"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // DOM Elements
+    const siteContent = document.getElementById('siteContent');
+    const bannedOverlay = document.getElementById('bannedOverlay');
+    const globalBanReason = document.getElementById('globalBanReason');
+    const globalBanIp = document.getElementById('globalBanIp');
+    
+    // Login Buttons
+    const headerLoginBtn = document.getElementById('headerLoginBtn');
+    const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+    const headerLoginText = document.getElementById('headerLoginText');
+    const headerUserImg = document.getElementById('headerUserImg');
+
+    // 1. GLOBAL BAN CHECK
+    async function checkGlobalBan() {
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            const userIP = data.ip;
+
+            const banRef = doc(db, "banned_ips", userIP);
+            const banSnap = await getDoc(banRef);
+
+            if (banSnap.exists()) {
+                const banData = banSnap.data();
+                siteContent.style.display = 'none';
+                bannedOverlay.style.display = 'flex';
+                
+                globalBanReason.innerText = banData.reason || "Nespecificat";
+                globalBanIp.innerText = userIP;
+                document.body.style.overflow = 'hidden';
+            }
+        } catch (e) {
+            console.error("Eroare verificare ban:", e);
+        }
+    }
+    checkGlobalBan();
+
+    // 2. AUTH LOGIC
+    function handleLogin() {
+        if (!auth.currentUser) {
+            signInWithPopup(auth, provider).catch(e => alert(e.message));
+        } else {
+            if(confirm("Vrei să te deconectezi?")) {
+                signOut(auth);
+            }
+        }
+    }
+
+    if(headerLoginBtn) headerLoginBtn.addEventListener('click', handleLogin);
+    if(mobileLoginBtn) mobileLoginBtn.addEventListener('click', handleLogin);
+
+    onAuthStateChanged(auth, user => {
+        if (user) {
+            if(headerLoginText) headerLoginText.innerText = "LOGOUT";
+            if(headerUserImg) {
+                headerUserImg.src = user.photoURL;
+                headerUserImg.style.display = "block";
+            }
+            if(mobileLoginBtn) mobileLoginBtn.innerText = "LOGOUT (" + user.displayName.split(" ")[0] + ")";
+        } else {
+            if(headerLoginText) headerLoginText.innerText = "LOGIN";
+            if(headerUserImg) headerUserImg.style.display = "none";
+            if(mobileLoginBtn) mobileLoginBtn.innerText = "LOGIN";
+        }
+    });
+  </script>
+
 </body>
 </html>
