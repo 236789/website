@@ -21,7 +21,6 @@
       --glass-border: rgba(255, 255, 255, 0.08);
       --text-main: #ffffff;
       --text-muted: #a5b1c2;
-      --discord-color: #5865F2;
     }
 
     * { box-sizing: border-box; outline: none; }
@@ -133,6 +132,14 @@
         box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
 
+    /* QUOTED REPLY STYLE */
+    .quoted-msg {
+        background: rgba(0,0,0,0.2); border-left: 3px solid rgba(255,255,255,0.5);
+        padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 6px;
+        color: rgba(255,255,255,0.8); display: block;
+    }
+    .quoted-msg strong { color: var(--primary); display: block; margin-bottom: 2px; }
+
     /* COLORS */
     .msg-wrapper.mine .msg-bubble {
         background: var(--primary); /* Neon Blue */
@@ -140,6 +147,10 @@
         border-bottom-right-radius: 2px;
         font-weight: 600;
     }
+    .msg-wrapper.mine .quoted-msg {
+        background: rgba(0,0,0,0.1); border-left-color: #000; color: #333;
+    }
+
     .msg-wrapper.theirs .msg-bubble {
         background: rgba(255,255,255,0.1);
         color: #fff;
@@ -148,11 +159,20 @@
     }
 
     .msg-info {
-        font-size: 10px; margin-top: 4px; opacity: 0.7; display: flex; gap: 10px;
+        font-size: 10px; margin-top: 4px; opacity: 0.7; display: flex; gap: 10px; align-items: center;
     }
     .msg-author { font-weight: 700; margin-bottom: 2px; font-size: 11px; color: var(--text-muted); }
     
-    /* 3 DOTS MENU */
+    /* REACTIONS */
+    .msg-reactions {
+        display: flex; gap: 4px; margin-top: 4px;
+    }
+    .reaction-badge {
+        background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border);
+        border-radius: 10px; padding: 2px 6px; font-size: 10px; color: #fff;
+    }
+
+    /* 3 DOTS MENU & EMOJI PICKER */
     .msg-options {
         position: absolute; top: 0; right: -25px;
         cursor: pointer; padding: 5px; color: var(--text-muted);
@@ -162,20 +182,28 @@
     .msg-wrapper:hover .msg-options { opacity: 1; }
 
     .options-dropdown {
-        display: none; position: absolute; top: 20px; z-index: 10;
+        display: none; position: absolute; top: 20px; z-index: 20;
         background: #08101b; border: 1px solid var(--glass-border);
-        border-radius: 8px; overflow: hidden; width: 100px;
+        border-radius: 8px; overflow: hidden; width: 140px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.5);
     }
-    .msg-wrapper.mine .options-dropdown { left: -100px; }
+    .msg-wrapper.mine .options-dropdown { left: -140px; }
     .msg-wrapper.theirs .options-dropdown { right: -100px; }
     
     .options-dropdown button {
         display: block; width: 100%; text-align: left; background: none; border: none;
-        padding: 8px 12px; color: #fff; font-size: 11px; cursor: pointer; transition: 0.2s;
+        padding: 10px 12px; color: #fff; font-size: 11px; cursor: pointer; transition: 0.2s;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
     }
     .options-dropdown button:hover { background: rgba(41, 243, 255, 0.1); color: var(--primary); }
     .options-dropdown button.delete-btn:hover { color: #ff4757; background: rgba(255, 71, 87, 0.1); }
+
+    .emoji-picker-menu {
+        padding: 5px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+        display: none; /* Hidden inside dropdown initially, logic handles display */
+    }
+    .emoji-btn { font-size: 16px; cursor: pointer; text-align: center; padding: 5px; border-radius: 4px; }
+    .emoji-btn:hover { background: rgba(255,255,255,0.1); }
 
     .show-menu { display: block !important; }
 
@@ -186,10 +214,21 @@
         color: #ff4757 !important; font-style: italic;
     }
 
+    /* REPLY PREVIEW BAR */
+    .reply-preview-bar {
+        background: rgba(41, 243, 255, 0.1); border-top: 1px solid var(--primary);
+        padding: 10px 20px; display: none; justify-content: space-between; align-items: center;
+        font-size: 12px; color: var(--primary);
+    }
+    .reply-preview-bar strong { display: block; color: #fff; }
+    .cancel-reply-btn { background: none; border: none; color: #ff4757; font-size: 16px; cursor: pointer; }
+
     /* INPUT AREA */
+    .input-area-wrapper {
+        background: rgba(0,0,0,0.4); border-top: 1px solid var(--glass-border);
+    }
     .input-area {
-        padding: 15px; background: rgba(0,0,0,0.4); border-top: 1px solid var(--glass-border);
-        display: flex; gap: 10px;
+        padding: 15px; display: flex; gap: 10px;
     }
     .chat-input {
         flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
@@ -286,9 +325,20 @@
                 <div style="text-align:center; color:#555; margin-top:50px;">Se încarcă chat-ul...</div>
             </div>
 
-            <div class="input-area">
-                <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj...">
-                <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+            <!-- INPUT WRAPPER -->
+            <div class="input-area-wrapper">
+                <!-- Reply Preview Bar -->
+                <div id="replyBar" class="reply-preview-bar">
+                    <div>
+                        Răspuns către <strong id="replyToUser">User</strong>
+                    </div>
+                    <button id="cancelReply" class="cancel-reply-btn">&times;</button>
+                </div>
+
+                <div class="input-area">
+                    <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj...">
+                    <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+                </div>
             </div>
         </div>
 
@@ -326,7 +376,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // --- CONFIGURARE FIREBASE ---
     const firebaseConfig = {
@@ -353,12 +403,18 @@
     const messagesFeed = document.getElementById('messagesFeed');
     const msgInput = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
+    
+    // REPLY ELEMENTS
+    const replyBar = document.getElementById('replyBar');
+    const replyToUser = document.getElementById('replyToUser');
+    const cancelReplyBtn = document.getElementById('cancelReply');
+
+    let currentUid = null;
+    let replyData = null; // { id, name, text }
 
     // 1. AUTHENTICATION
     loginBtn.addEventListener('click', () => signInWithPopup(auth, provider).catch(e => alert(e.message)));
     logoutBtn.addEventListener('click', () => signOut(auth));
-
-    let currentUid = null;
 
     onAuthStateChanged(auth, user => {
         if(user) {
@@ -375,7 +431,21 @@
         }
     });
 
-    // 2. SEND MESSAGE
+    // 2. REPLY LOGIC
+    window.startReply = function(id, name, text) {
+        replyData = { id, name, text };
+        replyToUser.textContent = name;
+        replyBar.style.display = 'flex';
+        msgInput.focus();
+        closeAllMenus();
+    }
+
+    cancelReplyBtn.addEventListener('click', () => {
+        replyData = null;
+        replyBar.style.display = 'none';
+    });
+
+    // 3. SEND MESSAGE
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
@@ -383,24 +453,39 @@
         const text = msgInput.value.trim();
         if(!text || !auth.currentUser) return;
 
+        const payload = {
+            text: text,
+            uid: auth.currentUser.uid,
+            name: auth.currentUser.displayName,
+            photo: auth.currentUser.photoURL,
+            createdAt: serverTimestamp(),
+            isDeleted: false,
+            reactions: {} // Map for reactions: { uid: "emoji" }
+        };
+
+        // Adauga reply info daca exista
+        if(replyData) {
+            payload.replyToId = replyData.id;
+            payload.replyToName = replyData.name;
+            payload.replyToText = replyData.text;
+        }
+
         try {
-            await addDoc(collection(db, "wall_messages"), {
-                text: text,
-                uid: auth.currentUser.uid,
-                name: auth.currentUser.displayName,
-                createdAt: serverTimestamp(),
-                isDeleted: false // Flag pentru stergere
-            });
+            await addDoc(collection(db, "wall_messages"), payload);
             msgInput.value = '';
+            // Reset Reply
+            if(replyData) {
+                replyData = null;
+                replyBar.style.display = 'none';
+            }
         } catch(e) { console.error(e); }
     }
 
-    // 3. LOAD MESSAGES (Real-time, Ascending Order)
+    // 4. LOAD MESSAGES
     let unsubscribe;
     function loadMessages() {
         if(unsubscribe) unsubscribe();
         
-        // Order by createdAt ASC (Oldest first -> Newest last at bottom)
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "asc"));
         
         unsubscribe = onSnapshot(q, snapshot => {
@@ -421,25 +506,60 @@
                     time = data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 }
 
-                // Continut mesaj (sau sters)
+                // Logic Stergere
                 const isDeleted = data.isDeleted === true;
-                const bubbleContent = isDeleted 
-                    ? '<i class="fas fa-ban"></i> 🚫 Acest mesaj a fost șters.' 
-                    : data.text.replace(/</g, "&lt;");
+                let bubbleContent = "";
+                
+                if(isDeleted) {
+                    bubbleContent = '<i class="fas fa-ban"></i> 🚫 Acest mesaj a fost șters.';
+                } else {
+                    // Logic Reply Render
+                    if(data.replyToName) {
+                        const shortText = data.replyToText.length > 50 ? data.replyToText.substring(0, 50) + "..." : data.replyToText;
+                        bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                    }
+                    bubbleContent += data.text.replace(/</g, "&lt;");
+                }
                 
                 const bubbleClass = isDeleted ? 'msg-bubble deleted' : 'msg-bubble';
+
+                // Reactii Render
+                let reactionsHtml = "";
+                if(!isDeleted && data.reactions) {
+                    const counts = {};
+                    Object.values(data.reactions).forEach(emoji => {
+                        counts[emoji] = (counts[emoji] || 0) + 1;
+                    });
+                    if(Object.keys(counts).length > 0) {
+                        reactionsHtml = `<div class="msg-reactions">`;
+                        for(let [emoji, count] of Object.entries(counts)) {
+                            reactionsHtml += `<span class="reaction-badge">${emoji} ${count}</span>`;
+                        }
+                        reactionsHtml += `</div>`;
+                    }
+                }
 
                 // Meniu 3 puncte (doar daca nu e sters)
                 let menuHtml = '';
                 if(!isDeleted) {
+                    const safeText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     menuHtml = `
                         <div class="msg-options" onclick="toggleMenu('${msgId}')">
                             <i class="fas fa-ellipsis-v"></i>
                         </div>
                         <div id="menu-${msgId}" class="options-dropdown">
-                            <button onclick="alert('Funcția Reply va fi disponibilă în curând!')"><i class="fas fa-reply"></i> Reply</button>
-                            <button onclick="alert('Reacțiile vor fi disponibile în curând!')"><i class="far fa-heart"></i> React</button>
+                            <button onclick="startReply('${msgId}', '${data.name}', '${safeText}')"><i class="fas fa-reply"></i> Răspunde</button>
+                            <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                             ${isMine ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                            
+                            <div id="emojis-${msgId}" class="emoji-picker-menu">
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😮')">😮</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😢')">😢</div>
+                            </div>
                         </div>
                     `;
                 }
@@ -450,6 +570,7 @@
                     <div class="${bubbleClass}">
                         ${bubbleContent}
                     </div>
+                    ${reactionsHtml}
                     <div class="msg-info">
                         <span>${time}</span>
                     </div>
@@ -464,34 +585,67 @@
         });
     }
 
-    // 4. GLOBAL FUNCTIONS (Pentru onclick din HTML)
+    // 5. GLOBAL FUNCTIONS (Pentru onclick din HTML)
     window.toggleMenu = function(id) {
-        // Inchide altele
-        document.querySelectorAll('.options-dropdown').forEach(el => {
-            if(el.id !== `menu-${id}`) el.classList.remove('show-menu');
-        });
+        closeAllMenus();
         const menu = document.getElementById(`menu-${id}`);
         if(menu) menu.classList.toggle('show-menu');
     }
 
-    // Inchide meniul daca dai click in afara
-    window.onclick = function(event) {
-        if (!event.target.matches('.msg-options') && !event.target.matches('.msg-options i')) {
-            document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu'));
+    window.toggleEmojiPicker = function(id) {
+        const picker = document.getElementById(`emojis-${id}`);
+        if(picker) {
+            picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid';
         }
     }
 
+    window.closeAllMenus = function() {
+        document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu'));
+        document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none');
+    }
+
+    // REACT LOGIC
+    window.reactMsg = async function(msgId, emoji) {
+        if(!currentUid) return;
+        closeAllMenus();
+        
+        // Luam mesajul curent
+        // Firestore update nested fields: "reactions.USERID": "EMOJI"
+        const msgRef = doc(db, "wall_messages", msgId);
+        
+        // Putem folosi updateDoc direct cu dot notation pentru map
+        const fieldPath = `reactions.${currentUid}`;
+        
+        // Trick: Daca e deja acelasi emoji, il scoatem (Toggle), altfel il punem
+        // Dar in Firestore simplu e greu de facut toggle atomic fara transaction/read.
+        // Vom face doar set (overwrite) pentru simplitate si viteza.
+        
+        try {
+            const updateObj = {};
+            updateObj[fieldPath] = emoji;
+            await updateDoc(msgRef, updateObj);
+        } catch(e) { console.error(e); }
+    }
+
     window.deleteMsg = async function(id) {
+        closeAllMenus();
         if(confirm("Sigur vrei să ștergi acest mesaj?")) {
             try {
-                // Nu stergem documentul, doar il marcam ca sters (Soft Delete)
                 await updateDoc(doc(db, "wall_messages", id), {
                     isDeleted: true,
-                    text: "" 
+                    text: "",
+                    reactions: {} // Stergem si reactiile
                 });
             } catch(e) {
                 alert("Eroare: " + e.message);
             }
+        }
+    }
+
+    // Inchide meniul daca dai click in afara
+    window.onclick = function(event) {
+        if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) {
+            closeAllMenus();
         }
     }
   </script>
