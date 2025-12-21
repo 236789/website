@@ -1,43 +1,712 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Community Wall — KSDAPromovari</title>
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* --- VARIABLES & THEME --- */
+    :root {
+      --bg-dark: #050b14;
+      --primary: #29f3ff;
+      --primary-dim: rgba(41, 243, 255, 0.15);
+      --glass-bg: rgba(13, 25, 41, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --text-main: #ffffff;
+      --text-muted: #a5b1c2;
+    }
+
+    * { box-sizing: border-box; outline: none; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background-color: var(--bg-dark);
+      background-image: linear-gradient(to bottom, rgba(5, 11, 20, 0.85), var(--bg-dark)), url('https://i.makeagif.com/media/3-03-2021/otrneG.gif');
+      background-position: center; background-size: cover; background-attachment: fixed;
+      font-family: 'Poppins', sans-serif; color: var(--text-main);
+      display: flex; flex-direction: column; overflow-x: hidden;
+    }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-dark); }
+    ::-webkit-scrollbar-thumb { background: #1f3a52; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+    h1, h2, h3, .logo, .btn, .bubbleBtn, #sideMenu a { font-family: 'Orbitron', sans-serif; }
+
+    /* --- HEADER --- */
+    .header-container { position: fixed; top: 0; left: 0; right: 0; padding: 20px; z-index: 1000; display: flex; justify-content: center; }
+    header { width: 100%; max-width: 1200px; display: flex; align-items: center; justify-content: space-between; padding: 12px 30px; background: rgba(5, 11, 20, 0.6); border: 1px solid var(--glass-border); border-radius: 100px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .logo { font-weight: 900; font-size: 24px; letter-spacing: 1px; background: linear-gradient(90deg, #fff, var(--primary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase; text-decoration: none; }
+    nav { display: flex; gap: 32px; }
+    nav a { color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 600; transition: 0.3s; position: relative; }
+    nav a:hover { color: var(--primary); }
+    .hamburger { display: none; background: none; border: none; color: #fff; font-size: 26px; cursor: pointer; }
+
+    /* --- SIDE MENU --- */
+    #sideMenu { position: fixed; inset: 0; left: auto; width: 320px; background: #08101b; border-left: 1px solid var(--glass-border); z-index: 2000; padding: 40px 30px; transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.77, 0, 0.175, 1); display: flex; flex-direction: column; }
+    #sideMenu.open { transform: translateX(0); }
+    .menu-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+    .menu-logo { font-size: 38px; font-weight: 900; letter-spacing: 2px; }
+    .closeBtn { font-size: 42px; background: none; border: none; color: #fff; cursor: pointer; }
+    .menu-divider { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin-bottom: 50px; }
+    .menu-links { display: flex; flex-direction: column; gap: 35px; }
+    .menu-links a { color: #fff; text-decoration: none; font-size: 24px; font-weight: 600; transition: 0.3s; }
+    .menu-links a.cyan-link { color: var(--primary); }
+
+    /* --- WALL LAYOUT --- */
+    .wall-container {
+        margin-top: 140px; width: 100%; max-width: 900px;
+        margin-left: auto; margin-right: auto; padding: 0 20px 80px;
+        display: flex; flex-direction: column; align-items: center; flex: 1;
+    }
+
+    .metallic-title {
+      font-size: clamp(32px, 5vw, 56px); background: linear-gradient(180deg, #ffffff 0%, #a2cfff 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; margin-bottom: 10px;
+      text-transform: uppercase; font-weight: 800; font-family: 'Orbitron';
+    }
+    .wall-desc { text-align: center; color: var(--text-muted); font-size: 16px; margin-bottom: 40px; max-width: 600px; }
+
+    /* --- CHAT BOX STYLES --- */
+    .wall-card {
+        width: 100%; background: var(--glass-bg); border: 1px solid var(--primary);
+        border-radius: 24px; display: flex; flex-direction: column; overflow: hidden;
+        box-shadow: 0 0 40px rgba(41, 243, 255, 0.15); backdrop-filter: blur(10px);
+        height: 70vh; max-height: 800px;
+    }
+
+    /* Locked View */
+    .locked-view {
+        flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        text-align: center; padding: 40px; color: #fff;
+    }
+    .lock-icon { font-size: 60px; color: var(--primary); margin-bottom: 20px; }
+    .google-btn {
+        background: #fff; color: #000; font-weight: 700; padding: 12px 30px; border-radius: 50px;
+        border: none; cursor: pointer; display: flex; align-items: center; gap: 10px; margin-top: 20px;
+        transition: 0.3s; font-family: 'Poppins';
+    }
+    .google-btn:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(255,255,255,0.5); }
+
+    /* Banned View */
+    .banned-view {
+        display: none; flex: 1; flex-direction: column; justify-content: center; align-items: center;
+        text-align: center; padding: 40px; color: #ff4757;
+    }
+
+    /* Chat View */
+    .chat-view { display: none; flex-direction: column; height: 100%; }
     
-    // =========================================================
-    // 1. BANNED IPS COLLECTION
-    // ID-ul documentului trebuie să fie IP-ul (ex: "192.168.1.1")
-    // Nimeni nu poate scrie aici din site (doar tu manual din consolă)
-    // =========================================================
-    match /banned_ips/{ip} {
-      allow read: if request.auth != null;
-      allow write: if false; 
+    .chat-header {
+        padding: 15px 20px; background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--glass-border);
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .user-profile { display: flex; align-items: center; gap: 10px; }
+    .user-pfp { width: 35px; height: 35px; border-radius: 50%; border: 2px solid var(--primary); }
+    .user-name { font-weight: 700; color: #fff; font-size: 14px; }
+    .logout-btn { color: #ff4757; background: none; border: none; cursor: pointer; font-size: 12px; text-decoration: underline; }
+
+    /* MESSAGES AREA */
+    .messages-feed {
+        flex: 1; overflow-y: auto; padding: 20px;
+        display: flex; flex-direction: column; gap: 15px;
     }
 
-    // =========================================================
-    // 2. WALL MESSAGES
-    // =========================================================
-    match /wall_messages/{messageId} {
-      // Oricine logat poate citi
-      allow read: if request.auth != null;
-      
-      // CREARE MESAJ
-      allow create: if request.auth != null
-                    // Verificăm lungimea textului (max 500)
-                    && request.resource.data.text.size() <= 500
-                    && request.resource.data.text.size() > 0
-                    // Verificăm identitatea
-                    && request.resource.data.uid == request.auth.uid
-                    // VERIFICARE BAN: IP-ul trimis nu trebuie să existe în banned_ips
-                    && !exists(/databases/$(database)/documents/banned_ips/$(request.resource.data.ip));
-
-      // ACTUALIZARE (Ex: Reacții, Ștergere logică)
-      allow update: if request.auth != null 
-                    // Doar autorul poate modifica (pentru ștergere/editare)
-                    // Sau oricine pentru reacții (asta e mai complex de securizat perfect în reguli simple, 
-                    // dar pentru acest proiect e ok să lăsăm update dacă e logat, 
-                    // ideal ar fi să separăm reacțiile într-o subcolecție).
-                    // Pentru simplitate aici: permitem update dacă ești logat, 
-                    // dar în producție serioasă ar trebui verificat field-level.
-                    && request.auth != null; 
+    /* Message Bubbles */
+    .msg-wrapper {
+        display: flex; flex-direction: column; max-width: 80%; position: relative;
     }
-  }
-}
+    
+    /* ALIGNMENT */
+    .msg-wrapper.mine { align-self: flex-end; align-items: flex-end; }
+    .msg-wrapper.theirs { align-self: flex-start; align-items: flex-start; }
+
+    .msg-bubble {
+        padding: 12px 16px; border-radius: 18px; position: relative;
+        font-size: 14px; line-height: 1.5; word-wrap: break-word;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    /* QUOTED REPLY STYLE (SUBTLE) */
+    .quoted-msg {
+        background: rgba(255,255,255,0.05); /* Mult mai subtil */
+        border-left: 3px solid rgba(255,255,255,0.3);
+        padding: 8px; border-radius: 6px; font-size: 11px; margin-bottom: 6px;
+        color: rgba(255,255,255,0.7); display: block;
+        font-style: italic;
+    }
+    .quoted-msg strong { color: var(--text-muted); display: block; margin-bottom: 2px; font-style: normal; }
+
+    /* COLORS */
+    .msg-wrapper.mine .msg-bubble {
+        background: var(--primary); /* Neon Blue */
+        color: #000;
+        border-bottom-right-radius: 2px;
+        font-weight: 600;
+    }
+    /* Reply color for mine needs to be dark to contrast with neon blue bg */
+    .msg-wrapper.mine .quoted-msg {
+        background: rgba(0,0,0,0.15); 
+        border-left-color: rgba(0,0,0,0.4); 
+        color: rgba(0,0,0,0.7);
+    }
+    .msg-wrapper.mine .quoted-msg strong { color: #000; }
+
+    .msg-wrapper.theirs .msg-bubble {
+        background: rgba(255,255,255,0.1);
+        color: #fff;
+        border-bottom-left-radius: 2px;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .msg-info {
+        font-size: 10px; margin-top: 4px; opacity: 0.7; display: flex; gap: 10px; align-items: center;
+    }
+    .msg-author { font-weight: 700; margin-bottom: 2px; font-size: 11px; color: var(--text-muted); }
+    
+    /* REACTIONS */
+    .msg-reactions {
+        display: flex; gap: 4px; margin-top: 4px;
+    }
+    .reaction-badge {
+        background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border);
+        border-radius: 10px; padding: 2px 6px; font-size: 10px; color: #fff;
+    }
+
+    /* 3 DOTS MENU */
+    .msg-options {
+        position: absolute; top: 0; right: -25px;
+        cursor: pointer; padding: 5px; color: var(--text-muted);
+        opacity: 0; transition: 0.2s;
+    }
+    .msg-wrapper.mine .msg-options { left: -25px; right: auto; }
+    .msg-wrapper:hover .msg-options { opacity: 1; }
+
+    .options-dropdown {
+        display: none; position: absolute; top: 20px; z-index: 20;
+        background: #08101b; border: 1px solid var(--glass-border);
+        border-radius: 8px; overflow: hidden; width: 140px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    }
+    .msg-wrapper.mine .options-dropdown { left: -140px; }
+    .msg-wrapper.theirs .options-dropdown { right: -100px; }
+    
+    .options-dropdown button {
+        display: block; width: 100%; text-align: left; background: none; border: none;
+        padding: 10px 12px; color: #fff; font-size: 11px; cursor: pointer; transition: 0.2s;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .options-dropdown button:hover { background: rgba(41, 243, 255, 0.1); color: var(--primary); }
+    .options-dropdown button.delete-btn:hover { color: #ff4757; background: rgba(255, 71, 87, 0.1); }
+
+    .emoji-picker-menu {
+        padding: 5px; display: none; grid-template-columns: repeat(3, 1fr); gap: 5px;
+    }
+    .emoji-btn { font-size: 16px; cursor: pointer; text-align: center; padding: 5px; border-radius: 4px; }
+    .emoji-btn:hover { background: rgba(255,255,255,0.1); }
+
+    .show-menu { display: block !important; }
+
+    /* DELETED MESSAGE STYLE */
+    .msg-bubble.deleted {
+        background: rgba(255, 71, 87, 0.1) !important;
+        border: 1px solid rgba(255, 71, 87, 0.3) !important;
+        color: #ff4757 !important; font-style: italic;
+    }
+
+    /* REPLY PREVIEW BAR */
+    .reply-preview-bar {
+        background: rgba(41, 243, 255, 0.1); border-top: 1px solid var(--primary);
+        padding: 10px 20px; display: none; justify-content: space-between; align-items: center;
+        font-size: 12px; color: var(--primary);
+    }
+    .reply-preview-bar strong { display: block; color: #fff; }
+    .cancel-reply-btn { background: none; border: none; color: #ff4757; font-size: 16px; cursor: pointer; }
+
+    /* INPUT AREA */
+    .input-area-wrapper {
+        background: rgba(0,0,0,0.4); border-top: 1px solid var(--glass-border);
+    }
+    .input-area {
+        padding: 15px; display: flex; gap: 10px; flex-direction: column;
+    }
+    .input-row { display: flex; gap: 10px; align-items: center; }
+    .chat-input {
+        flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px; padding: 12px 20px; color: #fff; outline: none; font-family: 'Poppins';
+    }
+    .chat-input:focus { border-color: var(--primary); }
+    .send-btn {
+        width: 45px; height: 45px; border-radius: 50%; border: none;
+        background: var(--primary); color: #000; font-size: 18px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; transition: 0.3s;
+    }
+    .send-btn:hover { transform: scale(1.1); box-shadow: 0 0 15px var(--primary); }
+    .char-count { font-size: 10px; color: var(--text-muted); align-self: flex-end; margin-right: 10px; }
+
+    /* --- FOOTER --- */
+    footer { background: #02050a; border-top: 1px solid var(--glass-border); padding: 60px 20px 30px; text-align: center; margin-top: auto; }
+    .footer-links { display: flex; justify-content: center; gap: 30px; margin: 30px 0; flex-wrap: wrap; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; font-size: 15px; transition: 0.2s; font-weight: 500; }
+    .footer-links a:hover { color: var(--primary); }
+    .made-by-wrapper { margin-top: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+    .footer-pfp-img { width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); transition: 0.3s; }
+    .discord-logo { width: 45px; height: auto; filter: drop-shadow(0 0 8px rgba(88, 101, 242, 0.3)); }
+
+    @media (max-width: 768px) { nav { display: none; } .hamburger { display: block; } .wall-card { height: 80vh; } }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header-container">
+    <header>
+      <a href="index.html" class="logo">KSDA</a>
+      <nav>
+        <a href="index.html">Acasă</a>
+        <a href="index.html#services">Servicii</a>
+        <a href="wall.html" style="color: var(--primary);">Wall</a>
+        <a href="help.html">Susține-ne</a>
+      </nav>
+      <button id="menuBtn" class="hamburger">☰</button>
+    </header>
+  </div>
+
+  <!-- SIDE MENU -->
+  <aside id="sideMenu">
+    <div class="menu-header">
+      <div class="logo menu-logo">KSDA</div>
+      <button id="closeMenu" class="closeBtn">✕</button>
+    </div>
+    <div class="menu-divider"></div>
+    <div class="menu-links">
+      <a href="index.html">Acasă</a>
+      <a href="wall.html" class="cyan-link">Community Wall</a>
+      <a href="despre_noi.html">Despre Noi</a>
+      <a href="help.html">Susține-ne</a>
+    </div>
+  </aside>
+
+  <!-- WALL CONTENT -->
+  <div class="wall-container">
+    <h1 class="metallic-title">Community Wall</h1>
+    <p class="wall-desc">
+        Conectează-te cu familia KSDA. Discută liber, împărtășește idei și fii parte din mișcare.
+    </p>
+
+    <div class="wall-card">
+        
+        <!-- LOCKED STATE (Logged Out) -->
+        <div id="lockedView" class="locked-view">
+            <i class="fas fa-lock lock-icon"></i>
+            <h2>Acces Membri</h2>
+            <p style="opacity:0.7; max-width:400px; margin:10px auto;">
+                Pentru a vedea mesajele și a participa la discuție, trebuie să te autentifici.
+            </p>
+            <button id="loginBtn" class="google-btn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" height="20">
+                Loghează-te cu Google
+            </button>
+        </div>
+
+        <!-- BANNED STATE -->
+        <div id="bannedView" class="banned-view">
+            <i class="fas fa-ban" style="font-size: 60px; margin-bottom:20px;"></i>
+            <h2>Ești Banat</h2>
+            <p>Accesul tău la această comunitate a fost restricționat permanent.</p>
+        </div>
+
+        <!-- CHAT STATE (Logged In) -->
+        <div id="chatView" class="chat-view">
+            <div class="chat-header">
+                <div class="user-profile">
+                    <img id="userAvatar" src="" class="user-pfp">
+                    <div>
+                        <span style="font-size:10px; color:var(--primary); display:block;">Autentificat ca</span>
+                        <div id="userName" class="user-name"></div>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="logout-btn">Deconectare</button>
+            </div>
+
+            <div id="messagesFeed" class="messages-feed">
+                <!-- MESSAGES WILL APPEAR HERE VIA JS -->
+                <div style="text-align:center; color:#555; margin-top:50px;">Se încarcă chat-ul...</div>
+            </div>
+
+            <!-- INPUT WRAPPER -->
+            <div class="input-area-wrapper">
+                <!-- Reply Preview Bar -->
+                <div id="replyBar" class="reply-preview-bar">
+                    <div>
+                        Răspuns către <strong id="replyToUser">User</strong>
+                    </div>
+                    <button id="cancelReply" class="cancel-reply-btn">&times;</button>
+                </div>
+
+                <div class="input-area">
+                    <div class="input-row">
+                        <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="500">
+                        <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                    <div id="charCount" class="char-count">0 / 500</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-content">
+      <div class="logo" style="font-size: 24px; margin-bottom: 10px;">KSDA</div>
+      <div class="footer-links">
+        <a href="index.html">Acasă</a>
+        <a href="contact.html">Contact</a>
+        <a href="help.html">Susține-ne</a>
+      </div>
+      <div class="made-by-wrapper">
+        <span style="color:#889; font-size:14px;">Website made by Lost Soul/Nica emmanuel</span>
+        <a href="https://www.tiktok.com/@lost_soul_zzz" target="_blank"><img src="https://iili.io/f1ddIfe.png" class="footer-pfp-img"></a>
+        <a href="#" class="discord-link"><img src="https://logo.svgcdn.com/logos/discord.svg" class="discord-logo"></a>
+      </div>
+      <p style="color: #556; font-size: 13px; margin-top: 40px;">&copy; 2024 KSDAPromovari. Toate drepturile rezervate.</p>
+    </div>
+  </footer>
+
+  <!-- MENU SCRIPT -->
+  <script>
+    const menuBtn = document.getElementById('menuBtn');
+    const sideMenu = document.getElementById('sideMenu');
+    const closeMenu = document.getElementById('closeMenu');
+    menuBtn.addEventListener('click', () => sideMenu.classList.add('open'));
+    closeMenu.addEventListener('click', () => sideMenu.classList.remove('open'));
+  </script>
+
+  <!-- FIREBASE & CHAT LOGIC -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // --- CONFIGURARE FIREBASE ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
+      authDomain: "ksda-7546f.firebaseapp.com",
+      projectId: "ksda-7546f",
+      storageBucket: "ksda-7546f.firebasestorage.app",
+      messagingSenderId: "306437513808",
+      appId: "1:306437513808:web:28479810e3fdf71b32e755"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // DOM ELEMENTS
+    const lockedView = document.getElementById('lockedView');
+    const chatView = document.getElementById('chatView');
+    const bannedView = document.getElementById('bannedView');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userAvatar = document.getElementById('userAvatar');
+    const userName = document.getElementById('userName');
+    const messagesFeed = document.getElementById('messagesFeed');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const charCount = document.getElementById('charCount');
+    
+    // REPLY ELEMENTS
+    const replyBar = document.getElementById('replyBar');
+    const replyToUser = document.getElementById('replyToUser');
+    const cancelReplyBtn = document.getElementById('cancelReply');
+
+    let currentUid = null;
+    let userIP = null;
+    let replyData = null; // { id, name, text }
+
+    // 0. FETCH IP ADDRESS
+    async function fetchIP() {
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            userIP = data.ip;
+            console.log("IP Detectat:", userIP);
+        } catch (e) {
+            console.error("Nu pot detecta IP:", e);
+            userIP = "unknown";
+        }
+    }
+    fetchIP();
+
+    // 1. AUTHENTICATION & BAN CHECK
+    loginBtn.addEventListener('click', () => signInWithPopup(auth, provider).catch(e => alert(e.message)));
+    logoutBtn.addEventListener('click', () => signOut(auth));
+
+    onAuthStateChanged(auth, async (user) => {
+        if(user) {
+            // Check IP Ban
+            if(userIP) {
+                const banRef = doc(db, "banned_ips", userIP);
+                const banSnap = await getDoc(banRef);
+                if(banSnap.exists()) {
+                    // USER IS BANNED
+                    lockedView.style.display = 'none';
+                    chatView.style.display = 'none';
+                    bannedView.style.display = 'flex';
+                    signOut(auth); // Force logout
+                    return;
+                }
+            }
+
+            currentUid = user.uid;
+            lockedView.style.display = 'none';
+            chatView.style.display = 'flex';
+            bannedView.style.display = 'none';
+            userAvatar.src = user.photoURL;
+            userName.textContent = user.displayName;
+            loadMessages();
+        } else {
+            currentUid = null;
+            lockedView.style.display = 'flex';
+            chatView.style.display = 'none';
+            bannedView.style.display = 'none';
+        }
+    });
+
+    // 2. CHARACTER COUNT
+    msgInput.addEventListener('input', () => {
+        const len = msgInput.value.length;
+        charCount.textContent = `${len} / 500`;
+        if(len >= 500) charCount.style.color = '#ff4757';
+        else charCount.style.color = '#a5b1c2';
+    });
+
+    // 3. REPLY LOGIC
+    window.startReply = function(id, name, text) {
+        replyData = { id, name, text };
+        replyToUser.textContent = name;
+        replyBar.style.display = 'flex';
+        msgInput.focus();
+        closeAllMenus();
+    }
+
+    cancelReplyBtn.addEventListener('click', () => {
+        replyData = null;
+        replyBar.style.display = 'none';
+    });
+
+    // 4. SEND MESSAGE
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
+
+    async function sendMessage() {
+        const text = msgInput.value.trim();
+        if(!text || !auth.currentUser) return;
+        if(text.length > 500) { alert("Mesajul este prea lung!"); return; }
+
+        // Last check for ban before sending
+        if(userIP) {
+             const banRef = doc(db, "banned_ips", userIP);
+             const banSnap = await getDoc(banRef);
+             if(banSnap.exists()) {
+                 alert("Ești banat! Nu poți trimite mesaje.");
+                 location.reload();
+                 return;
+             }
+        }
+
+        const payload = {
+            text: text,
+            uid: auth.currentUser.uid,
+            name: auth.currentUser.displayName,
+            photo: auth.currentUser.photoURL,
+            ip: userIP || "unknown", // Save IP for potential banning
+            createdAt: serverTimestamp(),
+            isDeleted: false,
+            reactions: {} 
+        };
+
+        if(replyData) {
+            payload.replyToId = replyData.id;
+            payload.replyToName = replyData.name;
+            payload.replyToText = replyData.text;
+        }
+
+        try {
+            await addDoc(collection(db, "wall_messages"), payload);
+            msgInput.value = '';
+            charCount.textContent = '0 / 500';
+            if(replyData) {
+                replyData = null;
+                replyBar.style.display = 'none';
+            }
+        } catch(e) { 
+            console.error(e); 
+            if(e.code === 'permission-denied') alert("Nu ai permisiunea să trimiți (posibil banat).");
+        }
+    }
+
+    // 5. LOAD MESSAGES
+    let unsubscribe;
+    function loadMessages() {
+        if(unsubscribe) unsubscribe();
+        
+        const q = query(collection(db, "wall_messages"), orderBy("createdAt", "asc"));
+        
+        unsubscribe = onSnapshot(q, snapshot => {
+            messagesFeed.innerHTML = '';
+            
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const msgId = docSnap.id;
+                const isMine = data.uid === currentUid;
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
+
+                let time = "";
+                if(data.createdAt) {
+                    time = data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+
+                const isDeleted = data.isDeleted === true;
+                let bubbleContent = "";
+                
+                if(isDeleted) {
+                    bubbleContent = '<i class="fas fa-ban"></i> 🚫 Acest mesaj a fost șters.';
+                } else {
+                    if(data.replyToName) {
+                        const shortText = data.replyToText.length > 50 ? data.replyToText.substring(0, 50) + "..." : data.replyToText;
+                        bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                    }
+                    bubbleContent += data.text.replace(/</g, "&lt;");
+                }
+                
+                const bubbleClass = isDeleted ? 'msg-bubble deleted' : 'msg-bubble';
+
+                let reactionsHtml = "";
+                if(!isDeleted && data.reactions) {
+                    const counts = {};
+                    Object.values(data.reactions).forEach(emoji => {
+                        counts[emoji] = (counts[emoji] || 0) + 1;
+                    });
+                    if(Object.keys(counts).length > 0) {
+                        reactionsHtml = `<div class="msg-reactions">`;
+                        for(let [emoji, count] of Object.entries(counts)) {
+                            reactionsHtml += `<span class="reaction-badge">${emoji} ${count}</span>`;
+                        }
+                        reactionsHtml += `</div>`;
+                    }
+                }
+
+                let menuHtml = '';
+                if(!isDeleted) {
+                    const safeText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    menuHtml = `
+                        <div class="msg-options" onclick="toggleMenu('${msgId}')">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </div>
+                        <div id="menu-${msgId}" class="options-dropdown">
+                            <button onclick="startReply('${msgId}', '${data.name}', '${safeText}')"><i class="fas fa-reply"></i> Răspunde</button>
+                            <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                            ${isMine ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                            
+                            <div id="emojis-${msgId}" class="emoji-picker-menu">
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😮')">😮</div>
+                                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😢')">😢</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                wrapper.innerHTML = `
+                    ${!isMine ? `<div class="msg-author">${data.name}</div>` : ''}
+                    <div class="${bubbleClass}">
+                        ${bubbleContent}
+                    </div>
+                    ${reactionsHtml}
+                    <div class="msg-info">
+                        <span>${time}</span>
+                    </div>
+                    ${menuHtml}
+                `;
+
+                messagesFeed.appendChild(wrapper);
+            });
+
+            messagesFeed.scrollTop = messagesFeed.scrollHeight;
+        });
+    }
+
+    // 6. GLOBAL FUNCTIONS
+    window.toggleMenu = function(id) {
+        closeAllMenus();
+        const menu = document.getElementById(`menu-${id}`);
+        if(menu) menu.classList.toggle('show-menu');
+    }
+
+    window.toggleEmojiPicker = function(id) {
+        const picker = document.getElementById(`emojis-${id}`);
+        if(picker) {
+            picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid';
+        }
+    }
+
+    window.closeAllMenus = function() {
+        document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu'));
+        document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none');
+    }
+
+    window.reactMsg = async function(msgId, emoji) {
+        if(!currentUid) return;
+        closeAllMenus();
+        const msgRef = doc(db, "wall_messages", msgId);
+        const fieldPath = `reactions.${currentUid}`;
+        try {
+            const updateObj = {};
+            updateObj[fieldPath] = emoji;
+            await updateDoc(msgRef, updateObj);
+        } catch(e) { console.error(e); }
+    }
+
+    window.deleteMsg = async function(id) {
+        closeAllMenus();
+        if(confirm("Sigur vrei să ștergi acest mesaj?")) {
+            try {
+                await updateDoc(doc(db, "wall_messages", id), {
+                    isDeleted: true,
+                    text: "",
+                    reactions: {} 
+                });
+            } catch(e) {
+                alert("Eroare: " + e.message);
+            }
+        }
+    }
+
+    window.onclick = function(event) {
+        if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) {
+            closeAllMenus();
+        }
+    }
+  </script>
+</body>
+</html>
