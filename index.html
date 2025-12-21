@@ -11,7 +11,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
-  <!-- FontAwesome pentru iconițe (Ban icon) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <style>
@@ -55,19 +54,18 @@
     ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
     /* ORBITRON pe toate elementele UI */
-    h1, h2, h3, .logo, .stat-number, .btn, .bubbleBtn, #sideMenu a, .metallic-title-big { 
+    h1, h2, h3, .logo, .stat-number, .btn, .bubbleBtn, #sideMenu a, .metallic-title-big, .login-btn-header { 
         font-family: 'Orbitron', sans-serif; 
     }
     
     /* --- BANNED SCREEN STYLES --- */
     #bannedOverlay {
-        display: none; /* Ascuns implicit, activat de JS dacă e banat */
+        display: none;
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(10, 0, 0, 0.95);
+        background: rgba(10, 0, 0, 0.98);
         z-index: 10000;
         flex-direction: column; justify-content: center; align-items: center;
         text-align: center; padding: 20px;
-        backdrop-filter: blur(20px);
     }
     
     .ban-icon { font-size: 80px; color: #ff4757; margin-bottom: 20px; animation: pulseRed 2s infinite; }
@@ -88,7 +86,7 @@
     header {
       width: 100%; max-width: 1200px;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 30px;
+      padding: 10px 30px;
       background: rgba(5, 11, 20, 0.6);
       border: 1px solid var(--glass-border);
       border-radius: 100px;
@@ -105,7 +103,7 @@
       text-decoration: none;
     }
 
-    nav { display: flex; gap: 32px; }
+    nav { display: flex; gap: 32px; align-items: center; }
     nav a {
       color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 600;
       transition: var(--transition); position: relative;
@@ -116,6 +114,29 @@
       background: var(--primary); transition: var(--transition);
     }
     nav a:hover::after { width: 100%; }
+
+    /* LOGIN BUTTON IN HEADER */
+    .login-btn-header {
+        background: transparent;
+        border: 1.5px solid var(--primary);
+        color: var(--primary);
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-transform: uppercase;
+        transition: 0.3s;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .login-btn-header:hover {
+        background: var(--primary); color: #000;
+        box-shadow: 0 0 15px rgba(41, 243, 255, 0.4);
+    }
+    .user-avatar-small {
+        width: 24px; height: 24px; border-radius: 50%;
+        border: 1px solid #fff; display: none;
+    }
 
     /* Buttons */
     .btn {
@@ -557,12 +578,17 @@
             <a href="#services">Servicii</a>
             <a href="despre_noi.html">Despre Noi</a>
             <a href="help.html">Susține-ne</a>
+            <!-- NEW LOGIN BUTTON -->
+            <button id="headerLoginBtn" class="login-btn-header">
+                <img id="headerUserImg" src="" class="user-avatar-small">
+                <span id="headerLoginText">LOGIN</span>
+            </button>
         </nav>
         <button id="menuBtn" class="hamburger">☰</button>
         </header>
     </div>
 
-    <!-- SIDE MENU (STILIZAT CA ÎN SCREENSHOT) -->
+    <!-- SIDE MENU -->
     <aside id="sideMenu">
         <div class="menu-header">
         <div class="logo menu-logo">KSDA</div>
@@ -574,6 +600,8 @@
         <a href="#services">Servicii</a>
         <a href="despre_noi.html">Despre Noi</a>
         <a href="help.html" class="cyan-link">Susține-ne</a>
+        <!-- MOBILE LOGIN LINK -->
+        <a href="#" id="mobileLoginBtn" style="color:#ff4757; margin-top:20px;">LOGIN / LOGOUT</a>
         </div>
     </aside>
 
@@ -776,8 +804,7 @@
        let response = "";
        const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-       // ... (LOGICA TA DE BOT RAMANE NESCHIMBATA) ...
-       // (Scurtat pentru claritate, functionalitatea e identica)
+       // ... (Logica bot ramane aceeasi, scurtata pentru claritate)
        if (val.match(/(cine e lost soul|cine e autorul)/)) {
            response = "Lost Soul (Nica Emmanuel) e creierul din spatele acestui site. Are 17 ani si e un geniu la cod! 😎";
        } else {
@@ -793,11 +820,13 @@
    botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
   </script>
 
-  <!-- FIREBASE GLOBAL BAN CHECK -->
+  <!-- FIREBASE GLOBAL LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+    // --- CONFIGURATIA TA ---
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -808,43 +837,80 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
 
-    // Elemente UI
+    // DOM Elements
     const siteContent = document.getElementById('siteContent');
     const bannedOverlay = document.getElementById('bannedOverlay');
     const globalBanReason = document.getElementById('globalBanReason');
     const globalBanIp = document.getElementById('globalBanIp');
+    
+    // Login Buttons
+    const headerLoginBtn = document.getElementById('headerLoginBtn');
+    const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+    const headerLoginText = document.getElementById('headerLoginText');
+    const headerUserImg = document.getElementById('headerUserImg');
 
+    // 1. GLOBAL BAN CHECK (Works even if not logged in)
     async function checkGlobalBan() {
         try {
-            // 1. Aflam IP-ul
+            // Aflam IP
             const res = await fetch('https://api.ipify.org?format=json');
             const data = await res.json();
             const userIP = data.ip;
 
-            // 2. Verificam in Firebase daca e banat
+            // Verificam in Firestore (posibil datorita regulii "allow get: if true")
             const banRef = doc(db, "banned_ips", userIP);
             const banSnap = await getDoc(banRef);
 
             if (banSnap.exists()) {
-                // E BANAT -> Ascunde site-ul, arata ecranul rosu
+                // E BANAT
                 const banData = banSnap.data();
-                siteContent.style.display = 'none'; // Ascunde tot site-ul
-                bannedOverlay.style.display = 'flex'; // Arata ecranul de ban
+                siteContent.style.display = 'none'; // Ascunde tot
+                bannedOverlay.style.display = 'flex'; // Arata ban
                 
                 globalBanReason.innerText = banData.reason || "Nespecificat";
                 globalBanIp.innerText = userIP;
-                document.body.style.overflow = 'hidden'; // Blocheaza scroll
+                document.body.style.overflow = 'hidden'; // Stop scroll
             }
         } catch (e) {
             console.error("Eroare verificare ban:", e);
-            // Daca pica netul sau API-ul, il lasam sa intre (Fail Open)
+        }
+    }
+    // Rulam verificarea imediat
+    checkGlobalBan();
+
+    // 2. AUTH LOGIC (Header Button)
+    function handleLogin() {
+        if (!auth.currentUser) {
+            signInWithPopup(auth, provider).catch(e => alert(e.message));
+        } else {
+            if(confirm("Vrei să te deconectezi?")) {
+                signOut(auth);
+            }
         }
     }
 
-    // Ruleaza verificarea imediat
-    checkGlobalBan();
+    headerLoginBtn.addEventListener('click', handleLogin);
+    mobileLoginBtn.addEventListener('click', handleLogin);
+
+    // Update UI on Auth State Change
+    onAuthStateChanged(auth, user => {
+        if (user) {
+            // Logat
+            headerLoginText.innerText = "LOGOUT";
+            headerUserImg.src = user.photoURL;
+            headerUserImg.style.display = "block";
+            mobileLoginBtn.innerText = "LOGOUT (" + user.displayName.split(" ")[0] + ")";
+        } else {
+            // Nelogat
+            headerLoginText.innerText = "LOGIN";
+            headerUserImg.style.display = "none";
+            mobileLoginBtn.innerText = "LOGIN";
+        }
+    });
   </script>
 
 </body>
