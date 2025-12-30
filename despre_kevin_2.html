@@ -51,7 +51,7 @@
     ::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: 10px; }
 
     /* Orbitron pe UI Elements */
-    h1, h2, h3, .logo, .stat-number, .menu-links a, .login-btn-header, .ban-title { font-family: 'Orbitron', sans-serif; }
+    h1, h2, h3, .logo, .stat-number, .menu-links a, .login-btn-header, .ban-title, .side-menu-login-btn { font-family: 'Orbitron', sans-serif; }
     
     /* --- BANNED SCREEN STYLES --- */
     #bannedOverlay {
@@ -128,6 +128,52 @@
     .menu-links { display: flex; flex-direction: column; gap: 35px; }
     .menu-links a { color: #fff; text-decoration: none; font-size: 26px; font-weight: 600; transition: 0.3s; }
     .menu-links a.cyan-link { color: var(--primary); }
+    .menu-links a:hover { color: var(--primary); transform: translateX(10px); }
+
+    /* --- NEW SIDE MENU LOGIN BUTTON CSS --- */
+    .side-menu-login-btn {
+        background: rgba(41, 243, 255, 0.1);
+        border: 1px solid var(--primary);
+        color: var(--primary);
+        width: 100%;
+        padding: 15px;
+        margin-top: 20px;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* Hover for LOGIN (Cyan) */
+    .side-menu-login-btn:hover {
+        background: var(--primary);
+        color: #000;
+        box-shadow: 0 0 20px rgba(41, 243, 255, 0.4);
+    }
+
+    /* LOGOUT MODE (Red) */
+    .side-menu-login-btn.logout-mode {
+        border-color: #ff4757;
+        color: #ff4757;
+        background: rgba(255, 71, 87, 0.1);
+    }
+
+    /* Hover for LOGOUT (Red) */
+    .side-menu-login-btn.logout-mode:hover {
+        background: #ff4757;
+        color: #fff;
+        box-shadow: 0 0 20px rgba(255, 71, 87, 0.4);
+        border-color: #ff4757;
+    }
+    
+    .side-menu-login-btn i { font-size: 18px; }
 
     /* --- BIO SECTION (BLUE THEME) --- */
     .hero-section { padding: 140px 20px 60px; display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -237,8 +283,12 @@
       <a href="#services">Servicii</a>
       <a href="despre_noi.html">Despre Noi</a>
       <a href="help.html" class="cyan-link">Susține-ne</a>
-      <!-- MOBILE LOGIN LINK -->
-      <a href="#" id="mobileLoginBtn" style="color:#ff4757; margin-top:20px;">LOGIN / LOGOUT</a>
+      
+      <!-- NEW BUTTON FOR MOBILE -->
+      <button id="mobileLoginBtn" class="side-menu-login-btn">
+          <i class="fas fa-sign-in-alt"></i> Autentificare
+      </button>
+
     </div>
   </aside>
 
@@ -319,9 +369,15 @@
 
     menuBtn.onclick = () => sideMenu.classList.add("open");
     closeMenu.onclick = () => sideMenu.classList.remove("open");
+
+    document.addEventListener("click", (e) => {
+      if (sideMenu.classList.contains("open") && !sideMenu.contains(e.target) && !menuBtn.contains(e.target)) {
+        sideMenu.classList.remove("open");
+      }
+    });
   </script>
 
-  <!-- FIREBASE GLOBAL LOGIC (BAN & AUTH) -->
+  <!-- FIREBASE GLOBAL LOGIC (UPDATED FOR MOBILE BUTTON) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -393,18 +449,29 @@
     if(headerLoginBtn) headerLoginBtn.addEventListener('click', handleLogin);
     if(mobileLoginBtn) mobileLoginBtn.addEventListener('click', handleLogin);
 
+    // 3. AUTH STATE LISTENER (UPDATED)
     onAuthStateChanged(auth, user => {
         if (user) {
+            // Update Header
             if(headerLoginText) headerLoginText.innerText = "LOGOUT";
             if(headerUserImg) {
                 headerUserImg.src = user.photoURL;
                 headerUserImg.style.display = "block";
             }
-            if(mobileLoginBtn) mobileLoginBtn.innerText = "LOGOUT (" + user.displayName.split(" ")[0] + ")";
+            // Update Mobile Button (LOGOUT RED MODE)
+            if(mobileLoginBtn) {
+                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Deconectare';
+                mobileLoginBtn.classList.add('logout-mode');
+            }
         } else {
+            // Update Header
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
             if(headerUserImg) headerUserImg.style.display = "none";
-            if(mobileLoginBtn) mobileLoginBtn.innerText = "LOGIN";
+            // Update Mobile Button (LOGIN CYAN MODE)
+            if(mobileLoginBtn) {
+                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+                mobileLoginBtn.classList.remove('logout-mode');
+            }
         }
     });
   </script>
