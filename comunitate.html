@@ -58,7 +58,7 @@
     }
 
     /* ORBITRON pe UI */
-    h1, h2, h3, .logo, .member-name, .tiktok-btn, #sideMenu a, .login-btn-header, .ban-title { 
+    h1, h2, h3, .logo, .member-name, .tiktok-btn, #sideMenu a, .login-btn-header, .ban-title, .side-menu-login-btn { 
         font-family: 'Orbitron', sans-serif; 
     }
 
@@ -121,16 +121,73 @@
 
     .hamburger { display: none; background: none; border: none; color: #fff; font-size: 26px; cursor: pointer; }
 
-    /* --- SIDE MENU --- */
-    #sideMenu { position: fixed; inset: 0; left: auto; width: 320px; background: #08101b; border-left: 1px solid var(--glass-border); z-index: 2000; padding: 40px 30px; transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.77, 0, 0.175, 1); display: flex; flex-direction: column; }
+    /* --- SIDE MENU (UPDATED) --- */
+    #sideMenu { 
+        position: fixed; inset: 0; left: auto; width: 320px; 
+        background: #080f1a; 
+        border-left: 1px solid rgba(255,255,255,0.05); 
+        z-index: 2000; padding: 40px 30px; transform: translateX(100%); 
+        transition: transform 0.4s cubic-bezier(0.77, 0, 0.175, 1); 
+        display: flex; flex-direction: column; 
+    }
     #sideMenu.open { transform: translateX(0); }
+
     .menu-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-    .menu-logo { font-size: 38px; font-weight: 900; }
-    .closeBtn { font-size: 42px; background: none; border: none; color: #fff; cursor: pointer; }
+    .menu-logo { font-size: 38px; font-weight: 900; letter-spacing: 2px; }
+    .closeBtn { font-size: 40px; background: none; border: none; color: #fff; cursor: pointer; transition: 0.3s; }
+    .closeBtn:hover { color: var(--primary); transform: rotate(90deg); }
+
     .menu-divider { width: 100%; height: 1px; background: rgba(255,255,255,0.08); margin-bottom: 50px; }
+    
     .menu-links { display: flex; flex-direction: column; gap: 35px; }
-    .menu-links a { color: #fff; text-decoration: none; font-size: 24px; font-weight: 600; }
+    .menu-links a { color: #fff; text-decoration: none; font-size: 26px; font-weight: 600; transition: 0.3s; }
     .cyan-link { color: var(--primary) !important; }
+    .menu-links a:hover { color: var(--primary); transform: translateX(10px); }
+
+    /* --- NEW SIDE MENU LOGIN BUTTON CSS --- */
+    .side-menu-login-btn {
+        background: rgba(41, 243, 255, 0.1);
+        border: 1px solid var(--primary);
+        color: var(--primary);
+        width: 100%;
+        padding: 15px;
+        margin-top: 20px;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* Hover for LOGIN (Cyan) */
+    .side-menu-login-btn:hover {
+        background: var(--primary);
+        color: #000;
+        box-shadow: 0 0 20px rgba(41, 243, 255, 0.4);
+    }
+
+    /* LOGOUT MODE (Red) */
+    .side-menu-login-btn.logout-mode {
+        border-color: #ff4757;
+        color: #ff4757;
+        background: rgba(255, 71, 87, 0.1);
+    }
+
+    /* Hover for LOGOUT (Red) */
+    .side-menu-login-btn.logout-mode:hover {
+        background: #ff4757;
+        color: #fff;
+        box-shadow: 0 0 20px rgba(255, 71, 87, 0.4);
+        border-color: #ff4757;
+    }
+    
+    .side-menu-login-btn i { font-size: 18px; }
 
     /* --- METALLIC TITLES --- */
     .metallic-title { background: linear-gradient(180deg, #ffffff 0%, #a2cfff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; font-weight: 800; }
@@ -216,8 +273,12 @@
       <a href="index.html#services">Servicii</a>
       <a href="despre_noi.html">Despre Noi</a>
       <a href="help.html" class="cyan-link">Susține-ne</a>
-      <!-- MOBILE LOGIN LINK -->
-      <a href="#" id="mobileLoginBtn" style="color:#ff4757; margin-top:20px;">LOGIN / LOGOUT</a>
+      
+      <!-- NEW BUTTON FOR MOBILE -->
+      <button id="mobileLoginBtn" class="side-menu-login-btn">
+          <i class="fas fa-sign-in-alt"></i> Autentificare
+      </button>
+
     </div>
   </aside>
 
@@ -608,7 +669,7 @@
     });
   </script>
 
-  <!-- FIREBASE GLOBAL LOGIC (BAN & AUTH) -->
+  <!-- FIREBASE GLOBAL LOGIC (UPDATED FOR MOBILE BUTTON) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -680,18 +741,29 @@
     if(headerLoginBtn) headerLoginBtn.addEventListener('click', handleLogin);
     if(mobileLoginBtn) mobileLoginBtn.addEventListener('click', handleLogin);
 
+    // 3. AUTH STATE LISTENER (UPDATED)
     onAuthStateChanged(auth, user => {
         if (user) {
+            // Update Header
             if(headerLoginText) headerLoginText.innerText = "LOGOUT";
             if(headerUserImg) {
                 headerUserImg.src = user.photoURL;
                 headerUserImg.style.display = "block";
             }
-            if(mobileLoginBtn) mobileLoginBtn.innerText = "LOGOUT (" + user.displayName.split(" ")[0] + ")";
+            // Update Mobile Button (LOGOUT RED MODE)
+            if(mobileLoginBtn) {
+                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Deconectare';
+                mobileLoginBtn.classList.add('logout-mode');
+            }
         } else {
+            // Update Header
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
             if(headerUserImg) headerUserImg.style.display = "none";
-            if(mobileLoginBtn) mobileLoginBtn.innerText = "LOGIN";
+            // Update Mobile Button (LOGIN CYAN MODE)
+            if(mobileLoginBtn) {
+                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+                mobileLoginBtn.classList.remove('logout-mode');
+            }
         }
     });
   </script>
