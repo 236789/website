@@ -272,6 +272,18 @@
     .reply-preview-bar { background: rgba(41, 243, 255, 0.1); border-top: 1px solid var(--primary); padding: 10px 20px; display: none; justify-content: space-between; align-items: center; font-size: 12px; color: var(--primary); }
     .cancel-reply-btn { background: none; border: none; color: #ff4757; font-size: 16px; cursor: pointer; }
 
+    /* TYPING INDICATOR STYLE */
+    .typing-indicator {
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 4px 20px;
+        font-style: italic;
+        height: 24px;
+        display: flex;
+        align-items: center;
+    }
+    .typing-name { font-weight: 700; color: var(--primary); margin-right: 4px; }
+    
     /* --- UPDATED INPUT AREA FOR MOBILE --- */
     .input-area-wrapper { background: rgba(0,0,0,0.6); border-top: 1px solid var(--glass-border); backdrop-filter: blur(10px); }
     .input-area { padding: 10px; display: flex; gap: 10px; flex-direction: column; }
@@ -440,6 +452,8 @@
             </div>
 
             <div class="input-area-wrapper">
+                <div id="typingIndicator" class="typing-indicator"></div>
+
                 <div id="replyBar" class="reply-preview-bar">
                     <div>Răspuns către <strong id="replyToUser">User</strong></div>
                     <button id="cancelReply" class="cancel-reply-btn">&times;</button>
@@ -490,7 +504,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -529,6 +543,7 @@
     const msgInput = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
     const charCount = document.getElementById('charCount');
+    const typingIndicator = document.getElementById('typingIndicator');
 
     // REPLY
     const replyBar = document.getElementById('replyBar');
@@ -542,6 +557,10 @@
     let currentUid = null;
     let userIP = null;
     let replyData = null;
+    
+    // TYPING VARIABLES
+    let typingTimeout = null;
+    let isTyping = false;
     
     // GET IP
     async function fetchIP() {
@@ -592,6 +611,7 @@
             if(userAvatar) userAvatar.src = user.photoURL;
             if(userName) userName.textContent = user.displayName;
             loadMessages();
+            listenForTypers();
         } else {
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
             if(headerUserImg) headerUserImg.style.display = "none";
@@ -600,12 +620,74 @@
         }
     });
 
-    // CHAR COUNT
+    // CHAR COUNT & TYPING STATUS
     msgInput.addEventListener('input', () => {
         const len = msgInput.value.length;
         charCount.textContent = `${len} / 500`;
         charCount.style.color = len >= 500 ? '#ff4757' : '#a5b1c2';
+
+        // Typing logic
+        if (currentUid) {
+            if (!isTyping) {
+                isTyping = true;
+                updateTypingStatus(true);
+            }
+            // Clear timeout if user keeps typing
+            clearTimeout(typingTimeout);
+            // Set timeout to stop typing after 3 seconds of inactivity
+            typingTimeout = setTimeout(() => {
+                isTyping = false;
+                updateTypingStatus(false);
+            }, 3000);
+        }
     });
+
+    // UPDATE TYPING STATUS IN FIRESTORE
+    async function updateTypingStatus(status) {
+        if (!currentUid) return;
+        const typingRef = doc(db, "typing_status", currentUid);
+        try {
+            if (status) {
+                await setDoc(typingRef, {
+                    name: auth.currentUser.displayName,
+                    timestamp: serverTimestamp()
+                });
+            } else {
+                await deleteDoc(typingRef);
+            }
+        } catch (e) {
+            console.error("Typing status error:", e);
+        }
+    }
+
+    // LISTEN FOR OTHERS TYPING
+    function listenForTypers() {
+        const q = query(collection(db, "typing_status"));
+        onSnapshot(q, (snapshot) => {
+            const typers = [];
+            snapshot.forEach((doc) => {
+                if (doc.id !== currentUid) {
+                    const data = doc.data();
+                    if (data.name) typers.push(data.name);
+                }
+            });
+
+            if (typers.length > 0) {
+                if (typers.length === 1) {
+                    typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> scrie...`;
+                } else if (typers.length === 2) {
+                    typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> și <span class="typing-name">${typers[1]}</span> scriu...`;
+                } else {
+                    typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
+                }
+                typingIndicator.style.opacity = "1";
+            } else {
+                typingIndicator.innerHTML = "";
+                typingIndicator.style.opacity = "0";
+            }
+        });
+    }
+
 
     // REPLY
     window.startReply = function(id, name, text) {
@@ -664,6 +746,12 @@
 
         try {
             await addDoc(collection(db, "wall_messages"), payload);
+            
+            // Stop typing status immediately upon send
+            clearTimeout(typingTimeout);
+            isTyping = false;
+            updateTypingStatus(false);
+
             msgInput.value = '';
             charCount.textContent = '0 / 500';
             localStorage.setItem('lastMsgTime', Date.now()); 
