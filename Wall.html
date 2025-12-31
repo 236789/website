@@ -112,7 +112,7 @@
     .menu-links a.cyan-link { color: var(--primary); }
     .menu-links a:hover { color: var(--primary); transform: translateX(10px); }
 
-    /* NEW SIDE MENU LOGIN BUTTON */
+    /* SIDE MENU LOGIN BUTTON */
     .side-menu-login-btn {
         background: rgba(41, 243, 255, 0.1);
         border: 1px solid var(--primary);
@@ -220,10 +220,6 @@
         box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
 
-    /* AUDIO PLAYER STYLE */
-    .audio-player { display: flex; align-items: center; gap: 10px; min-width: 200px; }
-    audio { height: 30px; width: 100%; filter: invert(0.8); }
-
     /* QUOTED REPLY STYLE */
     .quoted-msg {
         background: rgba(0, 0, 0, 0.2); 
@@ -296,16 +292,6 @@
     .chat-input:focus { border-color: var(--primary); }
     
     /* BUTTONS */
-    .icon-btn {
-        flex-shrink: 0; /* Prevents squashing */
-        width: 45px; height: 45px;
-        border-radius: 50%; border: none;
-        background: rgba(255,255,255,0.1); color: #fff;
-        font-size: 16px; cursor: pointer; transition: 0.2s;
-        display: flex; align-items: center; justify-content: center;
-    }
-    .icon-btn:hover { background: rgba(255,255,255,0.2); }
-    
     .send-btn { 
         flex-shrink: 0; /* Prevents squashing */
         width: 45px; height: 45px; 
@@ -318,22 +304,6 @@
     .send-btn:hover { transform: scale(1.1); box-shadow: 0 0 15px var(--primary); }
     
     .char-count { font-size: 10px; color: var(--text-muted); align-self: flex-end; margin-right: 10px; }
-
-    /* RECORDING UI */
-    .recording-ui {
-        flex: 1; display: flex; align-items: center; gap: 10px;
-        background: rgba(255, 71, 87, 0.1); border: 1px solid rgba(255, 71, 87, 0.3);
-        border-radius: 25px; padding: 0 15px; height: 45px;
-        color: #ff4757; font-weight: 600; font-size: 14px;
-        animation: pulseRecBox 1.5s infinite;
-    }
-    @keyframes pulseRecBox { 0% { box-shadow: 0 0 5px rgba(255, 71, 87, 0.2); } 50% { box-shadow: 0 0 15px rgba(255, 71, 87, 0.5); } 100% { box-shadow: 0 0 5px rgba(255, 71, 87, 0.2); } }
-    
-    .rec-dot { width: 10px; height: 10px; background: #ff4757; border-radius: 50%; display: inline-block; }
-    
-    .cancel-btn { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 5px; margin-left: auto; }
-    .send-rec-btn { background: var(--primary); border: none; color: #000; width: 35px; height: 35px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-left: 5px; }
-
 
     /* --- TOAST NOTIFICATION --- */
     .toast-notification {
@@ -474,19 +444,8 @@
 
                 <div class="input-area">
                     <div class="input-row">
-                        <!-- RECORD BUTTON -->
-                        <button id="recordBtn" class="icon-btn"><i class="fas fa-microphone"></i></button>
-
-                        <!-- RECORDING UI (Hidden by default) -->
-                        <div id="recordingUI" class="recording-ui" style="display:none;">
-                            <span class="rec-dot"></span> <span id="recTimer">0:00</span>
-                            <button id="cancelRec" class="cancel-btn"><i class="fas fa-times"></i></button>
-                            <button id="stopSendRec" class="send-rec-btn"><i class="fas fa-arrow-up"></i></button>
-                        </div>
-
                         <!-- TEXT INPUT -->
                         <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="500">
-                        
                         <!-- SEND BUTTON -->
                         <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
                     </div>
@@ -529,7 +488,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -544,7 +502,6 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     // DOM ELEMENTS
@@ -569,13 +526,6 @@
     const msgInput = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
     const charCount = document.getElementById('charCount');
-    
-    // VOICE ELEMENTS
-    const recordBtn = document.getElementById('recordBtn');
-    const recordingUI = document.getElementById('recordingUI');
-    const recTimer = document.getElementById('recTimer');
-    const cancelRec = document.getElementById('cancelRec');
-    const stopSendRec = document.getElementById('stopSendRec');
 
     // REPLY
     const replyBar = document.getElementById('replyBar');
@@ -590,12 +540,6 @@
     let userIP = null;
     let replyData = null;
     
-    // RECORDING VARS
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let recStartTime = 0;
-    let recInterval = null;
-
     // GET IP
     async function fetchIP() {
         try {
@@ -675,103 +619,6 @@
         return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank">${url}</a>`; });
     }
 
-    // --- VOICE RECORDING LOGIC ---
-    recordBtn.onclick = async () => {
-        if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            return showToast("Browserul nu suportă audio!");
-        }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            
-            mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-            
-            mediaRecorder.onstart = () => {
-                msgInput.style.display = 'none'; // Hide text input
-                sendBtn.style.display = 'none'; // Hide send btn
-                recordBtn.style.display = 'none'; // Hide mic btn
-                recordingUI.style.display = 'flex'; // Show rec UI
-                
-                recStartTime = Date.now();
-                recInterval = setInterval(updateRecTimer, 1000);
-            };
-
-            mediaRecorder.onstop = () => {
-                clearInterval(recInterval);
-                recTimer.innerText = "0:00";
-                
-                // Restore UI
-                recordingUI.style.display = 'none';
-                msgInput.style.display = 'block';
-                sendBtn.style.display = 'flex';
-                recordBtn.style.display = 'flex';
-                
-                // Stop Stream tracks
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorder.start();
-        } catch(e) { showToast("Acces microfon refuzat!"); }
-    };
-
-    function updateRecTimer() {
-        const diff = Math.floor((Date.now() - recStartTime) / 1000);
-        const m = Math.floor(diff / 60);
-        const s = diff % 60;
-        recTimer.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-    }
-
-    cancelRec.onclick = () => {
-        if(mediaRecorder) mediaRecorder.stop();
-        audioChunks = []; // discard
-    };
-
-    stopSendRec.onclick = async () => {
-        if(mediaRecorder) {
-            mediaRecorder.stop();
-            // Wait slightly for onstop to fire and chunks to gather
-            setTimeout(uploadVoiceMessage, 500);
-        }
-    };
-
-    async function uploadVoiceMessage() {
-        if(!audioChunks.length) return;
-        const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
-        
-        // Cooldown Check
-        const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 15000;
-        if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
-             const timeLeft = Math.ceil((COOLDOWN - (Date.now() - lastSent)) / 1000);
-             return showToast(`Așteaptă ${timeLeft}s! (Spam)`);
-        }
-
-        const fileName = `voice_${auth.currentUser.uid}_${Date.now()}.mp3`;
-        const storageRef = ref(storage, 'voice_messages/' + fileName);
-
-        try {
-            const snapshot = await uploadBytes(storageRef, audioBlob);
-            const downloadURL = await getDownloadURL(snapshot.ref);
-            
-            // Send to Firestore
-            await addDoc(collection(db, "wall_messages"), {
-                text: "", // Empty for voice
-                type: "audio",
-                audioUrl: downloadURL,
-                uid: auth.currentUser.uid,
-                name: auth.currentUser.displayName,
-                photo: auth.currentUser.photoURL,
-                ip: userIP || "unknown",
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {}
-            });
-            localStorage.setItem('lastMsgTime', Date.now());
-
-        } catch(e) { showToast("Eroare la trimitere: " + e.message); }
-    }
-
     // --- TEXT MESSAGE SEND ---
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
@@ -797,7 +644,6 @@
 
         const payload = {
             text: text,
-            type: "text",
             uid: auth.currentUser.uid,
             name: auth.currentUser.displayName,
             photo: auth.currentUser.photoURL,
@@ -849,18 +695,9 @@
                         const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                         bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                     }
-
-                    // AUDIO VS TEXT
-                    if(data.type === "audio" && data.audioUrl) {
-                        bubbleContent += `
-                            <div class="audio-player">
-                                <audio controls src="${data.audioUrl}"></audio>
-                            </div>
-                        `;
-                    } else {
-                        let safeText = data.text.replace(/</g, "&lt;");
-                        bubbleContent += linkify(safeText);
-                    }
+                    // TEXT & LINKS
+                    let safeText = data.text.replace(/</g, "&lt;");
+                    bubbleContent += linkify(safeText);
                 }
                 
                 const bubbleClass = isDeleted ? 'msg-bubble deleted' : 'msg-bubble';
@@ -880,7 +717,7 @@
                 // MENU
                 let menuHtml = '';
                 if(!isDeleted) {
-                    const rawText = data.type === 'audio' ? '[Audio Message]' : data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     menuHtml = `
                         <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                         <div id="menu-${msgId}" class="options-dropdown">
@@ -915,7 +752,7 @@
     window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
     window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
     window.reactMsg = async function(msgId, emoji) { if(!currentUid) return; closeAllMenus(); const msgRef = doc(db, "wall_messages", msgId); const fieldPath = `reactions.${currentUid}`; const updateObj = {}; updateObj[fieldPath] = emoji; try { await updateDoc(msgRef, updateObj); } catch(e) { console.error(e); } }
-    window.deleteMsg = async function(id) { closeAllMenus(); if(confirm("Ștergi mesajul?")) { try { await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", audioUrl: "", reactions: {} }); } catch(e) { showToast(e.message); } } }
+    window.deleteMsg = async function(id) { closeAllMenus(); if(confirm("Ștergi mesajul?")) { try { await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} }); } catch(e) { showToast(e.message); } } }
     window.onclick = function(event) { if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) { closeAllMenus(); } }
   </script>
 </body>
