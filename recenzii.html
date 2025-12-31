@@ -208,7 +208,7 @@
     .vote-btn.active-dislike { color: #ff4757; border-color: #ff4757; background: rgba(255, 71, 87, 0.1); }
     .vote-count { font-weight: 700; font-size: 11px; }
 
-    /* --- NEW COMMENTS SECTION CSS --- */
+    /* --- COMMENTS SECTION CSS --- */
     .comments-section {
         display: none; /* Hidden by default */
         margin-top: 15px;
@@ -456,7 +456,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc, updateDoc, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -684,8 +684,21 @@
             // Using UserID as DocID enforces "One comment per user" rule automatically
             await setDoc(doc(db, `reviews/${reviewId}/comments/${auth.currentUser.uid}`), commentData);
             input.value = '';
+            // Update counter immediately
+            fetchAndDisplayCount(reviewId);
         } catch(e) { alert("Eroare: " + e.message); }
     };
+
+    // FETCH COMMENT COUNT
+    async function fetchAndDisplayCount(reviewId) {
+        try {
+            const coll = collection(db, `reviews/${reviewId}/comments`);
+            const snapshot = await getCountFromServer(coll);
+            const count = snapshot.data().count;
+            const el = document.getElementById(`comCnt-${reviewId}`);
+            if(el && count > 0) el.innerText = `(${count})`;
+        } catch(e) { console.log("Count error:", e); }
+    }
 
     function loadReviews() {
         const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
@@ -778,7 +791,7 @@
                         <i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span>
                     </button>
                     <button onclick="toggleComments('${data.id}')" class="vote-btn">
-                        <i class="fas fa-comment-dots"></i> Discuție
+                        <i class="fas fa-comment-dots"></i> Discuție <span id="comCnt-${data.id}" style="font-size:11px; margin-left:4px; opacity:0.8;"></span>
                     </button>
                 </div>
             </div>
@@ -794,6 +807,8 @@
             </div>
         `;
         reviewsListContainer.appendChild(card);
+        // FETCH COUNT
+        fetchAndDisplayCount(data.id);
     }
 
     function showMoreItems() {
