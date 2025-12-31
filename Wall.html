@@ -231,7 +231,9 @@
 
     .msg-bubble {
         padding: 12px 16px; border-radius: 18px; position: relative;
-        font-size: 14px; line-height: 1.5; word-wrap: break-word;
+        font-size: 14px; line-height: 1.5; 
+        /* UPDATED: Better text breaking for long words/links */
+        word-wrap: break-word; word-break: break-word; overflow-wrap: anywhere;
         box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
 
@@ -244,6 +246,7 @@
         color: rgba(255, 255, 255, 0.7); 
         display: block;
         margin-top: -4px;
+        word-break: break-all;
     }
     .quoted-msg strong { 
         color: rgba(255, 255, 255, 0.9); 
@@ -268,6 +271,11 @@
         border-bottom-left-radius: 2px;
         border: 1px solid rgba(255,255,255,0.1);
     }
+    
+    /* LINK STYLES INSIDE CHAT */
+    .msg-bubble a { color: inherit; text-decoration: underline; font-weight: 700; }
+    .msg-wrapper.mine .msg-bubble a { color: #0044ff; }
+    .msg-wrapper.theirs .msg-bubble a { color: var(--primary); }
 
     .msg-info { font-size: 10px; margin-top: 4px; opacity: 0.7; display: flex; gap: 10px; align-items: center; }
     .msg-author { font-weight: 700; margin-bottom: 2px; font-size: 11px; color: var(--text-muted); }
@@ -304,6 +312,17 @@
     .send-btn:hover { transform: scale(1.1); box-shadow: 0 0 15px var(--primary); }
     .char-count { font-size: 10px; color: var(--text-muted); align-self: flex-end; margin-right: 10px; }
 
+    /* --- TOAST NOTIFICATION (NO GOOGLE ALERT) --- */
+    .toast-notification {
+        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px);
+        background: rgba(255, 71, 87, 0.9); color: white; padding: 12px 24px;
+        border-radius: 50px; font-size: 14px; font-weight: 600; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        z-index: 9999; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        display: flex; align-items: center; gap: 10px;
+    }
+    .toast-notification.show { transform: translateX(-50%) translateY(0); }
+    .toast-notification.success { background: rgba(41, 243, 255, 0.9); color: #000; }
+
     /* --- FOOTER --- */
     footer { background: #02050a; border-top: 1px solid var(--glass-border); padding: 60px 20px 30px; text-align: center; margin-top: auto; }
     .footer-links { display: flex; justify-content: center; gap: 30px; margin: 30px 0; flex-wrap: wrap; }
@@ -313,10 +332,28 @@
     .footer-pfp-img { width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); transition: 0.3s; }
     .discord-logo { width: 45px; height: auto; filter: drop-shadow(0 0 8px rgba(88, 101, 242, 0.3)); }
 
-    @media (max-width: 768px) { nav { display: none; } .hamburger { display: block; } .wall-card { height: 80vh; } }
+    @media (max-width: 768px) { 
+        nav { display: none; } 
+        .hamburger { display: block; } 
+        .wall-card { height: 80vh; } 
+        
+        /* UPDATED: Mobile Fixes */
+        .msg-wrapper { max-width: 75%; } /* Make space for dots */
+        
+        /* Fix the dots box going out of screen */
+        .msg-wrapper.theirs .options-dropdown { right: auto; left: 0; }
+        .msg-wrapper.mine .options-dropdown { left: auto; right: 0; }
+        
+        .msg-options { opacity: 1; /* Always show dots on mobile */ }
+    }
   </style>
 </head>
 <body>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast-notification">
+    <i class="fas fa-exclamation-circle"></i> <span id="toastMsg">Error message</span>
+  </div>
 
   <!-- HEADER -->
   <div class="header-container">
@@ -506,6 +543,10 @@
     const replyToUser = document.getElementById('replyToUser');
     const cancelReplyBtn = document.getElementById('cancelReply');
 
+    // TOAST
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+
     let currentUid = null;
     let userIP = null;
     let replyData = null;
@@ -519,6 +560,14 @@
         } catch (e) { console.error("No IP", e); userIP = "unknown"; }
     }
     fetchIP();
+
+    // TOAST FUNCTION
+    function showToast(msg, type='error') {
+        toastMsg.innerText = msg;
+        toast.className = `toast-notification ${type === 'success' ? 'success' : ''}`;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
 
     // SHARED AUTH FUNCTIONS
     function triggerLogin() {
@@ -628,6 +677,14 @@
         replyBar.style.display = 'none';
     });
 
+    // MAKE LINKS CLICKABLE
+    function linkify(text) {
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
+        return text.replace(urlRegex, function(url) {
+            return `<a href="${url}" target="_blank">${url}</a>`;
+        });
+    }
+
     // SEND MESSAGE
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
@@ -635,7 +692,16 @@
     async function sendMessage() {
         const text = msgInput.value.trim();
         if(!text || !auth.currentUser) return;
-        if(text.length > 500) { alert("Prea lung!"); return; }
+        if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
+
+        // COOLDOWN LOGIC (15 Seconds)
+        const lastSent = localStorage.getItem('lastMsgTime');
+        const COOLDOWN = 15000;
+        if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
+            const timeLeft = Math.ceil((COOLDOWN - (Date.now() - lastSent)) / 1000);
+            showToast(`Așteaptă ${timeLeft}s înainte de a trimite alt mesaj!`);
+            return;
+        }
 
         if(userIP) {
              const banRef = doc(db, "banned_ips", userIP);
@@ -668,6 +734,8 @@
             await addDoc(collection(db, "wall_messages"), payload);
             msgInput.value = '';
             charCount.textContent = '0 / 500';
+            localStorage.setItem('lastMsgTime', Date.now()); // Update cooldown
+            
             if(replyData) {
                 replyData = null;
                 replyBar.style.display = 'none';
@@ -703,11 +771,16 @@
                 if(isDeleted) {
                     bubbleContent = '<i class="fas fa-ban"></i> 🚫 Acest mesaj a fost șters.';
                 } else {
+                    // Safe text handling
+                    let safeText = data.text.replace(/</g, "&lt;");
+                    // Make links clickable
+                    safeText = linkify(safeText);
+
                     if(data.replyToName) {
                         const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                         bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                     }
-                    bubbleContent += data.text.replace(/</g, "&lt;");
+                    bubbleContent += safeText;
                 }
                 
                 const bubbleClass = isDeleted ? 'msg-bubble deleted' : 'msg-bubble';
@@ -729,13 +802,13 @@
 
                 let menuHtml = '';
                 if(!isDeleted) {
-                    const safeText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     menuHtml = `
                         <div class="msg-options" onclick="toggleMenu('${msgId}')">
                             <i class="fas fa-ellipsis-v"></i>
                         </div>
                         <div id="menu-${msgId}" class="options-dropdown">
-                            <button onclick="startReply('${msgId}', '${data.name}', '${safeText}')"><i class="fas fa-reply"></i> Răspunde</button>
+                            <button onclick="startReply('${msgId}', '${data.name}', '${rawText}')"><i class="fas fa-reply"></i> Răspunde</button>
                             <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                             ${isMine ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
                             
@@ -799,7 +872,7 @@
         if(confirm("Ștergi mesajul?")) {
             try {
                 await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} });
-            } catch(e) { alert(e.message); }
+            } catch(e) { showToast(e.message); }
         }
     }
     window.onclick = function(event) {
