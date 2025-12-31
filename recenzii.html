@@ -181,7 +181,9 @@
     .chat-view { display: none; flex-direction: column; height: 100%; }
     .messages-feed { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
 
-    .review-card { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 18px; padding: 15px; position: relative; }
+    .review-card { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 18px; padding: 15px; position: relative; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
     .review-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
     .rev-pfp { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--primary); }
     .rev-info { flex: 1; }
@@ -198,6 +200,21 @@
     .vote-btn.active-like { color: var(--primary); border-color: var(--primary); background: rgba(41, 243, 255, 0.1); }
     .vote-btn.active-dislike { color: #ff4757; border-color: #ff4757; background: rgba(255, 71, 87, 0.1); }
     .vote-count { font-weight: 700; font-size: 11px; }
+
+    /* LOAD MORE BUTTON */
+    .load-more-btn {
+        background: transparent;
+        border: 1px solid var(--text-muted);
+        color: var(--text-muted);
+        padding: 10px 20px;
+        border-radius: 20px;
+        margin: 10px auto 0;
+        cursor: pointer;
+        display: none; /* Hidden by default */
+        font-size: 12px;
+        font-family: 'Poppins';
+    }
+    .load-more-btn:hover { border-color: var(--primary); color: var(--primary); }
 
     /* INPUT AREA */
     .input-area-wrapper { background: rgba(0,0,0,0.5); border-top: 1px solid var(--glass-border); padding: 20px; }
@@ -225,7 +242,6 @@
         .wall-container {
             margin-top: 90px;
             padding: 0 10px;
-            /* Allow card to fill height better on mobile */
             height: calc(100vh - 90px);
             display: flex;
             flex-direction: column;
@@ -234,27 +250,14 @@
         .metallic-title { font-size: 24px; margin-bottom: 5px; }
         .wall-desc { font-size: 12px; margin-bottom: 15px; }
 
-        .wall-card {
-            height: 100%; /* Fill the container */
-            border-radius: 16px;
-        }
+        .wall-card { height: 100%; border-radius: 16px; }
 
-        /* Compact Summary for Mobile */
-        .reviews-summary {
-            padding: 10px;
-            gap: 10px;
-        }
+        .reviews-summary { padding: 10px; gap: 10px; }
         .rating-big {
-            /* Change from Column to Row on mobile to save vertical space */
-            flex-direction: row;
-            width: 100%;
-            justify-content: space-between;
-            border-right: none;
-            padding-right: 0;
-            padding-bottom: 8px;
+            flex-direction: row; width: 100%; justify-content: space-between;
+            border-right: none; padding-right: 0; padding-bottom: 8px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
-            margin-bottom: 5px;
-            min-height: auto;
+            margin-bottom: 5px; min-height: auto;
         }
         .big-score { font-size: 32px; }
         .total-reviews-text { font-size: 11px; }
@@ -263,17 +266,11 @@
         .bar-row { font-size: 11px; padding: 0; }
         .progress-track { height: 6px; }
 
-        /* Input Area Mobile */
         .input-area-wrapper { padding: 10px; }
         .chat-input { height: 50px; }
         .send-btn { height: 50px; width: 50px; }
         
-        /* Fix 'Already Posted' message mobile */
-        .already-posted {
-            font-size: 11px;
-            padding: 8px;
-            margin-bottom: 0;
-        }
+        .already-posted { font-size: 11px; padding: 8px; margin-bottom: 0; }
     }
   </style>
 </head>
@@ -382,7 +379,11 @@
                 </div>
             </div>
 
-            <div id="messagesFeed" class="messages-feed"></div>
+            <div id="messagesFeed" class="messages-feed">
+                <!-- Reviews injected here -->
+                <div id="reviewsList"></div>
+                <button id="loadMoreBtn" class="load-more-btn">Mai multe...</button>
+            </div>
 
             <div class="input-area-wrapper">
                 <div id="alreadyPostedMsg" class="already-posted">
@@ -440,6 +441,9 @@
 
     // DOM ELEMENTS
     const messagesFeed = document.getElementById('messagesFeed');
+    const reviewsListContainer = document.getElementById('reviewsList');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    
     const reviewForm = document.getElementById('reviewForm');
     const alreadyPostedMsg = document.getElementById('alreadyPostedMsg');
     const revInput = document.getElementById('revInput');
@@ -455,7 +459,12 @@
     let selectedRating = 0;
     let userIP = null;
     let activeFilter = 'ALL';
-    let currentSnapshotDocs = [];
+    let allFetchedDocs = [];
+    let filteredDocs = [];
+    
+    // PAGINATION VARIABLES
+    let visibleLimit = 2; // Start with only 2
+    const batchSize = 5;  // Load 5 more on scroll
 
     fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => userIP = d.ip);
 
@@ -499,7 +508,9 @@
     window.filterReviews = (starRating) => {
         if (activeFilter === starRating) { activeFilter = 'ALL'; } else { activeFilter = starRating; }
         updateFilterUI();
-        renderReviewsList();
+        applyFilter(); // Recalculate filtered list
+        visibleLimit = 2; // Reset pagination
+        renderReviewsSubset(); // Render only first 2
     };
 
     function updateFilterUI() {
@@ -583,15 +594,16 @@
     function loadReviews() {
         const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
         onSnapshot(q, (snapshot) => {
-            currentSnapshotDocs = [];
+            allFetchedDocs = [];
             let total = 0, sumStars = 0;
             let counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
 
             snapshot.forEach(docSnap => {
                 const data = docSnap.data();
                 const id = docSnap.id;
-                currentSnapshotDocs.push({ id, ...data });
+                allFetchedDocs.push({ id, ...data });
 
+                // Calculate stats based on ALL docs (not just visible)
                 if(data.rating >= 1 && data.rating <= 5) {
                     counts[data.rating]++;
                     sumStars += data.rating;
@@ -599,7 +611,17 @@
                 }
             });
             updateSummary(total, sumStars, counts);
-            renderReviewsList();
+            
+            applyFilter(); // Filter based on current selection
+            visibleLimit = 2; // Always reset to 2 on new data update
+            renderReviewsSubset();
+        });
+    }
+
+    function applyFilter() {
+        filteredDocs = allFetchedDocs.filter(item => {
+            if (activeFilter === 'ALL') return true;
+            return item.rating === activeFilter;
         });
     }
 
@@ -618,51 +640,87 @@
         }
     }
 
-    function renderReviewsList() {
-        messagesFeed.innerHTML = '';
-        const filteredDocs = currentSnapshotDocs.filter(item => {
-            if (activeFilter === 'ALL') return true;
-            return item.rating === activeFilter;
-        });
-
+    function renderReviewsSubset() {
+        reviewsListContainer.innerHTML = ''; // Clear current
+        
         if (filteredDocs.length === 0) {
-            messagesFeed.innerHTML = `<div style="text-align:center; color:#aaa; margin-top:20px;">Nu există recenzii cu ${activeFilter} stele.</div>`;
+            reviewsListContainer.innerHTML = `<div style="text-align:center; color:#aaa; margin-top:20px;">Nu există recenzii.</div>`;
+            loadMoreBtn.style.display = 'none';
             return;
         }
 
-        filteredDocs.forEach(data => {
-            const votes = data.votes || {};
-            let likes = 0, dislikes = 0;
-            Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
-            const userVote = votes[auth.currentUser?.uid];
-            const stars = '★'.repeat(data.rating) + '☆'.repeat(5 - data.rating);
+        // Slice array to limit
+        const docsToShow = filteredDocs.slice(0, visibleLimit);
+        
+        docsToShow.forEach(data => appendReviewCard(data));
 
-            const card = document.createElement('div');
-            card.className = 'review-card';
-            card.innerHTML = `
-                <div class="review-header">
-                    <img src="${data.photo}" class="rev-pfp">
-                    <div class="rev-info">
-                        <div class="rev-name">${data.name}</div>
-                        <div class="rev-stars">${stars}</div>
-                    </div>
-                </div>
-                <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
-                <div class="rev-footer">
-                    <span class="helpful-text">was this rewiew helpful?:</span>
-                    <div class="rev-actions">
-                        <button onclick="voteReview('${data.id}', 1)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}">
-                            <i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span>
-                        </button>
-                        <button onclick="voteReview('${data.id}', -1)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}">
-                            <i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span>
-                        </button>
-                    </div>
-                </div>
-            `;
-            messagesFeed.appendChild(card);
-        });
+        // Handle "Load More" visibility
+        if (visibleLimit < filteredDocs.length) {
+            loadMoreBtn.style.display = 'block';
+        } else {
+            loadMoreBtn.style.display = 'none';
+        }
     }
+
+    function appendReviewCard(data) {
+        const votes = data.votes || {};
+        let likes = 0, dislikes = 0;
+        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+        const userVote = votes[auth.currentUser?.uid];
+        const stars = '★'.repeat(data.rating) + '☆'.repeat(5 - data.rating);
+
+        const card = document.createElement('div');
+        card.className = 'review-card';
+        card.innerHTML = `
+            <div class="review-header">
+                <img src="${data.photo}" class="rev-pfp">
+                <div class="rev-info">
+                    <div class="rev-name">${data.name}</div>
+                    <div class="rev-stars">${stars}</div>
+                </div>
+            </div>
+            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
+            <div class="rev-footer">
+                <span class="helpful-text">was this rewiew helpful?:</span>
+                <div class="rev-actions">
+                    <button onclick="voteReview('${data.id}', 1)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}">
+                        <i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span>
+                    </button>
+                    <button onclick="voteReview('${data.id}', -1)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}">
+                        <i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        reviewsListContainer.appendChild(card);
+    }
+
+    // INFINITE SCROLL & LOAD MORE LOGIC
+    function showMoreItems() {
+        if(visibleLimit >= filteredDocs.length) return;
+        
+        const nextLimit = visibleLimit + batchSize;
+        const newItems = filteredDocs.slice(visibleLimit, nextLimit);
+        
+        newItems.forEach(data => appendReviewCard(data));
+        
+        visibleLimit = nextLimit;
+        
+        if (visibleLimit >= filteredDocs.length) {
+            loadMoreBtn.style.display = 'none';
+        }
+    }
+
+    // Scroll Event
+    messagesFeed.onscroll = () => {
+        // If near bottom (offset 50px)
+        if(messagesFeed.scrollTop + messagesFeed.clientHeight >= messagesFeed.scrollHeight - 50) {
+            showMoreItems();
+        }
+    };
+
+    // Button Click Event (in case scroll is not triggered)
+    loadMoreBtn.onclick = showMoreItems;
 
     // MENU
     const menuBtn = document.getElementById('menuBtn');
