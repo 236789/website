@@ -33,6 +33,8 @@
       --discord-color: #5865F2;
       --admin-red-deep: #8b0000;
       --admin-red-bright: #ff4757;
+      --owner-gold: #ffd700; /* Fallback */
+      --owner-cyan: #00e5ff;
     }
 
     * { box-sizing: border-box; outline: none; }
@@ -224,7 +226,7 @@
 
     /* --- SPECIAL BUBBLE STYLES --- */
     
-    /* NEW ADMIN STYLE: Red Gradient + White Border */
+    /* ADMIN STYLE: Red Gradient + White Border */
     .msg-bubble.admin-msg {
         background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; /* Deep Red to Bright Red */
         border: 2px solid #ffffff !important; /* White Border */
@@ -233,7 +235,7 @@
         font-weight: 500;
     }
     
-    /* NEW ADMIN BADGE: White background, Red Text */
+    /* ADMIN BADGE */
     .admin-badge {
         display: inline-block; 
         background: #ffffff; 
@@ -242,6 +244,17 @@
         font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
         margin-left: 6px; vertical-align: middle; font-family: 'Orbitron';
         box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    }
+
+    /* OWNER BADGE */
+    .owner-badge {
+        display: inline-block; 
+        background: linear-gradient(90deg, #29f3ff, #0044ff); 
+        color: #000;
+        border: 1px solid var(--primary);
+        font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px;
+        margin-left: 6px; vertical-align: middle; font-family: 'Orbitron';
+        box-shadow: 0 0 8px var(--primary);
     }
 
     /* Bot Style */
@@ -591,6 +604,7 @@
     let userIP = null;
     let replyData = null;
     let isAdmin = false; // Flag for admin status
+    let isOwner = false; // Flag for owner status
     
     // TYPING VARIABLES
     let typingTimeout = null;
@@ -632,6 +646,12 @@
             if(headerUserImg) { headerUserImg.src = user.photoURL; headerUserImg.style.display = "block"; }
             if(mobileLoginBtn) { mobileLoginBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Deconectare'; mobileLoginBtn.classList.add('logout-mode'); }
 
+            // --- CHECK OWNER BY EMAIL ---
+            if(user.email === 'nicaemmanuel433qe@gmail.com') {
+                isOwner = true;
+                isAdmin = true; // Owner is always admin
+            }
+
             if(userIP) {
                 // Check Ban
                 const banRef = doc(db, "banned_ips", userIP);
@@ -644,21 +664,29 @@
                     return; 
                 }
 
-                // Check Admin
-                const adminRef = doc(db, "admin_ips", userIP);
-                const adminSnap = await getDoc(adminRef);
-                if(adminSnap.exists()) {
-                    isAdmin = true;
+                // Check Admin by IP (if not already Owner)
+                if(!isOwner) {
+                    const adminRef = doc(db, "admin_ips", userIP);
+                    const adminSnap = await getDoc(adminRef);
+                    if(adminSnap.exists()) {
+                        isAdmin = true;
+                    }
                 }
             }
             
             currentUid = user.uid;
             lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
             if(userAvatar) userAvatar.src = user.photoURL;
+            
             if(userName) {
-                userName.textContent = user.displayName;
-                if(isAdmin) {
-                    userName.innerHTML += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                // FORCE NAME FOR OWNER
+                if(isOwner) {
+                    userName.innerHTML = `Lost Soul <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span> <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+                } else {
+                    userName.textContent = user.displayName;
+                    if(isAdmin) {
+                        userName.innerHTML += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                    }
                 }
             }
             
@@ -670,7 +698,8 @@
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
             if(headerUserImg) headerUserImg.style.display = "none";
             if(mobileLoginBtn) { mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare'; mobileLoginBtn.classList.remove('logout-mode'); }
-            currentUid = null; chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
+            currentUid = null; isOwner = false; isAdmin = false;
+            chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
             clearInterval(wipeCheckInterval);
         }
     });
@@ -698,7 +727,7 @@
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
         try {
-            if (status) await setDoc(typingRef, { name: auth.currentUser.displayName, timestamp: serverTimestamp() });
+            if (status) await setDoc(typingRef, { name: isOwner ? "Lost Soul" : auth.currentUser.displayName, timestamp: serverTimestamp() });
             else await deleteDoc(typingRef);
         } catch (e) { console.error("Typing status error:", e); }
     }
@@ -777,13 +806,18 @@
              if(banSnap.exists()) { alert("Ești banat."); location.reload(); return; }
         }
 
+        // --- DETERMINE DISPLAY NAME ---
+        let displayName = auth.currentUser.displayName;
+        if(isOwner) displayName = "Lost Soul";
+
         const payload = {
             text: text,
             uid: auth.currentUser.uid,
-            name: auth.currentUser.displayName,
+            name: displayName,
             photo: auth.currentUser.photoURL,
             ip: userIP || "unknown",
-            isAdmin: isAdmin, // Tag message as admin if sender is admin
+            isAdmin: isAdmin, 
+            isOwner: isOwner, // Add owner flag
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactions: {} 
@@ -922,7 +956,8 @@
                 const msgId = docSnap.id;
                 const isMine = data.uid === currentUid;
                 const isBot = data.isBot === true;
-                const msgIsAdmin = data.isAdmin === true; // Check stored admin flag
+                const msgIsAdmin = data.isAdmin === true;
+                const msgIsOwner = data.isOwner === true;
 
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
@@ -952,10 +987,21 @@
                 if(msgIsAdmin) bubbleClass += ' admin-msg';
                 if(isBot) bubbleClass += ' bot-msg';
 
-                // Admin Badge HTML
+                // --- NAME BADGE LOGIC ---
                 let nameHtml = data.name;
-                if(msgIsAdmin) nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                
+                // If Bot
                 if(isBot) nameHtml = `🤖 ${data.name}`;
+                
+                // If Admin (and not Owner, usually we stack them)
+                if(msgIsAdmin) {
+                     nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                }
+                
+                // If Owner (Add second badge)
+                if(msgIsOwner) {
+                     nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+                }
 
                 // REACTIONS
                 let reactionsHtml = "";
@@ -974,8 +1020,8 @@
                 if(!isDeleted) {
                     const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     
-                    // Logic: Can delete if Mine OR I am Admin
-                    const canDelete = isMine || isAdmin;
+                    // Logic: Can delete if Mine OR I am Admin OR I am Owner
+                    const canDelete = isMine || isAdmin || isOwner;
 
                     menuHtml = `
                         <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
