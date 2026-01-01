@@ -33,7 +33,7 @@
       --discord-color: #5865F2;
       --admin-red-deep: #8b0000;
       --admin-red-bright: #ff4757;
-      --owner-gold: #ffd700; /* Fallback */
+      --owner-gold: #ffd700; 
       --owner-cyan: #00e5ff;
     }
 
@@ -308,6 +308,11 @@
     .msg-wrapper.theirs .options-dropdown { right: -100px; }
     .options-dropdown button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 10px 12px; color: #fff; font-size: 11px; cursor: pointer; transition: 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .options-dropdown button:hover { background: rgba(41, 243, 255, 0.1); color: var(--primary); }
+    
+    /* Mute Button Special Style */
+    .options-dropdown button.mute-btn { color: #ff4757; border-color: #ff4757; }
+    .options-dropdown button.mute-btn:hover { background: rgba(255, 71, 87, 0.1); color: #fff; }
+
     .emoji-picker-menu { padding: 5px; display: none; grid-template-columns: repeat(3, 1fr); gap: 5px; }
     .emoji-btn { font-size: 16px; cursor: pointer; text-align: center; padding: 5px; border-radius: 4px; }
     .emoji-btn:hover { background: rgba(255,255,255,0.1); }
@@ -792,6 +797,14 @@
 
         if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
 
+        // --- CHECK MUTE STATUS ---
+        const muteRef = doc(db, "muted_users", auth.currentUser.uid);
+        const muteSnap = await getDoc(muteRef);
+        if(muteSnap.exists()) {
+             showToast("Esti pe Mute! Nu poți vorbi.", "error");
+             return;
+        }
+
         const lastSent = localStorage.getItem('lastMsgTime');
         const COOLDOWN = 15000;
         if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
@@ -1022,6 +1035,8 @@
                     
                     // Logic: Can delete if Mine OR I am Admin OR I am Owner
                     const canDelete = isMine || isAdmin || isOwner;
+                    // Mute Button: Only if Owner AND not my own message
+                    const showMute = isOwner && !isMine;
 
                     menuHtml = `
                         <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
@@ -1029,6 +1044,7 @@
                             <button onclick="startReply('${msgId}', '${data.name}', '${rawText}')"><i class="fas fa-reply"></i> Răspunde</button>
                             <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                             ${canDelete ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                            ${showMute ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-volume-mute"></i> Gestionează Mute</button>` : ''}
                             <div id="emojis-${msgId}" class="emoji-picker-menu">
                                 <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
                                 <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
@@ -1050,6 +1066,37 @@
             });
             messagesFeed.scrollTop = messagesFeed.scrollHeight;
         });
+    }
+
+    // --- MUTE / UNMUTE LOGIC ---
+    window.handleMuteAction = async (targetUid, targetName) => {
+        closeAllMenus();
+        if(!isOwner) return;
+
+        // Check if currently muted
+        const ref = doc(db, "muted_users", targetUid);
+        const snap = await getDoc(ref);
+
+        if(snap.exists()) {
+            // UNMUTE
+            if(confirm(`Ești sigur că vrei să scoți MUTE-ul pentru ${targetName}?`)) {
+                try {
+                    await deleteDoc(ref);
+                    sendBotMessage(`🔊 User ${targetName} was unmuted by Lost Soul. You can now talk again.`);
+                    showToast("User Unmuted", "success");
+                } catch(e) { showToast("Error unmuting: " + e.message); }
+            }
+        } else {
+            // MUTE
+            const duration = prompt(`Pentru cât timp vrei să îi dai MUTE lui ${targetName}? (ex: 10 minute / Indefinit)`);
+            if(!duration) return; // Cancelled
+
+            try {
+                await setDoc(ref, { mutedBy: "Lost Soul", reason: duration, timestamp: serverTimestamp() });
+                sendBotMessage(`🔇 User ${targetName} was muted by Lost Soul for ${duration}.`);
+                showToast("User Muted", "success");
+            } catch(e) { showToast("Error muting: " + e.message); }
+        }
     }
 
     // HELPERS
