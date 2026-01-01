@@ -31,6 +31,7 @@
       --text-main: #ffffff;
       --text-muted: #a5b1c2;
       --discord-color: #5865F2;
+      --admin-gold: #ffd700;
     }
 
     * { box-sizing: border-box; outline: none; }
@@ -218,6 +219,27 @@
         font-size: 14px; line-height: 1.5; 
         word-wrap: break-word; word-break: break-word; overflow-wrap: anywhere;
         box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    /* --- SPECIAL BUBBLE STYLES --- */
+    /* Admin Style */
+    .msg-bubble.admin-msg {
+        border: 2px solid var(--admin-gold) !important;
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.25) !important;
+    }
+    .admin-badge {
+        display: inline-block; background: var(--admin-gold); color: #000;
+        font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
+        margin-left: 6px; vertical-align: middle; font-family: 'Orbitron';
+    }
+
+    /* Bot Style */
+    .msg-bubble.bot-msg {
+        background: linear-gradient(135deg, #00ff87 0%, #00d0ff 100%) !important;
+        color: #000 !important;
+        font-weight: 600;
+        border: none !important;
+        box-shadow: 0 0 15px rgba(0, 255, 135, 0.4) !important;
     }
 
     /* QUOTED REPLY STYLE */
@@ -504,7 +526,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -557,11 +579,15 @@
     let currentUid = null;
     let userIP = null;
     let replyData = null;
+    let isAdmin = false; // Flag for admin status
     
     // TYPING VARIABLES
     let typingTimeout = null;
     let isTyping = false;
     
+    // WIPE TIMER INTERVAL
+    let wipeCheckInterval = null;
+
     // GET IP
     async function fetchIP() {
         try {
@@ -596,6 +622,7 @@
             if(mobileLoginBtn) { mobileLoginBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Deconectare'; mobileLoginBtn.classList.add('logout-mode'); }
 
             if(userIP) {
+                // Check Ban
                 const banRef = doc(db, "banned_ips", userIP);
                 const banSnap = await getDoc(banRef);
                 if(banSnap.exists()) {
@@ -605,18 +632,35 @@
                     banIpDisplay.textContent = userIP;
                     return; 
                 }
+
+                // Check Admin
+                const adminRef = doc(db, "admin_ips", userIP);
+                const adminSnap = await getDoc(adminRef);
+                if(adminSnap.exists()) {
+                    isAdmin = true;
+                }
             }
+            
             currentUid = user.uid;
             lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
             if(userAvatar) userAvatar.src = user.photoURL;
-            if(userName) userName.textContent = user.displayName;
+            if(userName) {
+                userName.textContent = user.displayName;
+                if(isAdmin) {
+                    userName.innerHTML += ` <span class="admin-badge">ADMIN</span>`;
+                }
+            }
+            
             loadMessages();
             listenForTypers();
+            startWipeCheck(); // Start checking for auto-wipe
+
         } else {
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
             if(headerUserImg) headerUserImg.style.display = "none";
             if(mobileLoginBtn) { mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare'; mobileLoginBtn.classList.remove('logout-mode'); }
             currentUid = null; chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
+            clearInterval(wipeCheckInterval);
         }
     });
 
@@ -626,15 +670,12 @@
         charCount.textContent = `${len} / 500`;
         charCount.style.color = len >= 500 ? '#ff4757' : '#a5b1c2';
 
-        // Typing logic
         if (currentUid) {
             if (!isTyping) {
                 isTyping = true;
                 updateTypingStatus(true);
             }
-            // Clear timeout if user keeps typing
             clearTimeout(typingTimeout);
-            // Set timeout to stop typing after 3 seconds of inactivity
             typingTimeout = setTimeout(() => {
                 isTyping = false;
                 updateTypingStatus(false);
@@ -642,25 +683,15 @@
         }
     });
 
-    // UPDATE TYPING STATUS IN FIRESTORE
     async function updateTypingStatus(status) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
         try {
-            if (status) {
-                await setDoc(typingRef, {
-                    name: auth.currentUser.displayName,
-                    timestamp: serverTimestamp()
-                });
-            } else {
-                await deleteDoc(typingRef);
-            }
-        } catch (e) {
-            console.error("Typing status error:", e);
-        }
+            if (status) await setDoc(typingRef, { name: auth.currentUser.displayName, timestamp: serverTimestamp() });
+            else await deleteDoc(typingRef);
+        } catch (e) { console.error("Typing status error:", e); }
     }
 
-    // LISTEN FOR OTHERS TYPING
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         onSnapshot(q, (snapshot) => {
@@ -673,13 +704,9 @@
             });
 
             if (typers.length > 0) {
-                if (typers.length === 1) {
-                    typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> scrie...`;
-                } else if (typers.length === 2) {
-                    typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> și <span class="typing-name">${typers[1]}</span> scriu...`;
-                } else {
-                    typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
-                }
+                if (typers.length === 1) typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> scrie...`;
+                else if (typers.length === 2) typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> și <span class="typing-name">${typers[1]}</span> scriu...`;
+                else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
                 typingIndicator.style.opacity = "1";
             } else {
                 typingIndicator.innerHTML = "";
@@ -687,7 +714,6 @@
             }
         });
     }
-
 
     // REPLY
     window.startReply = function(id, name, text) {
@@ -711,6 +737,19 @@
     async function sendMessage() {
         const text = msgInput.value.trim();
         if(!text || !auth.currentUser) return;
+        
+        // --- ADMIN COMMAND CHECK ---
+        if(text === '/reset chat') {
+            msgInput.value = '';
+            if(isAdmin) {
+                showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
+                initiateWipeSequence(true); // True = forced
+            } else {
+                showToast("Nu ai permisiuni de administrator!", "error");
+            }
+            return;
+        }
+
         if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
 
         const lastSent = localStorage.getItem('lastMsgTime');
@@ -733,6 +772,7 @@
             name: auth.currentUser.displayName,
             photo: auth.currentUser.photoURL,
             ip: userIP || "unknown",
+            isAdmin: isAdmin, // Tag message as admin if sender is admin
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactions: {} 
@@ -747,7 +787,6 @@
         try {
             await addDoc(collection(db, "wall_messages"), payload);
             
-            // Stop typing status immediately upon send
             clearTimeout(typingTimeout);
             isTyping = false;
             updateTypingStatus(false);
@@ -758,6 +797,106 @@
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
         } catch(e) { console.error(e); }
     }
+
+    // --- KEVIN-BOT & WIPE LOGIC ---
+    
+    // Check timer every 10 seconds
+    function startWipeCheck() {
+        if(wipeCheckInterval) clearInterval(wipeCheckInterval);
+        wipeCheckInterval = setInterval(async () => {
+            const timerDocRef = doc(db, "sys_config", "timer");
+            const timerSnap = await getDoc(timerDocRef);
+            
+            const now = Date.now();
+            const twelveHours = 12 * 60 * 60 * 1000;
+
+            if(!timerSnap.exists()) {
+                // Initialize if not exists
+                await setDoc(timerDocRef, { nextWipe: now + twelveHours });
+            } else {
+                const nextWipe = timerSnap.data().nextWipe;
+                if(now >= nextWipe) {
+                    // Trigger Wipe Sequence and Reset Timer immediately to prevent loops
+                    // We add 2 minutes buffer to nextWipe to ensure sequence finishes
+                    await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
+                    initiateWipeSequence(false);
+                }
+            }
+        }, 10000);
+    }
+
+    async function sendBotMessage(text) {
+        try {
+            await addDoc(collection(db, "wall_messages"), {
+                text: text,
+                uid: 'kevin-bot',
+                name: 'Kevin-Bot',
+                photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
+                ip: 'server',
+                isBot: true,
+                createdAt: serverTimestamp(),
+                isDeleted: false,
+                reactions: {}
+            });
+        } catch(e) { console.error("Bot fail", e); }
+    }
+
+    async function initiateWipeSequence(forced) {
+        // 1. Initial Warning
+        const warningMsg = forced 
+            ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI. ⚠️\nPentru performanță optimă, mesajele vor fi șterse în curând."
+            : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza site-ului, acest chat va fi curățat în curând.";
+        
+        await sendBotMessage(warningMsg);
+
+        // 2. Countdown 20s
+        setTimeout(async () => {
+             await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde.");
+        }, 2000); // Small delay to let first message read
+
+        // 3. Countdown 10s
+        setTimeout(async () => {
+             await sendBotMessage("⏳ 10 secunde rămase...");
+        }, 12000);
+
+        // 4. Countdown 5s
+        setTimeout(async () => {
+             await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!");
+        }, 17000);
+
+        // 5. WIPE
+        setTimeout(async () => {
+             await wipeAllMessages();
+             await sendBotMessage("✅ Chat curățat cu succes!\nDiscuția poate continua. Mulțumim pentru înțelegere! 💙");
+        }, 22000);
+    }
+
+    async function wipeAllMessages() {
+        try {
+            const q = query(collection(db, "wall_messages"));
+            const snapshot = await getDocs(q);
+            
+            // Delete in batches of 500 (Firestore limit)
+            const batch = writeBatch(db);
+            let count = 0;
+            
+            snapshot.forEach((doc) => {
+                // Don't delete the "Chat wiped" message we are about to send, 
+                // but since we haven't sent it yet, we just delete everything currently there.
+                batch.delete(doc.ref);
+                count++;
+            });
+
+            if(count > 0) {
+                await batch.commit();
+                console.log("Deleted " + count + " messages.");
+            }
+        } catch(e) {
+            console.error("Wipe failed", e);
+            showToast("Eroare la ștergerea mesajelor", "error");
+        }
+    }
+
 
     // LOAD MESSAGES
     let unsubscribe;
@@ -771,6 +910,9 @@
                 const data = docSnap.data();
                 const msgId = docSnap.id;
                 const isMine = data.uid === currentUid;
+                const isBot = data.isBot === true;
+                const msgIsAdmin = data.isAdmin === true; // Check stored admin flag
+
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
 
@@ -788,10 +930,21 @@
                     }
                     // TEXT & LINKS
                     let safeText = data.text.replace(/</g, "&lt;");
+                    // Preserve new lines
+                    safeText = safeText.replace(/\n/g, "<br>");
                     bubbleContent += linkify(safeText);
                 }
                 
-                const bubbleClass = isDeleted ? 'msg-bubble deleted' : 'msg-bubble';
+                // Determine Bubble CSS Class
+                let bubbleClass = 'msg-bubble';
+                if(isDeleted) bubbleClass += ' deleted';
+                if(msgIsAdmin) bubbleClass += ' admin-msg';
+                if(isBot) bubbleClass += ' bot-msg';
+
+                // Admin Badge HTML
+                let nameHtml = data.name;
+                if(msgIsAdmin) nameHtml += ` <span class="admin-badge">ADMIN</span>`;
+                if(isBot) nameHtml = `🤖 ${data.name}`;
 
                 // REACTIONS
                 let reactionsHtml = "";
@@ -805,16 +958,20 @@
                     }
                 }
 
-                // MENU
+                // MENU (Bot messages generally don't have menus, but admins can delete them)
                 let menuHtml = '';
                 if(!isDeleted) {
                     const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    
+                    // Logic: Can delete if Mine OR I am Admin
+                    const canDelete = isMine || isAdmin;
+
                     menuHtml = `
                         <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                         <div id="menu-${msgId}" class="options-dropdown">
                             <button onclick="startReply('${msgId}', '${data.name}', '${rawText}')"><i class="fas fa-reply"></i> Răspunde</button>
                             <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                            ${isMine ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                            ${canDelete ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
                             <div id="emojis-${msgId}" class="emoji-picker-menu">
                                 <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
                                 <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
@@ -826,7 +983,7 @@
                 }
 
                 wrapper.innerHTML = `
-                    ${!isMine ? `<div class="msg-author">${data.name}</div>` : ''}
+                    ${!isMine ? `<div class="msg-author">${nameHtml}</div>` : ''}
                     <div class="${bubbleClass}">${bubbleContent}</div>
                     ${reactionsHtml}
                     <div class="msg-info"><span>${time}</span></div>
@@ -843,7 +1000,17 @@
     window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
     window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
     window.reactMsg = async function(msgId, emoji) { if(!currentUid) return; closeAllMenus(); const msgRef = doc(db, "wall_messages", msgId); const fieldPath = `reactions.${currentUid}`; const updateObj = {}; updateObj[fieldPath] = emoji; try { await updateDoc(msgRef, updateObj); } catch(e) { console.error(e); } }
-    window.deleteMsg = async function(id) { closeAllMenus(); if(confirm("Ștergi mesajul?")) { try { await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} }); } catch(e) { showToast(e.message); } } }
+    
+    // Updated Delete Msg to check admin
+    window.deleteMsg = async function(id) { 
+        closeAllMenus(); 
+        if(confirm("Ștergi mesajul?")) { 
+            try { 
+                await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} }); 
+            } catch(e) { showToast(e.message); } 
+        } 
+    }
+    
     window.onclick = function(event) { if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) { closeAllMenus(); } }
   </script>
 </body>
