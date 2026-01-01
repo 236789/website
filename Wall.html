@@ -31,10 +31,12 @@
       --text-main: #ffffff;
       --text-muted: #a5b1c2;
       --discord-color: #5865F2;
+      
+      /* COLORS */
       --admin-red-deep: #8b0000;
       --admin-red-bright: #ff4757;
-      --owner-gold: #ffd700; 
       --owner-cyan: #00e5ff;
+      --owner-blue: #0044ff;
     }
 
     * { box-sizing: border-box; outline: none; }
@@ -228,11 +230,20 @@
     
     /* ADMIN STYLE: Red Gradient + White Border */
     .msg-bubble.admin-msg {
-        background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; /* Deep Red to Bright Red */
+        background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; /* Deep Red */
         border: 2px solid #ffffff !important; /* White Border */
         color: #ffffff !important;
         box-shadow: 0 0 20px rgba(255, 0, 0, 0.4) !important;
         font-weight: 500;
+    }
+    
+    /* OWNER STYLE: Cyan/Blue Gradient */
+    .msg-bubble.owner-msg {
+        background: linear-gradient(135deg, #0044ff 0%, #29f3ff 100%) !important;
+        border: 2px solid #fff !important;
+        color: #fff !important;
+        box-shadow: 0 0 25px rgba(41, 243, 255, 0.3) !important;
+        font-weight: 700;
     }
     
     /* ADMIN BADGE */
@@ -335,10 +346,22 @@
     }
     .typing-name { font-weight: 700; color: var(--primary); margin-right: 4px; }
     
-    /* --- UPDATED INPUT AREA FOR MOBILE --- */
+    /* --- INPUT AREA WRAPPER --- */
     .input-area-wrapper { background: rgba(0,0,0,0.6); border-top: 1px solid var(--glass-border); backdrop-filter: blur(10px); }
     .input-area { padding: 10px; display: flex; gap: 10px; flex-direction: column; }
     
+    /* MUTE BANNER (Replaces Input) */
+    #muteBanner {
+        display: none;
+        background: rgba(40, 0, 0, 0.95);
+        color: #fff;
+        padding: 20px;
+        text-align: center;
+        border-top: 2px solid #ff4757;
+    }
+    .mute-reason { display: block; font-size: 13px; margin-bottom: 5px; color: #ff4757; font-weight: 700; }
+    .mute-timer { font-family: 'Orbitron'; font-size: 24px; color: #fff; display: block; margin-top: 5px; }
+
     .input-row { 
         display: flex; gap: 8px; align-items: center; 
         width: 100%;
@@ -505,19 +528,28 @@
             <div class="input-area-wrapper">
                 <div id="typingIndicator" class="typing-indicator"></div>
 
-                <div id="replyBar" class="reply-preview-bar">
-                    <div>Răspuns către <strong id="replyToUser">User</strong></div>
-                    <button id="cancelReply" class="cancel-reply-btn">&times;</button>
+                <!-- MUTE BANNER (Hidden by default) -->
+                <div id="muteBanner">
+                    <span id="muteReasonDisplay" class="mute-reason">Ai fost pus pe Mute.</span>
+                    <span style="font-size:12px; color:#aaa;">Vei putea vorbi din nou în:</span>
+                    <span id="muteTimer" class="mute-timer">00:00:00</span>
                 </div>
 
-                <div class="input-area">
-                    <div class="input-row">
-                        <!-- TEXT INPUT -->
-                        <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="500">
-                        <!-- SEND BUTTON -->
-                        <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+                <div id="inputControls">
+                    <div id="replyBar" class="reply-preview-bar">
+                        <div>Răspuns către <strong id="replyToUser">User</strong></div>
+                        <button id="cancelReply" class="cancel-reply-btn">&times;</button>
                     </div>
-                    <div id="charCount" class="char-count">0 / 500</div>
+
+                    <div class="input-area">
+                        <div class="input-row">
+                            <!-- TEXT INPUT -->
+                            <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="500">
+                            <!-- SEND BUTTON -->
+                            <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                        <div id="charCount" class="char-count">0 / 500</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -581,6 +613,12 @@
     const loginBtn = document.getElementById('loginBtn'); 
     const logoutBtn = document.getElementById('logoutBtn');
     
+    // MUTE UI ELEMENTS
+    const muteBanner = document.getElementById('muteBanner');
+    const inputControls = document.getElementById('inputControls');
+    const muteReasonDisplay = document.getElementById('muteReasonDisplay');
+    const muteTimer = document.getElementById('muteTimer');
+    
     // DOM ELEMENTS - NAV
     const headerLoginBtn = document.getElementById('headerLoginBtn');
     const headerLoginText = document.getElementById('headerLoginText');
@@ -608,12 +646,13 @@
     let currentUid = null;
     let userIP = null;
     let replyData = null;
-    let isAdmin = false; // Flag for admin status
-    let isOwner = false; // Flag for owner status
+    let isAdmin = false; 
+    let isOwner = false; 
     
     // MUTE TARGETING
     let pendingMuteUid = null;
     let pendingMuteName = null;
+    let muteInterval = null; // Countdown interval
     
     // TYPING VARIABLES
     let typingTimeout = null;
@@ -673,7 +712,7 @@
                     return; 
                 }
 
-                // Check Admin by IP (if not already Owner)
+                // Check Admin by IP
                 if(!isOwner) {
                     const adminRef = doc(db, "admin_ips", userIP);
                     const adminSnap = await getDoc(adminRef);
@@ -701,7 +740,8 @@
             
             loadMessages();
             listenForTypers();
-            startWipeCheck(); // Start checking for auto-wipe
+            startWipeCheck(); 
+            checkMuteStatus(); // Start Checking Mute
 
         } else {
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
@@ -710,8 +750,65 @@
             currentUid = null; isOwner = false; isAdmin = false;
             chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
             clearInterval(wipeCheckInterval);
+            if(muteInterval) clearInterval(muteInterval);
         }
     });
+
+    // --- MUTE STATUS CHECKER (LIVE) ---
+    function checkMuteStatus() {
+        if(!currentUid) return;
+        const muteRef = doc(db, "muted_users", currentUid);
+        
+        onSnapshot(muteRef, (snapshot) => {
+            if(snapshot.exists()) {
+                const data = snapshot.data();
+                
+                // Check if time expired
+                if(data.unmuteAt && Date.now() > data.unmuteAt) {
+                    // Auto unmute
+                    deleteDoc(muteRef);
+                    return;
+                }
+
+                // SHOW MUTE BANNER
+                inputControls.style.display = 'none';
+                muteBanner.style.display = 'block';
+                muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Admin'}. Motiv: ${data.reason || 'Nespecificat'}`;
+                
+                // START COUNTDOWN
+                if(muteInterval) clearInterval(muteInterval);
+                
+                if(data.unmuteAt) {
+                    muteInterval = setInterval(() => {
+                        const now = Date.now();
+                        const diff = data.unmuteAt - now;
+                        
+                        if(diff <= 0) {
+                            clearInterval(muteInterval);
+                            deleteDoc(muteRef); // Trigger unmute
+                        } else {
+                            // Format HH:MM:SS
+                            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                            const s = Math.floor((diff % (1000 * 60)) / 1000);
+                            muteTimer.innerText = 
+                                (h < 10 ? "0"+h : h) + ":" + 
+                                (m < 10 ? "0"+m : m) + ":" + 
+                                (s < 10 ? "0"+s : s);
+                        }
+                    }, 1000);
+                } else {
+                    muteTimer.innerText = "PERMANENT";
+                }
+
+            } else {
+                // HIDE MUTE BANNER
+                inputControls.style.display = 'block';
+                muteBanner.style.display = 'none';
+                if(muteInterval) clearInterval(muteInterval);
+            }
+        });
+    }
 
     // CHAR COUNT & TYPING STATUS
     msgInput.addEventListener('input', () => {
@@ -732,7 +829,7 @@
         }
     });
 
-    // UPDATED: Now sends role flags to typing status
+    // UPDATED: Sends role flags
     async function updateTypingStatus(status) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
@@ -751,7 +848,7 @@
         } catch (e) { console.error("Typing status error:", e); }
     }
 
-    // UPDATED: Now renders badges in typing indicator
+    // UPDATED: Renders badges in typing indicator
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         onSnapshot(q, (snapshot) => {
@@ -761,7 +858,6 @@
                     const data = doc.data();
                     if (data.name) {
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
-                        // ADD BADGES TO TYPING INDICATOR
                         if(data.isOwner) {
                             nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
                         } else if(data.isAdmin) {
@@ -784,7 +880,6 @@
         });
     }
 
-    // REPLY
     window.startReply = function(id, name, text) {
         replyData = { id, name, text };
         replyToUser.textContent = name;
@@ -799,7 +894,6 @@
         return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank">${url}</a>`; });
     }
 
-    // --- TEXT MESSAGE SEND ---
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
@@ -807,46 +901,73 @@
         const text = msgInput.value.trim();
         if(!text || !auth.currentUser) return;
         
-        // --- COMMAND PARSING ---
-        
-        // 1. ADMIN WIPE
+        // --- 1. ADMIN WIPE ---
         if(text === '/reset chat') {
             msgInput.value = '';
             if(isAdmin) {
                 showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
-                initiateWipeSequence(true); // True = forced
+                initiateWipeSequence(true); 
             } else {
                 showToast("Nu ai permisiuni de administrator!", "error");
             }
             return;
         }
 
-        // 2. MUTE COMMAND
+        // --- 2. MUTE COMMAND (WITH TIME PARSING) ---
         if(text.startsWith('/mute ')) {
             if(!isOwner) { showToast("Doar Owner-ul poate da Mute.", "error"); msgInput.value=''; return; }
+            if(!pendingMuteUid) { showToast("Selectează utilizatorul din meniu!", "error"); return; }
+
+            // Extract reason part (everything after "/mute Name ")
+            // e.g., "spam 1h" or "bad words 30m" or just "spam"
+            let args = text.substring(6 + pendingMuteName.length).trim();
             
-            // Check if we have a target stored from the button click
-            if(!pendingMuteUid) {
-                showToast("Folosește meniul 'Gestionează Mute' de pe un mesaj pentru a selecta utilizatorul.", "error");
-                return;
+            // TIME PARSING LOGIC
+            let durationMs = 0;
+            let finalReason = args;
+            
+            // Regex checks for things like "10m", "1h", "2d" at the END of the string
+            const timeRegex = /(\d+)([mhd])$/i;
+            const match = args.match(timeRegex);
+
+            if (match) {
+                const val = parseInt(match[1]);
+                const unit = match[2].toLowerCase();
+                
+                if(unit === 'm') durationMs = val * 60 * 1000;
+                else if(unit === 'h') durationMs = val * 60 * 60 * 1000;
+                else if(unit === 'd') durationMs = val * 24 * 60 * 60 * 1000;
+                
+                // Remove the time from the reason text
+                finalReason = args.replace(match[0], "").trim();
+            }
+            
+            if(!finalReason) finalReason = "Nespecificat";
+
+            const mutePayload = {
+                mutedBy: "Lost Soul",
+                reason: finalReason,
+                timestamp: serverTimestamp()
+            };
+
+            // Add expiration time if duration found
+            if(durationMs > 0) {
+                mutePayload.unmuteAt = Date.now() + durationMs;
             }
 
-            // Extract Reason/Duration (everything after "/mute Name ")
-            // We assume format: "/mute [Name] [Reason]"
-            // Since Name might have spaces, we simply look for the first space after the name we autofilled?
-            // Actually, simplified: The user types reason at the end.
-            // Let's just say the reason is the whole text minus the prefix.
-            // But to be cleaner, we take everything after the first 2 words if we strictly follow "/mute name reason"
-            // or just take what the user added.
-            
-            // Simpler: Just take the text, remove the prefix "/mute [Name] "
-            let reason = text.substring(6 + pendingMuteName.length).trim();
-            if(!reason) reason = "Indefinit"; // Default if they typed nothing
-
             try {
-                const ref = doc(db, "muted_users", pendingMuteUid);
-                await setDoc(ref, { mutedBy: "Lost Soul", reason: reason, timestamp: serverTimestamp() });
-                sendBotMessage(`🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul. Motiv/Durată: ${reason}`);
+                await setDoc(doc(db, "muted_users", pendingMuteUid), mutePayload);
+                
+                let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul.`;
+                announceText += ` Motiv: ${finalReason}.`;
+                if(durationMs > 0) {
+                    const timeStr = match[0]; // e.g. "1h"
+                    announceText += ` Durată: ${timeStr}.`;
+                } else {
+                    announceText += ` Durată: Nedeterminată.`;
+                }
+
+                sendBotMessage(announceText);
                 showToast("User Muted", "success");
                 msgInput.value = '';
                 pendingMuteUid = null;
@@ -854,18 +975,7 @@
             return;
         }
 
-        // 3. UNMUTE COMMAND (Optional via text, but we handled via button logic mainly)
-        // Keeping button logic for unmute simpler as it doesn't need a reason.
-
         if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
-
-        // --- CHECK MUTE STATUS ---
-        const muteRef = doc(db, "muted_users", auth.currentUser.uid);
-        const muteSnap = await getDoc(muteRef);
-        if(muteSnap.exists()) {
-             showToast("Esti pe Mute! Nu poți vorbi.", "error");
-             return;
-        }
 
         const lastSent = localStorage.getItem('lastMsgTime');
         const COOLDOWN = 15000;
@@ -881,7 +991,6 @@
              if(banSnap.exists()) { alert("Ești banat."); location.reload(); return; }
         }
 
-        // --- DETERMINE DISPLAY NAME ---
         let displayName = auth.currentUser.displayName;
         if(isOwner) displayName = "Lost Soul";
 
@@ -919,25 +1028,19 @@
     }
 
     // --- KEVIN-BOT & WIPE LOGIC ---
-    
-    // Check timer every 10 seconds
     function startWipeCheck() {
         if(wipeCheckInterval) clearInterval(wipeCheckInterval);
         wipeCheckInterval = setInterval(async () => {
             const timerDocRef = doc(db, "sys_config", "timer");
             const timerSnap = await getDoc(timerDocRef);
-            
             const now = Date.now();
             const twelveHours = 12 * 60 * 60 * 1000;
 
             if(!timerSnap.exists()) {
-                // Initialize if not exists
                 await setDoc(timerDocRef, { nextWipe: now + twelveHours });
             } else {
                 const nextWipe = timerSnap.data().nextWipe;
                 if(now >= nextWipe) {
-                    // Trigger Wipe Sequence and Reset Timer immediately to prevent loops
-                    // We add 2 minutes buffer to nextWipe to ensure sequence finishes
                     await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
                     initiateWipeSequence(false);
                 }
@@ -955,7 +1058,7 @@
                 ip: 'server',
                 isBot: true,
                 isAdmin: false,
-                isOwner: false, // EXPLICITLY FALSE FOR RULES CHECK
+                isOwner: false, 
                 createdAt: serverTimestamp(),
                 isDeleted: false,
                 reactions: {}
@@ -964,61 +1067,26 @@
     }
 
     async function initiateWipeSequence(forced) {
-        // 1. Initial Warning
         const warningMsg = forced 
-            ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI. ⚠️\nPentru performanță optimă, mesajele vor fi șterse în curând."
-            : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza site-ului, acest chat va fi curățat în curând.";
-        
+            ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
+            : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza, acest chat va fi curățat în curând.";
         await sendBotMessage(warningMsg);
-
-        // 2. Countdown 20s
-        setTimeout(async () => {
-             await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde.");
-        }, 2000); // Small delay to let first message read
-
-        // 3. Countdown 10s
-        setTimeout(async () => {
-             await sendBotMessage("⏳ 10 secunde rămase...");
-        }, 12000);
-
-        // 4. Countdown 5s
-        setTimeout(async () => {
-             await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!");
-        }, 17000);
-
-        // 5. WIPE
-        setTimeout(async () => {
-             await wipeAllMessages();
-             await sendBotMessage("✅ Chat curățat cu succes!\nDiscuția poate continua. Mulțumim pentru înțelegere! 💙");
-        }, 22000);
+        setTimeout(async () => { await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde."); }, 2000);
+        setTimeout(async () => { await sendBotMessage("⏳ 10 secunde rămase..."); }, 12000);
+        setTimeout(async () => { await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); }, 17000);
+        setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
     }
 
     async function wipeAllMessages() {
         try {
             const q = query(collection(db, "wall_messages"));
             const snapshot = await getDocs(q);
-            
-            // Delete in batches of 500 (Firestore limit)
             const batch = writeBatch(db);
             let count = 0;
-            
-            snapshot.forEach((doc) => {
-                // Don't delete the "Chat wiped" message we are about to send, 
-                // but since we haven't sent it yet, we just delete everything currently there.
-                batch.delete(doc.ref);
-                count++;
-            });
-
-            if(count > 0) {
-                await batch.commit();
-                console.log("Deleted " + count + " messages.");
-            }
-        } catch(e) {
-            console.error("Wipe failed", e);
-            showToast("Eroare la ștergerea mesajelor", "error");
-        }
+            snapshot.forEach((doc) => { batch.delete(doc.ref); count++; });
+            if(count > 0) { await batch.commit(); }
+        } catch(e) { console.error("Wipe failed", e); }
     }
-
 
     // LOAD MESSAGES
     let unsubscribe;
@@ -1046,41 +1114,28 @@
                 if(isDeleted) {
                     bubbleContent = '<i class="fas fa-ban"></i> 🚫 Acest mesaj a fost șters.';
                 } else {
-                    // REPLY HEADER
                     if(data.replyToName) {
                         const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                         bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                     }
-                    // TEXT & LINKS
                     let safeText = data.text.replace(/</g, "&lt;");
-                    // Preserve new lines
                     safeText = safeText.replace(/\n/g, "<br>");
                     bubbleContent += linkify(safeText);
                 }
                 
-                // Determine Bubble CSS Class
+                // --- BUBBLE COLOR LOGIC ---
                 let bubbleClass = 'msg-bubble';
                 if(isDeleted) bubbleClass += ' deleted';
-                if(msgIsAdmin) bubbleClass += ' admin-msg';
-                if(isBot) bubbleClass += ' bot-msg';
+                else if(isBot) bubbleClass += ' bot-msg';
+                else if(msgIsOwner) bubbleClass += ' owner-msg'; // OWNER = CYAN/BLUE
+                else if(msgIsAdmin) bubbleClass += ' admin-msg'; // ADMIN = RED
 
-                // --- NAME BADGE LOGIC ---
                 let nameHtml = data.name;
-                
-                // If Bot
                 if(isBot) nameHtml = `🤖 ${data.name}`;
                 
-                // If Admin (and not Owner, usually we stack them)
-                if(msgIsAdmin) {
-                     nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
-                }
-                
-                // If Owner (Add second badge)
-                if(msgIsOwner) {
-                     nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
-                }
+                if(msgIsAdmin) { nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
+                if(msgIsOwner) { nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`; }
 
-                // REACTIONS
                 let reactionsHtml = "";
                 if(!isDeleted && data.reactions) {
                     const counts = {};
@@ -1092,14 +1147,10 @@
                     }
                 }
 
-                // MENU (Bot messages generally don't have menus, but admins can delete them)
                 let menuHtml = '';
                 if(!isDeleted) {
                     const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    
-                    // Logic: Can delete if Mine OR I am Admin OR I am Owner
                     const canDelete = isMine || isAdmin || isOwner;
-                    // Mute Button: Only if Owner AND not my own message
                     const showMute = isOwner && !isMine;
 
                     menuHtml = `
@@ -1137,12 +1188,10 @@
         closeAllMenus();
         if(!isOwner) return;
 
-        // Check if currently muted
         const ref = doc(db, "muted_users", targetUid);
         const snap = await getDoc(ref);
 
         if(snap.exists()) {
-            // UNMUTE DIRECTLY (No command needed for unmute)
             if(confirm(`Ești sigur că vrei să scoți MUTE-ul pentru ${targetName}?`)) {
                 try {
                     await deleteDoc(ref);
@@ -1151,30 +1200,23 @@
                 } catch(e) { showToast("Error unmuting: " + e.message); }
             }
         } else {
-            // SET MUTE MODE FOR INPUT
             pendingMuteUid = targetUid;
             pendingMuteName = targetName;
-            
-            // Auto-fill input
             msgInput.value = `/mute ${targetName} `;
             msgInput.focus();
-            showToast("Scrie motivul/durata în chat și apasă Trimite.", "success");
+            showToast("Scrie motivul și durata (ex: 1h, 30m) și apasă Trimite.", "success");
         }
     }
 
-    // HELPERS
     window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
     window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
     window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
     window.reactMsg = async function(msgId, emoji) { if(!currentUid) return; closeAllMenus(); const msgRef = doc(db, "wall_messages", msgId); const fieldPath = `reactions.${currentUid}`; const updateObj = {}; updateObj[fieldPath] = emoji; try { await updateDoc(msgRef, updateObj); } catch(e) { console.error(e); } }
     
-    // Updated Delete Msg to check admin
     window.deleteMsg = async function(id) { 
         closeAllMenus(); 
         if(confirm("Ștergi mesajul?")) { 
-            try { 
-                await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} }); 
-            } catch(e) { showToast(e.message); } 
+            try { await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} }); } catch(e) { showToast(e.message); } 
         } 
     }
     
