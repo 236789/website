@@ -611,6 +611,10 @@
     let isAdmin = false; // Flag for admin status
     let isOwner = false; // Flag for owner status
     
+    // MUTE TARGETING
+    let pendingMuteUid = null;
+    let pendingMuteName = null;
+    
     // TYPING VARIABLES
     let typingTimeout = null;
     let isTyping = false;
@@ -728,15 +732,26 @@
         }
     });
 
+    // UPDATED: Now sends role flags to typing status
     async function updateTypingStatus(status) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
         try {
-            if (status) await setDoc(typingRef, { name: isOwner ? "Lost Soul" : auth.currentUser.displayName, timestamp: serverTimestamp() });
-            else await deleteDoc(typingRef);
+            if (status) {
+                const displayName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
+                await setDoc(typingRef, { 
+                    name: displayName, 
+                    isAdmin: isAdmin,
+                    isOwner: isOwner,
+                    timestamp: serverTimestamp() 
+                });
+            } else {
+                await deleteDoc(typingRef);
+            }
         } catch (e) { console.error("Typing status error:", e); }
     }
 
+    // UPDATED: Now renders badges in typing indicator
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         onSnapshot(q, (snapshot) => {
@@ -744,13 +759,22 @@
             snapshot.forEach((doc) => {
                 if (doc.id !== currentUid) {
                     const data = doc.data();
-                    if (data.name) typers.push(data.name);
+                    if (data.name) {
+                        let nameHtml = `<span class="typing-name">${data.name}</span>`;
+                        // ADD BADGES TO TYPING INDICATOR
+                        if(data.isOwner) {
+                            nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
+                        } else if(data.isAdmin) {
+                            nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
+                        }
+                        typers.push(nameHtml);
+                    }
                 }
             });
 
             if (typers.length > 0) {
-                if (typers.length === 1) typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> scrie...`;
-                else if (typers.length === 2) typingIndicator.innerHTML = `<span class="typing-name">${typers[0]}</span> și <span class="typing-name">${typers[1]}</span> scriu...`;
+                if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
+                else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
                 else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
                 typingIndicator.style.opacity = "1";
             } else {
@@ -783,7 +807,9 @@
         const text = msgInput.value.trim();
         if(!text || !auth.currentUser) return;
         
-        // --- ADMIN COMMAND CHECK ---
+        // --- COMMAND PARSING ---
+        
+        // 1. ADMIN WIPE
         if(text === '/reset chat') {
             msgInput.value = '';
             if(isAdmin) {
@@ -794,6 +820,42 @@
             }
             return;
         }
+
+        // 2. MUTE COMMAND
+        if(text.startsWith('/mute ')) {
+            if(!isOwner) { showToast("Doar Owner-ul poate da Mute.", "error"); msgInput.value=''; return; }
+            
+            // Check if we have a target stored from the button click
+            if(!pendingMuteUid) {
+                showToast("Folosește meniul 'Gestionează Mute' de pe un mesaj pentru a selecta utilizatorul.", "error");
+                return;
+            }
+
+            // Extract Reason/Duration (everything after "/mute Name ")
+            // We assume format: "/mute [Name] [Reason]"
+            // Since Name might have spaces, we simply look for the first space after the name we autofilled?
+            // Actually, simplified: The user types reason at the end.
+            // Let's just say the reason is the whole text minus the prefix.
+            // But to be cleaner, we take everything after the first 2 words if we strictly follow "/mute name reason"
+            // or just take what the user added.
+            
+            // Simpler: Just take the text, remove the prefix "/mute [Name] "
+            let reason = text.substring(6 + pendingMuteName.length).trim();
+            if(!reason) reason = "Indefinit"; // Default if they typed nothing
+
+            try {
+                const ref = doc(db, "muted_users", pendingMuteUid);
+                await setDoc(ref, { mutedBy: "Lost Soul", reason: reason, timestamp: serverTimestamp() });
+                sendBotMessage(`🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul. Motiv/Durată: ${reason}`);
+                showToast("User Muted", "success");
+                msgInput.value = '';
+                pendingMuteUid = null;
+            } catch(e) { showToast("Error muting: " + e.message); }
+            return;
+        }
+
+        // 3. UNMUTE COMMAND (Optional via text, but we handled via button logic mainly)
+        // Keeping button logic for unmute simpler as it doesn't need a reason.
 
         if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
 
@@ -830,7 +892,7 @@
             photo: auth.currentUser.photoURL,
             ip: userIP || "unknown",
             isAdmin: isAdmin, 
-            isOwner: isOwner, // Add owner flag
+            isOwner: isOwner, 
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactions: {} 
@@ -1080,24 +1142,23 @@
         const snap = await getDoc(ref);
 
         if(snap.exists()) {
-            // UNMUTE
+            // UNMUTE DIRECTLY (No command needed for unmute)
             if(confirm(`Ești sigur că vrei să scoți MUTE-ul pentru ${targetName}?`)) {
                 try {
                     await deleteDoc(ref);
-                    sendBotMessage(`🔊 User ${targetName} was unmuted by Lost Soul. You can now talk again.`);
+                    sendBotMessage(`🔊 Utilizatorul ${targetName} a primit Unmute de la Lost Soul. Poți vorbi din nou.`);
                     showToast("User Unmuted", "success");
                 } catch(e) { showToast("Error unmuting: " + e.message); }
             }
         } else {
-            // MUTE
-            const duration = prompt(`Pentru cât timp vrei să îi dai MUTE lui ${targetName}? (ex: 10 minute / Indefinit)`);
-            if(!duration) return; // Cancelled
-
-            try {
-                await setDoc(ref, { mutedBy: "Lost Soul", reason: duration, timestamp: serverTimestamp() });
-                sendBotMessage(`🔇 User ${targetName} was muted by Lost Soul for ${duration}.`);
-                showToast("User Muted", "success");
-            } catch(e) { showToast("Error muting: " + e.message); }
+            // SET MUTE MODE FOR INPUT
+            pendingMuteUid = targetUid;
+            pendingMuteName = targetName;
+            
+            // Auto-fill input
+            msgInput.value = `/mute ${targetName} `;
+            msgInput.focus();
+            showToast("Scrie motivul/durata în chat și apasă Trimite.", "success");
         }
     }
 
