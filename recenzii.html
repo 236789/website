@@ -454,7 +454,7 @@
             const ip = userIP || "unknown";
             const userRef = doc(db, "accounts", user.uid);
             const snap = await getDoc(userRef);
-            if(!snap.exists()) { await setDoc(userRef, { uid: user.uid, username: user.displayName, email: user.email, image: user.photoURL, coins: 250, streak: 0, ip: ip, joinedAt: new Date(), hasWrittenReview: false }); } 
+            if(!snap.exists()) { await setDoc(userRef, { uid: user.uid, username: user.displayName, email: user.email, image: user.photoURL, coins: 250, streak: 0, ip: ip, joinedAt: new Date(), hasWrittenReview: false, completedQuests: [] }); } 
             else { await updateDoc(userRef, { ip: ip, image: user.photoURL }); }
         } catch(e) { console.error(e); }
     }
@@ -489,7 +489,6 @@
                     if(data.hasWrittenReview === true) {
                         reviewForm.style.display = 'none';
                         alreadyPostedMsg.style.display = 'block';
-                        // NOTĂ: Am eliminat RewardModal.classList.add de aici pentru a preveni refresh-spam.
                     }
                 }
             });
@@ -507,6 +506,7 @@
         
         const userAccRef = doc(db, "accounts", uid);
         const userAccSnap = await getDoc(userAccRef);
+        
         if(userAccSnap.exists() && userAccSnap.data().hasWrittenReview === true) {
             alert("Ai lăsat deja o recenzie!");
             reviewForm.style.display = 'none';
@@ -514,12 +514,38 @@
             return;
         }
 
-        const reviewData = { text: revInput.value.trim(), rating: selectedRating, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, uid: uid, ip: userIP || "unknown", createdAt: serverTimestamp(), votes: {} };
+        const reviewData = { 
+            text: revInput.value.trim(), 
+            rating: selectedRating, 
+            name: auth.currentUser.displayName, 
+            photo: auth.currentUser.photoURL, 
+            uid: uid, 
+            ip: userIP || "unknown", 
+            createdAt: serverTimestamp(), 
+            votes: {} 
+        };
+
         try {
+            // Get current progress to avoid overwriting other finished tasks
+            const data = userAccSnap.data();
+            const currentCompleted = data.completedQuests || [];
+            
+            // Save the review content
             await setDoc(doc(db, "reviews", uid), reviewData);
-            await updateDoc(userAccRef, { hasWrittenReview: true, coins: increment(500) });
-            rewardModal.classList.add('active'); // APARE DOAR ACUM
-        } catch(e) { alert("Eroare: " + e.message); }
+            
+            // UPDATE ACCOUNT (FIXED FOR DOUBLE CLAIMING)
+            await updateDoc(userAccRef, { 
+                hasWrittenReview: true, 
+                coins: increment(500),
+                completedQuests: [...currentCompleted, 'review'] // Sync ID with DailyTasks page
+            });
+
+            rewardModal.classList.add('active');
+            reviewForm.style.display = 'none';
+            alreadyPostedMsg.style.display = 'block';
+        } catch(e) { 
+            alert("Eroare: " + e.message); 
+        }
     };
 
     window.voteReview = async (reviewId, type) => {
