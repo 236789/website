@@ -192,60 +192,68 @@
     }
     setInterval(updateResetTimer, 1000);
 
-    // --- RENDER QUESTS ---
-    function renderQuests(userData) {
-        questGrid.innerHTML = '';
-        const now = Date.now();
-        const cooldowns = userData.questCooldowns || {};
-        const completed = userData.completedQuests || [];
+// --- RENDER QUESTS ---
+let isProcessing = false; // Prevents double-triggering
 
-        quests.forEach(q => {
-            let current = 0;
-            if (q.id === 'msg3') current = userData.messagesSentToday || 0;
-            if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
-            if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
+function renderQuests(userData) {
+    questGrid.innerHTML = '';
+    const now = Date.now();
+    const cooldowns = userData.questCooldowns || {};
+    const completed = userData.completedQuests || [];
 
-            const isCompleted = completed.includes(q.id);
-            const cooldownTime = cooldowns[q.id] || 0;
-            const inCooldown = now < cooldownTime;
-            const progress = Math.min((current / q.target) * 100, 100);
+    quests.forEach(q => {
+        let current = 0;
+        if (q.id === 'msg3') current = userData.messagesSentToday || 0;
+        if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
+        if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
 
-            const card = document.createElement('div');
-            card.className = 'quest-card';
-            
-            let btnHtml = `<a href="${q.link}" class="quest-btn">Mergi la Task</a>`;
-            
-            if (inCooldown) {
-                const remaining = Math.ceil((cooldownTime - now) / 60000);
-                btnHtml = `<button class="quest-btn btn-cooldown" disabled>Cooldown: ${remaining}m</button>`;
-            } else if (isCompleted) {
-                btnHtml = `<button class="quest-btn quest-completed" disabled><i class="fas fa-check"></i> Complet</button>`;
-            }
+        const isCompleted = completed.includes(q.id);
+        const cooldownTime = cooldowns[q.id] || 0;
+        const inCooldown = now < cooldownTime;
+        const progress = Math.min((current / q.target) * 100, 100);
 
-            card.innerHTML = `
-                <div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} KSDA</span></div>
-                <div class="progress-wrapper">
-                    <div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div>
-                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div>
-                </div>
-                ${btnHtml}
-            `;
-            questGrid.appendChild(card);
+        const card = document.createElement('div');
+        card.className = 'quest-card';
+        
+        let btnHtml = `<a href="${q.link}" class="quest-btn">Mergi la Task</a>`;
+        
+        if (inCooldown) {
+            const remaining = Math.ceil((cooldownTime - now) / 60000);
+            btnHtml = `<button class="quest-btn btn-cooldown" disabled>Cooldown: ${remaining}m</button>`;
+        } else if (isCompleted) {
+            btnHtml = `<button class="quest-btn quest-completed" style="background:#2ecc71; color:white;" disabled><i class="fas fa-check"></i> Completat</button>`;
+        }
 
-            // Reward Trigger (Strictly once per day/cooldown)
-            if (current >= q.target && !isCompleted && !inCooldown) {
-                awardQuest(q.id, q.reward);
-            }
-        });
-    }
+        card.innerHTML = `
+            <div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} KSDA</span></div>
+            <div class="progress-wrapper">
+                <div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div>
+                <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div>
+            </div>
+            ${btnHtml}
+        `;
+        questGrid.appendChild(card);
 
-    async function awardQuest(questId, amount) {
-        const userId = auth.currentUser.uid;
-        const userRef = doc(db, "accounts", userId);
+        // ONLY award if not already completed and ID matches
+        if (current >= q.target && !isCompleted && !inCooldown && !isProcessing) {
+            awardQuest(q.id, q.reward);
+        }
+    });
+}
+
+async function awardQuest(questId, amount) {
+    if (isProcessing) return; 
+    isProcessing = true; 
+
+    const userId = auth.currentUser.uid;
+    const userRef = doc(db, "accounts", userId);
+    
+    try {
+        // Double check the DB before updating
         const snap = await getDoc(userRef);
-        const completed = snap.data().completedQuests || [];
+        const data = snap.data();
+        const completed = data.completedQuests || [];
 
-        // ANTI-GLITCH CHECK
         if(!completed.includes(questId)) {
             const oneHour = Date.now() + (3600000);
             await updateDoc(userRef, {
@@ -253,9 +261,14 @@
                 completedQuests: [...completed, questId],
                 [`questCooldowns.${questId}`]: oneHour
             });
+            console.log(`Quest ${questId} awarded!`);
         }
+    } catch (e) {
+        console.error("Award error:", e);
+    } finally {
+        isProcessing = false;
     }
-
+}
     // --- AUTH & SYNC ---
     onAuthStateChanged(auth, user => {
         if (user) {
