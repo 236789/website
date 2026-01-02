@@ -290,7 +290,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -315,23 +315,44 @@
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' },
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
-        // NOUL QUEST CU 2 BARE DE PROGRES
         { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' }
     ];
 
+    // --- SECURE TIMER VARIABLES ---
+    let serverTimeOffset = 0; // Difference between User Time and Server Time
+    let isAwarding = false;
+
+    // --- SECURE VISUAL TIMER ---
     function updateResetTimer() {
-        const now = new Date();
-        const midnight = new Date();
-        midnight.setHours(24, 0, 0, 0);
-        const diff = midnight - now;
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        resetTimerEl.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        // We use the offset to get the REAL time, even if user changes their clock
+        const nowMs = Date.now() + serverTimeOffset; 
+        const nowReal = new Date(nowMs);
+
+        // Calculate time until Midnight in Romania (Europe/Bucharest)
+        const roTime = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Europe/Bucharest',
+            hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
+        });
+
+        // Parse current Romania time
+        const parts = roTime.formatToParts(nowReal);
+        const h = parseInt(parts.find(p => p.type === 'hour').value);
+        const m = parseInt(parts.find(p => p.type === 'minute').value);
+        const s = parseInt(parts.find(p => p.type === 'second').value);
+
+        // Math for seconds remaining
+        const currentSeconds = (h * 3600) + (m * 60) + s;
+        let secondsLeft = 86400 - currentSeconds; // 86400 = 24h
+        
+        if (secondsLeft < 0) secondsLeft = 0;
+
+        const hLeft = Math.floor(secondsLeft / 3600);
+        const mLeft = Math.floor((secondsLeft % 3600) / 60);
+        const sLeft = secondsLeft % 60;
+
+        resetTimerEl.innerText = `${hLeft.toString().padStart(2,'0')}:${mLeft.toString().padStart(2,'0')}:${sLeft.toString().padStart(2,'0')}`;
     }
     setInterval(updateResetTimer, 1000);
-
-    let isAwarding = false;
 
     function renderQuests(userData) {
         questGrid.innerHTML = '';
@@ -347,7 +368,6 @@
             let canAward = false;
 
             if (q.id === 'gallery_task') {
-                // LOGICA PENTRU 2 BARE DE PROGRES
                 const currentLikes = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
                 const currentComments = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
                 const progLikes = (currentLikes / q.targetLikes) * 100;
@@ -366,7 +386,6 @@
                 if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
                 if (!isCompleted) allDailyDone = false;
             } else {
-                // LOGICA PENTRU QUEST-URILE NORMALE
                 let current = 0;
                 if (q.id === 'msg3') current = userData.messagesSentToday || 0;
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
@@ -384,7 +403,6 @@
                 if (q.id !== 'review' && q.id !== 'social3' && !isCompleted) allDailyDone = false;
             }
 
-            // Buton personalizat pentru Galerie
             let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery_task' ? 'spre' : 'la'} ${q.pageName}</a>`;
             if (isCompleted) {
                 actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine!</small></div>`;
@@ -403,7 +421,8 @@
             if (canAward && !isCompleted && !isAwarding) { awardQuest(q.id, q.reward); }
         });
 
-        // STREAK LOGIC
+        // STREAK LOGIC (Basic check here, ideally move to secure logic too)
+        // For now, focusing on the Main Security Request
         const today = new Date().toDateString();
         if (allDailyDone && userData.lastStreakDate !== today) {
             updateDoc(doc(db, "accounts", auth.currentUser.uid), {
@@ -426,29 +445,54 @@
         } catch (e) { console.error(e); } finally { isAwarding = false; }
     }
 
-    onAuthStateChanged(auth, user => {
+    // --- SECURE AUTH & RESET LOGIC ---
+    onAuthStateChanged(auth, async (user) => {
         if (user) {
+            // UI Setup
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
-            
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-            onSnapshot(doc(db, "accounts", user.uid), async (snap) => {
+            const userRef = doc(db, "accounts", user.uid);
+
+            // 1. FORCE SERVER TIME CHECK (Security Step)
+            // This forces Firebase to write the Real Time to the DB.
+            await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
+
+            onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
+                    // Ignore local/cached data that hasn't synced with server yet
+                    if (snap.metadata.hasPendingWrites) return;
+
                     const data = snap.data();
-                    const today = new Date().toDateString();
                     
-                    if(data.lastResetDate !== today) {
-                        const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                        await updateDoc(doc(db, "accounts", user.uid), {
-                            messagesSentToday: 0,
-                            tiktoksFollowed: 0,
-                            galleryLikesToday: 0,
-                            galleryCommentsToday: 0,
-                            completedQuests: persistentQuests, 
-                            lastResetDate: today
-                        });
+                    // 2. CHECK REAL TIME & SYNC TIMER
+                    if (data.latestServerCheck) {
+                        const serverDate = data.latestServerCheck.toDate();
+                        // Calculate offset for the visual timer
+                        serverTimeOffset = serverDate.getTime() - Date.now();
+
+                        // 3. SECURE RESET CHECK
+                        // Convert Server Time to Romania Date String
+                        const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+                        
+                        // Compare Server Date vs Database Date
+                        if(data.lastResetDate !== roDate) {
+                            console.log("Server detected new day. Resetting tasks...");
+                            const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+                            
+                            await updateDoc(userRef, {
+                                messagesSentToday: 0,
+                                tiktoksFollowed: 0,
+                                galleryLikesToday: 0,
+                                galleryCommentsToday: 0,
+                                completedQuests: persistentQuests, 
+                                lastResetDate: roDate // Update to Server Date
+                            });
+                            // Return to allow the snapshot to update with clean data
+                            return; 
+                        }
                     }
                     
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
