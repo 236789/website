@@ -797,11 +797,21 @@
     }
     fetchIP();
 
+    // --- FIX FOR MOBILE TOAST STICKING ---
+    let toastTimeout; // Variable to store the timeout ID
+
     function showToast(msg, type='error') {
+        // Clear any existing timeout to prevent the "remove" class from misfiring
+        if(toastTimeout) clearTimeout(toastTimeout);
+
         toastMsg.innerText = msg;
         toast.className = `toast-notification ${type === 'success' ? 'success' : ''}`;
         toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3000);
+        
+        // Set new timeout to hide it
+        toastTimeout = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
     }
 
     // SHARED AUTH
@@ -1174,7 +1184,7 @@
         if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
 
         const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 15000;
+        const COOLDOWN = 5000; // UPDATED COOLDOWN TO 5 SECONDS
         if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
             const timeLeft = Math.ceil((COOLDOWN - (Date.now() - lastSent)) / 1000);
             showToast(`Așteaptă ${timeLeft}s înainte de a trimite alt mesaj!`);
@@ -1212,9 +1222,10 @@
         try {
             await addDoc(collection(db, "wall_messages"), payload);
 
-            // --- TRACK DAILY MESSAGE TASK ---
+            // --- TRACK DAILY MESSAGE TASK & AWARD 10 COINS ---
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                messagesSentToday: increment(1)
+                messagesSentToday: increment(1),
+                coins: increment(10) // SILENTLY AWARD 10 COINS PER MESSAGE
             });
             
             clearTimeout(typingTimeout);
