@@ -1379,6 +1379,43 @@
       if (n < 1) { slideIndex = images.length }
       lightboxImg.src = images[slideIndex - 1];
     }
+
+    // --- ANIMATION LOGIC ---
+    function flyCoins(startElem) {
+        // 1. Identify Target (Mobile = Hamburger, Desktop = Profile Button)
+        const isMobile = window.innerWidth <= 768;
+        const targetSelector = isMobile ? '#menuBtn' : '#headerLoginBtn';
+        const targetElem = document.querySelector(targetSelector);
+
+        if (!startElem || !targetElem) return;
+
+        // 2. Get Coordinates
+        const startRect = startElem.getBoundingClientRect();
+        const targetRect = targetElem.getBoundingClientRect();
+
+        // 3. Create Floating Element
+        const floater = document.createElement('div');
+        floater.className = 'flying-reward';
+        floater.innerHTML = `+10 <img src="https://iili.io/fhc1SKQ.png">`; // Using your coin image
+        
+        // Set initial position (at the button clicked)
+        floater.style.top = `${startRect.top}px`;
+        floater.style.left = `${startRect.left}px`;
+        
+        document.body.appendChild(floater);
+
+        // 4. Trigger Animation (next frame)
+        requestAnimationFrame(() => {
+            floater.style.top = `${targetRect.top + (targetRect.height/2) - 10}px`;
+            floater.style.left = `${targetRect.left + (targetRect.width/2) - 20}px`;
+        });
+
+        // 5. Cleanup
+        setTimeout(() => {
+            floater.classList.add('finished');
+            setTimeout(() => floater.remove(), 500); // Remove from DOM after fade out
+        }, 800);
+    }
   </script>
 
   <!-- FIREBASE LOGIC -->
@@ -1481,17 +1518,27 @@
         await updateDoc(metaRef, { votes: votes });
     };
 
-    window.postGalleryComment = async (imgId) => {
+window.postGalleryComment = async (imgId) => {
         if (!auth.currentUser) return alert("Trebuie să fii logat!");
+        
         const input = document.getElementById(`inp-${imgId}`);
         const text = input.value.trim();
         if(!text) return;
 
+        // --- VISUAL ANIMATION TRIGGER ---
+        // Find the specific button that was clicked for this image
+        const sendBtn = document.querySelector(`#com-sec-${imgId} .card-send-btn`);
+        if(typeof window.flyCoins === "function" && sendBtn) {
+            window.flyCoins(sendBtn);
+        }
+
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const metaRef = doc(db, "gallery_meta", imgId);
+        
         const snap = await getDoc(metaRef);
         if(!snap.exists()) { await setDoc(metaRef, { votes: {} }); }
 
+        // 1. Add Comment
         await setDoc(doc(collection(db, `gallery_meta/${imgId}/comments`)), {
             text: text,
             uid: auth.currentUser.uid,
@@ -1500,8 +1547,11 @@
             createdAt: serverTimestamp()
         });
 
-        // INCREMENTAM COMENTARIILE PENTRU TASK
-        await updateDoc(userRef, { galleryCommentsToday: increment(1) });
+        // 2. Update Task Progress AND Add Coins (Silent Reward)
+        await updateDoc(userRef, { 
+            galleryCommentsToday: increment(1),
+            coins: increment(10) // <--- THIS ADDS THE 10 COINS
+        });
         
         input.value = '';
     };
