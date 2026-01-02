@@ -314,8 +314,9 @@
         { id: 'msg3', title: 'Trimite 3 mesaje în Community Wall', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' },
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
-        // NEW QUEST ADDED HERE
-        { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' }
+        { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
+        // NOUL QUEST GALERIE (10 like + 3 comm = 13 target)
+        { id: 'gallery13', title: 'Like la 10 poze și 3 Comentarii în Galerie', reward: 150, target: 13, link: 'galerie.html', pageName: 'gallerie' }
     ];
 
     function updateResetTimer() {
@@ -342,8 +343,14 @@
             if (q.id === 'msg3') current = userData.messagesSentToday || 0;
             if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
             if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
-            // NEW QUEST MAPPING
             if (q.id === 'social3') current = userData.socialFollowed || 0;
+            
+            // LOGICA SPECIALA PENTRU GALERIE (target 13)
+            if (q.id === 'gallery13') {
+                const likes = Math.min(userData.galleryLikesToday || 0, 10);
+                const comments = Math.min(userData.galleryCommentsToday || 0, 3);
+                current = likes + comments;
+            }
 
             const isCompleted = completed.includes(q.id);
             if (q.id !== 'review' && q.id !== 'social3' && !isCompleted) allDailyDone = false;
@@ -353,7 +360,9 @@
             const card = document.createElement('div');
             card.className = 'quest-card';
             
-            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
+            // Personalizare buton "mergi spre gallerie"
+            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery13' ? 'spre' : 'la'} ${q.pageName}</a>`;
+            
             if (isCompleted) {
                 actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine pentru noi task-uri!</small></div>`;
             }
@@ -410,6 +419,8 @@
                         await updateDoc(doc(db, "accounts", user.uid), {
                             messagesSentToday: 0,
                             tiktoksFollowed: 0,
+                            galleryLikesToday: 0, // Reset nou
+                            galleryCommentsToday: 0, // Reset nou
                             completedQuests: persistentQuests, 
                             lastResetDate: today
                         });
