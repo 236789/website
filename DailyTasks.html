@@ -58,9 +58,11 @@
     /* --- HAMBURGER --- */
     .hamburger { display: none; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; margin-left: 15px; }
 
-    /* --- SIDE MENU --- */
+    /* --- SIDE MENU (UPDATED WIDTH) --- */
     #sideMenu { 
-        position: fixed; inset: 0; left: auto; width: 320px; 
+        position: fixed; inset: 0; left: auto; 
+        width: 280px; /* Reduced from 320px */
+        max-width: 85vw; /* Leaves gap on mobile */
         background: #080f1a; 
         border-left: 1px solid rgba(255,255,255,0.05); 
         z-index: 2000; padding: 40px 30px; transform: translateX(100%); 
@@ -319,12 +321,11 @@
     ];
 
     // --- SECURE TIMER VARIABLES ---
-    let serverTimeOffset = 0; // Difference between User Time and Server Time
+    let serverTimeOffset = 0; 
     let isAwarding = false;
 
     // --- SECURE VISUAL TIMER ---
     function updateResetTimer() {
-        // We use the offset to get the REAL time, even if user changes their clock
         const nowMs = Date.now() + serverTimeOffset; 
         const nowReal = new Date(nowMs);
 
@@ -334,15 +335,13 @@
             hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
         });
 
-        // Parse current Romania time
         const parts = roTime.formatToParts(nowReal);
         const h = parseInt(parts.find(p => p.type === 'hour').value);
         const m = parseInt(parts.find(p => p.type === 'minute').value);
         const s = parseInt(parts.find(p => p.type === 'second').value);
 
-        // Math for seconds remaining
         const currentSeconds = (h * 3600) + (m * 60) + s;
-        let secondsLeft = 86400 - currentSeconds; // 86400 = 24h
+        let secondsLeft = 86400 - currentSeconds; 
         
         if (secondsLeft < 0) secondsLeft = 0;
 
@@ -421,8 +420,7 @@
             if (canAward && !isCompleted && !isAwarding) { awardQuest(q.id, q.reward); }
         });
 
-        // STREAK LOGIC (Basic check here, ideally move to secure logic too)
-        // For now, focusing on the Main Security Request
+        // STREAK LOGIC
         const today = new Date().toDateString();
         if (allDailyDone && userData.lastStreakDate !== today) {
             updateDoc(doc(db, "accounts", auth.currentUser.uid), {
@@ -456,28 +454,23 @@
 
             const userRef = doc(db, "accounts", user.uid);
 
-            // 1. FORCE SERVER TIME CHECK (Security Step)
-            // This forces Firebase to write the Real Time to the DB.
+            // 1. FORCE SERVER TIME CHECK
             await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
 
             onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
-                    // Ignore local/cached data that hasn't synced with server yet
-                    if (snap.metadata.hasPendingWrites) return;
+                    if (snap.metadata.hasPendingWrites) return; // Wait for server sync
 
                     const data = snap.data();
                     
                     // 2. CHECK REAL TIME & SYNC TIMER
                     if (data.latestServerCheck) {
                         const serverDate = data.latestServerCheck.toDate();
-                        // Calculate offset for the visual timer
                         serverTimeOffset = serverDate.getTime() - Date.now();
 
                         // 3. SECURE RESET CHECK
-                        // Convert Server Time to Romania Date String
                         const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
                         
-                        // Compare Server Date vs Database Date
                         if(data.lastResetDate !== roDate) {
                             console.log("Server detected new day. Resetting tasks...");
                             const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
@@ -488,9 +481,8 @@
                                 galleryLikesToday: 0,
                                 galleryCommentsToday: 0,
                                 completedQuests: persistentQuests, 
-                                lastResetDate: roDate // Update to Server Date
+                                lastResetDate: roDate 
                             });
-                            // Return to allow the snapshot to update with clean data
                             return; 
                         }
                     }
