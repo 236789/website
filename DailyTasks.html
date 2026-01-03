@@ -312,45 +312,36 @@
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
-    // --- ADDED KEVINUTA GAME QUEST & ONE-TIME LOGIC ---
+    // 🟢 UPDATED: Changed target to 5 for kevinuta_game
     const quests = [
         { id: 'msg3', title: 'Trimite 3 mesaje în Community Wall', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' },
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
         { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
-        { id: 'kevinuta_game', title: 'Joaca jocul Kevinuta timp de 5 minute', reward: 550, target: 1, link: 'joc.html', pageName: 'Joc Kevinuta' }
+        { id: 'kevinuta_game', title: 'Joaca jocul Kevinuta timp de 5 minute', reward: 550, target: 5, link: 'Joc.html', pageName: 'Joc Kevinuta' }
     ];
 
-    // --- SECURE TIMER VARIABLES ---
     let serverTimeOffset = 0; 
     let isAwarding = false;
 
-    // --- SECURE VISUAL TIMER ---
     function updateResetTimer() {
         const nowMs = Date.now() + serverTimeOffset; 
         const nowReal = new Date(nowMs);
-
-        // Calculate time until Midnight in Romania (Europe/Bucharest)
         const roTime = new Intl.DateTimeFormat('en-US', {
             timeZone: 'Europe/Bucharest',
             hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
         });
-
         const parts = roTime.formatToParts(nowReal);
         const h = parseInt(parts.find(p => p.type === 'hour').value);
         const m = parseInt(parts.find(p => p.type === 'minute').value);
         const s = parseInt(parts.find(p => p.type === 'second').value);
-
         const currentSeconds = (h * 3600) + (m * 60) + s;
         let secondsLeft = 86400 - currentSeconds; 
-        
         if (secondsLeft < 0) secondsLeft = 0;
-
         const hLeft = Math.floor(secondsLeft / 3600);
         const mLeft = Math.floor((secondsLeft % 3600) / 60);
         const sLeft = secondsLeft % 60;
-
         resetTimerEl.innerText = `${hLeft.toString().padStart(2,'0')}:${mLeft.toString().padStart(2,'0')}:${sLeft.toString().padStart(2,'0')}`;
     }
     setInterval(updateResetTimer, 1000);
@@ -363,10 +354,8 @@
         quests.forEach(q => {
             const isCompleted = completed.includes(q.id);
 
-            // --- ONE TIME QUEST HIDE LOGIC ---
-            // If it's Review or Social AND it's completed, do NOT render it (Make it invisible)
             if (isCompleted && (q.id === 'review' || q.id === 'social3')) {
-                return; // Skips this loop iteration
+                return; 
             }
 
             const card = document.createElement('div');
@@ -375,6 +364,7 @@
             let progressHTML = '';
             let canAward = false;
 
+            // --- 1. GALLERY TASK LOGIC ---
             if (q.id === 'gallery_task') {
                 const currentLikes = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
                 const currentComments = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
@@ -393,14 +383,33 @@
                 `;
                 if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
                 if (!isCompleted) allDailyDone = false;
+
+            // --- 2. 🟢 NEW: KEVINUTA GAME LOGIC (DISPLAY MINUTES) ---
+            } else if (q.id === 'kevinuta_game') {
+                // If in database it's 1 (completed old way), treat as 5. Otherwise take the number.
+                let rawVal = userData.kevinutaPlayedToday || 0;
+                if(completed.includes('kevinuta_game')) rawVal = 5; 
+                
+                const currentMinutes = Math.min(rawVal, 5); 
+                const progress = (currentMinutes / 5) * 100;
+
+                progressHTML = `
+                    <div class="progress-wrapper">
+                        <div class="progress-info"><span>Timp Jucat</span><span>${currentMinutes}/5 min</span></div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div>
+                    </div>
+                `;
+                // Logic: If DB says 1 (old completed) OR >= 5 (new logic), allow award
+                if (rawVal >= 1) canAward = true; 
+                if (!isCompleted) allDailyDone = false;
+
+            // --- 3. GENERIC LOGIC (TIKTOK, WALL, ETC) ---
             } else {
                 let current = 0;
                 if (q.id === 'msg3') current = userData.messagesSentToday || 0;
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
                 if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
                 if (q.id === 'social3') current = userData.socialFollowed || 0;
-                // KEVINUTA GAME LOGIC (Depends on DB value)
-                if (q.id === 'kevinuta_game') current = userData.kevinutaPlayedToday || 0;
 
                 const progress = Math.min((current / q.target) * 100, 100);
                 progressHTML = `
@@ -410,25 +419,20 @@
                     </div>
                 `;
                 if (current >= q.target) canAward = true;
-                
-                // Keep track of all daily done, but ignore one-timers for streak calculation if they are already done
                 if (q.id !== 'review' && q.id !== 'social3' && !isCompleted) allDailyDone = false;
             }
 
-        // 🟢 STEP 1: PREPARE THE LINK (Modified for Kevinuta Quest)
-            let finalLink = q.link;
-            
-            // If this is the Kevinuta Game quest, attach the User ID to the link
+            // Link logic
+            let linkUrl = q.link;
             if (q.id === 'kevinuta_game' && auth.currentUser) {
-                finalLink += `?uid=${auth.currentUser.uid}`;
+                linkUrl += `?uid=${auth.currentUser.uid}`;
             }
 
-            // 🟢 STEP 2: CREATE THE BUTTON
-            let actionArea = `<a href="${finalLink}" class="quest-btn">Mergi ${q.id === 'gallery_task' ? 'spre' : 'la'} ${q.pageName}</a>`;
-            
+            let actionArea = `<a href="${linkUrl}" class="quest-btn">Mergi ${q.id === 'gallery_task' ? 'spre' : 'la'} ${q.pageName}</a>`;
             if (isCompleted) {
                 actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine!</small></div>`;
             }
+
             card.innerHTML = `
                 <div class="quest-header">
                     <span class="quest-title">${q.title}</span>
@@ -442,7 +446,6 @@
             if (canAward && !isCompleted && !isAwarding) { awardQuest(q.id, q.reward); }
         });
 
-        // STREAK LOGIC
         const today = new Date().toDateString();
         if (allDailyDone && userData.lastStreakDate !== today) {
             updateDoc(doc(db, "accounts", auth.currentUser.uid), {
@@ -465,44 +468,34 @@
         } catch (e) { console.error(e); } finally { isAwarding = false; }
     }
 
-    // --- SECURE AUTH & RESET LOGIC ---
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // UI Setup
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
             const userRef = doc(db, "accounts", user.uid);
-
-            // 1. FORCE SERVER TIME CHECK
             await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
 
             onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
-                    if (snap.metadata.hasPendingWrites) return; // Wait for server sync
+                    if (snap.metadata.hasPendingWrites) return; 
 
                     const data = snap.data();
-                    
-                    // 2. CHECK REAL TIME & SYNC TIMER
                     if (data.latestServerCheck) {
                         const serverDate = data.latestServerCheck.toDate();
                         serverTimeOffset = serverDate.getTime() - Date.now();
-
-                        // 3. SECURE RESET CHECK
                         const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
                         
                         if(data.lastResetDate !== roDate) {
-                            console.log("Server detected new day. Resetting tasks...");
                             const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                            
                             await updateDoc(userRef, {
                                 messagesSentToday: 0,
                                 tiktoksFollowed: 0,
                                 galleryLikesToday: 0,
                                 galleryCommentsToday: 0,
-                                kevinutaPlayedToday: 0, // Reset Kevinuta Game
+                                kevinutaPlayedToday: 0, 
                                 completedQuests: persistentQuests, 
                                 lastResetDate: roDate 
                             });
