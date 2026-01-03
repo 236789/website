@@ -1,18 +1,12 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-B6DWPJ4T2C');
-  </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Community Wall — KSDAPromovari</title>
   <link rel="icon" type="image/png" href="https://iili.io/fXks1Dv.png">
   
+  <!-- Fonts & Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -47,7 +41,7 @@
     .wall-card { width: 100%; background: var(--glass-bg); border: 1px solid var(--primary); border-radius: 24px; display: flex; flex-direction: column; height: 70vh; backdrop-filter: blur(10px); overflow: hidden; }
 
     /* CHAT HEADER */
-    .chat-header { padding: 15px 20px; background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; }
+    .chat-header { padding: 15px 20px; background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .user-profile { display: flex; align-items: center; gap: 10px; }
     .user-pfp { width: 35px; height: 35px; border-radius: 50%; border: 2px solid var(--primary); }
     
@@ -65,8 +59,8 @@
     .chat-input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 25px; padding: 10px 15px; color: #fff; }
     .send-btn { width: 45px; height: 45px; border-radius: 50%; background: var(--primary); border: none; cursor: pointer; }
 
-    /* NOTIFICATION BUTTON */
-    #enableNotifsBtn {
+    /* NOTIFICATION BUTTONS */
+    .action-btn {
         background: rgba(41, 243, 255, 0.1);
         border: 1px solid var(--primary);
         color: var(--primary);
@@ -76,7 +70,9 @@
         cursor: pointer;
         display: flex; align-items: center; gap: 5px;
     }
-    #enableNotifsBtn:hover { background: var(--primary); color: #000; }
+    .action-btn:hover { background: var(--primary); color: #000; }
+    .test-btn { border-color: #ffd700; color: #ffd700; }
+    .test-btn:hover { background: #ffd700; color: #000; }
 
     /* VIEWS */
     .locked-view, .banned-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #fff; text-align: center; }
@@ -89,7 +85,6 @@
 </head>
 <body>
 
-  <!-- HEADER -->
   <div class="header-container">
     <header>
       <a href="#" class="logo"><img src="https://iili.io/fXvBEiB.png" alt="Logo"></a>
@@ -104,7 +99,6 @@
     <h1 style="text-align:center; margin-bottom:10px;">COMMUNITY WALL</h1>
     <div class="wall-card">
         
-        <!-- LOCKED (LOGOUT) STATE -->
         <div id="lockedView" class="locked-view">
             <h2>Acces Membri</h2>
             <p>Trebuie să fii logat pentru a vorbi.</p>
@@ -113,13 +107,6 @@
             </button>
         </div>
 
-        <!-- BANNED STATE -->
-        <div id="bannedView" class="banned-view" style="display:none;">
-            <h2 style="color:#ff4757">ACCES INTERZIS</h2>
-            <p>Ai fost banat permanent.</p>
-        </div>
-
-        <!-- CHAT STATE -->
         <div id="chatView" class="chat-view">
             <div class="chat-header">
                 <div class="user-profile">
@@ -130,8 +117,11 @@
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <!-- NOTIFICATION BUTTON -->
-                    <button id="enableNotifsBtn"><i class="fas fa-bell"></i> Notificări</button>
+                    <!-- PERMISSION BUTTON -->
+                    <button id="enableNotifsBtn" class="action-btn"><i class="fas fa-bell"></i> Activează Notificări</button>
+                    <!-- TEST BUTTON -->
+                    <button id="testNotifBtn" class="action-btn test-btn"><i class="fas fa-bolt"></i> TESTEAZĂ</button>
+                    
                     <span id="logoutBtn" class="logout-text">Ieși</span>
                 </div>
             </div>
@@ -150,7 +140,6 @@
     </div>
   </div>
 
-  <!-- JAVASCRIPT -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -173,11 +162,12 @@
     // Fix Login Persistence
     setPersistence(auth, browserLocalPersistence).catch(console.error);
 
-    const views = { locked: document.getElementById('lockedView'), chat: document.getElementById('chatView'), banned: document.getElementById('bannedView') };
+    const views = { locked: document.getElementById('lockedView'), chat: document.getElementById('chatView') };
     const els = {
         loginBtn: document.getElementById('loginBtn'),
         logoutBtn: document.getElementById('logoutBtn'),
         notifBtn: document.getElementById('enableNotifsBtn'),
+        testBtn: document.getElementById('testNotifBtn'),
         msgInput: document.getElementById('msgInput'),
         sendBtn: document.getElementById('sendBtn'),
         feed: document.getElementById('messagesFeed'),
@@ -190,43 +180,42 @@
     let typingTimeout = null;
     let lastNotifTime = 0;
 
-    // Login
     els.loginBtn.onclick = () => signInWithPopup(auth, provider);
     els.logoutBtn.onclick = () => { if(confirm("Ieși din cont?")) signOut(auth); };
 
-    // --- 1. NOTIFICATION LOGIC ---
+    // --- 1. NOTIFICATION SYSTEM ---
     
     // Check permission on load
-    if (Notification.permission === "granted") {
-        els.notifBtn.innerHTML = '<i class="fas fa-check"></i> Testează Notificarea';
-        els.notifBtn.style.opacity = "1"; 
-    }
-
-    els.notifBtn.onclick = () => {
-        if (!("Notification" in window)) {
-            alert("Browserul nu suportă notificări.");
-            return;
-        }
-
+    function updateNotifButton() {
         if (Notification.permission === "granted") {
-            // IF ALREADY GRANTED, SEND TEST NOTIFICATION
-            new Notification("Test KSDA", {
-                body: "✅ Notificările funcționează corect!",
+            els.notifBtn.innerHTML = '<i class="fas fa-check"></i> Active';
+            els.notifBtn.style.opacity = "0.5";
+            els.notifBtn.disabled = true;
+        }
+    }
+    updateNotifButton();
+
+    // ENABLE BUTTON
+    els.notifBtn.onclick = () => {
+        if (!("Notification" in window)) { alert("Browser-ul nu suportă notificări."); return; }
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                updateNotifButton();
+                new Notification("KSDA", { body: "Notificări Activate!" });
+            }
+        });
+    };
+
+    // TEST BUTTON (SIMULATOR)
+    els.testBtn.onclick = () => {
+        if (Notification.permission === "granted") {
+            // Send fake notification instantly
+            new Notification("User Test", {
+                body: "Acesta este un test. Sistemul funcționează!",
                 icon: "https://iili.io/fXks1Dv.png"
             });
         } else {
-            // IF NOT GRANTED, ASK PERMISSION
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    els.notifBtn.innerHTML = '<i class="fas fa-check"></i> Testează Notificarea';
-                    new Notification("KSDA Wall", {
-                        body: "Ai activat notificările!",
-                        icon: "https://iili.io/fXks1Dv.png"
-                    });
-                } else {
-                    alert("Ai blocat notificările. Verifică setările browserului (lângă URL).");
-                }
-            });
+            alert("Trebuie să apeși întâi pe 'Activează Notificări' și să dai Allow!");
         }
     };
 
@@ -234,17 +223,10 @@
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUid = user.uid;
-            
             views.locked.style.display = 'none';
             views.chat.style.display = 'flex';
             els.uImg.src = user.photoURL;
             els.uName.innerText = user.displayName;
-
-            // Ensure Account Exists
-            const userRef = doc(db, "accounts", user.uid);
-            getDoc(userRef).then(snap => {
-                if(!snap.exists()) setDoc(userRef, { uid: user.uid, username: user.displayName, email: user.email, image: user.photoURL });
-            });
 
             loadMessages();
             listenForTypers(); 
@@ -264,7 +246,7 @@
             let notifierName = "";
 
             snapshot.forEach(doc => {
-                // IMPORTANT: You do NOT get notifications for yourself
+                // EXCLUDE SELF from notifications (real usage)
                 if(doc.id !== currentUid) {
                     typers.push(doc.data().name);
                     notifierName = doc.data().name;
@@ -274,20 +256,16 @@
             if (typers.length > 0) {
                 els.typing.innerText = typers.length === 1 ? `${typers[0]} scrie...` : "Mai mulți scriu...";
                 
-                // TRIGGER NOTIFICATION
+                // SEND REAL NOTIFICATION
                 const now = Date.now();
-                // 15 seconds cooldown
-                if (Notification.permission === "granted" && (now - lastNotifTime > 15000)) {
-                    
+                if (Notification.permission === "granted" && (now - lastNotifTime > 5000)) { // 5 sec cooldown
                     new Notification("Cineva scrie...", {
                         body: `${notifierName} scrie un mesaj pe Wall...`,
                         icon: "https://iili.io/fXks1Dv.png",
                         tag: "typing-tag"
                     });
-
                     lastNotifTime = now;
                 }
-
             } else {
                 els.typing.innerText = "";
             }
