@@ -769,11 +769,12 @@
     }
   </script>
 
-  <!-- FIREBASE & CHAT LOGIC -->
+ <!-- FIREBASE & CHAT LOGIC (V3 - FINAL FIX) -->
   <script type="module">
+    // 1. IMPORTURI ACTUALIZATE (Am adaugat 'limit')
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -842,7 +843,7 @@
     // MUTE TARGETING
     let pendingMuteUid = null;
     let pendingMuteName = null;
-    let muteInterval = null; // Countdown interval
+    let muteInterval = null;
     
     // TYPING VARIABLES
     let typingTimeout = null;
@@ -850,6 +851,7 @@
     
     // WIPE TIMER INTERVAL
     let wipeCheckInterval = null;
+    let toastTimeout;
 
     // GET IP
     async function fetchIP() {
@@ -861,18 +863,11 @@
     }
     fetchIP();
 
-    // --- FIX FOR MOBILE TOAST STICKING ---
-    let toastTimeout; // Variable to store the timeout ID
-
     function showToast(msg, type='error') {
-        // Clear any existing timeout to prevent the "remove" class from misfiring
         if(toastTimeout) clearTimeout(toastTimeout);
-
         toastMsg.innerText = msg;
         toast.className = `toast-notification ${type === 'success' ? 'success' : ''}`;
         toast.classList.add('show');
-        
-        // Set new timeout to hide it
         toastTimeout = setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
@@ -930,14 +925,12 @@
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
-            // --- CHECK OWNER BY EMAIL ---
             if(user.email === 'nicaemmanuel433qe@gmail.com') {
                 isOwner = true;
-                isAdmin = true; // Owner is always admin
+                isAdmin = true; 
             }
 
             if(userIP) {
-                // Check Ban
                 const banRef = doc(db, "banned_ips", userIP);
                 const banSnap = await getDoc(banRef);
                 if(banSnap.exists()) {
@@ -948,7 +941,6 @@
                     return; 
                 }
 
-                // Check Admin by IP
                 if(!isOwner) {
                     const adminRef = doc(db, "admin_ips", userIP);
                     const adminSnap = await getDoc(adminRef);
@@ -962,7 +954,6 @@
             lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
             if(userAvatar) userAvatar.src = user.photoURL;
             
-            // Sync with Accounts Collection for Modal & Tasks
             onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
@@ -972,20 +963,15 @@
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    // --- TASK 1: 3 MESSAGES CHECK (FIXED) ---
                     const completed = data.completedQuests || [];
                     const cooldowns = data.questCooldowns || {};
                     const now = Date.now();
 
-                    // 1. Check if they hit the target (3 messages)
-                    // 2. Check if the ID 'msg3' is NOT already in completed list
-                    // 3. Check if they are NOT currently in cooldown for 'msg3'
                     if(data.messagesSentToday >= 3 && !completed.includes('msg3') && !(now < (cooldowns['msg3'] || 0))) {
-                        const oneHourCooldown = Date.now() + (3600000); // 1 hour cooldown
-                        
+                        const oneHourCooldown = Date.now() + (3600000); 
                         updateDoc(doc(db, "accounts", user.uid), {
-                            coins: increment(250), // Changed to 250 as you requested
-                            completedQuests: [...completed, 'msg3'], // Use ID 'msg3' to match DailyTasks.html
+                            coins: increment(250),
+                            completedQuests: [...completed, 'msg3'],
                             [`questCooldowns.msg3`]: oneHourCooldown
                         }).then(() => {
                             rewardModal.classList.add('active');
@@ -995,7 +981,6 @@
             });
 
             if(userName) {
-                // FORCE NAME FOR OWNER
                 if(isOwner) {
                     userName.innerHTML = `Lost Soul <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span> <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
                 } else {
@@ -1009,7 +994,7 @@
             loadMessages();
             listenForTypers();
             startWipeCheck(); 
-            checkMuteStatus(); // Start Checking Mute
+            checkMuteStatus(); 
 
         } else {
             headerLoginText.innerText = "LOGIN";
@@ -1024,7 +1009,6 @@
         }
     });
 
-    // --- MUTE STATUS CHECKER (LIVE) ---
     function checkMuteStatus() {
         if(!currentUid) return;
         const muteRef = doc(db, "muted_users", currentUid);
@@ -1033,19 +1017,15 @@
             if(snapshot.exists()) {
                 const data = snapshot.data();
                 
-                // Check if time expired
                 if(data.unmuteAt && Date.now() > data.unmuteAt) {
-                    // Auto unmute
                     deleteDoc(muteRef);
                     return;
                 }
 
-                // SHOW MUTE BANNER
                 inputControls.style.display = 'none';
                 muteBanner.style.display = 'block';
                 muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Admin'}. Motiv: ${data.reason || 'Nespecificat'}`;
                 
-                // START COUNTDOWN
                 if(muteInterval) clearInterval(muteInterval);
                 
                 if(data.unmuteAt) {
@@ -1055,9 +1035,8 @@
                         
                         if(diff <= 0) {
                             clearInterval(muteInterval);
-                            deleteDoc(muteRef); // Trigger unmute
+                            deleteDoc(muteRef); 
                         } else {
-                            // Format HH:MM:SS
                             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
                             const s = Math.floor((diff % (1000 * 60)) / 1000);
@@ -1072,7 +1051,6 @@
                 }
 
             } else {
-                // HIDE MUTE BANNER
                 inputControls.style.display = 'block';
                 muteBanner.style.display = 'none';
                 if(muteInterval) clearInterval(muteInterval);
@@ -1080,7 +1058,6 @@
         });
     }
 
-    // CHAR COUNT & TYPING STATUS
     msgInput.addEventListener('input', () => {
         const len = msgInput.value.length;
         charCount.textContent = `${len} / 500`;
@@ -1099,7 +1076,6 @@
         }
     });
 
-    // UPDATED: Sends role flags
     async function updateTypingStatus(status) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
@@ -1118,7 +1094,6 @@
         } catch (e) { console.error("Typing status error:", e); }
     }
 
-    // UPDATED: Renders badges in typing indicator
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         onSnapshot(q, (snapshot) => {
@@ -1171,7 +1146,6 @@
         const text = msgInput.value.trim();
         if(!text || !auth.currentUser) return;
         
-        // --- 1. ADMIN WIPE ---
         if(text === '/reset chat') {
             msgInput.value = '';
             if(isAdmin) {
@@ -1183,32 +1157,22 @@
             return;
         }
 
-        // --- 2. MUTE COMMAND (WITH TIME PARSING) ---
         if(text.startsWith('/mute ')) {
             if(!isOwner) { showToast("Doar Owner-ul poate da Mute.", "error"); msgInput.value=''; return; }
             if(!pendingMuteUid) { showToast("Selectează utilizatorul din meniu!", "error"); return; }
 
-            // Extract reason part (everything after "/mute Name ")
-            // e.g., "spam 1h" or "bad words 30m" or just "spam"
             let args = text.substring(6 + pendingMuteName.length).trim();
-            
-            // TIME PARSING LOGIC
             let durationMs = 0;
             let finalReason = args;
-            
-            // Regex checks for things like "10m", "1h", "2d" at the END of the string
             const timeRegex = /(\d+)([mhd])$/i;
             const match = args.match(timeRegex);
 
             if (match) {
                 const val = parseInt(match[1]);
                 const unit = match[2].toLowerCase();
-                
                 if(unit === 'm') durationMs = val * 60 * 1000;
                 else if(unit === 'h') durationMs = val * 60 * 60 * 1000;
                 else if(unit === 'd') durationMs = val * 24 * 60 * 60 * 1000;
-                
-                // Remove the time from the reason text
                 finalReason = args.replace(match[0], "").trim();
             }
             
@@ -1220,18 +1184,16 @@
                 timestamp: serverTimestamp()
             };
 
-            // Add expiration time if duration found
             if(durationMs > 0) {
                 mutePayload.unmuteAt = Date.now() + durationMs;
             }
 
             try {
                 await setDoc(doc(db, "muted_users", pendingMuteUid), mutePayload);
-                
                 let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul.`;
                 announceText += ` Motiv: ${finalReason}.`;
                 if(durationMs > 0) {
-                    const timeStr = match[0]; // e.g. "1h"
+                    const timeStr = match[0]; 
                     announceText += ` Durată: ${timeStr}.`;
                 } else {
                     announceText += ` Durată: Nedeterminată.`;
@@ -1248,7 +1210,7 @@
         if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
 
         const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 5000; // UPDATED COOLDOWN TO 5 SECONDS
+        const COOLDOWN = 5000;
         if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
             const timeLeft = Math.ceil((COOLDOWN - (Date.now() - lastSent)) / 1000);
             showToast(`Așteaptă ${timeLeft}s înainte de a trimite alt mesaj!`);
@@ -1261,13 +1223,10 @@
              if(banSnap.exists()) { alert("Ești banat."); location.reload(); return; }
         }
 
-        // --- ANIMATION TRIGGER (Added Here) ---
-        // Triggers the flying coin animation towards the menu button
         const btn = document.getElementById('sendBtn');
         if(typeof window.flyCoins === "function" && btn) {
             window.flyCoins(btn);
         }
-        // --------------------------------------
 
         let displayName = auth.currentUser.displayName;
         if(isOwner) displayName = "Lost Soul";
@@ -1294,10 +1253,9 @@
         try {
             await addDoc(collection(db, "wall_messages"), payload);
 
-            // --- TRACK DAILY MESSAGE TASK & AWARD 10 COINS ---
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
                 messagesSentToday: increment(1),
-                coins: increment(10) // SILENTLY AWARD 10 COINS PER MESSAGE
+                coins: increment(10)
             });
             
             clearTimeout(typingTimeout);
@@ -1361,28 +1319,45 @@
         setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
     }
 
+    // --- FUNCTIA REPARATA PENTRU STERGERI MASIVE ---
     async function wipeAllMessages() {
-        try {
-            const q = query(collection(db, "wall_messages"));
-            const snapshot = await getDocs(q);
-            const batch = writeBatch(db);
-            let count = 0;
-            snapshot.forEach((doc) => { batch.delete(doc.ref); count++; });
-            if(count > 0) { await batch.commit(); }
-        } catch(e) { console.error("Wipe failed", e); }
+        const batchSize = 400; // Sterge cate 400
+        const q = query(collection(db, "wall_messages"), limit(batchSize));
+
+        return new Promise(async (resolve, reject) => {
+            try {
+                let snapshot = await getDocs(q);
+                while (snapshot.size > 0) {
+                    const batch = writeBatch(db);
+                    snapshot.forEach(doc => { batch.delete(doc.ref); });
+                    await batch.commit();
+                    
+                    // Mai incercam o data, poate au mai ramas
+                    snapshot = await getDocs(q);
+                }
+                resolve();
+            } catch (error) { console.error("Wipe failed:", error); reject(error); }
+        });
     }
 
-    // LOAD MESSAGES
+    // --- LOAD MESSAGES OPTIMIZAT (LIMIT 50) ---
     let unsubscribe;
     function loadMessages() {
         if(unsubscribe) unsubscribe();
-        const q = query(collection(db, "wall_messages"), orderBy("createdAt", "asc"));
+        
+        // LIMITAM LA 50 MESAJE (Cele mai noi)
+        const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
         
         unsubscribe = onSnapshot(q, snapshot => {
+            const docs = [];
+            snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+            
+            // Le inversam ca sa apara corect in chat (vechi sus -> noi jos)
+            docs.reverse();
+
             messagesFeed.innerHTML = '';
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                const msgId = docSnap.id;
+            docs.forEach(data => {
+                const msgId = data.id;
                 const isMine = data.uid === currentUid;
                 const isBot = data.isBot === true;
                 const msgIsAdmin = data.isAdmin === true;
@@ -1407,12 +1382,11 @@
                     bubbleContent += linkify(safeText);
                 }
                 
-                // --- BUBBLE COLOR LOGIC ---
                 let bubbleClass = 'msg-bubble';
                 if(isDeleted) bubbleClass += ' deleted';
                 else if(isBot) bubbleClass += ' bot-msg';
-                else if(msgIsOwner) bubbleClass += ' owner-msg'; // OWNER = CYAN/BLUE
-                else if(msgIsAdmin) bubbleClass += ' admin-msg'; // ADMIN = RED
+                else if(msgIsOwner) bubbleClass += ' owner-msg';
+                else if(msgIsAdmin) bubbleClass += ' admin-msg';
 
                 let nameHtml = data.name;
                 if(isBot) nameHtml = `🤖 ${data.name}`;
