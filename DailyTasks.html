@@ -312,12 +312,14 @@
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
+    // --- ADDED KEVINUTA GAME QUEST & ONE-TIME LOGIC ---
     const quests = [
         { id: 'msg3', title: 'Trimite 3 mesaje în Community Wall', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' },
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
-        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' }
+        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
+        { id: 'kevinuta_game', title: 'Joaca jocul Kevinuta timp de 5 minute', reward: 550, target: 1, link: 'Joc.html', pageName: 'Joc Kevinuta' }
     ];
 
     // --- SECURE TIMER VARIABLES ---
@@ -360,6 +362,13 @@
 
         quests.forEach(q => {
             const isCompleted = completed.includes(q.id);
+
+            // --- ONE TIME QUEST HIDE LOGIC ---
+            // If it's Review or Social AND it's completed, do NOT render it (Make it invisible)
+            if (isCompleted && (q.id === 'review' || q.id === 'social3')) {
+                return; // Skips this loop iteration
+            }
+
             const card = document.createElement('div');
             card.className = 'quest-card';
 
@@ -390,6 +399,8 @@
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
                 if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
                 if (q.id === 'social3') current = userData.socialFollowed || 0;
+                // KEVINUTA GAME LOGIC (Depends on DB value)
+                if (q.id === 'kevinuta_game') current = userData.kevinutaPlayedToday || 0;
 
                 const progress = Math.min((current / q.target) * 100, 100);
                 progressHTML = `
@@ -399,6 +410,8 @@
                     </div>
                 `;
                 if (current >= q.target) canAward = true;
+                
+                // Keep track of all daily done, but ignore one-timers for streak calculation if they are already done
                 if (q.id !== 'review' && q.id !== 'social3' && !isCompleted) allDailyDone = false;
             }
 
@@ -480,6 +493,7 @@
                                 tiktoksFollowed: 0,
                                 galleryLikesToday: 0,
                                 galleryCommentsToday: 0,
+                                kevinutaPlayedToday: 0, // Reset Kevinuta Game
                                 completedQuests: persistentQuests, 
                                 lastResetDate: roDate 
                             });
