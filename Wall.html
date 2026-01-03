@@ -667,7 +667,13 @@
                         <div id="userName" class="user-name"></div>
                     </div>
                 </div>
-                <button id="logoutBtn" class="logout-btn">Deconectare</button>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <!-- NOTIFICATION BUTTON -->
+                    <button id="enableNotifsBtn" class="login-btn-header" style="border: 1px solid var(--primary); background: rgba(41, 243, 255, 0.05);">
+                        <i class="fas fa-bell"></i> Activează Notificări
+                    </button>
+                    <button id="logoutBtn" class="logout-btn">Deconectare</button>
+                </div>
             </div>
 
             <div id="messagesFeed" class="messages-feed">
@@ -769,7 +775,7 @@
     }
   </script>
 
- <!-- FIREBASE & CHAT LOGIC (V3 - FINAL FIX) -->
+ <!-- FIREBASE & CHAT LOGIC (WITH NATIVE NOTIFICATIONS) -->
   <script type="module">
     // 1. IMPORTURI ACTUALIZATE (Am adaugat 'limit')
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -1094,12 +1100,44 @@
         } catch (e) { console.error("Typing status error:", e); }
     }
 
+    // --- NOTIFICATION LOGIC START (UPDATED) ---
+    
+    // Setup Permission Button Logic
+    const notifBtn = document.getElementById('enableNotifsBtn');
+    
+    // If permission already granted, hide button
+    if (Notification.permission === "granted" && notifBtn) {
+        notifBtn.style.display = 'none';
+    } else if (notifBtn) {
+        notifBtn.addEventListener('click', () => {
+            if (!("Notification" in window)) {
+                alert("Browserul tău nu suportă notificări.");
+            } else {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        showToast("Notificările au fost activate!", "success");
+                        notifBtn.style.display = 'none';
+                        new Notification("KSDAPromovari", {
+                            body: "✅ Notificările sunt active!",
+                            icon: "https://iili.io/fXks1Dv.png"
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    let lastNotificationTime = 0; 
+
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
+        
         onSnapshot(q, (snapshot) => {
             const typers = [];
+            let typerNameForNotif = "";
+
             snapshot.forEach((doc) => {
-                if (doc.id !== currentUid) {
+                if (doc.id !== currentUid) { // Don't notify for myself
                     const data = doc.data();
                     if (data.name) {
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
@@ -1109,21 +1147,41 @@
                             nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
                         }
                         typers.push(nameHtml);
+                        typerNameForNotif = data.name; 
                     }
                 }
             });
 
             if (typers.length > 0) {
+                // Update Text on screen
                 if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
                 else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
                 else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
                 typingIndicator.style.opacity = "1";
+
+                // SEND SYSTEM NOTIFICATION (Gmail Style)
+                const now = Date.now();
+                // Conditions: Perm granted, Tab Hidden, Cooldown 15s
+                if (Notification.permission === "granted" && 
+                    document.visibilityState === "hidden" && 
+                    (now - lastNotificationTime > 15000)) {
+                    
+                    new Notification("Cineva scrie...", {
+                        body: `${typerNameForNotif} scrie un mesaj acum pe Wall...`,
+                        icon: "https://iili.io/fXks1Dv.png",
+                        tag: "typing-notification",
+                        silent: false
+                    });
+                    lastNotificationTime = now;
+                }
+
             } else {
                 typingIndicator.innerHTML = "";
                 typingIndicator.style.opacity = "0";
             }
         });
     }
+    // --- NOTIFICATION LOGIC END ---
 
     window.startReply = function(id, name, text) {
         replyData = { id, name, text };
