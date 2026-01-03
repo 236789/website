@@ -241,6 +241,10 @@
     /* Specific width for icons to keep alignment */
     .card-btn i { font-size: 14px; }
 
+    /* HIDE COMMENT COUNT INITIALLY */
+    .comment-count { display: none; }
+    .comment-count.visible { display: inline; }
+
     /* COMMENTS SECTION INSIDE CARD */
     .card-comments-section {
         display: none; /* Hidden by default */
@@ -1361,6 +1365,8 @@
         <div class="card-comments-section" id="com-sec-gal_153"><div class="card-comments-list" id="list-gal_153"></div><div class="card-input-area"><input class="card-input" id="inp-gal_153" placeholder="..."><button class="card-send-btn" onclick="postGalleryComment('gal_153')"><i class="fas fa-paper-plane"></i></button></div></div>
       </div>
 
+    
+
     </div>
 
     <div class="contact-container">
@@ -1409,47 +1415,31 @@
 
     // --- ANIMATION LOGIC ---
     function flyCoins(startElem) {
-        // 1. Identify Target (Mobile = Hamburger, Desktop = Profile Button)
         const isMobile = window.innerWidth <= 768;
         const targetSelector = isMobile ? '#menuBtn' : '#headerLoginBtn';
         const targetElem = document.querySelector(targetSelector);
-
         if (!startElem || !targetElem) return;
-
-        // 2. Get Coordinates
         const startRect = startElem.getBoundingClientRect();
         const targetRect = targetElem.getBoundingClientRect();
-
-        // 3. Create Floating Element
         const floater = document.createElement('div');
         floater.className = 'flying-reward';
-        floater.innerHTML = `+10 <img src="https://iili.io/fhc1SKQ.png">`; // Using your coin image
-        
-        // Set initial position (at the button clicked)
+        floater.innerHTML = `+10 <img src="https://iili.io/fhc1SKQ.png">`; 
         floater.style.top = `${startRect.top}px`;
         floater.style.left = `${startRect.left}px`;
-        
         document.body.appendChild(floater);
-
-        // 4. Trigger Animation (next frame)
         requestAnimationFrame(() => {
             floater.style.top = `${targetRect.top + (targetRect.height/2) - 10}px`;
             floater.style.left = `${targetRect.left + (targetRect.width/2) - 20}px`;
         });
-
-        // 5. Cleanup
-        setTimeout(() => {
-            floater.classList.add('finished');
-            setTimeout(() => floater.remove(), 500); // Remove from DOM after fade out
-        }, 800);
+        setTimeout(() => { floater.classList.add('finished'); setTimeout(() => floater.remove(), 500); }, 800);
     }
   </script>
 
- <!-- FIREBASE LOGIC OPTIMIZAT PENTRU GALERIE -->
+ <!-- FIREBASE LOGIC HYBRID (LIVE LIKES + LAZY COMMENTS) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, getDocs, collection, query, orderBy, serverTimestamp, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, getDocs, collection, query, orderBy, serverTimestamp, increment, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -1479,7 +1469,6 @@
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
             const userRef = doc(db, "accounts", user.uid);
-            // Static check (save read)
             const snap = await getDoc(userRef);
             if(!snap.exists()) { 
                 await setDoc(userRef, { uid: user.uid, username: user.displayName, email: user.email, image: user.photoURL, coins: 250, streak: 0, ip: userIP || "unknown", joinedAt: new Date(), completedQuests: [] }); 
@@ -1493,14 +1482,13 @@
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
             
-            // Check Ban (Static)
             if(userIP) {
                 const banSnap = await getDoc(doc(db, "banned_ips", userIP));
                 if(banSnap.exists()) { siteContent.style.display = 'none'; bannedOverlay.style.display = 'flex'; return; }
             }
 
-            // User Profile (Static Fetch - Saves bandwidth)
-            getDoc(doc(db, "accounts", user.uid)).then(docSnap => {
+            // User Profile (Live Listener for coins update)
+            onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
                     document.getElementById('popUserImg').src = data.image;
@@ -1508,17 +1496,9 @@
                     document.getElementById('popUserEmail').innerText = data.email;
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-                    
-                    // Check Reward Condition (Locally)
                     checkGalleryReward(data, user.uid);
                 }
             });
-
-            // Load Votes for Visible Gallery Items (Optimization needed here)
-            // Pentru simplitate si economie maxima, incarcam voturile DOAR cand userul interactioneaza sau 
-            // incarcam un batch mic. Dat fiind ca sunt 150 de poze, NU putem incarca tot odata.
-            // Solutie: Lasam voturile pe "0" pana cand userul da click sau facem lazy load.
-            // Aici vom incarca doar statusul vizual cand da click pe Like/Dislike momentan.
         }
     });
 
@@ -1537,46 +1517,50 @@
         }
     }
 
-    // --- VOTING LOGIC (Optimized: No Listener) ---
+    // --- LIVE LIKES (ON SNAPSHOT FOR ALL IMAGES) ---
+    // This connects immediately to ALL images to show likes instantly.
+    document.querySelectorAll('.gallery-card').forEach(card => {
+        const imgId = card.getAttribute('data-id');
+        
+        // Listen only to the MAIN document (Likes/Dislikes), NOT comments.
+        onSnapshot(doc(db, "gallery_meta", imgId), (docSnap) => {
+            let likes = 0, dislikes = 0, userVote = 0;
+            if(docSnap.exists()) {
+                const votes = docSnap.data().votes || {};
+                Object.entries(votes).forEach(([uid, val]) => {
+                    if(val === 1) likes++; 
+                    if(val === -1) dislikes++;
+                    if(auth.currentUser && uid === auth.currentUser.uid) userVote = val;
+                });
+            }
+            // Update UI
+            card.querySelector('.like-count').innerText = likes;
+            card.querySelector('.dislike-count').innerText = dislikes;
+            
+            const btnL = card.querySelector('.btn-like');
+            const btnD = card.querySelector('.btn-dislike');
+            
+            // Manage Active Classes
+            if (userVote === 1) {
+                btnL.classList.add('like-active');
+                btnD.classList.remove('dislike-active');
+            } else if (userVote === -1) {
+                btnD.classList.add('dislike-active');
+                btnL.classList.remove('like-active');
+            } else {
+                btnL.classList.remove('like-active');
+                btnD.classList.remove('dislike-active');
+            }
+        });
+    });
+
     window.voteGalleryItem = async (imgId, type) => {
         if (!auth.currentUser) return alert("Loghează-te!");
-        
-        // Optimistic UI Update (Instant feedback fara sa asteptam baza de date)
-        const card = document.querySelector(`.gallery-card[data-id="${imgId}"]`);
-        const btnL = card.querySelector('.btn-like');
-        const btnD = card.querySelector('.btn-dislike');
-        const countL = btnL.querySelector('.like-count');
-        const countD = btnD.querySelector('.dislike-count');
-
-        // Simple toggle visual logic
-        let currentLikes = parseInt(countL.innerText);
-        let currentDislikes = parseInt(countD.innerText);
-        
-        if (type === 1) {
-             if (btnL.classList.contains('like-active')) {
-                 btnL.classList.remove('like-active');
-                 countL.innerText = Math.max(0, currentLikes - 1);
-             } else {
-                 btnL.classList.add('like-active');
-                 btnD.classList.remove('dislike-active');
-                 countL.innerText = currentLikes + 1;
-             }
-        } else {
-             if (btnD.classList.contains('dislike-active')) {
-                 btnD.classList.remove('dislike-active');
-                 countD.innerText = Math.max(0, currentDislikes - 1);
-             } else {
-                 btnD.classList.add('dislike-active');
-                 btnL.classList.remove('like-active');
-                 countD.innerText = currentDislikes + 1;
-             }
-        }
-
-        // DB Update
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const metaRef = doc(db, "gallery_meta", imgId);
         
-        // Try getting meta doc first
+        // Optimistic UI updates handled by snapshot listener automatically now
+        
         const snap = await getDoc(metaRef);
         let votes = {};
         if (snap.exists()) { votes = snap.data().votes || {}; }
@@ -1594,17 +1578,19 @@
         await updateDoc(metaRef, { votes: votes });
     };
 
-    // --- COMMENTS LOGIC (Optimized: Lazy Load One-Time) ---
+    // --- COMMENTS LOGIC (LAZY LOAD + SHOW COUNT ON CLICK) ---
     window.toggleGalleryComments = async (imgId) => {
         const sec = document.getElementById(`com-sec-${imgId}`);
         const listDiv = document.getElementById(`list-${imgId}`);
+        const card = document.querySelector(`.gallery-card[data-id="${imgId}"]`);
+        const countSpan = card.querySelector('.comment-count');
         
         if (sec.style.display === 'block') {
             sec.style.display = 'none';
         } else {
             sec.style.display = 'block';
             
-            // Check if already loaded to save quota
+            // Check if already loaded
             if(sec.getAttribute('data-loaded') === 'true') return;
 
             listDiv.innerHTML = '<div style="font-size:10px; color:#aaa;">Se încarcă...</div>';
@@ -1624,9 +1610,9 @@
             // Mark as loaded
             sec.setAttribute('data-loaded', 'true');
             
-            // Update UI count
-            const card = document.querySelector(`.gallery-card[data-id="${imgId}"]`);
-            if(card) card.querySelector('.comment-count').innerText = snapshot.size;
+            // SHOW THE COUNT NOW
+            countSpan.innerText = snapshot.size;
+            countSpan.classList.add('visible'); // Makes it display: inline
         }
     };
 
@@ -1637,34 +1623,38 @@
         const text = input.value.trim();
         if(!text) return;
 
-        // Visual Animation
         const sendBtn = document.querySelector(`#com-sec-${imgId} .card-send-btn`);
         if(typeof window.flyCoins === "function" && sendBtn) window.flyCoins(sendBtn);
 
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const metaRef = doc(db, "gallery_meta", imgId);
         
-        // Ensure meta exists
         const snap = await getDoc(metaRef);
         if(!snap.exists()) { await setDoc(metaRef, { votes: {} }); }
 
         // 1. Add Comment
-        const newComment = {
+        await setDoc(doc(collection(db, `gallery_meta/${imgId}/comments`)), {
             text: text,
             uid: auth.currentUser.uid,
             name: auth.currentUser.displayName,
             photo: auth.currentUser.photoURL,
             createdAt: serverTimestamp()
-        };
-        await setDoc(doc(collection(db, `gallery_meta/${imgId}/comments`)), newComment);
+        });
 
-        // 2. Append Locally (Instant feedback)
+        // 2. Update Local UI immediately
         const listDiv = document.getElementById(`list-${imgId}`);
         const div = document.createElement('div');
         div.className = 'mini-comment';
         div.innerHTML = `<img src="${auth.currentUser.photoURL}" class="mini-com-pfp"><div class="mini-com-body"><div class="mini-com-name">${auth.currentUser.displayName}</div><div class="mini-com-text">${text}</div></div>`;
         listDiv.appendChild(div);
         listDiv.scrollTop = listDiv.scrollHeight;
+
+        // Update Count
+        const card = document.querySelector(`.gallery-card[data-id="${imgId}"]`);
+        const countSpan = card.querySelector('.comment-count');
+        let currentCount = parseInt(countSpan.innerText) || 0;
+        countSpan.innerText = currentCount + 1;
+        countSpan.classList.add('visible'); // Ensure it's visible if it wasn't
 
         // 3. Update Rewards
         await updateDoc(userRef, { 
