@@ -390,11 +390,11 @@
     </div>
   </footer>
 
-  <!-- FIREBASE LOGIC -->
+<!-- FIREBASE LOGIC OPTIMIZAT PENTRU QUOTA -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc, updateDoc, getCountFromServer, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -410,6 +410,7 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+    // DOM Elements
     const messagesFeed = document.getElementById('messagesFeed');
     const reviewsListContainer = document.getElementById('reviewsList');
     const loadMoreBtn = document.getElementById('loadMoreBtn');
@@ -426,16 +427,18 @@
     const closeAccountPop = document.getElementById('closeAccountPop');
     const rewardModal = document.getElementById('rewardModal');
 
+    // State Variables
     let selectedRating = 0;
     let userIP = null;
-    let activeFilter = 'ALL';
-    let allFetchedDocs = [];
-    let filteredDocs = [];
-    let visibleLimit = 2; 
-    const batchSize = 5;
+    let lastVisibleDoc = null; // Cursor pentru paginare
+    let isFetching = false;
+    let allLoadedStats = { total: 0, sum: 0, counts: {1:0, 2:0, 3:0, 4:0, 5:0} }; // Statistici locale
+    const BATCH_SIZE = 5; // Câte recenzii încărcăm o dată
 
+    // Get IP
     fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => userIP = d.ip);
 
+    // --- UI INTERACTION ---
     document.querySelectorAll('#starSelector i').forEach(star => {
         star.onclick = () => {
             selectedRating = parseInt(star.getAttribute('data-val'));
@@ -447,6 +450,7 @@
     revInput.oninput = () => { document.getElementById('charCount').innerText = revInput.value.length; validateForm(); };
     function validateForm() { sendBtn.disabled = (selectedRating === 0 || revInput.value.trim().length < 3); }
 
+    // --- AUTH FLOW ---
     async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
@@ -470,14 +474,22 @@
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL; headerUserImg.style.display = "block";
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+            
+            // Check Ban
             if(userIP) {
                 const banSnap = await getDoc(doc(db, "banned_ips", userIP));
-                if(banSnap.exists()) { document.getElementById('lockedView').style.display = 'none'; document.getElementById('bannedView').style.display = 'flex'; return; }
+                if(banSnap.exists()) { 
+                    document.getElementById('lockedView').style.display = 'none'; 
+                    document.getElementById('bannedView').style.display = 'flex'; 
+                    return; 
+                }
             }
+
             document.getElementById('lockedView').style.display = 'none';
             document.getElementById('chatView').style.display = 'flex';
             
-            onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
+            // Fetch User Data (One-time fetch instead of Snapshot to save reads if needed, but snapshot is okay for user profile)
+            getDoc(doc(db, "accounts", user.uid)).then((docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
                     document.getElementById('popUserImg').src = data.image;
@@ -492,13 +504,111 @@
                     }
                 }
             });
-            loadReviews();
+
+            // Initial Load of Reviews
+            if(reviewsListContainer.innerHTML === "") {
+                loadNextBatch();
+            }
+
         } else {
             headerLoginText.innerText = "LOGIN"; headerUserImg.style.display = "none";
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
             document.getElementById('chatView').style.display = 'none'; document.getElementById('lockedView').style.display = 'flex';
         }
     });
+
+    // --- REVIEWS LOGIC (OPTIMIZED) ---
+
+    async function loadNextBatch() {
+        if (isFetching) return;
+        isFetching = true;
+        loadMoreBtn.innerText = "Se încarcă...";
+
+        try {
+            let q;
+            if (lastVisibleDoc) {
+                // Fetch next 5 starting after the last one
+                q = query(collection(db, "reviews"), orderBy("createdAt", "desc"), startAfter(lastVisibleDoc), limit(BATCH_SIZE));
+            } else {
+                // Fetch first 5
+                q = query(collection(db, "reviews"), orderBy("createdAt", "desc"), limit(BATCH_SIZE));
+            }
+
+            const snapshot = await getDocs(q);
+
+            if (!snapshot.empty) {
+                lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+                
+                snapshot.forEach(docSnap => {
+                    const data = { id: docSnap.id, ...docSnap.data() };
+                    appendReviewCard(data);
+                    
+                    // Update stats locally
+                    if(data.rating >= 1 && data.rating <= 5) {
+                        allLoadedStats.total++;
+                        allLoadedStats.sum += data.rating;
+                        allLoadedStats.counts[data.rating]++;
+                    }
+                });
+                
+                updateSummaryUI();
+
+                if (snapshot.docs.length < BATCH_SIZE) {
+                    loadMoreBtn.style.display = 'none'; // No more docs
+                } else {
+                    loadMoreBtn.style.display = 'block';
+                    loadMoreBtn.innerText = "Mai multe...";
+                }
+            } else {
+                loadMoreBtn.style.display = 'none';
+                if(reviewsListContainer.innerHTML === "") {
+                    reviewsListContainer.innerHTML = `<div style="text-align:center; color:#aaa; margin-top:20px;">Fii primul care lasă o recenzie!</div>`;
+                }
+            }
+        } catch (e) {
+            console.error("Error loading reviews:", e);
+        } finally {
+            isFetching = false;
+        }
+    }
+
+    loadMoreBtn.onclick = loadNextBatch;
+
+    function appendReviewCard(data, prepend = false) {
+        const votes = data.votes || {};
+        let likes = 0, dislikes = 0;
+        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+        const userVote = votes[auth.currentUser?.uid];
+        const stars = '★'.repeat(data.rating) + '☆'.repeat(5 - data.rating);
+        let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
+        
+        const card = document.createElement('div');
+        card.className = 'review-card';
+        card.innerHTML = `
+            <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${data.name}</div><div class="rev-stars">${stars}</div></div></div>
+            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
+            <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">was this rewiew helpful?:</span><span style="font-size: 10px; color: #666;">sent ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
+                <div class="rev-actions">
+                    <button onclick="voteReview('${data.id}', 1, this)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
+                    <button onclick="voteReview('${data.id}', -1, this)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
+                    <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri</button>
+                </div>
+            </div>
+            <div id="comments-${data.id}" class="comments-section" data-loaded="false">
+                <div class="comments-header">Răspunsuri</div>
+                <div id="comList-${data.id}" class="comment-list"></div>
+                <div id="comInputArea-${data.id}" class="comment-input-area">
+                    <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns...">
+                    <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        `;
+        
+        if (prepend) reviewsListContainer.prepend(card);
+        else reviewsListContainer.appendChild(card);
+    }
+
+    // --- ACTIONS ---
 
     sendBtn.onclick = async () => {
         if(!auth.currentUser || selectedRating === 0) return;
@@ -526,18 +636,18 @@
         };
 
         try {
-            // Get current progress to avoid overwriting other finished tasks
             const data = userAccSnap.data();
             const currentCompleted = data.completedQuests || [];
             
-            // Save the review content
             await setDoc(doc(db, "reviews", uid), reviewData);
             
-            // UPDATE ACCOUNT (FIXED FOR DOUBLE CLAIMING)
+            // Append locally to avoid re-fetch
+            appendReviewCard({id: uid, ...reviewData, createdAt: new Date()}, true);
+
             await updateDoc(userAccRef, { 
                 hasWrittenReview: true, 
                 coins: increment(500),
-                completedQuests: [...currentCompleted, 'review'] // Sync ID with DailyTasks page
+                completedQuests: [...currentCompleted, 'review'] 
             });
 
             rewardModal.classList.add('active');
@@ -548,8 +658,22 @@
         }
     };
 
-    window.voteReview = async (reviewId, type) => {
+    window.voteReview = async (reviewId, type, btnElement) => {
         if (!auth.currentUser) return alert("Loghează-te!");
+        
+        // Optimistic UI Update
+        const countSpan = btnElement.querySelector('.vote-count');
+        let currentCount = parseInt(countSpan.innerText) || 0;
+        const isActive = btnElement.classList.contains(type === 1 ? 'active-like' : 'active-dislike');
+        
+        if(isActive) {
+            btnElement.classList.remove(type === 1 ? 'active-like' : 'active-dislike');
+            countSpan.innerText = Math.max(0, currentCount - 1);
+        } else {
+            btnElement.classList.add(type === 1 ? 'active-like' : 'active-dislike');
+            countSpan.innerText = currentCount + 1;
+        }
+
         const reviewRef = doc(db, "reviews", reviewId);
         const reviewSnap = await getDoc(reviewRef);
         if (!reviewSnap.exists()) return;
@@ -558,28 +682,45 @@
         try { await updateDoc(reviewRef, { votes }); } catch (e) { }
     };
 
-    window.toggleComments = (reviewId) => {
+    window.toggleComments = async (reviewId) => {
         const section = document.getElementById(`comments-${reviewId}`);
-        if(section.style.display === 'block') { section.style.display = 'none'; } else { section.style.display = 'block'; loadComments(reviewId); }
-    };
+        const listDiv = document.getElementById(`comList-${reviewId}`);
+        
+        if(section.style.display === 'block') { 
+            section.style.display = 'none'; 
+        } else { 
+            section.style.display = 'block'; 
+            
+            // Prevent re-fetching if already loaded (saves quota)
+            if(section.getAttribute('data-loaded') === 'true') return;
 
-    function loadComments(reviewId) {
-        const commentsListDiv = document.getElementById(`comList-${reviewId}`);
-        const q = query(collection(db, `reviews/${reviewId}/comments`), orderBy("createdAt", "asc"));
-        onSnapshot(q, (snapshot) => {
-            commentsListDiv.innerHTML = '';
+            listDiv.innerHTML = '<div style="font-size:10px; color:#aaa;">Se încarcă...</div>';
+            
+            const q = query(collection(db, `reviews/${reviewId}/comments`), orderBy("createdAt", "asc"));
+            const snap = await getDocs(q); // One-time fetch
+            
+            listDiv.innerHTML = '';
             let userReplied = false;
-            snapshot.forEach(docSnap => {
+            
+            snap.forEach(docSnap => {
                 const data = docSnap.data();
                 if(auth.currentUser && data.uid === auth.currentUser.uid) userReplied = true;
-                let time = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recent";
-                const div = document.createElement('div');
-                div.className = 'comment-item';
-                div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name} <span style="font-size:10px; color:#666;">(${time})</span></div><div class="com-text">${data.text}</div></div>`;
-                commentsListDiv.appendChild(div);
+                appendCommentHTML(listDiv, data);
             });
+
             if(userReplied) document.getElementById(`comInputArea-${reviewId}`).innerHTML = `<div class="already-replied-tag">Ai răspuns deja.</div>`;
-        });
+            
+            // Mark as loaded
+            section.setAttribute('data-loaded', 'true');
+        }
+    };
+
+    function appendCommentHTML(container, data) {
+        let time = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Acum";
+        const div = document.createElement('div');
+        div.className = 'comment-item';
+        div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name} <span style="font-size:10px; color:#666;">(${time})</span></div><div class="com-text">${data.text}</div></div>`;
+        container.appendChild(div);
     }
 
     window.postComment = async (reviewId) => {
@@ -587,43 +728,22 @@
         const text = input.value.trim();
         if(!text || !auth.currentUser) return;
         try {
-            await setDoc(doc(db, `reviews/${reviewId}/comments/${auth.currentUser.uid}`), { text: text, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, ip: userIP || "unknown", createdAt: serverTimestamp() });
-            input.value = ''; fetchAndDisplayCount(reviewId);
+            const comData = { text: text, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, ip: userIP || "unknown", createdAt: serverTimestamp() };
+            await setDoc(doc(db, `reviews/${reviewId}/comments/${auth.currentUser.uid}`), comData);
+            
+            // Append manually
+            const listDiv = document.getElementById(`comList-${reviewId}`);
+            appendCommentHTML(listDiv, { ...comData, createdAt: new Date() });
+            
+            input.value = ''; 
+            document.getElementById(`comInputArea-${reviewId}`).innerHTML = `<div class="already-replied-tag">Ai răspuns deja.</div>`;
         } catch(e) { alert(e.message); }
     };
 
-    async function fetchAndDisplayCount(reviewId) {
-        try {
-            const snap = await getCountFromServer(collection(db, `reviews/${reviewId}/comments`));
-            const count = snap.data().count;
-            const el = document.getElementById(`comCnt-${reviewId}`);
-            if(el && count > 0) el.innerText = `(${count})`;
-        } catch(e) {}
-    }
-
-    function loadReviews() {
-        const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
-        onSnapshot(q, (snapshot) => {
-            allFetchedDocs = [];
-            let total = 0, sumStars = 0, counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                allFetchedDocs.push({ id: docSnap.id, ...data });
-                if(data.rating >= 1 && data.rating <= 5) { counts[data.rating]++; sumStars += data.rating; total++; }
-            });
-            updateSummary(total, sumStars, counts);
-            applyFilter();
-            visibleLimit = 2; renderReviewsSubset();
-        });
-    }
-
-    window.filterReviews = (starRating) => { if (activeFilter === starRating) { activeFilter = 'ALL'; } else { activeFilter = starRating; } updateFilterUI(); applyFilter(); visibleLimit = 2; renderReviewsSubset(); };
-    function updateFilterUI() { for(let i=1; i<=5; i++) document.getElementById(`filterRow${i}`).classList.remove('active-filter'); if(activeFilter !== 'ALL') document.getElementById(`filterRow${activeFilter}`).classList.add('active-filter'); }
-    function applyFilter() { filteredDocs = allFetchedDocs.filter(item => activeFilter === 'ALL' || item.rating === activeFilter); }
-
-    function updateSummary(total, sumStars, counts) {
-        document.getElementById('totalCount').innerText = total;
-        let avg = total > 0 ? (sumStars / total).toFixed(1) : "0.0";
+    function updateSummaryUI() {
+        const { total, sum, counts } = allLoadedStats;
+        document.getElementById('totalCount').innerText = total + (lastVisibleDoc ? "+" : "");
+        let avg = total > 0 ? (sum / total).toFixed(1) : "0.0";
         document.getElementById('bigScore').innerText = avg;
         let fullStars = Math.round(Number(avg));
         document.getElementById('bigStars').innerText = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars);
@@ -634,37 +754,24 @@
         }
     }
 
-    function renderReviewsSubset() {
-        reviewsListContainer.innerHTML = filteredDocs.length ? '' : `<div style="text-align:center; color:#aaa; margin-top:20px;">Nu există recenzii.</div>`;
-        filteredDocs.slice(0, visibleLimit).forEach(data => appendReviewCard(data));
-        loadMoreBtn.style.display = visibleLimit < filteredDocs.length ? 'block' : 'none';
-    }
+    // Simple visual filter (does not query DB to save quota)
+    window.filterReviews = (starRating) => {
+        const cards = document.querySelectorAll('.review-card');
+        cards.forEach(card => {
+            const starsText = card.querySelector('.rev-stars').innerText;
+            const starCount = (starsText.match(/★/g) || []).length;
+            if(starRating === 'ALL' || starCount === starRating) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        
+        // Update filter UI
+        for(let i=1; i<=5; i++) document.getElementById(`filterRow${i}`).classList.remove('active-filter');
+        if(starRating !== 'ALL') document.getElementById(`filterRow${starRating}`).classList.add('active-filter');
+    };
 
-    function appendReviewCard(data) {
-        const votes = data.votes || {};
-        let likes = 0, dislikes = 0;
-        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
-        const userVote = votes[auth.currentUser?.uid];
-        const stars = '★'.repeat(data.rating) + '☆'.repeat(5 - data.rating);
-        let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
-        const card = document.createElement('div');
-        card.className = 'review-card';
-        card.innerHTML = `
-            <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${data.name}</div><div class="rev-stars">${stars}</div></div></div>
-            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
-            <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">was this rewiew helpful?:</span><span style="font-size: 10px; color: #666;">sent ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
-                <div class="rev-actions">
-                    <button onclick="voteReview('${data.id}', 1)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
-                    <button onclick="voteReview('${data.id}', -1)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
-                    <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri <span id="comCnt-${data.id}" style="font-size:11px;"></span></button>
-                </div>
-            </div>
-            <div id="comments-${data.id}" class="comments-section"><div class="comments-header">Răspunsuri</div><div id="comList-${data.id}" class="comment-list"></div><div id="comInputArea-${data.id}" class="comment-input-area"><input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns..."><button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button></div></div>
-        `;
-        reviewsListContainer.appendChild(card); fetchAndDisplayCount(data.id);
-    }
-
-    loadMoreBtn.onclick = () => { visibleLimit += batchSize; renderReviewsSubset(); };
     const menuBtn = document.getElementById('menuBtn');
     const sideMenu = document.getElementById('sideMenu');
     const closeMenu = document.getElementById('closeMenu');
