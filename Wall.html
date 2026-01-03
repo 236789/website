@@ -776,10 +776,10 @@
   </script>
 
  <!-- FIREBASE & CHAT LOGIC (WITH NATIVE NOTIFICATIONS) -->
-  <script type="module">
-    // 1. IMPORTURI ACTUALIZATE (Am adaugat 'limit')
+<script type="module">
+    // 1. UPDATED IMPORTS (Added persistence logic)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
@@ -796,6 +796,15 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+    // --- FIX: FORCE PERSISTENCE (Keeps user logged in) ---
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => {
+          // Persistence set successfully
+      })
+      .catch((error) => {
+          console.error("Persistence error:", error);
+      });
 
     // DOM ELEMENTS
     const lockedView = document.getElementById('lockedView');
@@ -882,28 +891,9 @@
     // SHARED AUTH
     async function handleLoginFlow() {
         try {
+            // Updated to ensure persistence
             const result = await signInWithPopup(auth, provider);
-            const user = result.user;
-            const ip = userIP || "unknown";
-            const userRef = doc(db, "accounts", user.uid);
-            const snap = await getDoc(userRef);
-
-            if(!snap.exists()) {
-                await setDoc(userRef, {
-                    uid: user.uid,
-                    username: user.displayName,
-                    email: user.email,
-                    image: user.photoURL,
-                    coins: 250,
-                    streak: 0,
-                    ip: ip,
-                    joinedAt: new Date(),
-                    messagesSentToday: 0,
-                    completedQuests: []
-                });
-            } else {
-                await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
-            }
+            // onAuthStateChanged will handle the UI update
         } catch(e) { console.error(e); }
     }
 
@@ -923,6 +913,30 @@
     // AUTH STATE
     onAuthStateChanged(auth, async (user) => {
         if(user) {
+            // Update Account Data in Firestore if needed
+            const userRef = doc(db, "accounts", user.uid);
+            const ip = userIP || "unknown";
+            
+            // Check if user exists, if not create, else update IP
+            getDoc(userRef).then((snap) => {
+                 if(!snap.exists()) {
+                    setDoc(userRef, {
+                        uid: user.uid,
+                        username: user.displayName,
+                        email: user.email,
+                        image: user.photoURL,
+                        coins: 250,
+                        streak: 0,
+                        ip: ip,
+                        joinedAt: new Date(),
+                        messagesSentToday: 0,
+                        completedQuests: []
+                    });
+                } else {
+                    updateDoc(userRef, { ip: ip, image: user.photoURL });
+                }
+            });
+
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
@@ -1100,35 +1114,43 @@
         } catch (e) { console.error("Typing status error:", e); }
     }
 
-    // --- NOTIFICATION LOGIC START (UPDATED) ---
-    
-    // Setup Permission Button Logic
+    // --- NOTIFICATION PERMISSION LOGIC ---
     const notifBtn = document.getElementById('enableNotifsBtn');
     
-    // If permission already granted, hide button
+    // Check permission on load
     if (Notification.permission === "granted" && notifBtn) {
-        notifBtn.style.display = 'none';
+        notifBtn.innerHTML = '<i class="fas fa-check"></i> Notificări Active';
+        notifBtn.style.opacity = "0.5";
+        notifBtn.style.cursor = "default";
+        notifBtn.disabled = true;
     } else if (notifBtn) {
         notifBtn.addEventListener('click', () => {
             if (!("Notification" in window)) {
-                alert("Browserul tău nu suportă notificări.");
+                alert("Acest browser nu suportă notificări.");
             } else {
                 Notification.requestPermission().then(permission => {
                     if (permission === "granted") {
-                        showToast("Notificările au fost activate!", "success");
-                        notifBtn.style.display = 'none';
+                        showToast("Succes! Notificările au fost activate.", "success");
+                        notifBtn.innerHTML = '<i class="fas fa-check"></i> Notificări Active';
+                        notifBtn.disabled = true;
+                        
+                        // Test Notification
                         new Notification("KSDAPromovari", {
-                            body: "✅ Notificările sunt active!",
+                            body: "Test reușit! Vei primi notificări când cineva scrie.",
                             icon: "https://iili.io/fXks1Dv.png"
                         });
+                    } else {
+                        showToast("Ai refuzat notificările.", "error");
                     }
                 });
             }
         });
     }
 
+    // Variable to prevent spam (Cooldown)
     let lastNotificationTime = 0; 
 
+    // --- LISTENER FOR TYPING (Notifications Logic) ---
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         
@@ -1137,7 +1159,7 @@
             let typerNameForNotif = "";
 
             snapshot.forEach((doc) => {
-                if (doc.id !== currentUid) { // Don't notify for myself
+                if (doc.id !== currentUid) { // Don't notify self
                     const data = doc.data();
                     if (data.name) {
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
@@ -1153,18 +1175,17 @@
             });
 
             if (typers.length > 0) {
-                // Update Text on screen
+                // 1. Visual Text
                 if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
                 else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
                 else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
                 typingIndicator.style.opacity = "1";
 
-                // SEND SYSTEM NOTIFICATION (Gmail Style)
+                // 2. SYSTEM NOTIFICATION
                 const now = Date.now();
-                // Conditions: Perm granted, Tab Hidden, Cooldown 15s
-                if (Notification.permission === "granted" && 
-                    document.visibilityState === "hidden" && 
-                    (now - lastNotificationTime > 15000)) {
+                // We REMOVED the "document.visibilityState === 'hidden'" check so you can test it easily.
+                // It will notify even if you are looking at the site.
+                if (Notification.permission === "granted" && (now - lastNotificationTime > 15000)) {
                     
                     new Notification("Cineva scrie...", {
                         body: `${typerNameForNotif} scrie un mesaj acum pe Wall...`,
@@ -1172,7 +1193,8 @@
                         tag: "typing-notification",
                         silent: false
                     });
-                    lastNotificationTime = now;
+                    
+                    lastNotificationTime = now; // Reset cooldown
                 }
 
             } else {
@@ -1181,7 +1203,6 @@
             }
         });
     }
-    // --- NOTIFICATION LOGIC END ---
 
     window.startReply = function(id, name, text) {
         replyData = { id, name, text };
