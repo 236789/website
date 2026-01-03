@@ -413,10 +413,11 @@
     closeMenu.onclick = () => sideMenu.classList.remove('open');
   </script>
 
+<!-- FIREBASE LOGIC OPTIMIZAT (LAZY LOAD) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, setDoc, updateDoc, getCountFromServer, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -432,7 +433,7 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-    const messagesFeed = document.getElementById('messagesFeed');
+    // DOM Elements
     const reviewsListContainer = document.getElementById('reviewsList');
     const loadMoreBtn = document.getElementById('loadMoreBtn');
     
@@ -440,30 +441,27 @@
     const reviewForm = document.getElementById('reviewForm');
     const cooldownDisplay = document.getElementById('cooldownDisplay');
     const cooldownTimer = document.getElementById('cooldownTimer');
-    
     const revInput = document.getElementById('revInput');
     const sendBtn = document.getElementById('sendBtn');
     
     const headerLoginBtn = document.getElementById('headerLoginBtn');
-    const headerLoginText = document.getElementById('headerLoginText');
-    const headerUserImg = document.getElementById('headerUserImg');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
     const rewardModal = document.getElementById('rewardModal');
 
     let userIP = null;
-    let allFetchedDocs = [];
-    let visibleLimit = 2; 
-    const batchSize = 5;
+    let lastVisibleDoc = null;
+    let isFetching = false;
     let cooldownInterval = null;
+    const BATCH_SIZE = 5;
 
     fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => userIP = d.ip);
 
     revInput.oninput = () => { document.getElementById('charCount').innerText = revInput.value.length; validateForm(); };
     function validateForm() { sendBtn.disabled = (revInput.value.trim().length < 3); }
 
-    // --- COOLDOWN CHECKER ---
+    // --- COOLDOWN LOGIC ---
     function updateCooldownUI() {
         const lastTime = localStorage.getItem('last_feedback_time');
         if(!lastTime) {
@@ -474,10 +472,9 @@
         }
 
         const diff = Date.now() - parseInt(lastTime);
-        const cooldownTime = 300000; // 5 Minutes in MS
+        const cooldownTime = 300000; // 5 Minutes
 
         if(diff < cooldownTime) {
-            // STILL IN COOLDOWN
             reviewForm.style.display = 'none';
             cooldownDisplay.style.display = 'block';
             
@@ -486,27 +483,23 @@
             const s = Math.floor((remaining % 60000) / 1000);
             cooldownTimer.innerText = `${m}:${s.toString().padStart(2, '0')}`;
             
-            if(!cooldownInterval) {
-                cooldownInterval = setInterval(updateCooldownUI, 1000);
-            }
+            if(!cooldownInterval) cooldownInterval = setInterval(updateCooldownUI, 1000);
         } else {
-            // COOLDOWN FINISHED
             reviewForm.style.display = 'block';
             cooldownDisplay.style.display = 'none';
             if(cooldownInterval) clearInterval(cooldownInterval);
         }
     }
-
-    // Run check immediately
     updateCooldownUI();
 
+    // --- AUTH ---
     async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
             const ip = userIP || "unknown";
             const userRef = doc(db, "accounts", user.uid);
-            const snap = await getDoc(userRef);
+            const snap = await getDoc(userRef); // One time read
             if(!snap.exists()) { await setDoc(userRef, { uid: user.uid, username: user.displayName, email: user.email, image: user.photoURL, coins: 250, streak: 0, ip: ip, joinedAt: new Date(), completedQuests: [] }); } 
             else { await updateDoc(userRef, { ip: ip, image: user.photoURL }); }
         } catch(e) { console.error(e); }
@@ -514,15 +507,17 @@
 
     if(headerLoginBtn) headerLoginBtn.onclick = () => { if (!auth.currentUser) handleLoginFlow(); else accountModal.classList.add('active'); };
     if(mobileLoginBtn) mobileLoginBtn.onclick = () => { if (!auth.currentUser) handleLoginFlow(); else accountModal.classList.add('active'); };
-    if(document.getElementById('loginBtn')) document.getElementById('loginBtn').onclick = handleLoginFlow;
+    document.getElementById('loginBtn').onclick = handleLoginFlow;
     closeAccountPop.onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
 
     onAuthStateChanged(auth, async (user) => {
         if(user) {
-            headerLoginText.innerText = "ACCOUNT";
-            headerUserImg.src = user.photoURL; headerUserImg.style.display = "block";
+            document.getElementById('headerLoginText').innerText = "ACCOUNT";
+            document.getElementById('headerUserImg').src = user.photoURL;
+            document.getElementById('headerUserImg').style.display = "block";
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+            
             if(userIP) {
                 const banSnap = await getDoc(doc(db, "banned_ips", userIP));
                 if(banSnap.exists()) { document.getElementById('lockedView').style.display = 'none'; document.getElementById('bannedView').style.display = 'flex'; return; }
@@ -530,7 +525,8 @@
             document.getElementById('lockedView').style.display = 'none';
             document.getElementById('chatView').style.display = 'flex';
             
-            onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
+            // Get User Data (One Time)
+            getDoc(doc(db, "accounts", user.uid)).then(docSnap => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
                     document.getElementById('popUserImg').src = data.image;
@@ -540,19 +536,113 @@
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 }
             });
-            loadFeedbacks();
+
+            // Initial Load of Feedbacks
+            if(reviewsListContainer.innerHTML === "") {
+                loadNextBatch();
+                fetchTotalCount(); // Get total count once
+            }
         } else {
-            headerLoginText.innerText = "LOGIN"; headerUserImg.style.display = "none";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-            document.getElementById('chatView').style.display = 'none'; document.getElementById('lockedView').style.display = 'flex';
+            document.getElementById('headerLoginText').innerText = "LOGIN"; 
+            document.getElementById('headerUserImg').style.display = "none";
+            document.getElementById('chatView').style.display = 'none'; 
+            document.getElementById('lockedView').style.display = 'flex';
         }
     });
 
-    // SEND FEEDBACK
+    // --- FETCH TOTAL COUNT (CHEAP) ---
+    async function fetchTotalCount() {
+        try {
+            const snap = await getCountFromServer(collection(db, "feedbacks"));
+            document.getElementById('totalCount').innerText = snap.data().count;
+        } catch(e) {}
+    }
+
+    // --- FEEDBACK LOADING (PAGINATED) ---
+    async function loadNextBatch() {
+        if (isFetching) return;
+        isFetching = true;
+        loadMoreBtn.innerText = "Se încarcă...";
+
+        try {
+            let q;
+            if (lastVisibleDoc) {
+                q = query(collection(db, "feedbacks"), orderBy("createdAt", "desc"), startAfter(lastVisibleDoc), limit(BATCH_SIZE));
+            } else {
+                q = query(collection(db, "feedbacks"), orderBy("createdAt", "desc"), limit(BATCH_SIZE));
+            }
+
+            const snapshot = await getDocs(q);
+
+            if (!snapshot.empty) {
+                lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+                
+                snapshot.forEach(docSnap => {
+                    const data = { id: docSnap.id, ...docSnap.data() };
+                    appendReviewCard(data);
+                });
+
+                if (snapshot.docs.length < BATCH_SIZE) {
+                    loadMoreBtn.style.display = 'none';
+                } else {
+                    loadMoreBtn.style.display = 'block';
+                    loadMoreBtn.innerText = "Mai multe...";
+                }
+            } else {
+                loadMoreBtn.style.display = 'none';
+                if(reviewsListContainer.innerHTML === "") {
+                    reviewsListContainer.innerHTML = `<div style="text-align:center; color:#aaa; margin-top:20px;">Fii primul care trimite feedback!</div>`;
+                }
+            }
+        } catch (e) {
+            console.error("Error loading feedbacks:", e);
+        } finally {
+            isFetching = false;
+        }
+    }
+
+    loadMoreBtn.onclick = loadNextBatch;
+
+    function appendReviewCard(data, prepend = false) {
+        const votes = data.votes || {};
+        let likes = 0, dislikes = 0;
+        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+        const userVote = votes[auth.currentUser?.uid];
+        let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
+        
+        const card = document.createElement('div');
+        card.className = 'review-card';
+        card.innerHTML = `
+            <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${data.name}</div></div></div>
+            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
+            <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">de acord?:</span><span style="font-size: 10px; color: #666;">${date.toLocaleDateString()}</span></div>
+                <div class="rev-actions">
+                    <button onclick="voteFeedback('${data.id}', 1, this)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
+                    <button onclick="voteFeedback('${data.id}', -1, this)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
+                    <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri</button>
+                </div>
+            </div>
+            <div id="comments-${data.id}" class="comments-section" data-loaded="false">
+                <div class="comments-header">Răspunsuri</div>
+                <div id="comList-${data.id}" class="comment-list"></div>
+                <div id="comInputArea-${data.id}" class="comment-input-area">
+                    <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns...">
+                    <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        `;
+        
+        if(prepend) reviewsListContainer.prepend(card);
+        else reviewsListContainer.appendChild(card);
+    }
+
+    // --- ACTIONS ---
+
+    // 1. Send Feedback
     sendBtn.onclick = async () => {
         if(!auth.currentUser) return;
-        
         const uid = auth.currentUser.uid;
+        
         const feedbackData = { 
             text: revInput.value.trim(), 
             name: auth.currentUser.displayName, 
@@ -564,132 +654,122 @@
         };
 
         try {
-            await addDoc(collection(db, "feedbacks"), feedbackData);
+            const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
             
-            // Give reward (25 coins)
-            const userAccRef = doc(db, "accounts", uid);
-            await updateDoc(userAccRef, { coins: increment(25) });
-
-            // COOLDOWN START
+            // UI Update (Prepend)
+            appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
+            
+            // Reward & Cooldown
+            await updateDoc(doc(db, "accounts", uid), { coins: increment(25) });
             localStorage.setItem('last_feedback_time', Date.now());
             updateCooldownUI();
 
-            // CHECK IF FIRST TIME FOR MODAL
             if(!localStorage.getItem('first_feedback_reward')) {
                 rewardModal.classList.add('active');
                 localStorage.setItem('first_feedback_reward', 'true');
             } else {
-                // Just animate coins
-                if(typeof window.flyCoins === "function") {
-                    window.flyCoins(sendBtn);
-                }
+                if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
             }
             
-            // Reset Form
-            revInput.value = '';
-            document.getElementById('charCount').innerText = '0';
-            sendBtn.disabled = true;
-
-        } catch(e) { 
-            alert("Eroare: " + e.message); 
-        }
+            revInput.value = ''; document.getElementById('charCount').innerText = '0'; sendBtn.disabled = true;
+        } catch(e) { alert("Eroare: " + e.message); }
     };
 
-    window.voteFeedback = async (id, type) => {
+    // 2. Vote (Optimistic)
+    window.voteFeedback = async (id, type, btnElement) => {
         if (!auth.currentUser) return alert("Loghează-te!");
+        
+        // Find sibling buttons
+        const parent = btnElement.parentElement;
+        const btnLike = parent.querySelector('button:first-child');
+        const btnDislike = parent.querySelector('button:nth-child(2)');
+        
+        const countLike = btnLike.querySelector('.vote-count');
+        const countDislike = btnDislike.querySelector('.vote-count');
+        
+        let likes = parseInt(countLike.innerText);
+        let dislikes = parseInt(countDislike.innerText);
+
+        // Simple Toggle Logic
+        if(type === 1) {
+            if(btnLike.classList.contains('active-like')) {
+                btnLike.classList.remove('active-like'); likes--;
+            } else {
+                btnLike.classList.add('active-like'); likes++;
+                if(btnDislike.classList.contains('active-dislike')) { btnDislike.classList.remove('active-dislike'); dislikes--; }
+            }
+        } else {
+            if(btnDislike.classList.contains('active-dislike')) {
+                btnDislike.classList.remove('active-dislike'); dislikes--;
+            } else {
+                btnDislike.classList.add('active-dislike'); dislikes++;
+                if(btnLike.classList.contains('active-like')) { btnLike.classList.remove('active-like'); likes--; }
+            }
+        }
+        
+        // Update UI
+        countLike.innerText = likes; countDislike.innerText = dislikes;
+
+        // DB Update
         const ref = doc(db, "feedbacks", id);
-        const snap = await getDoc(ref);
+        const snap = await getDoc(ref); // One fetch needed to get current map
         if (!snap.exists()) return;
         const votes = snap.data().votes || {}; 
         if (votes[auth.currentUser.uid] === type) { delete votes[auth.currentUser.uid]; } else { votes[auth.currentUser.uid] = type; }
-        try { await updateDoc(ref, { votes }); } catch (e) { }
+        await updateDoc(ref, { votes });
     };
 
-    window.toggleComments = (id) => {
+    // 3. Toggle Comments (Lazy Load)
+    window.toggleComments = async (id) => {
         const section = document.getElementById(`comments-${id}`);
-        if(section.style.display === 'block') { section.style.display = 'none'; } else { section.style.display = 'block'; loadComments(id); }
-    };
+        const listDiv = document.getElementById(`comList-${id}`);
+        
+        if(section.style.display === 'block') {
+            section.style.display = 'none';
+        } else {
+            section.style.display = 'block';
+            
+            if(section.getAttribute('data-loaded') === 'true') return;
 
-    function loadComments(id) {
-        const commentsListDiv = document.getElementById(`comList-${id}`);
-        const q = query(collection(db, `feedbacks/${id}/comments`), orderBy("createdAt", "asc"));
-        onSnapshot(q, (snapshot) => {
-            commentsListDiv.innerHTML = '';
+            listDiv.innerHTML = '<div style="font-size:10px; color:#aaa;">Se încarcă...</div>';
+            
+            const q = query(collection(db, `feedbacks/${id}/comments`), orderBy("createdAt", "asc"));
+            const snapshot = await getDocs(q); // One time fetch
+            
+            listDiv.innerHTML = '';
             snapshot.forEach(docSnap => {
                 const data = docSnap.data();
-                let time = data.createdAt ? data.createdAt.toDate().toLocaleString() : "Recent";
-                const div = document.createElement('div');
-                div.className = 'comment-item';
-                div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name} <span style="font-size:10px; color:#666;">(${time})</span></div><div class="com-text">${data.text}</div></div>`;
-                commentsListDiv.appendChild(div);
+                appendCommentHTML(listDiv, data);
             });
-        });
+            section.setAttribute('data-loaded', 'true');
+        }
+    };
+
+    function appendCommentHTML(container, data) {
+        const div = document.createElement('div');
+        div.className = 'comment-item';
+        div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name}</div><div class="com-text">${data.text}</div></div>`;
+        container.appendChild(div);
     }
 
+    // 4. Post Comment
     window.postComment = async (id) => {
         const input = document.getElementById(`comInput-${id}`);
         const text = input.value.trim();
         if(!text || !auth.currentUser) return;
+
         try {
-            await setDoc(doc(db, `feedbacks/${id}/comments/${auth.currentUser.uid}`), { text: text, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, ip: userIP || "unknown", createdAt: serverTimestamp() });
-            input.value = ''; fetchAndDisplayCount(id);
+            const commentData = { text: text, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, ip: userIP || "unknown", createdAt: serverTimestamp() };
+            await addDoc(collection(db, `feedbacks/${id}/comments`), commentData);
+            
+            // Append Locally
+            const listDiv = document.getElementById(`comList-${id}`);
+            appendCommentHTML(listDiv, commentData);
+            
+            input.value = '';
         } catch(e) { alert(e.message); }
     };
 
-    async function fetchAndDisplayCount(id) {
-        try {
-            const snap = await getCountFromServer(collection(db, `feedbacks/${id}/comments`));
-            const count = snap.data().count;
-            const el = document.getElementById(`comCnt-${id}`);
-            if(el && count > 0) el.innerText = `(${count})`;
-        } catch(e) {}
-    }
-
-    function loadFeedbacks() {
-        const q = query(collection(db, "feedbacks"), orderBy("createdAt", "desc"));
-        onSnapshot(q, (snapshot) => {
-            allFetchedDocs = [];
-            let total = 0;
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                allFetchedDocs.push({ id: docSnap.id, ...data });
-                total++;
-            });
-            document.getElementById('totalCount').innerText = total;
-            visibleLimit = 2; renderReviewsSubset();
-        });
-    }
-
-    function renderReviewsSubset() {
-        reviewsListContainer.innerHTML = allFetchedDocs.length ? '' : `<div style="text-align:center; color:#aaa; margin-top:20px;">Nu există feedback-uri. Fii primul!</div>`;
-        allFetchedDocs.slice(0, visibleLimit).forEach(data => appendReviewCard(data));
-        loadMoreBtn.style.display = visibleLimit < allFetchedDocs.length ? 'block' : 'none';
-    }
-
-    function appendReviewCard(data) {
-        const votes = data.votes || {};
-        let likes = 0, dislikes = 0;
-        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
-        const userVote = votes[auth.currentUser?.uid];
-        let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
-        const card = document.createElement('div');
-        card.className = 'review-card';
-        card.innerHTML = `
-            <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${data.name}</div></div></div>
-            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
-            <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">de acord?:</span><span style="font-size: 10px; color: #666;">sent ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
-                <div class="rev-actions">
-                    <button onclick="voteFeedback('${data.id}', 1)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
-                    <button onclick="voteFeedback('${data.id}', -1)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
-                    <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri <span id="comCnt-${data.id}" style="font-size:11px;"></span></button>
-                </div>
-            </div>
-            <div id="comments-${data.id}" class="comments-section"><div class="comments-header">Răspunsuri</div><div id="comList-${data.id}" class="comment-list"></div><div id="comInputArea-${data.id}" class="comment-input-area"><input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns..."><button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button></div></div>
-        `;
-        reviewsListContainer.appendChild(card); fetchAndDisplayCount(data.id);
-    }
-
-    loadMoreBtn.onclick = () => { visibleLimit += batchSize; renderReviewsSubset(); };
   </script>
 </body>
 </html>
