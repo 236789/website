@@ -1616,14 +1616,62 @@
         }
     };
 
+// --- HELPER: Visual Input Cooldown (No Alerts) ---
+    function triggerInputCooldown(input, btn, seconds) {
+        const originalPlaceholder = input.placeholder;
+        
+        // Disable and Style Red
+        input.disabled = true;
+        if(btn) btn.disabled = true;
+        
+        input.style.borderColor = '#ff4757';
+        input.style.color = '#ff4757';
+        input.style.backgroundColor = 'rgba(255, 71, 87, 0.1)';
+        input.style.fontWeight = 'bold';
+        
+        let timeLeft = seconds;
+        input.value = `Așteaptă ${timeLeft}s...`; 
+        
+        const interval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft <= 0) {
+                clearInterval(interval);
+                // Reset to normal
+                input.disabled = false;
+                if(btn) btn.disabled = false;
+                input.value = '';
+                input.placeholder = originalPlaceholder;
+                input.style.borderColor = ''; 
+                input.style.color = '';
+                input.style.backgroundColor = '';
+                input.style.fontWeight = '';
+            } else {
+                input.value = `Așteaptă ${timeLeft}s...`;
+            }
+        }, 1000);
+    }
+
     window.postGalleryComment = async (imgId) => {
         if (!auth.currentUser) return alert("Trebuie să fii logat!");
         
         const input = document.getElementById(`inp-${imgId}`);
+        const sendBtn = document.querySelector(`#com-sec-${imgId} .card-send-btn`);
+
+        // --- 1. CHECK COOLDOWN ---
+        const lastCommentTime = localStorage.getItem('last_comment_time');
+        const now = Date.now();
+        const cooldownDuration = 60000; // 60 seconds
+
+        if (lastCommentTime && (now - parseInt(lastCommentTime) < cooldownDuration)) {
+            const remaining = Math.ceil((cooldownDuration - (now - parseInt(lastCommentTime))) / 1000);
+            triggerInputCooldown(input, sendBtn, remaining);
+            return; // Stop here
+        }
+
         const text = input.value.trim();
         if(!text) return;
 
-        const sendBtn = document.querySelector(`#com-sec-${imgId} .card-send-btn`);
+        // Visual Animation
         if(typeof window.flyCoins === "function" && sendBtn) window.flyCoins(sendBtn);
 
         const userRef = doc(db, "accounts", auth.currentUser.uid);
@@ -1654,15 +1702,17 @@
         const countSpan = card.querySelector('.comment-count');
         let currentCount = parseInt(countSpan.innerText) || 0;
         countSpan.innerText = currentCount + 1;
-        countSpan.classList.add('visible'); // Ensure it's visible if it wasn't
+        countSpan.classList.add('visible'); 
 
-        // 3. Update Rewards
+        // 3. Update Rewards & Trigger Cooldown
         await updateDoc(userRef, { 
             galleryCommentsToday: increment(1),
-            coins: increment(10)
+            coins: increment(5) // CHANGED TO 5 COINS
         });
         
-        input.value = '';
+        // Set cooldown timestamp and trigger visual timer
+        localStorage.setItem('last_comment_time', Date.now());
+        triggerInputCooldown(input, sendBtn, 60);
     };
 
     // Listeners UI
