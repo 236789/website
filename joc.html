@@ -9,6 +9,7 @@
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
  
 
 <script>
@@ -11584,5 +11585,88 @@ Dacă apreciezi ce fac, mă poți susține cu o donație. Orice ajutor contează
   text-shadow: 0 0 4px black;
 ">💪 60s</div>
  
+
+<!-- 🟢 PASTE THE NEW CODE RIGHT HERE 👇 -->
+
+<!-- 🕒 KEVINUTA QUEST TRACKER (5 MINUTES) -->
+<script>
+(function() {
+    // 1. Get the User ID from the URL (sent by DailyTasks)
+    const urlParams = new URLSearchParams(window.location.search);
+    const questUID = urlParams.get('uid');
+
+    // Only run this if we have an ID
+    if (questUID) {
+        console.log("🎯 Quest Tracker Active for User:", questUID);
+        
+        // Initialize Firestore
+        const firestoreDB = firebase.firestore();
+        
+        let secondsPlayed = 0;
+        const targetSeconds = 300; // 5 Minutes
+        let questCompleted = false;
+
+        // Create the visual timer
+        const timerDisplay = document.createElement('div');
+        timerDisplay.style.cssText = "position:fixed; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#00ff88; padding:8px 16px; border-radius:20px; font-family:monospace; font-weight:bold; font-size:16px; z-index:999999; border:2px solid #00ff88; pointer-events:none; box-shadow: 0 0 10px #00ff88;";
+        timerDisplay.innerHTML = "⏳ Quest: 0:00 / 5:00";
+        document.body.appendChild(timerDisplay);
+
+        const questInterval = setInterval(() => {
+            // Check if game is paused (uses your game's existing variable)
+            if (typeof window.isGamePaused !== 'undefined' && window.isGamePaused) {
+                timerDisplay.style.color = "orange";
+                timerDisplay.style.borderColor = "orange";
+                timerDisplay.innerHTML = "⏸️ PAUZĂ";
+                return; 
+            }
+
+            // Resume normal color
+            timerDisplay.style.color = "#00ff88";
+            timerDisplay.style.borderColor = "#00ff88";
+
+            secondsPlayed++;
+            
+            // Update visual timer
+            const mins = Math.floor(secondsPlayed / 60);
+            const secs = secondsPlayed % 60;
+            timerDisplay.innerHTML = `⏳ Quest: ${mins}:${secs.toString().padStart(2, '0')} / 5:00`;
+
+            // Check completion
+            if (secondsPlayed >= targetSeconds && !questCompleted) {
+                questCompleted = true;
+                completeQuest();
+            }
+        }, 1000);
+
+        function completeQuest() {
+            clearInterval(questInterval);
+            
+            // Update the Google Account Database (Firestore)
+            firestoreDB.collection("accounts").doc(questUID).update({
+                kevinutaPlayedToday: 1
+            }).then(() => {
+                // Success Message
+                timerDisplay.style.background = "#ffd700";
+                timerDisplay.style.color = "#000";
+                timerDisplay.style.borderColor = "#fff";
+                timerDisplay.innerHTML = "🎉 QUEST COMPLETAT! +550 COINS";
+                
+                // Success Sound
+                const audio = new Audio('https://ksdapromovarii.squarespace.com/s/Correct-Answer-sound-effect.mp3'); 
+                audio.volume = 0.5;
+                audio.play().catch(e => console.log(e));
+
+                // Remove timer after 5 seconds
+                setTimeout(() => { timerDisplay.remove(); }, 5000);
+            }).catch(err => {
+                console.error("Error updating quest:", err);
+                timerDisplay.innerHTML = "❌ Eroare conexiune!";
+            });
+        }
+    }
+})();
+</script>
 </body>
 </html>     
+
