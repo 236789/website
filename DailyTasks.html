@@ -308,7 +308,11 @@
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' },
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
-        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' }
+        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
+        
+        // --- NEW QUESTS ADDED HERE ---
+        { id: 'visit_news', title: 'Vizitează pagina Noutăți/Anunțuri', reward: 100, target: 1, link: 'anunturi.html', pageName: 'Anunțuri' },
+        { id: 'give_feedback', title: 'Dă-ne un feedback sau idei noi', reward: 250, target: 1, link: 'feedback.html', pageName: 'Feedbacks' }
     ];
 
     // --- SECURE TIMER VARIABLES ---
@@ -392,15 +396,18 @@
                 // Check for streak calculation (only if not completed)
                 if (!isCompleted) allDailyDone = false;
 
-            } else {
+        } else {
                 let current = 0;
                 if (q.id === 'msg3') current = userData.messagesSentToday || 0;
-                // For review and social, we rely on the DB boolean/count, but if they are hidden they are "done"
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
                 if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
                 if (q.id === 'social3') current = userData.socialFollowed || 0;
+                
+                // --- NEW LOGIC ADDED HERE ---
+                if (q.id === 'visit_news') current = userData.newsVisitedToday || 0;
+                if (q.id === 'give_feedback') current = userData.feedbackGivenToday || 0;
 
-                const progress = Math.min((current / q.target) * 100, 100);
+                const progress = Math.min((current / q.target) * 100, 100);;
                 progressHTML = `
                     <div class="progress-wrapper">
                         <div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div>
@@ -492,11 +499,15 @@
                             console.log("Server detected new day. Resetting tasks...");
                             const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
                             
-                            await updateDoc(userRef, {
+await updateDoc(userRef, {
                                 messagesSentToday: 0,
                                 tiktoksFollowed: 0,
                                 galleryLikesToday: 0,
                                 galleryCommentsToday: 0,
+                                // --- NEW RESET FIELDS ---
+                                newsVisitedToday: 0,
+                                feedbackGivenToday: 0,
+                                // ------------------------
                                 completedQuests: persistentQuests, 
                                 lastResetDate: roDate 
                             });
