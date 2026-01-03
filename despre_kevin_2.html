@@ -367,27 +367,28 @@
 </div> <!-- End Site Content -->
 
   <script>
+    // --- UI LOGIC ---
     const menuBtn = document.getElementById("menuBtn");
-    const sideMenu = document.getElementById("sideMenu");
     const closeMenu = document.getElementById("closeMenu");
+    const sideMenu = document.getElementById("sideMenu");
 
-    menuBtn.onclick = () => sideMenu.classList.add("open");
-    closeMenu.onclick = () => sideMenu.classList.remove("open");
+    // Toggle Menu
+    if (menuBtn && closeMenu && sideMenu) {
+        menuBtn.addEventListener("click", () => sideMenu.classList.add("open"));
+        closeMenu.addEventListener("click", () => sideMenu.classList.remove("open"));
+    }
 
-    document.addEventListener("click", (e) => {
-      if (sideMenu.classList.contains("open") && !sideMenu.contains(e.target) && !menuBtn.contains(e.target)) {
-        sideMenu.classList.remove("open");
-      }
+    // Close menu when clicking a link
+    document.querySelectorAll('#sideMenu a').forEach(link => {
+        link.addEventListener('click', () => sideMenu.classList.remove('open'));
     });
-  </script>
-
-  <!-- FIREBASE GLOBAL LOGIC (UPDATED FOR MOBILE BUTTON) -->
-  <script type="module">
+</script>
+<script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // --- CONFIGURATIA TA ---
+    // --- CONFIGURATION ---
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -402,11 +403,9 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-    // DOM Elements
+    // --- DOM ELEMENTS ---
     const siteContent = document.getElementById('siteContent');
     const bannedOverlay = document.getElementById('bannedOverlay');
-    const globalBanReason = document.getElementById('globalBanReason');
-    const globalBanIp = document.getElementById('globalBanIp');
     
     // Login Buttons
     const headerLoginBtn = document.getElementById('headerLoginBtn');
@@ -414,71 +413,140 @@
     const headerLoginText = document.getElementById('headerLoginText');
     const headerUserImg = document.getElementById('headerUserImg');
 
-    // 1. GLOBAL BAN CHECK
-    async function checkGlobalBan() {
+    // Account Modal Elements
+    const accountModal = document.getElementById('accountModal');
+    const closeAccountPop = document.getElementById('closeAccountPop');
+    const popLogoutBtn = document.getElementById('popLogoutBtn');
+
+    // --- 1. IP & BAN CHECK ---
+    let userIP = null;
+    fetch('https://api.ipify.org?format=json')
+        .then(r => r.json())
+        .then(d => {
+            userIP = d.ip;
+            checkBan(d.ip);
+        });
+
+    async function checkBan(ip) {
         try {
-            const res = await fetch('https://api.ipify.org?format=json');
-            const data = await res.json();
-            const userIP = data.ip;
-
-            const banRef = doc(db, "banned_ips", userIP);
-            const banSnap = await getDoc(banRef);
-
-            if (banSnap.exists()) {
-                const banData = banSnap.data();
-                siteContent.style.display = 'none';
-                bannedOverlay.style.display = 'flex';
-                
-                globalBanReason.innerText = banData.reason || "Nespecificat";
-                globalBanIp.innerText = userIP;
+            const snap = await getDoc(doc(db, "banned_ips", ip));
+            if (snap.exists()) {
+                if(siteContent) siteContent.style.display = 'none';
+                if(bannedOverlay) {
+                    bannedOverlay.style.display = 'flex';
+                    document.getElementById('globalBanReason').innerText = snap.data().reason || "Nespecificat";
+                    document.getElementById('globalBanIp').innerText = ip;
+                }
                 document.body.style.overflow = 'hidden';
             }
-        } catch (e) {
-            console.error("Eroare verificare ban:", e);
-        }
+        } catch(e) { console.error("Ban check error", e); }
     }
-    checkGlobalBan();
 
-    // 2. AUTH LOGIC
-    function handleLogin() {
-        if (!auth.currentUser) {
-            signInWithPopup(auth, provider).catch(e => alert(e.message));
-        } else {
-            if(confirm("Vrei să te deconectezi?")) {
-                signOut(auth);
+    // --- 2. AUTH HANDLER ---
+    async function handleLogin() {
+        try {
+            const result = await signInWithPopup(auth, provider);
+            // Create user doc if not exists
+            const userRef = doc(db, "accounts", result.user.uid);
+            const snap = await getDoc(userRef);
+            if(!snap.exists()) {
+                await setDoc(userRef, { 
+                    uid: result.user.uid, 
+                    username: result.user.displayName, 
+                    email: result.user.email, 
+                    image: result.user.photoURL, 
+                    coins: 250, 
+                    streak: 0, 
+                    ip: userIP || "unknown", 
+                    joinedAt: new Date() 
+                });
+            } else {
+                // Update IP/Image on login
+                await setDoc(userRef, { ip: userIP, image: result.user.photoURL }, { merge: true });
             }
+        } catch(e) { 
+            console.error("Login error:", e); 
         }
     }
 
-    if(headerLoginBtn) headerLoginBtn.addEventListener('click', handleLogin);
-    if(mobileLoginBtn) mobileLoginBtn.addEventListener('click', handleLogin);
+    // --- 3. EVENT LISTENERS ---
+    // Open Modal or Login based on auth state is handled in click events below
+    const toggleAuthAction = () => {
+        if (!auth.currentUser) handleLogin();
+        else accountModal.classList.add('active');
+    };
 
-    // 3. AUTH STATE LISTENER (UPDATED)
-    onAuthStateChanged(auth, user => {
+    if(headerLoginBtn) headerLoginBtn.onclick = toggleAuthAction;
+    
+    if(mobileLoginBtn) mobileLoginBtn.onclick = () => {
+        if (!auth.currentUser) handleLogin();
+        else {
+            // Close side menu if open, then show modal
+            document.getElementById('sideMenu').classList.remove('open');
+            accountModal.classList.add('active');
+        }
+    };
+
+    if(closeAccountPop) closeAccountPop.onclick = () => accountModal.classList.remove('active');
+    
+    if(popLogoutBtn) popLogoutBtn.onclick = () => {
+        signOut(auth).then(() => {
+            accountModal.classList.remove('active');
+            location.reload();
+        });
+    };
+
+    // --- 4. REAL-TIME LISTENER ---
+    onAuthStateChanged(auth, (user) => {
         if (user) {
-            // Update Header
-            if(headerLoginText) headerLoginText.innerText = "LOGOUT";
+            // --- LOGGED IN STATE ---
+            
+            // Header UI
+            if(headerLoginText) headerLoginText.innerText = "ACCOUNT";
             if(headerUserImg) {
                 headerUserImg.src = user.photoURL;
                 headerUserImg.style.display = "block";
             }
-            // Update Mobile Button (LOGOUT RED MODE)
+
+            // Mobile Menu UI
             if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Deconectare';
-                mobileLoginBtn.classList.add('logout-mode');
+                mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+                // Remove login styling if any specific class exists, keep standard
             }
+
+            // SYNC DATA (Coins, Streak, etc.)
+            onSnapshot(doc(db, "accounts", user.uid), (snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    // Update Modal
+                    const pImg = document.getElementById('popUserImg');
+                    const pName = document.getElementById('popUserName');
+                    const pEmail = document.getElementById('popUserEmail');
+                    const pCoins = document.getElementById('popUserCoins');
+                    const pStreak = document.querySelector('.streak-txt');
+
+                    if(pImg) pImg.src = data.image || user.photoURL;
+                    if(pName) pName.innerText = data.username || user.displayName;
+                    if(pEmail) pEmail.innerText = data.email || user.email;
+                    if(pCoins) pCoins.innerText = data.coins || 0;
+                    if(pStreak) pStreak.innerText = `Daily Streak: ${data.streak || 0}`;
+                }
+            });
+
         } else {
-            // Update Header
+            // --- LOGGED OUT STATE ---
+            
+            // Header UI
             if(headerLoginText) headerLoginText.innerText = "LOGIN";
             if(headerUserImg) headerUserImg.style.display = "none";
-            // Update Mobile Button (LOGIN CYAN MODE)
+
+            // Mobile Menu UI
             if(mobileLoginBtn) {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-                mobileLoginBtn.classList.remove('logout-mode');
             }
         }
     });
-  </script>
+</script>
 
 </body>
 </html>
