@@ -373,7 +373,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, limit, onSnapshot, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, orderBy, limit, doc, getDoc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -393,13 +393,15 @@
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
-    // Login Functionality
+    // --- LOGIN LOGIC ---
     const handleLogin = async () => {
         if(!auth.currentUser) {
             try {
                 const result = await signInWithPopup(auth, provider);
                 const user = result.user;
                 const userRef = doc(db, "accounts", user.uid);
+                
+                // Folosim getDoc (o singura data) in loc de live listener
                 const snap = await getDoc(userRef);
                 if(!snap.exists()) {
                     await setDoc(userRef, {
@@ -424,14 +426,18 @@
     document.getElementById('headerLoginBtn').onclick = handleLogin;
     if(mobileLoginBtn) mobileLoginBtn.onclick = handleLogin;
 
-    function fetchTopMembers() {
+    // --- OPTIMIZED LEADERBOARD FETCH (STATIC) ---
+    async function fetchTopMembers() {
+        // Folosim getDocs in loc de onSnapshot.
+        // Asta citeste cele 50 de documente O SINGURA DATA per incarcare de pagina.
         const q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(50));
         
-        onSnapshot(q, (snapshot) => {
+        try {
+            const snapshot = await getDocs(q);
             const members = [];
             snapshot.forEach(doc => members.push(doc.data()));
 
-            // Update Podium
+            // Update Podium (Top 3)
             for (let i = 1; i <= 3; i++) {
                 const m = members[i - 1];
                 const nameEl = document.getElementById(`name-${i}`);
@@ -473,22 +479,23 @@
                 `;
                 topListEl.appendChild(row);
             });
-        });
+        } catch (e) {
+            console.error("Eroare la incarcarea topului:", e);
+        }
     }
 
+    // --- AUTH STATE & USER DATA ---
     onAuthStateChanged(auth, user => {
         if (user) {
-            // Header Button
+            // UI Updates
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
-            
-            // SIDE MENU BUTTON UPDATE (Changed to Cont)
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-            }
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-            onSnapshot(doc(db, "accounts", user.uid), (snap) => {
+            // Fetch User Data (STATIC - One time)
+            // Nu avem nevoie de onSnapshot aici decat daca vrei sa vezi monedele crescand live in timp ce te uiti la pagina
+            getDoc(doc(db, "accounts", user.uid)).then((snap) => {
                 if(snap.exists()) {
                     const data = snap.data();
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
@@ -499,18 +506,17 @@
                 }
             });
         } else {
-            // Header
             document.getElementById('headerLoginText').innerText = "LOGIN";
             document.getElementById('headerUserImg').style.display = "none";
-            
-            // SIDE MENU BUTTON RESET
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-            }
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
-        fetchTopMembers();
     });
 
+    // Incarcam topul imediat ce se deschide pagina (indiferent daca userul e logat sau nu)
+    // O singura data!
+    fetchTopMembers();
+
+    // Modal Logic
     document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => {
         accountModal.classList.remove('active');
