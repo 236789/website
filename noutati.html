@@ -11,7 +11,7 @@
   </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Noutati & Anunturi — KSDAPromovari</title>
+  <title>Noutăți & Anunțuri — KSDAPromovari</title>
   <link rel="icon" type="image/png" href="https://iili.io/fXks1Dv.png">
 
   <!-- Fonts & Icons -->
@@ -180,17 +180,35 @@
     .owner-badge {
         display: inline-block; 
         background: linear-gradient(90deg, #29f3ff, #0044ff); 
-        color: #000; /* BLACK TEXT for contrast */
+        color: #000; /* BLACK TEXT */
         border: 1px solid var(--primary); font-size: 10px; font-weight: 900; padding: 2px 8px; border-radius: 4px;
         vertical-align: middle; font-family: 'Orbitron'; box-shadow: 0 0 8px var(--primary);
     }
     
     .post-footer {
         display: flex;
-        justify-content: flex-start; /* Button on LEFT */
+        justify-content: space-between; /* SPACE BETWEEN SIDES */
+        align-items: center;
         border-top: 1px solid rgba(255,255,255,0.1);
         padding-top: 10px;
     }
+
+    /* VOTE BUTTONS */
+    .vote-actions { display: flex; gap: 8px; }
+    .vote-btn {
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #ddd;
+        padding: 5px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 12px;
+        display: flex; align-items: center; gap: 5px;
+        transition: 0.2s;
+    }
+    .vote-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    .vote-btn.active-like { color: #00bfff; border-color: #00bfff; background: rgba(0, 191, 255, 0.15); }
+    .vote-btn.active-dislike { color: #ff4757; border-color: #ff4757; background: rgba(255, 71, 87, 0.15); }
 
     /* COMMENTS SECTION */
     .comments-section-wrapper {
@@ -432,7 +450,6 @@
     
     // State
     let currentCategory = 'noutati'; 
-    let isAuthorizedPoster = false;
     let unsubscribePosts = null;
     let currentUid = null;
 
@@ -460,6 +477,7 @@
             lockedView.style.display = 'none';
             chatView.style.display = 'flex';
 
+            // Fill Account Modal
             getDoc(doc(db, "accounts", user.uid)).then(docSnap => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
@@ -471,15 +489,8 @@
                 }
             });
 
-            // CHECK PERMISSIONS (Owner/Admin)
-            const email = user.email;
-            if(email === 'nicaemmanuel433qe@gmail.com' || email === 'kevin.trinity2020@gmail.com') {
-                isAuthorizedPoster = true;
-                adminInputWrapper.style.display = 'block'; 
-            } else {
-                isAuthorizedPoster = false;
-                adminInputWrapper.style.display = 'none';
-            }
+            // Initial check for permissions visibility
+            checkInputVisibility();
             loadPosts();
         } else {
             currentUid = null;
@@ -490,12 +501,27 @@
         }
     });
 
-    btnNoutati.onclick = () => { if(currentCategory === 'noutati') return; currentCategory = 'noutati'; updateTabUI(); loadPosts(); };
-    btnAnunturi.onclick = () => { if(currentCategory === 'anunturi') return; currentCategory = 'anunturi'; updateTabUI(); loadPosts(); };
+    btnNoutati.onclick = () => { if(currentCategory === 'noutati') return; currentCategory = 'noutati'; updateTabUI(); checkInputVisibility(); loadPosts(); };
+    btnAnunturi.onclick = () => { if(currentCategory === 'anunturi') return; currentCategory = 'anunturi'; updateTabUI(); checkInputVisibility(); loadPosts(); };
 
     function updateTabUI() {
         if(currentCategory === 'noutati') { btnNoutati.classList.add('active'); btnAnunturi.classList.remove('active'); }
         else { btnAnunturi.classList.add('active'); btnNoutati.classList.remove('active'); }
+    }
+
+    function checkInputVisibility() {
+        if(!auth.currentUser) return;
+        const email = auth.currentUser.email;
+        const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
+        const isAdmin = (email === 'kevin.trinity2020@gmail.com');
+
+        if(currentCategory === 'noutati') {
+            // ONLY Owner sees input for Noutati
+            adminInputWrapper.style.display = isOwner ? 'block' : 'none';
+        } else {
+            // Both see input for Anunturi
+            adminInputWrapper.style.display = (isOwner || isAdmin) ? 'block' : 'none';
+        }
     }
 
     function loadPosts() {
@@ -513,6 +539,23 @@
             }
         });
     }
+
+    // --- VOTING LOGIC ---
+    window.votePost = async (id, type) => {
+        if(!currentUid) return alert("Loghează-te!");
+        try {
+            const ref = doc(db, "site_news", id);
+            const snap = await getDoc(ref);
+            if(!snap.exists()) return;
+            
+            const votes = snap.data().votes || {};
+            // Toggle logic
+            if(votes[currentUid] === type) delete votes[currentUid];
+            else votes[currentUid] = type;
+            
+            await updateDoc(ref, { votes });
+        } catch(e) { console.error(e); }
+    };
 
     // --- COMMENTS LOGIC ---
     window.toggleComments = async (id) => {
@@ -554,7 +597,6 @@
             };
             await addDoc(collection(db, `site_news/${id}/comments`), commentData);
             
-            // Append locally
             const listDiv = document.getElementById(`comList-${id}`);
             const emptyMsg = listDiv.querySelector('div[style*="font-size:10px"]');
             if(emptyMsg) emptyMsg.remove();
@@ -587,6 +629,12 @@
         const dateObj = data.createdAt ? data.createdAt.toDate() : new Date();
         const dateStr = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
+        // Vote Calculation
+        const votes = data.votes || {};
+        let likes = 0, dislikes = 0;
+        let myVote = votes[currentUid] || 0;
+        Object.values(votes).forEach(v => { if(v===1) likes++; else if(v===-1) dislikes++; });
+
         div.className = cardClass;
         div.innerHTML = `
             <div class="post-header">
@@ -598,6 +646,15 @@
             
             <div class="post-footer">
                 <button class="comments-btn" onclick="toggleComments('${data.id}')"><i class="fas fa-comment-dots"></i> Comentarii</button>
+                
+                <div class="vote-actions">
+                    <button class="vote-btn ${myVote===1 ? 'active-like' : ''}" onclick="votePost('${data.id}', 1)">
+                        <i class="fas fa-thumbs-up"></i> ${likes}
+                    </button>
+                    <button class="vote-btn ${myVote===-1 ? 'active-dislike' : ''}" onclick="votePost('${data.id}', -1)">
+                        <i class="fas fa-thumbs-down"></i> ${dislikes}
+                    </button>
+                </div>
             </div>
             
             <div id="comments-${data.id}" class="comments-section-wrapper" data-loaded="false">
@@ -609,13 +666,9 @@
             </div>
         `;
 
-        // ADD ENTER KEY LISTENER FOR COMMENTS
         const comInput = div.querySelector(`#comInput-${data.id}`);
         comInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                div.querySelector('.com-send-btn').click();
-            }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); div.querySelector('.com-send-btn').click(); }
         });
 
         messagesFeed.appendChild(div);
@@ -629,7 +682,6 @@
 
     // --- MAIN POST SEND ---
     adminPostBtn.onclick = async () => {
-        if(!isAuthorizedPoster) return;
         const text = adminPostInput.value.trim();
         if(!text) return;
         const isOwner = (auth.currentUser.email === 'nicaemmanuel433qe@gmail.com');
@@ -642,18 +694,15 @@
                 name: isOwner ? "Lost Soul" : auth.currentUser.displayName,
                 photo: auth.currentUser.photoURL,
                 isOwner: isOwner,
-                createdAt: serverTimestamp()
+                createdAt: serverTimestamp(),
+                votes: {}
             });
             adminPostInput.value = '';
         } catch(e) { alert("Eroare la postare: " + e.message); }
     };
 
-    // ENTER KEY FOR MAIN POST
     adminPostInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            adminPostBtn.click();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); }
     });
 
   </script>
