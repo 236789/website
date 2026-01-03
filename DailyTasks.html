@@ -348,10 +348,24 @@ Code
     function renderQuests(userData) {
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
+        
+        // We only care about daily tasks for the streak, 
+        // so we filter out the one-time quests when checking if "allDailyDone"
         let allDailyDone = true;
 
         quests.forEach(q => {
             const isCompleted = completed.includes(q.id);
+
+            // --- NEW LOGIC: HIDE ONE-TIME QUESTS ---
+            // define which IDs are one-time only
+            const oneTimeQuests = ['review', 'social3']; 
+            
+            // If this is a one-time quest AND the user has completed it...
+            if (oneTimeQuests.includes(q.id) && isCompleted) {
+                return; // STOP here. Do not create HTML for this card. Skip to the next quest.
+            }
+            // ---------------------------------------
+
             const card = document.createElement('div');
             card.className = 'quest-card';
 
@@ -375,10 +389,14 @@ Code
                     </div>
                 `;
                 if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
+                
+                // Check for streak calculation (only if not completed)
                 if (!isCompleted) allDailyDone = false;
+
             } else {
                 let current = 0;
                 if (q.id === 'msg3') current = userData.messagesSentToday || 0;
+                // For review and social, we rely on the DB boolean/count, but if they are hidden they are "done"
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
                 if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
                 if (q.id === 'social3') current = userData.socialFollowed || 0;
@@ -391,10 +409,17 @@ Code
                     </div>
                 `;
                 if (current >= q.target) canAward = true;
-                if (q.id !== 'review' && q.id !== 'social3' && !isCompleted) allDailyDone = false;
+
+                // Streak Logic: If it's NOT a one-time quest and NOT completed, then daily isn't done
+                if (!oneTimeQuests.includes(q.id) && !isCompleted) {
+                    allDailyDone = false;
+                }
             }
 
             let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery_task' ? 'spre' : 'la'} ${q.pageName}</a>`;
+            
+            // This 'else' part will only run for recurring quests now, 
+            // because one-time quests returned early at the top of the function.
             if (isCompleted) {
                 actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine!</small></div>`;
             }
@@ -414,6 +439,7 @@ Code
 
         // STREAK LOGIC
         const today = new Date().toDateString();
+        // Only update streak if the daily recurring tasks are done
         if (allDailyDone && userData.lastStreakDate !== today) {
             updateDoc(doc(db, "accounts", auth.currentUser.uid), {
                 streak: increment(1),
