@@ -124,7 +124,7 @@
     .btn-logout-pop { background: transparent; border: 1.5px solid #ff4757; color: #ff4757; padding: 10px 25px; border-radius: 12px; font-family: 'Orbitron'; font-weight: 700; cursor: pointer; transition: 0.3s; }
     .btn-logout-pop:hover { background: #ff4757; color: #fff; box-shadow: 0 0 15px rgba(255, 71, 87, 0.4); }
 
-    /* REWARD MODAL */
+    /* REWARD MODAL (QUEST) */
     .reward-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 12000; padding: 20px; }
     .reward-modal.active { display: flex; }
     .reward-card { background: #08101b; border: 2px solid #ffd700; border-radius: 30px; padding: 40px; text-align: center; max-width: 400px; width: 100%; animation: jumpIn 0.6s forwards; }
@@ -239,18 +239,17 @@
 </head>
 <body>
 
-<!-- REWARD MODAL (SHOWN ONCE) -->
-<div id="rewardModal" class="reward-modal">
+<!-- REWARD MODAL (QUEST - ADDED) -->
+<div id="questRewardModal" class="reward-modal">
     <div class="reward-card">
-        <h2 style="font-family:'Orbitron'; color:#ffd700;">MULTUMIM!</h2>
-        <p>Primul tău feedback a fost trimis! Ca recompensă, ai primit:</p>
+        <h2 style="font-family:'Orbitron'; color:#ffd700;">🎉 QUEST COMPLETAT!</h2>
+        <p>Ai trimis feedback! Mulțumim pentru implicare. Uite recompensa ta:</p>
         <div class="reward-coins-box">
             <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
-            <span>25</span>
+            <span>250</span>
         </div>
         <p style="color: #ffd700; font-weight: 700; font-family: 'Orbitron';">KSDA COINS</p>
-        <p style="font-size:11px; opacity:0.7; margin-top:10px;">Pentru următoarele feedback-uri, punctele se adaugă automat!</p>
-        <button class="btn" style="background:var(--primary); color:#000; padding:10px 20px; border-radius:10px; font-family:'Orbitron'; cursor:pointer;" onclick="document.getElementById('rewardModal').classList.remove('active')">OK!</button>
+        <button class="btn" style="background:var(--primary); color:#000; padding:10px 20px; border-radius:10px; font-family:'Orbitron'; cursor:pointer;" onclick="document.getElementById('questRewardModal').classList.remove('active')">Super!</button>
     </div>
 </div>
 
@@ -448,7 +447,7 @@
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
-    const rewardModal = document.getElementById('rewardModal');
+    const questRewardModal = document.getElementById('questRewardModal');
 
     let userIP = null;
     let lastVisibleDoc = null;
@@ -638,7 +637,7 @@
 
     // --- ACTIONS ---
 
-    // 1. Send Feedback
+    // 1. Send Feedback (UPDATED WITH QUEST LOGIC)
     sendBtn.onclick = async () => {
         if(!auth.currentUser) return;
         const uid = auth.currentUser.uid;
@@ -659,16 +658,31 @@
             // UI Update (Prepend)
             appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
             
-            // Reward & Cooldown
+            // 1. AWARD BASIC 25 COINS (For sending feedback)
             await updateDoc(doc(db, "accounts", uid), { coins: increment(25) });
             localStorage.setItem('last_feedback_time', Date.now());
             updateCooldownUI();
 
-            if(!localStorage.getItem('first_feedback_reward')) {
-                rewardModal.classList.add('active');
-                localStorage.setItem('first_feedback_reward', 'true');
-            } else {
-                if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
+            // 2. CHECK DAILY QUEST (give_feedback)
+            const userRef = doc(db, "accounts", uid);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                const completed = userData.completedQuests || [];
+                
+                // If quest NOT completed yet
+                if (!completed.includes('give_feedback')) {
+                    await updateDoc(userRef, {
+                        coins: increment(250), // +250 for Quest
+                        feedbackGivenToday: 1, // Logic matches main page
+                        completedQuests: [...completed, 'give_feedback']
+                    });
+                    // Show Quest Popup
+                    questRewardModal.classList.add('active');
+                } else {
+                    // Just show flying coins animation if quest already done
+                    if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
+                }
             }
             
             revInput.value = ''; document.getElementById('charCount').innerText = '0'; sendBtn.disabled = true;
