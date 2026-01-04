@@ -180,6 +180,14 @@
         color: #fff !important;
     }
 
+    /* MODERATOR POST STYLE (LIGHT GREEN) */
+    .post-card.mod-post {
+        background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%) !important;
+        border: 2px solid #ffffff !important;
+        box-shadow: 0 0 20px rgba(46, 204, 113, 0.4) !important;
+        color: #fff !important;
+    }
+
     .post-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; }
     .post-pfp { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #fff; object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
     .post-name { font-weight: 800; font-size: 16px; font-family: 'Orbitron'; color: #fff; display: flex; align-items: center; gap: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
@@ -198,6 +206,11 @@
         color: #000; /* BLACK TEXT */
         border: 1px solid var(--primary); font-size: 10px; font-weight: 900; padding: 2px 8px; border-radius: 4px;
         vertical-align: middle; font-family: 'Orbitron'; box-shadow: 0 0 8px var(--primary);
+    }
+    .mod-badge {
+        display: inline-block; background: #ffffff; color: #27ae60; border: 1px solid #27ae60;
+        font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 4px; vertical-align: middle; font-family: 'Orbitron';
+        box-shadow: 0 0 5px rgba(0,0,0,0.3);
     }
     
     .post-footer {
@@ -256,12 +269,18 @@
     .comment-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
     .comment-item { display: flex; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; }
     .com-pfp { width: 25px; height: 25px; border-radius: 50%; }
-    .com-name { font-size: 11px; font-weight: 700; color: var(--primary); margin-bottom: 2px; }
+    .com-name { font-size: 11px; font-weight: 700; color: var(--primary); margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
     .com-text { font-size: 12px; color: #ddd; word-break: break-word; }
 
     .comment-input-area { display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
     .com-input { flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; padding: 8px 12px; font-size: 12px; color: #fff; outline: none; }
     .com-send-btn { background: var(--primary); border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; color: #000; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+
+    /* ROLE ICONS IN COMMENTS */
+    .role-icon-com { font-size: 10px; }
+    .owner-icon { color: var(--primary); }
+    .admin-icon { color: #ff4d4d; }
+    .mod-icon { color: #2ecc71; }
 
     /* ADMIN INPUT AREA PADDING FIX */
     .admin-input-wrapper { 
@@ -414,7 +433,7 @@
             
             <!-- ADMIN INPUT AREA -->
             <div id="adminInputWrapper" class="admin-input-wrapper">
-                <div style="color:var(--primary); font-size:11px; margin-bottom:5px; font-weight:700;">POSTARE ADMIN / OWNER</div>
+                <div id="adminInputLabel" style="color:var(--primary); font-size:11px; margin-bottom:5px; font-weight:700;">POSTARE ADMIN / OWNER</div>
                 <div class="admin-input-row">
                     <textarea id="adminPostInput" class="admin-input" placeholder="Scrie o noutate sau un anunț oficial... (Enter pt trimitere)"></textarea>
                     <button id="adminPostBtn" class="admin-send-btn"><i class="fas fa-paper-plane"></i></button>
@@ -480,6 +499,7 @@
     const adminInputWrapper = document.getElementById('adminInputWrapper');
     const adminPostInput = document.getElementById('adminPostInput');
     const adminPostBtn = document.getElementById('adminPostBtn');
+    const adminInputLabel = document.getElementById('adminInputLabel');
     
     // Auth UI
     const headerLoginBtn = document.getElementById('headerLoginBtn');
@@ -584,13 +604,16 @@
         const email = auth.currentUser.email;
         const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
         const isAdmin = (email === 'kevin.trinity2020@gmail.com');
+        const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
 
         if(currentCategory === 'noutati') {
             // ONLY Owner sees input for Noutati
             adminInputWrapper.style.display = isOwner ? 'block' : 'none';
+            adminInputLabel.innerText = "POSTARE OWNER";
         } else {
-            // Both see input for Anunturi
-            adminInputWrapper.style.display = (isOwner || isAdmin) ? 'block' : 'none';
+            // Owner, Admin, and Mods see input for Anunturi
+            adminInputWrapper.style.display = (isOwner || isAdmin || isMod) ? 'block' : 'none';
+            adminInputLabel.innerText = isOwner ? "POSTARE OWNER" : (isAdmin ? "POSTARE ADMIN" : "POSTARE MODERATOR");
         }
     }
 
@@ -661,6 +684,7 @@
             const commentData = { 
                 text: text, 
                 uid: auth.currentUser.uid, 
+                email: auth.currentUser.email, // Added for role icons
                 name: auth.currentUser.displayName, 
                 photo: auth.currentUser.photoURL, 
                 createdAt: serverTimestamp() 
@@ -679,7 +703,21 @@
     function appendCommentHTML(container, data) {
         const div = document.createElement('div');
         div.className = 'comment-item';
-        div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name}</div><div class="com-text">${data.text}</div></div>`;
+        
+        // Role icon logic for comments
+        let roleIcon = '';
+        const email = data.email || "";
+        if(email === 'nicaemmanuel433qe@gmail.com') roleIcon = '<i class="fas fa-crown role-icon-com owner-icon"></i>';
+        else if(email === 'kevin.trinity2020@gmail.com') roleIcon = '<i class="fas fa-shield-alt role-icon-com admin-icon"></i>';
+        else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') roleIcon = '<i class="fas fa-star role-icon-com mod-icon"></i>';
+
+        div.innerHTML = `
+            <img src="${data.photo}" class="com-pfp">
+            <div class="com-content">
+                <div class="com-name">${data.name} ${roleIcon}</div>
+                <div class="com-text">${data.text}</div>
+            </div>
+        `;
         container.appendChild(div);
     }
 
@@ -691,6 +729,9 @@
         if(data.isOwner) {
             cardClass += ' owner-post';
             badge = `<span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+        } else if(data.isMod) {
+            cardClass += ' mod-post';
+            badge = `<span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`;
         } else {
             cardClass += ' admin-post';
             badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
@@ -754,7 +795,9 @@
     adminPostBtn.onclick = async () => {
         const text = adminPostInput.value.trim();
         if(!text) return;
-        const isOwner = (auth.currentUser.email === 'nicaemmanuel433qe@gmail.com');
+        const email = auth.currentUser.email;
+        const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
+        const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
 
         try {
             await addDoc(collection(db, "site_news"), {
@@ -764,6 +807,7 @@
                 name: isOwner ? "Lost Soul" : auth.currentUser.displayName,
                 photo: auth.currentUser.photoURL,
                 isOwner: isOwner,
+                isMod: isMod,
                 createdAt: serverTimestamp(),
                 votes: {}
             });
