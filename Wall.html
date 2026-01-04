@@ -561,7 +561,7 @@
         <p>Heyy, mersi că ai comunicat pe chat! Uite aici recompensa ta:</p>
         <div class="reward-coins-box">
             <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
-            <span>250</span>
+            <span id="standardRewardValue">250</span>
         </div>
         <p style="color: #ffd700; font-weight: 700; font-family: 'Orbitron';">KSDA COINS</p>
         <button class="btn" style="background:var(--primary); color:#000; padding:10px 20px; border-radius:10px; font-family:'Orbitron'; cursor:pointer;" onclick="document.getElementById('rewardModal').classList.remove('active')">Super!</button>
@@ -576,7 +576,8 @@
         <p style="color:#fff; font-size:16px;">Ai completat un Quest Special pe Wall!</p>
         <div class="reward-coins-box">
             <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 40px;">
-            <span>BONUS</span>
+            <!-- THIS ID HAS BEEN ADDED TO UPDATE THE AMOUNT DYNAMICALLY -->
+            <span id="specialRewardValue">BONUS</span>
         </div>
         <p style="color:#a5b1c2; font-size:13px; margin-bottom:20px;">Recompensa a fost adăugată în contul tău.</p>
         <button class="btn" style="background:var(--primary); color:#000; padding:12px 30px; border-radius:50px; font-weight:800; border:none; cursor:pointer; font-family:'Orbitron';" onclick="document.getElementById('specialQuestModal').classList.remove('active')">LET'S GO!</button>
@@ -894,6 +895,9 @@
     let wipeCheckInterval = null;
     let toastTimeout;
 
+    // --- LOCAL QUEST TRACKING TO PREVENT DOUBLE LOOPS ---
+    const localProcessedQuests = new Set();
+
     // GET IP
     async function fetchIP() {
         try {
@@ -1014,39 +1018,63 @@
                     const now = Date.now();
                     const oneHourCooldown = now + (3600000); 
 
-                    // --- QUEST LOGIC INTEGRATION ---
+                    // --- QUEST LOGIC INTEGRATION (WITH DOUBLE-FIRE PROTECTION) ---
                     
                     // 1. STANDARD MSG3 QUEST
                     if(data.messagesSentToday >= 3 && !completed.includes('msg3') && !(now < (cooldowns['msg3'] || 0))) {
-                        updateDoc(doc(db, "accounts", user.uid), {
-                            coins: increment(250),
-                            completedQuests: [...completed, 'msg3'],
-                            [`questCooldowns.msg3`]: oneHourCooldown
-                        }).then(() => rewardModal.classList.add('active'));
+                        if(!localProcessedQuests.has('msg3')) {
+                            localProcessedQuests.add('msg3'); // Lock local
+                            updateDoc(doc(db, "accounts", user.uid), {
+                                coins: increment(250),
+                                completedQuests: [...completed, 'msg3'],
+                                [`questCooldowns.msg3`]: oneHourCooldown
+                            }).then(() => {
+                                document.getElementById('standardRewardValue').innerText = "250";
+                                rewardModal.classList.add('active');
+                            });
+                        }
                     }
 
                     // 2. WALL REPLY QUEST (5 Replies)
                     if(data.wallRepliesToday >= 5 && !completed.includes('wall_reply_5')) {
-                        updateDoc(doc(db, "accounts", user.uid), {
-                            coins: increment(300),
-                            completedQuests: [...completed, 'wall_reply_5']
-                        }).then(() => specialQuestModal.classList.add('active'));
+                        if(!localProcessedQuests.has('wall_reply_5')) {
+                            localProcessedQuests.add('wall_reply_5'); // Lock local
+                            updateDoc(doc(db, "accounts", user.uid), {
+                                coins: increment(300),
+                                completedQuests: [...completed, 'wall_reply_5']
+                            }).then(() => {
+                                document.getElementById('specialRewardValue').innerText = "300";
+                                specialQuestModal.classList.add('active');
+                            });
+                        }
                     }
 
                     // 3. WALL REACT QUEST (10 Reactions)
                     if(data.wallReactionsToday >= 10 && !completed.includes('wall_react_10')) {
-                        updateDoc(doc(db, "accounts", user.uid), {
-                            coins: increment(200),
-                            completedQuests: [...completed, 'wall_react_10']
-                        }).then(() => specialQuestModal.classList.add('active'));
+                        if(!localProcessedQuests.has('wall_react_10')) {
+                            localProcessedQuests.add('wall_react_10'); // Lock local
+                            updateDoc(doc(db, "accounts", user.uid), {
+                                coins: increment(200),
+                                completedQuests: [...completed, 'wall_react_10']
+                            }).then(() => {
+                                document.getElementById('specialRewardValue').innerText = "200";
+                                specialQuestModal.classList.add('active');
+                            });
+                        }
                     }
 
                     // 4. WALL LONG MSG QUEST (100+ Chars)
                     if(data.wallLongMsgSent === true && !completed.includes('wall_long_msg')) {
-                        updateDoc(doc(db, "accounts", user.uid), {
-                            coins: increment(500),
-                            completedQuests: [...completed, 'wall_long_msg']
-                        }).then(() => specialQuestModal.classList.add('active'));
+                        if(!localProcessedQuests.has('wall_long_msg')) {
+                            localProcessedQuests.add('wall_long_msg'); // Lock local
+                            updateDoc(doc(db, "accounts", user.uid), {
+                                coins: increment(500),
+                                completedQuests: [...completed, 'wall_long_msg']
+                            }).then(() => {
+                                document.getElementById('specialRewardValue').innerText = "500";
+                                specialQuestModal.classList.add('active');
+                            });
+                        }
                     }
                 }
             });
