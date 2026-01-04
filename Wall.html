@@ -343,7 +343,30 @@
     .admin-badge { display: inline-block; background: #ffffff; color: #b20a2c; border: 1px solid #b20a2c; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; font-family: 'Orbitron'; box-shadow: 0 0 5px rgba(255, 255, 255, 0.3); }
     .owner-badge { display: inline-block; background: linear-gradient(90deg, #29f3ff, #0044ff); color: #000; border: 1px solid var(--primary); font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; font-family: 'Orbitron'; box-shadow: 0 0 8px var(--primary); }
     .msg-bubble.bot-msg { background: linear-gradient(135deg, #00ff87 0%, #00d0ff 100%) !important; color: #000 !important; font-weight: 600; border: none !important; box-shadow: 0 0 15px rgba(0, 255, 135, 0.4) !important; }
+/* MODERATOR MESSAGE BUBBLE */
+.msg-bubble.mod-msg { 
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%) !important; 
+    border: 2px solid #ffffff !important; 
+    color: #ffffff !important; 
+    box-shadow: 0 0 20px rgba(46, 204, 113, 0.4) !important; 
+    font-weight: 500; 
+}
 
+/* MODERATOR BADGE */
+.mod-badge { 
+    display: inline-block; 
+    background: #ffffff; 
+    color: #27ae60; 
+    border: 1px solid #27ae60; 
+    font-size: 9px; 
+    font-weight: 800; 
+    padding: 2px 6px; 
+    border-radius: 4px; 
+    margin-left: 6px; 
+    vertical-align: middle; 
+    font-family: 'Orbitron'; 
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.3); 
+}
     .quoted-msg { background: rgba(0, 0, 0, 0.2); border-left: 3px solid rgba(255, 255, 255, 0.3); padding: 8px 10px; border-radius: 6px; font-size: 11px; margin-bottom: 8px; color: rgba(255, 255, 255, 0.7); display: block; margin-top: -4px; word-break: break-all; }
     .quoted-msg strong { color: rgba(255, 255, 255, 0.9); display: block; margin-bottom: 2px; font-weight: 700; }
 
@@ -689,7 +712,7 @@
   </script>
 
  <!-- FIREBASE & CHAT LOGIC -->
-  <script type="module">
+<script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -765,6 +788,7 @@
     let replyData = null;
     let isAdmin = false; 
     let isOwner = false; 
+    let isMod = false; 
     let isSending = false; // Issue 2 Fix: Prevent double send
     
     // MUTE TARGETING
@@ -867,10 +891,10 @@
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
-            if(user.email === 'nicaemmanuel433qe@gmail.com') {
-                isOwner = true;
-                isAdmin = true; 
-            }
+            // ROLE IDENTIFICATION
+            isOwner = (user.email === 'nicaemmanuel433qe@gmail.com');
+            isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
+            isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
 
             if(userIP) {
                 const banRef = doc(db, "banned_ips", userIP);
@@ -883,7 +907,7 @@
                     return; 
                 }
 
-                if(!isOwner) {
+                if(!isOwner && !isAdmin && !isMod) {
                     const adminRef = doc(db, "admin_ips", userIP);
                     const adminSnap = await getDoc(adminRef);
                     if(adminSnap.exists()) {
@@ -971,11 +995,12 @@
             if(userName) {
                 if(isOwner) {
                     userName.innerHTML = `Lost Soul <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span> <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+                } else if(isAdmin) {
+                    userName.innerHTML = `${user.displayName} <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                } else if(isMod) {
+                    userName.innerHTML = `${user.displayName} <span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`;
                 } else {
                     userName.textContent = user.displayName;
-                    if(isAdmin) {
-                        userName.innerHTML += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
-                    }
                 }
             }
             
@@ -990,7 +1015,7 @@
             if(mobileLoginBtn) {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
             }
-            currentUid = null; isOwner = false; isAdmin = false;
+            currentUid = null; isOwner = false; isAdmin = false; isMod = false;
             chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
             clearInterval(wipeCheckInterval);
             if(muteInterval) clearInterval(muteInterval);
@@ -1074,6 +1099,7 @@
                     name: displayName, 
                     isAdmin: isAdmin,
                     isOwner: isOwner,
+                    isMod: isMod,
                     timestamp: serverTimestamp() 
                 });
             } else {
@@ -1095,6 +1121,7 @@
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
                         if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
                         else if(data.isAdmin) nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
+                        else if(data.isMod) nameHtml += `<span class="mod-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">MODERATOR</span>`;
                         typers.push(nameHtml);
                     }
                 }
@@ -1185,7 +1212,7 @@
         if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
 
         const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 2000; // Adjusted for better UX
+        const COOLDOWN = 2000; 
         if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
             showToast(`Te rog nu fă spam!`);
             return;
@@ -1215,6 +1242,7 @@
             ip: userIP || "unknown",
             isAdmin: isAdmin, 
             isOwner: isOwner, 
+            isMod: isMod,
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactions: {} 
@@ -1334,7 +1362,6 @@
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
         
         unsubscribe = onSnapshot(q, snapshot => {
-            // ISSUE 1 FIX: Smart Scroll Logic
             const feed = messagesFeed;
             const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
 
@@ -1344,7 +1371,6 @@
 
             feed.innerHTML = '';
             docs.forEach(data => {
-                // ISSUE 3 (PART 3) FIX: Simply don't render deleted messages
                 if(data.isDeleted) return; 
 
                 const msgId = data.id;
@@ -1352,6 +1378,7 @@
                 const isBot = data.isBot === true;
                 const msgIsAdmin = data.isAdmin === true;
                 const msgIsOwner = data.isOwner === true;
+                const msgIsMod = data.isMod === true;
 
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
@@ -1371,11 +1398,13 @@
                 if(isBot) bubbleClass += ' bot-msg';
                 else if(msgIsOwner) bubbleClass += ' owner-msg';
                 else if(msgIsAdmin) bubbleClass += ' admin-msg';
+                else if(msgIsMod) bubbleClass += ' mod-msg';
 
                 let nameHtml = data.name;
                 if(isBot) nameHtml = `🤖 ${data.name}`;
-                if(msgIsAdmin) { nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
                 if(msgIsOwner) { nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`; }
+                else if(msgIsAdmin) { nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
+                else if(msgIsMod) { nameHtml += ` <span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`; }
 
                 let reactionsHtml = "";
                 if(data.reactions) {
@@ -1392,7 +1421,7 @@
 
                 let menuHtml = '';
                 const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                const canDelete = isMine || isAdmin || isOwner;
+                const canDelete = isMine || isAdmin || isOwner || isMod;
                 const showMute = isOwner && !isMine;
 
                 menuHtml = `
@@ -1421,7 +1450,6 @@
                 feed.appendChild(wrapper);
             });
             
-            // Only scroll if was at bottom
             if (wasAtBottom) {
                 feed.scrollTop = feed.scrollHeight;
             }
@@ -1496,7 +1524,6 @@
     window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
     window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
     
-    // --- QUEST LOGIC ADDED HERE (REACTION COUNT UPDATE) ---
     window.reactMsg = async function(msgId, emoji) { 
         if(!currentUid) return; 
         closeAllMenus(); 
@@ -1506,43 +1533,28 @@
         updateObj[fieldPath] = emoji; 
         try { 
             await updateDoc(msgRef, updateObj); 
-            // Update User Stats for Quest
             await updateDoc(doc(db, "accounts", currentUid), {
                 wallReactionsToday: increment(1)
             });
         } catch(e) { console.error(e); } 
     }
     
-    // --- SECURE DELETE FUNCTION (FINAL FIX) ---
     window.deleteMsg = async function(id) { 
         closeAllMenus(); 
-        
         try {
             const msgRef = doc(db, "wall_messages", id);
             const msgSnap = await getDoc(msgRef);
-            
-            if (!msgSnap.exists()) {
-                showToast("Mesajul nu mai există.", "error");
-                return;
-            }
-            
+            if (!msgSnap.exists()) { showToast("Mesajul nu mai există.", "error"); return; }
             const msgData = msgSnap.data();
             const isMine = msgData.uid === currentUid;
-            
-            // Check ownership OR Admin privileges before deleting
-            if (isMine || isAdmin || isOwner) {
+            if (isMine || isAdmin || isOwner || isMod) {
                 if(confirm("Ștergi mesajul?")) { 
                     await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {} }); 
                     showToast("Mesaj șters.", "success");
                 } 
-            } else {
-                showToast("Nu poți șterge mesajele altora!", "error");
-            }
-        } catch(e) { 
-            showToast("Eroare: " + e.message); 
-        } 
+            } else { showToast("Nu poți șterge mesajele altora!", "error"); }
+        } catch(e) { showToast("Eroare: " + e.message); } 
     }
-    
     window.onclick = function(event) { if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) { closeAllMenus(); } }
   </script>
 </body>
