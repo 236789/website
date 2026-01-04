@@ -721,10 +721,12 @@
                     <div class="input-area">
                         <div class="input-row">
                             <!-- TEXT INPUT -->
-                            <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="500">
+                            <!-- Modificat: Eliminat maxlength fix, va fi setat dinamic de JS -->
+                            <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj...">
                             <!-- SEND BUTTON -->
                             <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
                         </div>
+                        <!-- Modificat: Contorul de caractere va afișa limita dinamică -->
                         <div id="charCount" class="char-count">0 / 500</div>
                     </div>
                 </div>
@@ -877,6 +879,11 @@
     let isAdmin = false; 
     let isOwner = false; 
     
+    // NOU: Limitele de caractere
+    const regularUserMessageLimit = 500;
+    const privilegedUserMessageLimit = 5000;
+    let currentMessageLimit = regularUserMessageLimit; // Limita implicită
+
     // MUTE TARGETING
     let pendingMuteUid = null;
     let pendingMuteName = null;
@@ -967,11 +974,13 @@
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
+            // Verifică rolul de owner
             if(user.email === 'nicaemmanuel433qe@gmail.com') {
                 isOwner = true;
                 isAdmin = true; 
             }
 
+            // Verifică rolul de admin (doar dacă nu este deja owner)
             if(userIP) {
                 const banRef = doc(db, "banned_ips", userIP);
                 const banSnap = await getDoc(banRef);
@@ -983,7 +992,7 @@
                     return; 
                 }
 
-                if(!isOwner) {
+                if(!isOwner) { // Doar verifică admin_ips dacă nu e deja owner
                     const adminRef = doc(db, "admin_ips", userIP);
                     const adminSnap = await getDoc(adminRef);
                     if(adminSnap.exists()) {
@@ -992,6 +1001,17 @@
                 }
             }
             
+            // SETAREA LIMITEI DE CARACTERE BAZATĂ PE ROL
+            if (isOwner || isAdmin) {
+                currentMessageLimit = privilegedUserMessageLimit;
+            } else {
+                currentMessageLimit = regularUserMessageLimit;
+            }
+            msgInput.maxLength = currentMessageLimit; // Actualizează atributul maxlength al input-ului
+            // Actualizează afișajul contorului de caractere imediat
+            charCount.textContent = `${msgInput.value.length} / ${currentMessageLimit}`;
+            charCount.style.color = msgInput.value.length >= currentMessageLimit ? '#ff4757' : '#a5b1c2';
+
             currentUid = user.uid;
             lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
             if(userAvatar) userAvatar.src = user.photoURL;
@@ -1039,6 +1059,12 @@
             checkMuteStatus(); 
 
         } else {
+            // Când utilizatorul se deconectează, resetează limita la valoarea implicită
+            currentMessageLimit = regularUserMessageLimit;
+            msgInput.maxLength = currentMessageLimit;
+            charCount.textContent = `0 / ${currentMessageLimit}`;
+            charCount.style.color = '#a5b1c2';
+
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
             if(mobileLoginBtn) {
@@ -1102,8 +1128,9 @@
 
     msgInput.addEventListener('input', () => {
         const len = msgInput.value.length;
-        charCount.textContent = `${len} / 500`;
-        charCount.style.color = len >= 500 ? '#ff4757' : '#a5b1c2';
+        // Folosește limita curentă pentru afișare și colorare
+        charCount.textContent = `${len} / ${currentMessageLimit}`; 
+        charCount.style.color = len >= currentMessageLimit ? '#ff4757' : '#a5b1c2';
 
         if (currentUid) {
             if (!isTyping) {
@@ -1259,7 +1286,11 @@
             return;
         }
 
-        if(text.length > 500) { showToast("Mesajul este prea lung!"); return; }
+        // Folosește limita curentă pentru validare
+        if(text.length > currentMessageLimit) { 
+            showToast(`Mesajul este prea lung! Limita este de ${currentMessageLimit} caractere.`); 
+            return; 
+        }
 
         const lastSent = localStorage.getItem('lastMsgTime');
         const COOLDOWN = 5000;
@@ -1315,7 +1346,8 @@
             updateTypingStatus(false);
 
             msgInput.value = '';
-            charCount.textContent = '0 / 500';
+            // Resetează contorul cu limita curentă
+            charCount.textContent = `0 / ${currentMessageLimit}`;
             localStorage.setItem('lastMsgTime', Date.now()); 
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
         } catch(e) { console.error(e); }
