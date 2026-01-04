@@ -553,6 +553,21 @@
         <button class="btn btn-primary" onclick="document.getElementById('rewardModal').classList.remove('active')">Super!</button>
     </div>
 </div>
+
+<!-- QUEST REWARD MODAL (FOR KEVIN BOT) -->
+<div id="questRewardModal" class="reward-modal">
+    <div class="reward-card" style="border-color: var(--primary);">
+        <h2>🎯 QUEST COMPLETAT!</h2>
+        <p>Bravo! Ai vorbit destul cu Kevin Bot pentru azi și ai câștigat recompensa.</p>
+        <div class="reward-coins-box" style="color: var(--primary);">
+            <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
+            <span>350</span>
+        </div>
+        <p style="color: var(--primary); font-weight: 700; font-family: 'Orbitron';">KSDA COINS</p>
+        <button class="btn btn-primary" onclick="document.getElementById('questRewardModal').classList.remove('active')">Super!</button>
+    </div>
+</div>
+
 <!-- ACCOUNT POP-UP MODAL (THE JUMPING POPUP) -->
 <div id="accountModal" class="account-modal-overlay">
     <div class="account-card">
@@ -759,7 +774,7 @@
     <div class="made-by-wrapper">
         <span class="made-by-text">Website made by Lost Soul/Nica emmanuel</span>
         <a href="https://www.tiktok.com/@lost_soul_zzz" target="_blank">
-            <img src="https://iili.io/f1ddIfe.png" alt="Lost Soul Profile" class="footer-pfp-img">
+            <img src="https://i1ddIfe.png" alt="Lost Soul Profile" class="footer-pfp-img">
         </a>
         <a href="https://discord.com/users/1063511180376817755" target="_blank" class="discord-link">
             <img src="https://logo.svgcdn.com/logos/discord.svg" alt="Discord" class="discord-logo">
@@ -906,6 +921,9 @@ function startBotConversation() {
        addBotMsg(val, 'user');
        processUserMessage(val);
        botUserInput.value = '';
+       
+       // Detect message for Quest
+       if (window.trackKevinMessage) window.trackKevinMessage();
    };
 
    botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
@@ -925,7 +943,7 @@ function startBotConversation() {
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -949,6 +967,7 @@ function startBotConversation() {
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
     const rewardModal = document.getElementById('rewardModal');
+    const questRewardModal = document.getElementById('questRewardModal');
 
     async function getIP() {
         try {
@@ -970,6 +989,37 @@ function startBotConversation() {
     }
     checkGlobalBan();
 
+    // --- KEVIN BOT QUEST LOGIC ---
+    window.trackKevinMessage = async () => {
+        if (!auth.currentUser) return;
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        
+        try {
+            // 1. Update the message count in Firestore
+            await updateDoc(userRef, { kevinMessagesToday: increment(1) });
+            
+            // 2. Fetch fresh data to check progress
+            const snap = await getDoc(userRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                const count = data.kevinMessagesToday || 0;
+                const completed = data.completedQuests || [];
+                
+                // 3. Check if target reached and not already awarded
+                if (count >= 15 && !completed.includes('kevin_talk_15')) {
+                    await updateDoc(userRef, {
+                        coins: increment(350),
+                        completedQuests: arrayUnion('kevin_talk_15')
+                    });
+                    // Show the specific quest popup
+                    questRewardModal.classList.add('active');
+                }
+            }
+        } catch (error) {
+            console.error("Error tracking quest:", error);
+        }
+    };
+
     async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
@@ -987,7 +1037,9 @@ function startBotConversation() {
                     coins: 250,
                     streak: 0,
                     ip: ip,
-                    joinedAt: new Date()
+                    joinedAt: new Date(),
+                    completedQuests: [],
+                    kevinMessagesToday: 0
                 });
                 rewardModal.classList.add('active');
             } else {
@@ -1018,7 +1070,6 @@ function startBotConversation() {
             headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
             
-            // FIX: Ensure Side Menu button also switches to Account state
             if(mobileLoginBtn) {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
@@ -1037,7 +1088,6 @@ function startBotConversation() {
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
             
-            // Revert Side Menu button when logged out
             if(mobileLoginBtn) {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
             }
@@ -1046,4 +1096,3 @@ function startBotConversation() {
   </script>
 </body>
 </html>
-
