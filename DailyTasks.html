@@ -59,8 +59,8 @@
     /* --- SIDE MENU (UPDATED WIDTH) --- */
     #sideMenu { 
         position: fixed; inset: 0; left: auto; 
-        width: 280px; /* Reduced from 320px */
-        max-width: 85vw; /* Leaves gap on mobile */
+        width: 280px; 
+        max-width: 85vw; 
         background: #080f1a; 
         border-left: 1px solid rgba(255,255,255,0.05); 
         z-index: 2000; padding: 40px 30px; transform: translateX(100%); 
@@ -304,15 +304,21 @@
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
     const quests = [
+        // --- NEW KEVIN CHAT QUEST ---
+        { id: 'kevin_talk_15', title: 'Vorbește cu Kevin Bot (15 mesaje)', reward: 350, target: 15, link: 'index.html', pageName: 'Hai să vorbim' },
+        
+        // --- NEW TEAM QUEST (2 Requirements) ---
+        { id: 'meet_team_hunt', title: 'Cunoaște Echipa (Quest Secret)', reward: 400, target: 2, link: 'despre_noi.html', pageName: 'Despre Noi' },
+        
         { id: 'msg3', title: 'Trimite 3 mesaje în Community Wall', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
-        { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' },
+        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
+        { id: 'visit_news', title: 'Vizitează pagina Noutăți/Anunțuri', reward: 100, target: 1, link: 'noutati.html', pageName: 'Anunțuri' },
+        { id: 'give_feedback', title: 'Dă-ne un feedback sau idei noi', reward: 250, target: 1, link: 'Feedback.html', pageName: 'Feedbacks' },
+        
+        // One Time Quests
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
-        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
-        
-        // --- NEW QUESTS ADDED HERE ---
-        { id: 'visit_news', title: 'Vizitează pagina Noutăți/Anunțuri', reward: 100, target: 1, link: 'noutati.html', pageName: 'Anunțuri' },
-        { id: 'give_feedback', title: 'Dă-ne un feedback sau idei noi', reward: 250, target: 1, link: 'Feedback.html', pageName: 'Feedbacks' }
+        { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
     ];
 
     // --- SECURE TIMER VARIABLES ---
@@ -352,22 +358,14 @@
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
         
-        // We only care about daily tasks for the streak, 
-        // so we filter out the one-time quests when checking if "allDailyDone"
         let allDailyDone = true;
 
         quests.forEach(q => {
             const isCompleted = completed.includes(q.id);
-
-            // --- NEW LOGIC: HIDE ONE-TIME QUESTS ---
-            // define which IDs are one-time only
             const oneTimeQuests = ['review', 'social3']; 
-            
-            // If this is a one-time quest AND the user has completed it...
-            if (oneTimeQuests.includes(q.id) && isCompleted) {
-                return; // STOP here. Do not create HTML for this card. Skip to the next quest.
-            }
-            // ---------------------------------------
+
+            // Skip one-time quests if done
+            if (oneTimeQuests.includes(q.id) && isCompleted) return;
 
             const card = document.createElement('div');
             card.className = 'quest-card';
@@ -375,7 +373,29 @@
             let progressHTML = '';
             let canAward = false;
 
-            if (q.id === 'gallery_task') {
+            // --- COMPLEX QUEST LOGIC ---
+
+            // 1. QUEST ECHIPA (2 Requirements)
+            if (q.id === 'meet_team_hunt') {
+                const visitedLost = userData.visited_lost_soul_today ? 1 : 0;
+                const visitedKevin = userData.visited_kevin_trinity_today ? 1 : 0;
+                const totalTeam = visitedLost + visitedKevin;
+                
+                progressHTML = `
+                    <div class="progress-wrapper">
+                        <div class="progress-info"><span>Vizitează: Lost Soul</span><span>${visitedLost}/1</span></div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${visitedLost * 100}%"></div></div>
+                    </div>
+                    <div class="progress-wrapper" style="margin-top:15px;">
+                        <div class="progress-info"><span>Vizitează: Kevin Trinity</span><span>${visitedKevin}/1</span></div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${visitedKevin * 100}%"></div></div>
+                    </div>
+                `;
+                if (totalTeam >= 2) canAward = true;
+                if (!isCompleted) allDailyDone = false;
+
+            // 2. QUEST GALERIE (Existing)
+            } else if (q.id === 'gallery_task') {
                 const currentLikes = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
                 const currentComments = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
                 const progLikes = (currentLikes / q.targetLikes) * 100;
@@ -392,20 +412,20 @@
                     </div>
                 `;
                 if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
-                
-                // Check for streak calculation (only if not completed)
                 if (!isCompleted) allDailyDone = false;
 
-        } else {
+            // 3. STANDARD QUESTS
+            } else {
                 let current = 0;
                 if (q.id === 'msg3') current = userData.messagesSentToday || 0;
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
                 if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
                 if (q.id === 'social3') current = userData.socialFollowed || 0;
-                
-                // --- NEW LOGIC ADDED HERE ---
                 if (q.id === 'visit_news') current = userData.newsVisitedToday || 0;
                 if (q.id === 'give_feedback') current = userData.feedbackGivenToday || 0;
+                
+                // NEW: KEVIN CHAT
+                if (q.id === 'kevin_talk_15') current = userData.kevinMessagesToday || 0;
 
                 const progress = Math.min((current / q.target) * 100, 100);;
                 progressHTML = `
@@ -416,16 +436,13 @@
                 `;
                 if (current >= q.target) canAward = true;
 
-                // Streak Logic: If it's NOT a one-time quest and NOT completed, then daily isn't done
                 if (!oneTimeQuests.includes(q.id) && !isCompleted) {
                     allDailyDone = false;
                 }
             }
 
-            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery_task' ? 'spre' : 'la'} ${q.pageName}</a>`;
+            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery_task' || q.id === 'meet_team_hunt' ? 'spre' : 'la'} ${q.pageName}</a>`;
             
-            // This 'else' part will only run for recurring quests now, 
-            // because one-time quests returned early at the top of the function.
             if (isCompleted) {
                 actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine!</small></div>`;
             }
@@ -445,7 +462,6 @@
 
         // STREAK LOGIC
         const today = new Date().toDateString();
-        // Only update streak if the daily recurring tasks are done
         if (allDailyDone && userData.lastStreakDate !== today) {
             updateDoc(doc(db, "accounts", auth.currentUser.uid), {
                 streak: increment(1),
@@ -467,10 +483,8 @@
         } catch (e) { console.error(e); } finally { isAwarding = false; }
     }
 
-    // --- SECURE AUTH & RESET LOGIC ---
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // UI Setup
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
@@ -478,35 +492,35 @@
 
             const userRef = doc(db, "accounts", user.uid);
 
-            // 1. FORCE SERVER TIME CHECK
             await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
 
             onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
-                    if (snap.metadata.hasPendingWrites) return; // Wait for server sync
+                    if (snap.metadata.hasPendingWrites) return;
 
                     const data = snap.data();
                     
-                    // 2. CHECK REAL TIME & SYNC TIMER
                     if (data.latestServerCheck) {
                         const serverDate = data.latestServerCheck.toDate();
                         serverTimeOffset = serverDate.getTime() - Date.now();
 
-                        // 3. SECURE RESET CHECK
                         const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
                         
                         if(data.lastResetDate !== roDate) {
                             console.log("Server detected new day. Resetting tasks...");
                             const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
                             
-await updateDoc(userRef, {
+                            await updateDoc(userRef, {
                                 messagesSentToday: 0,
                                 tiktoksFollowed: 0,
                                 galleryLikesToday: 0,
                                 galleryCommentsToday: 0,
-                                // --- NEW RESET FIELDS ---
                                 newsVisitedToday: 0,
                                 feedbackGivenToday: 0,
+                                // --- NEW RESET FIELDS ---
+                                kevinMessagesToday: 0,
+                                visited_lost_soul_today: false,
+                                visited_kevin_trinity_today: false,
                                 // ------------------------
                                 completedQuests: persistentQuests, 
                                 lastResetDate: roDate 
