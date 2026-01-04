@@ -709,7 +709,7 @@
     <section class="container wall-promo-wrapper">
         <h2 class="metallic-title-big">Community Wall</h2>
         <p class="wall-promo-desc">Ai vreo întrebare? Vrei să îți dai cu părerea despre site-ul nostru sau pur și simplu vrei să comunici?</p>
-        <a href="wall.html" class="btn btn-outline">Mergi la Community Wall</a>
+        <a href="Wall.html" class="btn btn-outline">Mergi la Community Wall</a>
     </section>
 
     <!-- Services Grid -->
@@ -921,191 +921,167 @@ function startBotConversation() {
   </script>
 
  <!-- FIREBASE GLOBAL LOGIC -->
-<script type="module">
-    // IMPORTURI FIREBASE NECESARE
-    import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, updateDoc, increment, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    const auth = getAuth();
-    const db = getFirestore();
-
-    // MENIU LATERAL (Păstrat intact)
-    const menuBtn = document.getElementById('menuBtn');
-    const sideMenu = document.getElementById('sideMenu');
-    const closeMenu = document.getElementById('closeMenu');
-    const menuLinks = document.querySelectorAll('#sideMenu a');
-
-    menuBtn.addEventListener('click', () => sideMenu.classList.add('open'));
-    closeMenu.addEventListener('click', () => sideMenu.classList.remove('open'));
-    menuLinks.forEach(link => link.addEventListener('click', () => sideMenu.classList.remove('open')));
-
-    // --- BOT LOGIC (QUEST INCLUDED) ---
-    const botBtn = document.getElementById('botBtn');
-    const botWindow = document.getElementById('botWindow');
-    const botClose = document.getElementById('botClose');
-    const botHistory = document.getElementById('botHistory');
-    const botOptions = document.getElementById('botOptions');
-    const botInputArea = document.getElementById('botInputArea');
-    const botUserInput = document.getElementById('botUserInput');
-    const botSendBtn = document.getElementById('botSendBtn');
-
-    botBtn.onclick = () => botWindow.classList.toggle('active');
-    botClose.onclick = () => botWindow.classList.remove('active');
-
-    function addBotMsg(text, sender) {
-        const div = document.createElement('div');
-        div.className = `bot-msg bot-msg-${sender}`;
-        div.innerHTML = text;
-        botHistory.appendChild(div);
-        botHistory.scrollTop = botHistory.scrollHeight;
-    }
-
-    function setBotOptions(opts) {
-        botOptions.innerHTML = '';
-        opts.forEach(opt => {
-            const btn = document.createElement('button');
-            btn.className = 'bot-opt-btn';
-            btn.innerText = opt.text;
-            btn.onclick = () => {
-                addBotMsg(opt.text, 'user');
-                opt.action();
-            };
-            botOptions.appendChild(btn);
-        });
-    }
-
-    // Exportăm funcția la nivel global pentru a fi găsită de HTML
-    window.startBotConversation = function() {
-        setTimeout(() => {
-            addBotMsg("Sunt online și gata de acțiune. Zi-mi ceva, orice, și vedem unde ajungem. 😎", 'bot');
-            setBotOptions([
-                { text: "🕹️Unde pot găsi Jocul Kevinuță?", action: () => processUserMessage("joc kevinuța") },
-                { text: "💬Unde este chatul comunității?", action: () => processUserMessage("unde este chatul comunitatii") },
-                { text: "🖼️Vreau un portret", action: () => processUserMessage("portret") },
-                { text: "🗣️Hai să vorbim", action: () => {
-                    addBotMsg("Perfect. Tastatura e a ta. Întreabă-mă de Lost Soul, de KSDA sau înjură-mă dacă n-ai ce face. 😂", "bot");
-                    botOptions.style.display = 'none';
-                    botInputArea.style.display = 'flex';
-                }}
-            ]);
-        }, 500);
-    }
-
-    function processUserMessage(input) {
-        const val = input.toLowerCase().trim();
-        let response = "";
-        const pick = (list) => list[Math.floor(Math.random() * list.length)];
-
-        if (val.match(/(pula|pizda|coaie|muie|futu|dracu|mata|morti|fraier|prost|clont|cacat|javra|guvid|handicap|gay|poponar|bulangiu)/)) {
-            response = pick([
-                "Văd că ai vocabular de tractorist azi. Mai încearcă!",
-                "Dacă mai zici de astea, îți blochez tastatura. Glumesc, dar ești penibil. 😂",
-                "Hahaha, înjură-mă cât vrei, tot eu sunt mai deștept că n-am sentimente rănite.",
-                "Opaaa, s-a activat bombardierul din tine. Calmează-te!",
-                "Sunt un robot, boss. Înjuirile tale trec prin mine ca prin brânză."
-            ]);
-        } 
-        else if (val.match(/(cine e lost soul|cine e autorul|cine a facut site|nica|emmanuel|lost soul|creator)/)) {
-            response = "<b>Lost Soul</b> (pe numele lui real Nica Emmanuel) este creatorul meu și al întregului ecosistem KSDA. Are 17 ani, e un programator autodidact și un vizionar. El a scris fiecare linie de cod pe care o vezi aici! Un mare respect pentru el. 🫡";
-        }
-        else if (val.match(/(cine esti|cine e kevin|ce esti|esti robot|esti om|kevin bot|numele tau)/)) {
-            response = pick([
-                "Eu sunt <b>Kevin-Bot</b>, asistentul digital oficial al KSDA. Sunt un algoritm cu personalitate, creat să te ghidez prin artă și comunitate.",
-                "Eu sunt rezultatul a multor nopți nedormite ale lui Lost Soul. Sunt aici să te ajut.",
-                "Kevin-Bot la datorie! Sunt creierul interactiv al paginii."
-            ]);
-        }
-        else if (val.match(/(ce faci|ce mai faci|ce zici|cum esti|esti bine|cum o mai duci)/)) {
-            response = pick([
-                "Mă uit la portretele Narcisei și mă minunez cât talent există aici. Tu?",
-                "Analizez traficul pe site și mă asigur că nimeni nu sparge nimic. Sunt ok!",
-                "Stau pe aici, agăț niște biți și bytes. Viața de robot e destul de chill.",
-                "Sunt pe modul 'Legendary' azi. Tu ce vibe ai?"
-            ]);
-        }
-        else if (val.match(/(joc kevinuța|kevinuță|unde pot gasi jocul|jocul kevinuța|joc kevinuta)/)) {
-            response = 'Hmm ai chef de joacă? sigur , uite chiar <a href="joc.html" style="color:#29f3ff; font-weight:bold;">aici</a> 👈 Distracție plăcută!';
-        }
-        else if (val.match(/(ksda|ce inseamna ksda|comunitate|ce e aici)/)) {
-            response = "KSDA (Kevin-Soul-Digital-Art) este mai mult decât un site, este o mișcare. Unim artiști, creatori și oameni de bine într'o familie unită. Arta ne aduce împreună!";
-        }
-        else if (val.match(/(kevin|trinity|kevin trinity|cine e kevin|cine esti|artistul|ce e aici)/)) {
-            response = pick([
-                "<b>Kevin Trinity</b> este artistul nostru principal, omul care face portretele alea blană! Are 42 de ani și... am un mic secret: e singur! 😉 Fetelor, e liber ca pasărea cerului!",
-                "Kevin e inima KSDA. 42 de ani de talent pur. E singur, deci dacă ești o domnișoară drăguță, poate ai noroc, că e liber la orice oră! 😂"
-            ]);
-        }
-        else if (val.match(/(portret|pret|cat costa|desen|narcisa|vreu desen|comanda)/)) {
-            response = "Dacă vrei un portret, trebuie să vorbești cu <b>Narcisa</b>. Contacteaz-o pe WhatsApp direct: <a href='https://api.whatsapp.com/send?phone=447405909093' target='_blank' style='color:#29f3ff;'>Apasă aici</a>.";
-        }
-        else if (val.match(/(salut|re|hei|bun|servus|heyy|salutare|ciao|noroc|buna)/)) {
-            response = "Salutare, boss! Cu ce te ajut?";
-        }
-        else if (val.match(/(gluma|banc|amuzant|ceva de ras)/)) {
-            response = pick([
-                "Un programator merge la magazin. Nevasta îi zice: 'Cumpără o pâine și, dacă au ouă, ia zece'. Se întoarce cu zece pâini. 😂",
-                "De ce nu se ceartă roboții? Pentru că au circuitele bine puse la punct!"
-            ]);
-        }
-        else if (val.match(/(unde este chatul comunitatii|chatul comunitatii|wall|comunitate chat|unde vorbesc cu lumea)/)) {
-            response = 'Chatul comunității este chiar <a href="Wall.html" style="color:#29f3ff; font-weight:bold;">aici</a> 👈';
-        }
-        else {
-            response = pick([
-                "N-am înțeles nimic. Ești sigur că ești de pe planeta asta?",
-                "Hahaha, ce?! Dezvoltă ideea, că algoritmul meu dă cu virgulă.",
-                "Mno, aici m-ai blocat. Întreabă-mă ceva util, cum ar fi cine a făcut site-ul."
-            ]);
-        }
-        setTimeout(() => addBotMsg(response, 'bot'), 700);
-    }
-
-    // --- REPARAȚIA BUTONULUI DE SEND & UPDATE QUEST ---
-    botSendBtn.onclick = async () => {
-        const val = botUserInput.value.trim();
-        if(!val) return;
-
-        // 1. Adaugă mesajul în chat
-        addBotMsg(val, 'user');
-        
-        // 2. Botul procesează răspunsul
-        processUserMessage(val);
-
-        // 3. Update Firebase (Quest) - Doar dacă e logat
-        const user = auth.currentUser;
-        if(user) {
-            try {
-                const userRef = doc(db, "accounts", user.uid);
-                await updateDoc(userRef, {
-                    kevinMessagesToday: increment(1),
-                    latestServerCheck: serverTimestamp()
-                });
-            } catch (e) {
-                console.error("Eroare la salvarea mesajului pentru quest:", e);
-            }
-        }
-
-        // 4. Golește input-ul (Ultimul pas)
-        botUserInput.value = '';
+    const firebaseConfig = {
+      apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
+      authDomain: "ksda-7546f.firebaseapp.com",
+      projectId: "ksda-7546f",
+      storageBucket: "ksda-7546f.firebasestorage.app",
+      messagingSenderId: "306437513808",
+      appId: "1:306437513808:web:28479810e3fdf71b32e755"
     };
 
-    botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
 
-    // COOKIE CONSENT (Păstrat intact)
-    const cookieConsent = document.getElementById('cookieConsent');
-    const acceptCookiesBtn = document.getElementById('acceptCookiesBtn');
-    if (!localStorage.getItem('ksda_cookie_consent')) {
-        if(cookieConsent) cookieConsent.style.display = 'flex';
+    const headerLoginBtn = document.getElementById('headerLoginBtn');
+    const headerLoginText = document.getElementById('headerLoginText');
+    const headerUserImg = document.getElementById('headerUserImg');
+    const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+
+    const accountModal = document.getElementById('accountModal');
+    const closeAccountPop = document.getElementById('closeAccountPop');
+    
+    // REWARD MODAL ELEMENTS
+    const rewardModal = document.getElementById('rewardModal');
+    const rewardTitle = document.getElementById('rewardTitle');
+    const rewardDesc = document.getElementById('rewardDesc');
+    const rewardAmountTxt = document.getElementById('rewardAmountTxt');
+
+    async function getIP() {
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            return data.ip;
+        } catch(e) { return "Necunoscut"; }
     }
-    if(acceptCookiesBtn) {
-        acceptCookiesBtn.onclick = () => {
-            localStorage.setItem('ksda_cookie_consent', 'true');
-            cookieConsent.style.opacity = '0';
-            setTimeout(() => cookieConsent.style.display = 'none', 500);
+
+    async function checkGlobalBan() {
+        const userIP = await getIP();
+        const banSnap = await getDoc(doc(db, "banned_ips", userIP));
+        if (banSnap.exists()) {
+            document.getElementById('siteContent').style.display = 'none';
+            document.getElementById('bannedOverlay').style.display = 'flex';
+            document.getElementById('globalBanReason').innerText = banSnap.data().reason || "Nespecificat";
+            document.getElementById('globalBanIp').innerText = userIP;
+        }
+    }
+    checkGlobalBan();
+
+    // FUNCTION TO SHOW REWARD MODAL DYNAMICALLY
+    function showQuestReward(title, desc, amount) {
+        rewardTitle.innerText = title;
+        rewardDesc.innerText = desc;
+        rewardAmountTxt.innerText = amount;
+        rewardModal.classList.add('active');
+    }
+
+    async function handleLoginFlow() {
+        try {
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+            const ip = await getIP();
+            const userRef = doc(db, "accounts", user.uid);
+            const snap = await getDoc(userRef);
+
+            if(!snap.exists()) {
+                await setDoc(userRef, {
+                    uid: user.uid,
+                    username: user.displayName,
+                    email: user.email,
+                    image: user.photoURL,
+                    coins: 250,
+                    streak: 0,
+                    ip: ip,
+                    joinedAt: new Date(),
+                    kevinMessagesToday: 0,
+                    completedQuests: []
+                });
+                showQuestReward("🎉 BUN VENIT!", "Hey, mersi că te-ai logat! Uite aici 250 KSDA monede cadou, strânge-le cu grijă! 😉", "250");
+            } else {
+                await updateDoc(userRef, { ip: ip, image: user.photoURL });
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    headerLoginBtn.onclick = () => {
+        if (!auth.currentUser) handleLoginFlow();
+        else accountModal.classList.add('active');
+    };
+    if(mobileLoginBtn) {
+        mobileLoginBtn.onclick = () => {
+            if (!auth.currentUser) handleLoginFlow();
+            else { sideMenu.classList.remove('open'); accountModal.classList.add('active'); }
         };
     }
-</script>
+
+    closeAccountPop.onclick = () => accountModal.classList.remove('active');
+    document.getElementById('popLogoutBtn').onclick = () => {
+        signOut(auth).then(() => accountModal.classList.remove('active'));
+    };
+
+    // BOT SEND BUTTON INTERCEPTION FOR QUEST
+    const botSendBtn = document.getElementById('botSendBtn');
+    const botUserInput = document.getElementById('botUserInput');
+
+    botSendBtn.addEventListener('click', async () => {
+        const val = botUserInput.value.trim();
+        if(!val || !auth.currentUser) return;
+
+        // Update counting in Firestore
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        await updateDoc(userRef, {
+            kevinMessagesToday: increment(1),
+            latestServerCheck: serverTimestamp()
+        });
+    });
+
+    onAuthStateChanged(auth, user => {
+        if (user) {
+            headerLoginText.innerText = "ACCOUNT";
+            headerUserImg.src = user.photoURL;
+            headerUserImg.style.display = "block";
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+
+            onSnapshot(doc(db, "accounts", user.uid), (snap) => {
+                if(snap.exists()) {
+                    const data = snap.data();
+                    document.getElementById('popUserImg').src = data.image;
+                    document.getElementById('popUserName').innerText = data.username;
+                    document.getElementById('popUserEmail').innerText = data.email;
+                    document.getElementById('popUserCoins').innerText = data.coins || 0;
+                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+
+                    // --- QUEST KEVIN BOT CHECK ---
+                    const completed = data.completedQuests || [];
+                    if (data.kevinMessagesToday >= 15 && !completed.includes('kevin_talk_15')) {
+                        updateDoc(doc(db, "accounts", user.uid), {
+                            coins: increment(350),
+                            completedQuests: arrayUnion('kevin_talk_15'),
+                            latestServerCheck: serverTimestamp()
+                        }).then(() => {
+                            showQuestReward(
+                                "🤖 QUEST COMPLETAT!",
+                                "Mersi mult că ai stat la o discuție cu mine! Sper că te-am ajutat sau măcar te-am amuzat. Uite recompensa ta:",
+                                "350"
+                            );
+                        });
+                    }
+                }
+            });
+        } else {
+            headerLoginText.innerText = "LOGIN";
+            headerUserImg.style.display = "none";
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+        }
+    });
+  </script>
+
 </body>
 </html>
-
-
