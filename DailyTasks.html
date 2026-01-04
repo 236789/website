@@ -258,7 +258,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -278,25 +278,17 @@
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
-    // --- LISTA COMPLETĂ DE QUEST-URI (POOL) ---
     const quests = [
-        // --- WALL QUESTS ---
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'wall_react_10', title: 'Reacționează la 10 mesaje pe Wall', reward: 200, target: 10, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'wall_long_msg', title: 'Scrie un mesaj lung (+100 caractere)', reward: 500, target: 1, link: 'Wall.html', pageName: 'Community Wall' },
-
-        // --- KEVIN & TEAM QUESTS ---
         { id: 'kevin_talk_15', title: 'Vorbește cu Kevin Bot (15 mesaje)', reward: 350, target: 15, link: 'hai_sa_vorbim.html', pageName: 'Hai să vorbim' },
         { id: 'meet_team_hunt', title: 'Cunoaște Echipa (Quest Secret)', reward: 400, target: 2, link: 'despre_noi.html', pageName: 'Despre Noi' },
-        
-        // --- STANDARD QUESTS ---
         { id: 'msg3', title: 'Trimite 3 mesaje (Standard)', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'gallery_task', title: 'Activitate Galerie (Like & Com)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
         { id: 'visit_news', title: 'Vizitează pagina Noutăți/Anunțuri', reward: 100, target: 1, link: 'noutati.html', pageName: 'Anunțuri' },
         { id: 'give_feedback', title: 'Dă-ne un feedback sau idei noi', reward: 250, target: 1, link: 'Feedback.html', pageName: 'Feedbacks' },
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
-        
-        // --- ONE TIME QUESTS (Special Handling) ---
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
     ];
@@ -304,38 +296,23 @@
     let serverTimeOffset = 0; 
     let isAwarding = false;
 
-    // --- HELPER: GENERATE 6 RANDOM QUESTS ---
     function generateDailyIds(completedQuests) {
-        // 1. Identify One-Time Quests that are ALREADY finished
         const oneTimeDone = ['review', 'social3'].filter(id => completedQuests.includes(id));
-        
-        // 2. Filter the pool: Keep all quests EXCEPT completed one-time ones
         const availablePool = quests.filter(q => !oneTimeDone.includes(q.id));
-
-        // 3. Shuffle the available pool
         const shuffled = availablePool.sort(() => 0.5 - Math.random());
-
-        // 4. Return top 6 IDs
         return shuffled.slice(0, 6).map(q => q.id);
     }
 
     function updateResetTimer() {
         const nowMs = Date.now() + serverTimeOffset; 
         const nowReal = new Date(nowMs);
-        const roTime = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Europe/Bucharest',
-            hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
-        });
-
+        const roTime = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Bucharest', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false });
         const parts = roTime.formatToParts(nowReal);
         const h = parseInt(parts.find(p => p.type === 'hour').value);
         const m = parseInt(parts.find(p => p.type === 'minute').value);
         const s = parseInt(parts.find(p => p.type === 'second').value);
-
-        const currentSeconds = (h * 3600) + (m * 60) + s;
-        let secondsLeft = 86400 - currentSeconds; 
+        let secondsLeft = 86400 - ((h * 3600) + (m * 60) + s); 
         if (secondsLeft < 0) secondsLeft = 0;
-
         const hLeft = Math.floor(secondsLeft / 3600);
         const mLeft = Math.floor((secondsLeft % 3600) / 60);
         const sLeft = secondsLeft % 60;
@@ -346,18 +323,11 @@
     function renderQuests(userData) {
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
-        
-        // --- NEW: USE SAVED DAILY LIST OR FALLBACK ---
-        // If activeDailyQuests exists in DB, use it. Otherwise use all (fallback)
         const activeIds = userData.activeDailyQuests || [];
-        
         let allDailyDone = true;
 
         quests.forEach(q => {
-            // FILTER: If we have a daily list, and this quest is NOT in it, skip it.
-            if (activeIds.length > 0 && !activeIds.includes(q.id)) {
-                return;
-            }
+            if (activeIds.length > 0 && !activeIds.includes(q.id)) return;
 
             const isCompleted = completed.includes(q.id);
             const card = document.createElement('div');
@@ -365,46 +335,20 @@
             let progressHTML = '';
             let canAward = false;
 
-            // --- QUEST: ECHIPA ---
             if (q.id === 'meet_team_hunt') {
                 const visitedLost = userData.visited_lost_soul_today ? 1 : 0;
                 const visitedKevin = userData.visited_kevin_trinity_today ? 1 : 0;
                 const totalTeam = visitedLost + visitedKevin;
-                
-                progressHTML = `
-                    <div class="progress-wrapper">
-                        <div class="progress-info"><span>Vizitează: Lost Soul</span><span>${visitedLost}/1</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${visitedLost * 100}%"></div></div>
-                    </div>
-                    <div class="progress-wrapper" style="margin-top:15px;">
-                        <div class="progress-info"><span>Vizitează: Kevin Trinity</span><span>${visitedKevin}/1</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${visitedKevin * 100}%"></div></div>
-                    </div>
-                `;
+                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Echipa</span><span>${totalTeam}/2</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${totalTeam * 50}%"></div></div></div>`;
                 if (totalTeam >= 2) canAward = true;
                 if (!isCompleted) allDailyDone = false;
-
-            // --- QUEST: GALERIE ---
             } else if (q.id === 'gallery_task') {
                 const currentLikes = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
                 const currentComments = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
-                const progLikes = (currentLikes / q.targetLikes) * 100;
-                const progComments = (currentComments / q.targetComments) * 100;
-
-                progressHTML = `
-                    <div class="progress-wrapper">
-                        <div class="progress-info"><span>Like la 10 poze</span><span>${currentLikes}/${q.targetLikes}</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progLikes}%"></div></div>
-                    </div>
-                    <div class="progress-wrapper" style="margin-top:15px;">
-                        <div class="progress-info"><span>Comentariu la 3 poze</span><span>${currentComments}/${q.targetComments}</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progComments}%"></div></div>
-                    </div>
-                `;
+                const prog = ((currentLikes + currentComments) / (q.targetLikes + q.targetComments)) * 100;
+                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Activitate</span><span>${currentLikes+currentComments}/${q.targetLikes+q.targetComments}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${prog}%"></div></div></div>`;
                 if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
                 if (!isCompleted) allDailyDone = false;
-
-            // --- STANDARD QUESTS ---
             } else {
                 let current = 0;
                 if (q.id === 'msg3') current = userData.messagesSentToday || 0;
@@ -412,50 +356,26 @@
                 if (q.id === 'wall_react_10') current = userData.wallReactionsToday || 0;
                 if (q.id === 'wall_long_msg') current = userData.wallLongMsgSent ? 1 : 0;
                 if (q.id === 'kevin_talk_15') current = userData.kevinMessagesToday || 0;
-                
                 if (q.id === 'review') current = userData.hasWrittenReview ? 1 : 0;
                 if (q.id === 'tiktok5') current = userData.tiktoksFollowed || 0;
                 if (q.id === 'social3') current = userData.socialFollowed || 0;
                 if (q.id === 'visit_news') current = userData.newsVisitedToday || 0;
                 if (q.id === 'give_feedback') current = userData.feedbackGivenToday || 0;
 
-                const progress = Math.min((current / q.target) * 100, 100);;
-                progressHTML = `
-                    <div class="progress-wrapper">
-                        <div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div>
-                    </div>
-                `;
+                const progress = Math.min((current / q.target) * 100, 100);
+                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div></div>`;
                 if (current >= q.target) canAward = true;
                 if (!isCompleted) allDailyDone = false;
             }
 
-            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery_task' || q.id === 'meet_team_hunt' ? 'spre' : 'la'} ${q.pageName}</a>`;
-            if (isCompleted) {
-                actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine!</small></div>`;
-            }
+            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
+            if (isCompleted) actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
 
-            card.innerHTML = `
-                <div class="quest-header">
-                    <span class="quest-title">${q.title}</span>
-                    <span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span>
-                </div>
-                ${progressHTML}
-                ${actionArea}
-            `;
+            card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
             questGrid.appendChild(card);
 
             if (canAward && !isCompleted && !isAwarding) { awardQuest(q.id, q.reward); }
         });
-
-        const today = new Date().toDateString();
-        // Only update streak if we have valid quests and they are all done
-        if (activeIds.length > 0 && allDailyDone && userData.lastStreakDate !== today) {
-            updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                streak: increment(1),
-                lastStreakDate: today
-            });
-        }
     }
 
     async function awardQuest(questId, amount) {
@@ -463,11 +383,11 @@
         isAwarding = true;
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         try {
-            const snap = await getDoc(userRef);
-            const completed = snap.data().completedQuests || [];
-            if(!completed.includes(questId)) {
-                await updateDoc(userRef, { coins: increment(amount), completedQuests: [...completed, questId] });
-            }
+            await updateDoc(userRef, { 
+                coins: increment(amount), 
+                completedQuests: arrayUnion(questId),
+                latestServerCheck: serverTimestamp() 
+            });
         } catch (e) { console.error(e); } finally { isAwarding = false; }
     }
 
@@ -476,60 +396,37 @@
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-
             const userRef = doc(db, "accounts", user.uid);
             await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
 
             onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
-                    if (snap.metadata.hasPendingWrites) return;
-
                     const data = snap.data();
-                    
                     if (data.latestServerCheck) {
                         const serverDate = data.latestServerCheck.toDate();
                         serverTimeOffset = serverDate.getTime() - Date.now();
                         const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
                         
-                        // 1. CHECK FOR MISSING DAILY QUESTS (First time logic)
                         if (!data.activeDailyQuests) {
-                            console.log("Generating first batch of daily quests...");
-                            const newDailyIds = generateDailyIds(data.completedQuests || []);
-                            await updateDoc(userRef, { activeDailyQuests: newDailyIds });
+                            const newIds = generateDailyIds(data.completedQuests || []);
+                            await updateDoc(userRef, { activeDailyQuests: newIds, latestServerCheck: serverTimestamp() });
                             return;
                         }
 
-                        // 2. CHECK FOR NEW DAY RESET
                         if(data.lastResetDate !== roDate) {
-                            console.log("New day detected. Resetting tasks and reshuffling...");
-                            const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                            
-                            // Generate NEW set of 6 quests for the new day
-                            const newDailyIds = generateDailyIds(persistentQuests);
-
+                            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+                            const newIds = generateDailyIds(persistent);
                             await updateDoc(userRef, {
-                                messagesSentToday: 0,
-                                tiktoksFollowed: 0,
-                                galleryLikesToday: 0,
-                                galleryCommentsToday: 0,
-                                newsVisitedToday: 0,
-                                feedbackGivenToday: 0,
-                                kevinMessagesToday: 0,
-                                visited_lost_soul_today: false,
-                                visited_kevin_trinity_today: false,
-                                wallRepliesToday: 0,
-                                wallReactionsToday: 0,
-                                wallLongMsgSent: false,
-                                
-                                completedQuests: persistentQuests, 
-                                activeDailyQuests: newDailyIds, // Save the new 6 quests
-                                lastResetDate: roDate 
+                                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                                completedQuests: persistent, activeDailyQuests: newIds, lastResetDate: roDate,
+                                latestServerCheck: serverTimestamp() 
                             });
                             return; 
                         }
                     }
-                    
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
                     document.getElementById('popUserName').innerText = data.username || user.displayName;
                     document.getElementById('popUserEmail').innerText = data.email || user.email;
@@ -541,14 +438,7 @@
         } else { window.location.href = 'index.html'; }
     });
 
-    const openModal = () => {
-        accountModal.classList.add('active');
-        sideMenu.classList.remove('open');
-    }
-
-    document.getElementById('headerLoginBtn').onclick = openModal;
-    if(mobileLoginBtn) mobileLoginBtn.onclick = openModal;
-    
+    document.getElementById('headerLoginBtn').onclick = () => accountModal.classList.add('active');
     document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth);
 </script>
