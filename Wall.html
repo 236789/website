@@ -694,6 +694,117 @@
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+
+
+    // --- ADAUGĂ ACESTE CONSTANTE LA ÎNCEPUTUL SCRIPTULUI MODUL ---
+const DAILY_QUESTS_POOL = [
+    { id: 'msg3', title: 'Comunicator', reward: 250, goal: 3, type: 'messagesSentToday' },
+    { id: 'wall_reply_5', title: 'Socializat', reward: 300, goal: 5, type: 'wallRepliesToday' },
+    { id: 'wall_react_10', title: 'Reactiv', reward: 200, goal: 10, type: 'wallReactionsToday' },
+    { id: 'wall_long_msg', title: 'Scriitor', reward: 500, goal: 1, type: 'wallLongMsgSent' },
+    // Adaugă restul până la 10 misiuni zilnice aici
+    { id: 'daily_login', title: 'Prezent', reward: 100, goal: 1, type: 'login' },
+    { id: 'msg10', title: 'Vorbăreț', reward: 400, goal: 10, type: 'messagesSentToday' },
+    { id: 'react5', title: 'Aprecierere', reward: 150, goal: 5, type: 'wallReactionsToday' },
+    { id: 'reply1', title: 'Răspuns Rapid', reward: 100, goal: 1, type: 'wallRepliesToday' },
+    { id: 'msg20', title: 'Legendă pe Wall', reward: 1000, goal: 20, type: 'messagesSentToday' },
+    { id: 'react20', title: 'Fan Nr. 1', reward: 500, goal: 20, type: 'wallReactionsToday' }
+];
+
+const ONCE_ONLY_QUESTS = ['profile_setup', 'first_message']; // Cele 2 misiuni unice
+
+// --- FUNCȚIE PENTRU GENERAREA MISIUNILOR ZILNICE ---
+async function syncDailyQuests(userRef, userData) {
+    const today = new Date().toDateString();
+    
+    // Dacă utilizatorul nu are misiuni sau a trecut ziua
+    if (userData.lastQuestRotation !== today) {
+        // Amestecăm pool-ul și alegem 6
+        const shuffled = [...DAILY_QUESTS_POOL].sort(() => 0.5 - Math.random());
+        const selectedIds = shuffled.slice(0, 6).map(q => q.id);
+        
+        await updateDoc(userRef, {
+            activeQuests: selectedIds,
+            lastQuestRotation: today,
+            // Resetăm progresul zilnic la rotație dacă e necesar
+            messagesSentToday: 0,
+            wallRepliesToday: 0,
+            wallReactionsToday: 0,
+            wallLongMsgSent: false
+        });
+        console.log("Misiuni noi alocate pentru azi:", selectedIds);
+        return selectedIds;
+    }
+    return userData.activeQuests || [];
+}
+
+// --- ÎN INTERIORUL onAuthStateChanged(auth, async (user) => { ---
+// Înlocuiește logica de snapshot existentă cu aceasta:
+
+onSnapshot(doc(db, "accounts", user.uid), async (docSnap) => {
+    if(docSnap.exists()) {
+        const data = docSnap.data();
+        
+        // Sincronizăm misiunile active (doar dacă suntem pe pagina unde e nevoie de ele)
+        const activeQuests = await syncDailyQuests(userRef, data);
+        const completed = data.completedQuests || [];
+
+        // UI Updates
+        document.getElementById('popUserImg').src = data.image;
+        document.getElementById('popUserName').innerText = data.username;
+        document.getElementById('popUserCoins').innerText = data.coins || 0;
+        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+
+        // --- LOGICĂ VALIDARE MISIUNI ---
+        // Verificăm doar misiunile care sunt în activeQuests SAU în ONCE_ONLY_QUESTS
+        
+        // 1. MSG3
+        if (activeQuests.includes('msg3') && !completed.includes('msg3')) {
+            if (data.messagesSentToday >= 3 && !localProcessedQuests.has('msg3')) {
+                completeQuest(user.uid, 'msg3', 250, "Mersi că ai comunicat pe chat!", completed);
+            }
+        }
+
+        // 2. WALL REPLY 5
+        if (activeQuests.includes('wall_reply_5') && !completed.includes('wall_reply_5')) {
+            if (data.wallRepliesToday >= 5 && !localProcessedQuests.has('wall_reply_5')) {
+                completeQuest(user.uid, 'wall_reply_5', 300, "Ai răspuns la 5 persoane!", completed);
+            }
+        }
+
+        // 3. WALL REACT 10
+        if (activeQuests.includes('wall_react_10') && !completed.includes('wall_react_10')) {
+            if (data.wallReactionsToday >= 10 && !localProcessedQuests.has('wall_react_10')) {
+                completeQuest(user.uid, 'wall_react_10', 200, "Ai reacționat la 10 mesaje!", completed);
+            }
+        }
+
+        // 4. WALL LONG MSG
+        if (activeQuests.includes('wall_long_msg') && !completed.includes('wall_long_msg')) {
+            if (data.wallLongMsgSent === true && !localProcessedQuests.has('wall_long_msg')) {
+                completeQuest(user.uid, 'wall_long_msg', 500, "Ai scris un mesaj complex!", completed);
+            }
+        }
+
+        // Exemplu misiune ONCE ONLY (nu contează dacă e în rotație)
+        if (!completed.includes('first_message')) {
+             if (data.messagesSentToday >= 1 && !localProcessedQuests.has('first_message')) {
+                completeQuest(user.uid, 'first_message', 100, "Primul tău mesaj pe Wall!", completed);
+             }
+        }
+    }
+});
+
+// Funcție helper pentru a evita repetarea codului
+async function completeQuest(uid, questId, reward, message, currentCompleted) {
+    localProcessedQuests.add(questId);
+    const userRef = doc(db, "accounts", uid);
+    await updateDoc(userRef, {
+        coins: increment(reward),
+        completedQuests: [...currentCompleted, questId]
+    });
+    showRewardModal(message, reward);
+}
     // CONFIGURARE
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
