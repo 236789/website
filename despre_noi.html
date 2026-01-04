@@ -309,13 +309,13 @@
 
   <!-- Team Section -->
   <section class="team-container">
-    <a href="despre_kevin_trinity.html" style="text-decoration:none;">
+    <a href="despre_kevin_trinity.html" id="kevinVisit" style="text-decoration:none;">
       <div class="team-card">
         <div class="pfp-frame"><img src="https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w" alt="Kevin"></div>
         <div class="neon-label label-cyan">Kevin Trinity</div>
       </div>
     </a>
-    <a href="despre_lost_soul.html" style="text-decoration:none;">
+    <a href="despre_lost_soul.html" id="lostSoulVisit" style="text-decoration:none;">
       <div class="team-card">
         <div class="pfp-frame"><img src="https://iili.io/f1ddIfe.png" alt="Lost Soul"></div>
         <div class="neon-label label-purple">Lost Soul</div>
@@ -375,7 +375,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, onSnapshot, setDoc, updateDoc, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -397,6 +397,52 @@
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
+
+    // LOGICA QUEST: CUNOASTE ECHIPA
+    const kevinLink = document.getElementById('kevinVisit');
+    const lostSoulLink = document.getElementById('lostSoulVisit');
+
+    async function trackTeamVisit(memberField, targetUrl) {
+        if (!auth.currentUser) {
+            window.location.href = targetUrl;
+            return;
+        }
+        
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        try {
+            // Pas 1: Setam vizita pentru membrul respectiv
+            await updateDoc(userRef, { [memberField]: true });
+
+            // Pas 2: Verificam starea curenta pentru a acorda recompensa
+            const snap = await getDoc(userRef);
+            const data = snap.data();
+            const alreadyDone = data.completedQuests || [];
+
+            // Verificam daca AMBELE sunt vizitate si quest-ul NU este deja in lista de completate
+            if (data.visited_lost_soul_today && data.visited_kevin_trinity_today && !alreadyDone.includes('meet_team_hunt')) {
+                await updateDoc(userRef, {
+                    coins: increment(400),
+                    completedQuests: arrayUnion('meet_team_hunt')
+                });
+                console.log("Quest completat: +400 Coins!");
+            }
+        } catch (err) {
+            console.error("Quest error:", err);
+        } finally {
+            window.location.href = targetUrl;
+        }
+    }
+
+    kevinLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        trackTeamVisit('visited_kevin_trinity_today', 'despre_kevin_trinity.html');
+    });
+
+    lostSoulLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        trackTeamVisit('visited_lost_soul_today', 'despre_lost_soul.html');
+    });
+
 
     let userIP = null;
     fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => {
@@ -449,7 +495,7 @@
             });
         } else {
             document.getElementById('headerLoginText').innerText = "LOGIN";
-            document.getElementById('headerUserImg').style.display = "none";
+            document.getElementById('headerUserImg').display = "none";
             mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
     });
