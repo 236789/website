@@ -188,10 +188,10 @@
         color: #fff !important;
     }
 
-    .post-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; }
-    .post-pfp { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #fff; object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    .post-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; flex-wrap: nowrap; }
+    .post-pfp { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #fff; object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,0.2); flex-shrink: 0; }
     .post-name { font-weight: 800; font-size: 16px; font-family: 'Orbitron'; color: #fff; display: flex; align-items: center; gap: 8px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-    .post-date { font-size: 11px; color: rgba(255,255,255,0.8); margin-left: auto; font-family: 'Poppins'; }
+    .post-date { font-size: 11px; color: rgba(255,255,255,0.8); margin-left: auto; font-family: 'Poppins'; flex-shrink: 0; }
     .post-content { font-size: 15px; line-height: 1.6; color: #fff; white-space: pre-wrap; word-wrap: break-word; font-weight: 500; }
 
     /* BADGES */
@@ -267,16 +267,22 @@
     .comments-btn:hover { background: #fff; color: #000; }
     
     .comment-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
-    .comment-item { display: flex; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; }
-    .com-pfp { width: 25px; height: 25px; border-radius: 50%; }
-    .com-name { font-size: 11px; font-weight: 700; color: var(--primary); margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
+    
+    /* ROLE-SPECIFIC COMMENT BUBBLES */
+    .comment-item { display: flex; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border-left: 3px solid transparent; }
+    .comment-item.com-owner { background: rgba(41, 243, 255, 0.1); border-left-color: var(--primary); box-shadow: inset 0 0 10px rgba(41, 243, 255, 0.1); }
+    .comment-item.com-admin { background: rgba(255, 77, 77, 0.1); border-left-color: #ff4d4d; box-shadow: inset 0 0 10px rgba(255, 77, 77, 0.1); }
+    .comment-item.com-mod { background: rgba(46, 204, 113, 0.1); border-left-color: #2ecc71; box-shadow: inset 0 0 10px rgba(46, 204, 113, 0.1); }
+
+    .com-pfp { width: 25px; height: 25px; border-radius: 50%; flex-shrink: 0; }
+    .com-name { font-size: 11px; font-weight: 700; color: var(--primary); margin-bottom: 2px; display: flex; align-items: center; gap: 5px; }
     .com-text { font-size: 12px; color: #ddd; word-break: break-word; }
 
     .comment-input-area { display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
     .com-input { flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; padding: 8px 12px; font-size: 12px; color: #fff; outline: none; }
     .com-send-btn { background: var(--primary); border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; color: #000; font-size: 12px; display: flex; align-items: center; justify-content: center; }
 
-    /* ROLE ICONS IN COMMENTS */
+    /* ROLE ICONS */
     .role-icon-com { font-size: 10px; }
     .owner-icon { color: var(--primary); }
     .admin-icon { color: #ff4d4d; }
@@ -327,6 +333,11 @@
         .wall-container { margin-top: 90px; padding: 0 10px; height: calc(100vh - 90px); display: flex; flex-direction: column; }
         .metallic-title { font-size: 24px; margin-bottom: 5px; } .wall-desc { font-size: 12px; margin-bottom: 15px; }
         .wall-card { height: 100%; border-radius: 16px; }
+        
+        /* MOBILE FIX FOR OVERFLOW NAMES */
+        .post-header { flex-wrap: wrap; gap: 5px; }
+        .post-name { font-size: 13px; width: 100%; }
+        .post-date { margin-left: 57px; margin-top: -5px; opacity: 0.6; font-size: 9px; }
     }
   </style>
 </head>
@@ -518,7 +529,6 @@
 
     // State
     let currentCategory = 'noutati'; 
-    let isAuthorizedPoster = false;
     let unsubscribePosts = null;
     let currentUid = null;
 
@@ -557,29 +567,21 @@
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    // --- QUEST LOGIC: VISIT_NEWS ---
                     const completed = data.completedQuests || [];
                     if (!completed.includes('visit_news')) {
-                        // User has NOT visited today -> AWARD
                         try {
                             await updateDoc(userRef, {
                                 coins: increment(100),
-                                newsVisitedToday: 1, // Logic matches main page logic
+                                newsVisitedToday: 1,
                                 completedQuests: [...completed, 'visit_news']
                             });
-                            // SHOW POPUP
                             rewardModal.classList.add('active');
-                            // Update UI locally
                             document.getElementById('popUserCoins').innerText = (data.coins || 0) + 100;
-                        } catch(err) {
-                            console.error("Quest Error:", err);
-                        }
+                        } catch(err) { console.error("Quest Error:", err); }
                     }
-                    // --------------------------------
                 }
             });
 
-            // Initial check for permissions visibility
             checkInputVisibility();
             loadPosts();
         } else {
@@ -607,11 +609,9 @@
         const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
 
         if(currentCategory === 'noutati') {
-            // ONLY Owner sees input for Noutati
             adminInputWrapper.style.display = isOwner ? 'block' : 'none';
             adminInputLabel.innerText = "POSTARE OWNER";
         } else {
-            // Owner, Admin, and Mods see input for Anunturi
             adminInputWrapper.style.display = (isOwner || isAdmin || isMod) ? 'block' : 'none';
             adminInputLabel.innerText = isOwner ? "POSTARE OWNER" : (isAdmin ? "POSTARE ADMIN" : "POSTARE MODERATOR");
         }
@@ -640,12 +640,9 @@
             const ref = doc(db, "site_news", id);
             const snap = await getDoc(ref);
             if(!snap.exists()) return;
-            
             const votes = snap.data().votes || {};
-            // Toggle logic
             if(votes[currentUid] === type) delete votes[currentUid];
             else votes[currentUid] = type;
-            
             await updateDoc(ref, { votes });
         } catch(e) { console.error(e); }
     };
@@ -658,19 +655,13 @@
         } else {
             wrapper.style.display = 'block';
             if(wrapper.getAttribute('data-loaded') === 'true') return;
-            
             const listDiv = document.getElementById(`comList-${id}`);
             listDiv.innerHTML = '<div style="font-size:10px; color:#aaa;">Se încarcă comentariile...</div>';
-
             const q = query(collection(db, `site_news/${id}/comments`), orderBy("createdAt", "asc"));
             const snapshot = await getDocs(q);
-            
             listDiv.innerHTML = '';
             if(snapshot.empty) { listDiv.innerHTML = '<div style="font-size:10px; color:#aaa;">Niciun comentariu. Fii primul!</div>'; }
-            
-            snapshot.forEach(docSnap => {
-                appendCommentHTML(listDiv, docSnap.data());
-            });
+            snapshot.forEach(docSnap => { appendCommentHTML(listDiv, docSnap.data()); });
             wrapper.setAttribute('data-loaded', 'true');
         }
     };
@@ -679,22 +670,12 @@
         const input = document.getElementById(`comInput-${id}`);
         const text = input.value.trim();
         if(!text || !auth.currentUser) return;
-        
         try {
-            const commentData = { 
-                text: text, 
-                uid: auth.currentUser.uid, 
-                email: auth.currentUser.email, // Added for role icons
-                name: auth.currentUser.displayName, 
-                photo: auth.currentUser.photoURL, 
-                createdAt: serverTimestamp() 
-            };
+            const commentData = { text: text, uid: auth.currentUser.uid, email: auth.currentUser.email, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, createdAt: serverTimestamp() };
             await addDoc(collection(db, `site_news/${id}/comments`), commentData);
-            
             const listDiv = document.getElementById(`comList-${id}`);
             const emptyMsg = listDiv.querySelector('div[style*="font-size:10px"]');
             if(emptyMsg) emptyMsg.remove();
-            
             appendCommentHTML(listDiv, commentData);
             input.value = '';
         } catch(e) { alert("Eroare: " + e.message); }
@@ -702,22 +683,16 @@
 
     function appendCommentHTML(container, data) {
         const div = document.createElement('div');
-        div.className = 'comment-item';
-        
-        // Role icon logic for comments
+        let bubbleClass = 'comment-item';
         let roleIcon = '';
         const email = data.email || "";
-        if(email === 'nicaemmanuel433qe@gmail.com') roleIcon = '<i class="fas fa-crown role-icon-com owner-icon"></i>';
-        else if(email === 'kevin.trinity2020@gmail.com') roleIcon = '<i class="fas fa-shield-alt role-icon-com admin-icon"></i>';
-        else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') roleIcon = '<i class="fas fa-star role-icon-com mod-icon"></i>';
 
-        div.innerHTML = `
-            <img src="${data.photo}" class="com-pfp">
-            <div class="com-content">
-                <div class="com-name">${data.name} ${roleIcon}</div>
-                <div class="com-text">${data.text}</div>
-            </div>
-        `;
+        if(email === 'nicaemmanuel433qe@gmail.com') { bubbleClass += ' com-owner'; roleIcon = '<i class="fas fa-crown role-icon-com owner-icon"></i>'; }
+        else if(email === 'kevin.trinity2020@gmail.com') { bubbleClass += ' com-admin'; roleIcon = '<i class="fas fa-shield-alt role-icon-com admin-icon"></i>'; }
+        else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') { bubbleClass += ' com-mod'; roleIcon = '<i class="fas fa-star role-icon-com mod-icon"></i>'; }
+
+        div.className = bubbleClass;
+        div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name} ${roleIcon}</div><div class="com-text">${data.text}</div></div>`;
         container.appendChild(div);
     }
 
@@ -726,21 +701,12 @@
         let cardClass = 'post-card';
         let badge = '';
 
-        if(data.isOwner) {
-            cardClass += ' owner-post';
-            badge = `<span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
-        } else if(data.isMod) {
-            cardClass += ' mod-post';
-            badge = `<span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`;
-        } else {
-            cardClass += ' admin-post';
-            badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
-        }
+        if(data.isOwner) { cardClass += ' owner-post'; badge = `<span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`; }
+        else if(data.isMod) { cardClass += ' mod-post'; badge = `<span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`; }
+        else { cardClass += ' admin-post'; badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
 
         const dateObj = data.createdAt ? data.createdAt.toDate() : new Date();
         const dateStr = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-        // Vote Calculation
         const votes = data.votes || {};
         let likes = 0, dislikes = 0;
         let myVote = votes[currentUid] || 0;
@@ -748,76 +714,34 @@
 
         div.className = cardClass;
         div.innerHTML = `
-            <div class="post-header">
-                <img src="${data.photo}" class="post-pfp">
-                <div class="post-name">${data.name} ${badge}</div>
-                <div class="post-date">${dateStr}</div>
-            </div>
+            <div class="post-header"><img src="${data.photo}" class="post-pfp"><div class="post-name">${data.name} ${badge}</div><div class="post-date">${dateStr}</div></div>
             <div class="post-content">${linkify(data.text)}</div>
-            
-            <div class="post-footer">
-                <button class="comments-btn" onclick="toggleComments('${data.id}')"><i class="fas fa-comment-dots"></i> Comentarii</button>
-                
-                <div class="vote-actions">
-                    <button class="vote-btn ${myVote===1 ? 'active-like' : ''}" onclick="votePost('${data.id}', 1)">
-                        <i class="fas fa-thumbs-up"></i> ${likes}
-                    </button>
-                    <button class="vote-btn ${myVote===-1 ? 'active-dislike' : ''}" onclick="votePost('${data.id}', -1)">
-                        <i class="fas fa-thumbs-down"></i> ${dislikes}
-                    </button>
-                </div>
-            </div>
-            
-            <div id="comments-${data.id}" class="comments-section-wrapper" data-loaded="false">
-                <div id="comList-${data.id}" class="comment-list"></div>
-                <div class="comment-input-area">
-                    <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un comentariu... (Enter pt trimitere)">
-                    <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
-                </div>
-            </div>
+            <div class="post-footer"><button class="comments-btn" onclick="toggleComments('${data.id}')"><i class="fas fa-comment-dots"></i> Comentarii</button>
+            <div class="vote-actions"><button class="vote-btn ${myVote===1 ? 'active-like' : ''}" onclick="votePost('${data.id}', 1)"><i class="fas fa-thumbs-up"></i> ${likes}</button>
+            <button class="vote-btn ${myVote===-1 ? 'active-dislike' : ''}" onclick="votePost('${data.id}', -1)"><i class="fas fa-thumbs-down"></i> ${dislikes}</button></div></div>
+            <div id="comments-${data.id}" class="comments-section-wrapper" data-loaded="false"><div id="comList-${data.id}" class="comment-list"></div>
+            <div class="comment-input-area"><input id="comInput-${data.id}" class="com-input" placeholder="Scrie un comentariu..."><button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button></div></div>
         `;
-
         const comInput = div.querySelector(`#comInput-${data.id}`);
-        comInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); div.querySelector('.com-send-btn').click(); }
-        });
-
+        comInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); div.querySelector('.com-send-btn').click(); } });
         messagesFeed.appendChild(div);
     }
 
-    function linkify(text) {
-        if(!text) return "";
-        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
-        return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" style="color:#fff; text-decoration:underline;">${url}</a>`; });
-    }
+    function linkify(text) { if(!text) return ""; const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" style="color:#fff; text-decoration:underline;">${url}</a>`; }); }
 
-    // --- MAIN POST SEND ---
     adminPostBtn.onclick = async () => {
         const text = adminPostInput.value.trim();
         if(!text) return;
         const email = auth.currentUser.email;
         const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
         const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
-
         try {
-            await addDoc(collection(db, "site_news"), {
-                text: text,
-                category: currentCategory,
-                uid: auth.currentUser.uid,
-                name: isOwner ? "Lost Soul" : auth.currentUser.displayName,
-                photo: auth.currentUser.photoURL,
-                isOwner: isOwner,
-                isMod: isMod,
-                createdAt: serverTimestamp(),
-                votes: {}
-            });
+            await addDoc(collection(db, "site_news"), { text: text, category: currentCategory, uid: auth.currentUser.uid, name: isOwner ? "Lost Soul" : auth.currentUser.displayName, photo: auth.currentUser.photoURL, isOwner: isOwner, isMod: isMod, createdAt: serverTimestamp(), votes: {} });
             adminPostInput.value = '';
         } catch(e) { alert("Eroare la postare: " + e.message); }
     };
 
-    adminPostInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); }
-    });
+    adminPostInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); } });
 
   </script>
 </body>
