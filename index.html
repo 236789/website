@@ -539,19 +539,19 @@
 <div id="cookieConsent" class="cookie-wrapper">
     <div class="cookie-content">
         <div class="cookie-title">🍪 Cookie-uri & GDPR</div>
-        <p class="cookie-text">Folosim cookie-uri pentru a-ți oferi cea mai bună experiență pe KSDA și pentru analize. Continuând navigarea, ești de acord cu utilizarea acestora.</p>
+        <p class="cookie-text">Folosim cookie-uri pentru a-ți oferi cea mai buna experiență pe KSDA și pentru analize. Continuând navigarea, ești de acord cu utilizarea acestora.</p>
     </div>
     <button id="acceptCookiesBtn" class="cookie-btn">Sunt de acord</button>
 </div>
 
-<!-- REWARD MODAL (WELCOME BONUS) -->
+<!-- REWARD MODAL (WELCOME BONUS & QUESTS) -->
 <div id="rewardModal" class="reward-modal">
     <div class="reward-card">
-        <h2>🎉 BUN VENIT!</h2>
-        <p>Hey, mersi că te-ai logat! Uite aici 250 KSDA monede cadou, strânge-le cu grijă! 😉</p>
+        <h2 id="rewardTitle">🎉 BUN VENIT!</h2>
+        <p id="rewardDesc">Hey, mersi că te-ai logat! Uite aici 250 KSDA monede cadou, strânge-le cu grijă! 😉</p>
         <div class="reward-coins-box">
             <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
-            <span>250</span>
+            <span id="rewardAmountTxt">250</span>
         </div>
         <p style="color: #ffd700; font-weight: 700; font-family: 'Orbitron';">KSDA COINS</p>
         <button class="btn btn-primary" onclick="document.getElementById('rewardModal').classList.remove('active')">Super!</button>
@@ -649,7 +649,7 @@
         <a href="help.html" class="cyan-link">Susține-ne</a>
         
         <button id="mobileLoginBtn" class="side-menu-login-btn">
-            <i class="fas fa-sign-in-alt"></i> Autentificare
+            <i class="fas fa-user-circle"></i> Autentificare
         </button>
 
         </div>
@@ -788,7 +788,7 @@
     closeMenu.addEventListener('click', () => sideMenu.classList.remove('open'));
     menuLinks.forEach(link => link.addEventListener('click', () => sideMenu.classList.remove('open')));
 
-  // --- BOT LOGIC (FULL BRAIN RESTORED) ---
+  // --- BOT LOGIC (QUEST INCLUDED) ---
    const botBtn = document.getElementById('botBtn');
    const botWindow = document.getElementById('botWindow');
    const botClose = document.getElementById('botClose');
@@ -908,16 +908,6 @@ function startBotConversation() {
        setTimeout(() => addBotMsg(response, 'bot'), 700);
    }
 
-   botSendBtn.onclick = () => {
-       const val = botUserInput.value;
-       if(!val.trim()) return;
-       addBotMsg(val, 'user');
-       processUserMessage(val);
-       botUserInput.value = '';
-   };
-
-   botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
-   
    const cookieConsent = document.getElementById('cookieConsent');
    const acceptCookiesBtn = document.getElementById('acceptCookiesBtn');
    if (!localStorage.getItem('ksda_cookie_consent')) {
@@ -934,7 +924,7 @@ function startBotConversation() {
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -957,7 +947,12 @@ function startBotConversation() {
 
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
+    
+    // REWARD MODAL ELEMENTS
     const rewardModal = document.getElementById('rewardModal');
+    const rewardTitle = document.getElementById('rewardTitle');
+    const rewardDesc = document.getElementById('rewardDesc');
+    const rewardAmountTxt = document.getElementById('rewardAmountTxt');
 
     async function getIP() {
         try {
@@ -979,6 +974,14 @@ function startBotConversation() {
     }
     checkGlobalBan();
 
+    // FUNCTION TO SHOW REWARD MODAL DYNAMICALLY
+    function showQuestReward(title, desc, amount) {
+        rewardTitle.innerText = title;
+        rewardDesc.innerText = desc;
+        rewardAmountTxt.innerText = amount;
+        rewardModal.classList.add('active');
+    }
+
     async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
@@ -996,11 +999,13 @@ function startBotConversation() {
                     coins: 250,
                     streak: 0,
                     ip: ip,
-                    joinedAt: new Date()
+                    joinedAt: new Date(),
+                    kevinMessagesToday: 0,
+                    completedQuests: []
                 });
-                rewardModal.classList.add('active');
+                showQuestReward("🎉 BUN VENIT!", "Hey, mersi că te-ai logat! Uite aici 250 KSDA monede cadou, strânge-le cu grijă! 😉", "250");
             } else {
-                await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
+                await updateDoc(userRef, { ip: ip, image: user.photoURL });
             }
         } catch(e) { console.error(e); }
     }
@@ -1021,41 +1026,62 @@ function startBotConversation() {
         signOut(auth).then(() => accountModal.classList.remove('active'));
     };
 
+    // BOT SEND BUTTON INTERCEPTION FOR QUEST
+    const botSendBtn = document.getElementById('botSendBtn');
+    const botUserInput = document.getElementById('botUserInput');
+
+    botSendBtn.addEventListener('click', async () => {
+        const val = botUserInput.value.trim();
+        if(!val || !auth.currentUser) return;
+
+        // Update counting in Firestore
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        await updateDoc(userRef, {
+            kevinMessagesToday: increment(1),
+            latestServerCheck: serverTimestamp()
+        });
+    });
+
     onAuthStateChanged(auth, user => {
         if (user) {
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
-            
-            // FIX: Ensure Side Menu button also switches to Account state
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-            }
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-            onSnapshot(doc(db, "accounts", user.uid), (doc) => {
-                if(doc.exists()) {
-                    const data = doc.data();
+            onSnapshot(doc(db, "accounts", user.uid), (snap) => {
+                if(snap.exists()) {
+                    const data = snap.data();
                     document.getElementById('popUserImg').src = data.image;
                     document.getElementById('popUserName').innerText = data.username;
                     document.getElementById('popUserEmail').innerText = data.email;
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+
+                    // --- QUEST KEVIN BOT CHECK ---
+                    const completed = data.completedQuests || [];
+                    if (data.kevinMessagesToday >= 15 && !completed.includes('kevin_talk_15')) {
+                        updateDoc(doc(db, "accounts", user.uid), {
+                            coins: increment(350),
+                            completedQuests: arrayUnion('kevin_talk_15'),
+                            latestServerCheck: serverTimestamp()
+                        }).then(() => {
+                            showQuestReward(
+                                "🤖 QUEST COMPLETAT!",
+                                "Mersi mult că ai stat la o discuție cu mine! Sper că te-am ajutat sau măcar te-am amuzat. Uite recompensa ta:",
+                                "350"
+                            );
+                        });
+                    }
                 }
             });
         } else {
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
-            
-            // Revert Side Menu button when logged out
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-            }
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
     });
   </script>
 
 </body>
 </html>
-
-
-
