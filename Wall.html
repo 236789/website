@@ -554,7 +554,7 @@
     <i class="fas fa-exclamation-circle"></i> <span id="toastMsg">Error message</span>
   </div>
   
-  <!-- REWARD MODAL (TASK BONUS) -->
+  <!-- REWARD MODAL (STANDARD TASK) -->
 <div id="rewardModal" class="reward-modal">
     <div class="reward-card">
         <h2 style="font-family:'Orbitron'; color:#ffd700;">🎉 TASK COMPLETAT!</h2>
@@ -565,6 +565,21 @@
         </div>
         <p style="color: #ffd700; font-weight: 700; font-family: 'Orbitron';">KSDA COINS</p>
         <button class="btn" style="background:var(--primary); color:#000; padding:10px 20px; border-radius:10px; font-family:'Orbitron'; cursor:pointer;" onclick="document.getElementById('rewardModal').classList.remove('active')">Super!</button>
+    </div>
+</div>
+
+<!-- SPECIAL QUEST COMPLETE POPUP (NEW) -->
+<div id="specialQuestModal" class="reward-modal">
+    <div class="reward-card" style="border-color: #29f3ff; box-shadow: 0 0 50px rgba(41, 243, 255, 0.2);">
+        <h2 style="font-family:'Orbitron'; color:#29f3ff; margin-bottom:10px;">MISSION ACCOMPLISHED!</h2>
+        <div style="font-size:50px; margin:20px 0;">🎉</div>
+        <p style="color:#fff; font-size:16px;">Ai completat un Quest Special pe Wall!</p>
+        <div class="reward-coins-box">
+            <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 40px;">
+            <span>BONUS</span>
+        </div>
+        <p style="color:#a5b1c2; font-size:13px; margin-bottom:20px;">Recompensa a fost adăugată în contul tău.</p>
+        <button class="btn" style="background:var(--primary); color:#000; padding:12px 30px; border-radius:50px; font-weight:800; border:none; cursor:pointer; font-family:'Orbitron';" onclick="document.getElementById('specialQuestModal').classList.remove('active')">LET'S GO!</button>
     </div>
 </div>
 
@@ -599,13 +614,12 @@
     </div>
 </div>
 
-<!-- NEW: REACTION DETAILS MODAL -->
+<!-- REACTION DETAILS MODAL -->
 <div id="reactionModal" class="account-modal-overlay">
     <div class="account-card" style="max-width: 320px; height: auto; max-height: 500px; padding: 25px;">
         <button onclick="window.closeReactionModal()" class="close-pop">✕</button>
         <h3 id="reactModalTitle" style="font-family:'Orbitron'; margin-bottom: 20px; border-bottom:1px solid var(--glass-border); padding-bottom:10px;">Reacții</h3>
         <div id="reactList" style="text-align: left; overflow-y: auto; max-height: 350px;">
-            <!-- Users will be injected here -->
             <div style="text-align:center; padding:20px;">Se încarcă...</div>
         </div>
     </div>
@@ -759,37 +773,30 @@
     menuBtn.addEventListener('click', () => sideMenu.classList.add('open'));
     closeMenu.addEventListener('click', () => sideMenu.classList.remove('open'));
 
-        // --- ANIMATION LOGIC ---
+    // --- ANIMATION LOGIC ---
     function flyCoins(startElem) {
-        // 1. Identify Target (Mobile = Hamburger, Desktop = Profile Button)
         const isMobile = window.innerWidth <= 768;
         const targetSelector = isMobile ? '#menuBtn' : '#headerLoginBtn';
         const targetElem = document.querySelector(targetSelector);
-
         if (!startElem || !targetElem) return;
 
-        // 2. Get Coordinates
         const startRect = startElem.getBoundingClientRect();
         const targetRect = targetElem.getBoundingClientRect();
 
-        // 3. Create Floating Element
         const floater = document.createElement('div');
         floater.className = 'flying-reward';
         floater.innerHTML = `+10 <img src="https://iili.io/fhc1SKQ.png">`; 
         
-        // Set initial position
         floater.style.top = `${startRect.top}px`;
         floater.style.left = `${startRect.left}px`;
         
         document.body.appendChild(floater);
 
-        // 4. Trigger Animation
         requestAnimationFrame(() => {
             floater.style.top = `${targetRect.top + (targetRect.height/2) - 10}px`;
             floater.style.left = `${targetRect.left + (targetRect.width/2) - 20}px`;
         });
 
-        // 5. Cleanup
         setTimeout(() => {
             floater.classList.add('finished');
             setTimeout(() => floater.remove(), 500);
@@ -797,9 +804,8 @@
     }
   </script>
 
- <!-- FIREBASE & CHAT LOGIC (V3 - FINAL FIX) -->
+ <!-- FIREBASE & CHAT LOGIC -->
   <script type="module">
-    // 1. IMPORTURI ACTUALIZATE (Am adaugat 'limit')
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -819,14 +825,9 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-    // --- FIX: FORCE PERSISTENCE (Keeps user logged in) ---
     setPersistence(auth, browserLocalPersistence)
-      .then(() => {
-          // Persistence set successfully
-      })
-      .catch((error) => {
-          console.error("Persistence error:", error);
-      });
+      .then(() => {})
+      .catch((error) => { console.error("Persistence error:", error); });
 
     // DOM ELEMENTS
     const lockedView = document.getElementById('lockedView');
@@ -851,7 +852,10 @@
     
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
+    
+    // MODALS
     const rewardModal = document.getElementById('rewardModal');
+    const specialQuestModal = document.getElementById('specialQuestModal'); // NEW MODAL
 
     // CHAT ELEMENTS
     const userAvatar = document.getElementById('userAvatar');
@@ -913,9 +917,7 @@
     // SHARED AUTH
     async function handleLoginFlow() {
         try {
-            // Updated to ensure persistence
             const result = await signInWithPopup(auth, provider);
-            // onAuthStateChanged will handle the UI update
         } catch(e) { console.error(e); }
     }
 
@@ -935,11 +937,9 @@
     // AUTH STATE
     onAuthStateChanged(auth, async (user) => {
         if(user) {
-            // Update Account Data in Firestore if needed
             const userRef = doc(db, "accounts", user.uid);
             const ip = userIP || "unknown";
             
-            // Check if user exists, if not create, else update IP
             getDoc(userRef).then((snap) => {
                  if(!snap.exists()) {
                     setDoc(userRef, {
@@ -952,6 +952,9 @@
                         ip: ip,
                         joinedAt: new Date(),
                         messagesSentToday: 0,
+                        wallRepliesToday: 0, // Init for Quest
+                        wallReactionsToday: 0, // Init for Quest
+                        wallLongMsgSent: false, // Init for Quest
                         completedQuests: []
                     });
                 } else {
@@ -996,6 +999,7 @@
             lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
             if(userAvatar) userAvatar.src = user.photoURL;
             
+            // --- LIVE UPDATES FOR QUESTS & USER DATA ---
             onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
@@ -1008,16 +1012,41 @@
                     const completed = data.completedQuests || [];
                     const cooldowns = data.questCooldowns || {};
                     const now = Date.now();
+                    const oneHourCooldown = now + (3600000); 
 
+                    // --- QUEST LOGIC INTEGRATION ---
+                    
+                    // 1. STANDARD MSG3 QUEST
                     if(data.messagesSentToday >= 3 && !completed.includes('msg3') && !(now < (cooldowns['msg3'] || 0))) {
-                        const oneHourCooldown = Date.now() + (3600000); 
                         updateDoc(doc(db, "accounts", user.uid), {
                             coins: increment(250),
                             completedQuests: [...completed, 'msg3'],
                             [`questCooldowns.msg3`]: oneHourCooldown
-                        }).then(() => {
-                            rewardModal.classList.add('active');
-                        }).catch(err => console.error("Error awarding quest:", err));
+                        }).then(() => rewardModal.classList.add('active'));
+                    }
+
+                    // 2. WALL REPLY QUEST (5 Replies)
+                    if(data.wallRepliesToday >= 5 && !completed.includes('wall_reply_5')) {
+                        updateDoc(doc(db, "accounts", user.uid), {
+                            coins: increment(300),
+                            completedQuests: [...completed, 'wall_reply_5']
+                        }).then(() => specialQuestModal.classList.add('active'));
+                    }
+
+                    // 3. WALL REACT QUEST (10 Reactions)
+                    if(data.wallReactionsToday >= 10 && !completed.includes('wall_react_10')) {
+                        updateDoc(doc(db, "accounts", user.uid), {
+                            coins: increment(200),
+                            completedQuests: [...completed, 'wall_react_10']
+                        }).then(() => specialQuestModal.classList.add('active'));
+                    }
+
+                    // 4. WALL LONG MSG QUEST (100+ Chars)
+                    if(data.wallLongMsgSent === true && !completed.includes('wall_long_msg')) {
+                        updateDoc(doc(db, "accounts", user.uid), {
+                            coins: increment(500),
+                            completedQuests: [...completed, 'wall_long_msg']
+                        }).then(() => specialQuestModal.classList.add('active'));
                     }
                 }
             });
@@ -1102,7 +1131,6 @@
 
     msgInput.addEventListener('input', () => {
         const len = msgInput.value.length;
-        // Limit set to 1000 for everyone
         charCount.textContent = `${len} / 1000`;
         charCount.style.color = len >= 1000 ? '#ff4757' : '#a5b1c2';
 
@@ -1137,40 +1165,29 @@
         } catch (e) { console.error("Typing status error:", e); }
     }
 
-    // Variable to prevent spam (Cooldown)
-    let lastNotificationTime = 0; 
-
-    // --- LISTENER FOR TYPING (Notifications Logic) ---
+    // --- LISTENER FOR TYPING ---
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         
         onSnapshot(q, (snapshot) => {
             const typers = [];
-            let typerNameForNotif = "";
-
             snapshot.forEach((doc) => {
-                if (doc.id !== currentUid) { // Don't notify self
+                if (doc.id !== currentUid) { 
                     const data = doc.data();
                     if (data.name) {
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
-                        if(data.isOwner) {
-                            nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
-                        } else if(data.isAdmin) {
-                            nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
-                        }
+                        if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
+                        else if(data.isAdmin) nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
                         typers.push(nameHtml);
-                        typerNameForNotif = data.name; 
                     }
                 }
             });
 
             if (typers.length > 0) {
-                // 1. Visual Text
                 if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
                 else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
                 else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
                 typingIndicator.style.opacity = "1";
-
             } else {
                 typingIndicator.innerHTML = "";
                 typingIndicator.style.opacity = "0";
@@ -1231,27 +1248,13 @@
             
             if(!finalReason) finalReason = "Nespecificat";
 
-            const mutePayload = {
-                mutedBy: "Lost Soul",
-                reason: finalReason,
-                timestamp: serverTimestamp()
-            };
-
-            if(durationMs > 0) {
-                mutePayload.unmuteAt = Date.now() + durationMs;
-            }
+            const mutePayload = { mutedBy: "Lost Soul", reason: finalReason, timestamp: serverTimestamp() };
+            if(durationMs > 0) mutePayload.unmuteAt = Date.now() + durationMs;
 
             try {
                 await setDoc(doc(db, "muted_users", pendingMuteUid), mutePayload);
-                let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul.`;
-                announceText += ` Motiv: ${finalReason}.`;
-                if(durationMs > 0) {
-                    const timeStr = match[0]; 
-                    announceText += ` Durată: ${timeStr}.`;
-                } else {
-                    announceText += ` Durată: Nedeterminată.`;
-                }
-
+                let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul. Motiv: ${finalReason}.`;
+                if(durationMs > 0) announceText += ` Durată: ${match[0]}.`;
                 sendBotMessage(announceText);
                 showToast("User Muted", "success");
                 msgInput.value = '';
@@ -1260,7 +1263,6 @@
             return;
         }
 
-        // --- NEW 1000 CHAR LIMIT ---
         if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
 
         const lastSent = localStorage.getItem('lastMsgTime');
@@ -1307,10 +1309,24 @@
         try {
             await addDoc(collection(db, "wall_messages"), payload);
 
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+            // --- QUEST UPDATES ON SEND ---
+            const userRef = doc(db, "accounts", auth.currentUser.uid);
+            const updates = {
                 messagesSentToday: increment(1),
                 coins: increment(10)
-            });
+            };
+            
+            // Long Message Quest Logic
+            if(text.length >= 100) {
+                updates.wallLongMsgSent = true;
+            }
+            
+            // Reply Quest Logic
+            if(replyData) {
+                updates.wallRepliesToday = increment(1);
+            }
+
+            await updateDoc(userRef, updates);
             
             clearTimeout(typingTimeout);
             isTyping = false;
@@ -1373,11 +1389,9 @@
         setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
     }
 
-    // --- FUNCTIA REPARATA PENTRU STERGERI MASIVE ---
     async function wipeAllMessages() {
-        const batchSize = 400; // Sterge cate 400
+        const batchSize = 400; 
         const q = query(collection(db, "wall_messages"), limit(batchSize));
-
         return new Promise(async (resolve, reject) => {
             try {
                 let snapshot = await getDocs(q);
@@ -1385,8 +1399,6 @@
                     const batch = writeBatch(db);
                     snapshot.forEach(doc => { batch.delete(doc.ref); });
                     await batch.commit();
-                    
-                    // Mai incercam o data, poate au mai ramas
                     snapshot = await getDocs(q);
                 }
                 resolve();
@@ -1394,19 +1406,14 @@
         });
     }
 
-    // --- LOAD MESSAGES OPTIMIZAT (LIMIT 50) ---
     let unsubscribe;
     function loadMessages() {
         if(unsubscribe) unsubscribe();
-        
-        // LIMITAM LA 50 MESAJE (Cele mai noi)
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
         
         unsubscribe = onSnapshot(q, snapshot => {
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-            
-            // Le inversam ca sa apara corect in chat (vechi sus -> noi jos)
             docs.reverse();
 
             messagesFeed.innerHTML = '';
@@ -1444,7 +1451,6 @@
 
                 let nameHtml = data.name;
                 if(isBot) nameHtml = `🤖 ${data.name}`;
-                
                 if(msgIsAdmin) { nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
                 if(msgIsOwner) { nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`; }
 
@@ -1455,7 +1461,6 @@
                     if(Object.keys(counts).length > 0) {
                         reactionsHtml = `<div class="msg-reactions">`;
                         for(let [emoji, count] of Object.entries(counts)) { 
-                            // ADDED ONCLICK HERE
                             reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
                         }
                         reactionsHtml += `</div>`;
@@ -1498,65 +1503,46 @@
         });
     }
 
-    // --- REACTION DETAILS LOGIC (NEW) ---
+    // --- REACTION DETAILS LOGIC ---
     window.closeReactionModal = () => document.getElementById('reactionModal').classList.remove('active');
 
     window.openReactionList = async (msgId, targetEmoji) => {
         const modal = document.getElementById('reactionModal');
         const list = document.getElementById('reactList');
         const title = document.getElementById('reactModalTitle');
-        
         title.innerText = `${targetEmoji} Reacții`;
         list.innerHTML = '<div style="padding:20px; text-align:center;">Se încarcă...</div>';
         modal.classList.add('active');
 
-        // 1. Get the message to see who reacted
         try {
             const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
             if(!msgSnap.exists()) return;
 
             const reactions = msgSnap.data().reactions || {};
-            // Filter UIDs that used this specific emoji
             const userIds = Object.keys(reactions).filter(uid => reactions[uid] === targetEmoji);
 
-            if(userIds.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center;">Nimeni încă.</div>';
-                return;
-            }
+            if(userIds.length === 0) { list.innerHTML = '<div style="padding:20px; text-align:center;">Nimeni încă.</div>'; return; }
 
-            // 2. Fetch User Details for these UIDs
-            // We use Promise.all to fetch them in parallel for speed
             const userPromises = userIds.map(uid => getDoc(doc(db, "accounts", uid)));
             const userSnaps = await Promise.all(userPromises);
-
-            list.innerHTML = ''; // Clear loading
+            list.innerHTML = ''; 
 
             userSnaps.forEach(accSnap => {
                 let uName = "Utilizator Necunoscut";
-                let uPic = "https://i.imgur.com/HeIi0wU.png"; // Default
-
+                let uPic = "https://i.imgur.com/HeIi0wU.png"; 
                 if(accSnap.exists()) {
                     const adata = accSnap.data();
                     uName = adata.username || "Fără Nume";
                     uPic = adata.image || uPic;
                 }
-
                 const item = document.createElement('div');
                 item.className = 'react-user-item';
-                item.innerHTML = `
-                    <img src="${uPic}" class="react-user-img">
-                    <span class="react-user-name">${uName}</span>
-                `;
+                item.innerHTML = `<img src="${uPic}" class="react-user-img"><span class="react-user-name">${uName}</span>`;
                 list.appendChild(item);
             });
-
-        } catch(e) {
-            console.error(e);
-            list.innerHTML = '<div style="padding:10px; color:#ff4757;">Eroare la încărcare.</div>';
-        }
+        } catch(e) { console.error(e); list.innerHTML = '<div style="padding:10px; color:#ff4757;">Eroare la încărcare.</div>'; }
     };
 
-    // --- MUTE / UNMUTE LOGIC ---
     window.handleMuteAction = async (targetUid, targetName) => {
         closeAllMenus();
         if(!isOwner) return;
@@ -1584,7 +1570,23 @@
     window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
     window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
     window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
-    window.reactMsg = async function(msgId, emoji) { if(!currentUid) return; closeAllMenus(); const msgRef = doc(db, "wall_messages", msgId); const fieldPath = `reactions.${currentUid}`; const updateObj = {}; updateObj[fieldPath] = emoji; try { await updateDoc(msgRef, updateObj); } catch(e) { console.error(e); } }
+    
+    // --- QUEST LOGIC ADDED HERE (REACTION COUNT UPDATE) ---
+    window.reactMsg = async function(msgId, emoji) { 
+        if(!currentUid) return; 
+        closeAllMenus(); 
+        const msgRef = doc(db, "wall_messages", msgId); 
+        const fieldPath = `reactions.${currentUid}`; 
+        const updateObj = {}; 
+        updateObj[fieldPath] = emoji; 
+        try { 
+            await updateDoc(msgRef, updateObj); 
+            // Update User Stats for Quest
+            await updateDoc(doc(db, "accounts", currentUid), {
+                wallReactionsToday: increment(1)
+            });
+        } catch(e) { console.error(e); } 
+    }
     
     window.deleteMsg = async function(id) { 
         closeAllMenus(); 
