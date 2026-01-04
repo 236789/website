@@ -255,20 +255,6 @@
     </div>
 </div>
 
-<script>
-    const menuBtn = document.getElementById('menuBtn');
-    const sideMenu = document.getElementById('sideMenu');
-    const closeMenu = document.getElementById('closeMenu');
-
-    menuBtn.addEventListener('click', () => { sideMenu.classList.add('open'); });
-    closeMenu.addEventListener('click', () => { sideMenu.classList.remove('open'); });
-    document.addEventListener('click', (e) => {
-        if (!sideMenu.contains(e.target) && !menuBtn.contains(e.target) && sideMenu.classList.contains('open')) {
-            sideMenu.classList.remove('open');
-        }
-    });
-</script>
-
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -292,9 +278,9 @@
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
-    // LISTA COMPLETĂ DE QUEST-URI
+    // --- LISTA COMPLETĂ DE QUEST-URI (POOL) ---
     const quests = [
-        // --- WALL QUESTS (NOI) ---
+        // --- WALL QUESTS ---
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'wall_react_10', title: 'Reacționează la 10 mesaje pe Wall', reward: 200, target: 10, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'wall_long_msg', title: 'Scrie un mesaj lung (+100 caractere)', reward: 500, target: 1, link: 'Wall.html', pageName: 'Community Wall' },
@@ -305,18 +291,33 @@
         
         // --- STANDARD QUESTS ---
         { id: 'msg3', title: 'Trimite 3 mesaje (Standard)', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
-        { id: 'gallery_task', title: 'Activitate Galerie (Like-uri & Comentarii)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
+        { id: 'gallery_task', title: 'Activitate Galerie (Like & Com)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'gallerie' },
         { id: 'visit_news', title: 'Vizitează pagina Noutăți/Anunțuri', reward: 100, target: 1, link: 'noutati.html', pageName: 'Anunțuri' },
         { id: 'give_feedback', title: 'Dă-ne un feedback sau idei noi', reward: 250, target: 1, link: 'Feedback.html', pageName: 'Feedbacks' },
-        
-        // --- ONE TIME QUESTS ---
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
+        
+        // --- ONE TIME QUESTS (Special Handling) ---
         { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
     ];
 
     let serverTimeOffset = 0; 
     let isAwarding = false;
+
+    // --- HELPER: GENERATE 6 RANDOM QUESTS ---
+    function generateDailyIds(completedQuests) {
+        // 1. Identify One-Time Quests that are ALREADY finished
+        const oneTimeDone = ['review', 'social3'].filter(id => completedQuests.includes(id));
+        
+        // 2. Filter the pool: Keep all quests EXCEPT completed one-time ones
+        const availablePool = quests.filter(q => !oneTimeDone.includes(q.id));
+
+        // 3. Shuffle the available pool
+        const shuffled = availablePool.sort(() => 0.5 - Math.random());
+
+        // 4. Return top 6 IDs
+        return shuffled.slice(0, 6).map(q => q.id);
+    }
 
     function updateResetTimer() {
         const nowMs = Date.now() + serverTimeOffset; 
@@ -333,13 +334,11 @@
 
         const currentSeconds = (h * 3600) + (m * 60) + s;
         let secondsLeft = 86400 - currentSeconds; 
-        
         if (secondsLeft < 0) secondsLeft = 0;
 
         const hLeft = Math.floor(secondsLeft / 3600);
         const mLeft = Math.floor((secondsLeft % 3600) / 60);
         const sLeft = secondsLeft % 60;
-
         resetTimerEl.innerText = `${hLeft.toString().padStart(2,'0')}:${mLeft.toString().padStart(2,'0')}:${sLeft.toString().padStart(2,'0')}`;
     }
     setInterval(updateResetTimer, 1000);
@@ -348,22 +347,25 @@
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
         
+        // --- NEW: USE SAVED DAILY LIST OR FALLBACK ---
+        // If activeDailyQuests exists in DB, use it. Otherwise use all (fallback)
+        const activeIds = userData.activeDailyQuests || [];
+        
         let allDailyDone = true;
 
         quests.forEach(q => {
+            // FILTER: If we have a daily list, and this quest is NOT in it, skip it.
+            if (activeIds.length > 0 && !activeIds.includes(q.id)) {
+                return;
+            }
+
             const isCompleted = completed.includes(q.id);
-            const oneTimeQuests = ['review', 'social3']; 
-
-            // Skip one-time quests if done
-            if (oneTimeQuests.includes(q.id) && isCompleted) return;
-
             const card = document.createElement('div');
             card.className = 'quest-card';
-
             let progressHTML = '';
             let canAward = false;
 
-            // --- QUEST: ECHIPA (2 Requirements) ---
+            // --- QUEST: ECHIPA ---
             if (q.id === 'meet_team_hunt') {
                 const visitedLost = userData.visited_lost_soul_today ? 1 : 0;
                 const visitedKevin = userData.visited_kevin_trinity_today ? 1 : 0;
@@ -425,14 +427,10 @@
                     </div>
                 `;
                 if (current >= q.target) canAward = true;
-
-                if (!oneTimeQuests.includes(q.id) && !isCompleted) {
-                    allDailyDone = false;
-                }
+                if (!isCompleted) allDailyDone = false;
             }
 
             let actionArea = `<a href="${q.link}" class="quest-btn">Mergi ${q.id === 'gallery_task' || q.id === 'meet_team_hunt' ? 'spre' : 'la'} ${q.pageName}</a>`;
-            
             if (isCompleted) {
                 actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Quest Completat</span><small>Revino mâine!</small></div>`;
             }
@@ -451,7 +449,8 @@
         });
 
         const today = new Date().toDateString();
-        if (allDailyDone && userData.lastStreakDate !== today) {
+        // Only update streak if we have valid quests and they are all done
+        if (activeIds.length > 0 && allDailyDone && userData.lastStreakDate !== today) {
             updateDoc(doc(db, "accounts", auth.currentUser.uid), {
                 streak: increment(1),
                 lastStreakDate: today
@@ -480,7 +479,6 @@
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
             const userRef = doc(db, "accounts", user.uid);
-
             await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
 
             onSnapshot(userRef, async (snap) => {
@@ -492,13 +490,24 @@
                     if (data.latestServerCheck) {
                         const serverDate = data.latestServerCheck.toDate();
                         serverTimeOffset = serverDate.getTime() - Date.now();
-
                         const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
                         
+                        // 1. CHECK FOR MISSING DAILY QUESTS (First time logic)
+                        if (!data.activeDailyQuests) {
+                            console.log("Generating first batch of daily quests...");
+                            const newDailyIds = generateDailyIds(data.completedQuests || []);
+                            await updateDoc(userRef, { activeDailyQuests: newDailyIds });
+                            return;
+                        }
+
+                        // 2. CHECK FOR NEW DAY RESET
                         if(data.lastResetDate !== roDate) {
-                            console.log("Server detected new day. Resetting tasks...");
+                            console.log("New day detected. Resetting tasks and reshuffling...");
                             const persistentQuests = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
                             
+                            // Generate NEW set of 6 quests for the new day
+                            const newDailyIds = generateDailyIds(persistentQuests);
+
                             await updateDoc(userRef, {
                                 messagesSentToday: 0,
                                 tiktoksFollowed: 0,
@@ -506,16 +515,15 @@
                                 galleryCommentsToday: 0,
                                 newsVisitedToday: 0,
                                 feedbackGivenToday: 0,
-                                // --- KEVIN & TEAM RESETS ---
                                 kevinMessagesToday: 0,
                                 visited_lost_soul_today: false,
                                 visited_kevin_trinity_today: false,
-                                // --- WALL RESETS (NOI) ---
                                 wallRepliesToday: 0,
                                 wallReactionsToday: 0,
                                 wallLongMsgSent: false,
-                                // ------------------------
+                                
                                 completedQuests: persistentQuests, 
+                                activeDailyQuests: newDailyIds, // Save the new 6 quests
                                 lastResetDate: roDate 
                             });
                             return; 
