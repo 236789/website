@@ -442,8 +442,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, getCountFromServer, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -628,51 +627,82 @@
 
     loadMoreBtn.onclick = loadNextBatch;
 
-    function appendReviewCard(data, prepend = false) {
-        const votes = data.votes || {};
-        let likes = 0, dislikes = 0;
-        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
-        const userVote = votes[auth.currentUser?.uid];
-        let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
-        
-        // --- STAFF RECOGNITION ---
-        let cardClass = 'review-card';
-        let badge = '';
-        const email = data.email || ""; 
-        const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
-        const isAdmin = (email === 'kevin.trinity2020@gmail.com');
-        const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
-        const displayName = isOwner ? "Lost Soul" : data.name;
+function appendReviewCard(data, prepend = false) {
+    const votes = data.votes || {};
+    let likes = 0, dislikes = 0;
+    Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+    const userVote = votes[auth.currentUser?.uid];
+    let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
+    
+    // --- STAFF RECOGNITION LOGIC ---
+    const email = data.email || "";
+    const currentEmail = auth.currentUser ? auth.currentUser.email : "";
+    
+    const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
+    const isAdmin = (email === 'kevin.trinity2020@gmail.com');
+    const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
+    
+    const IAmOwner = (currentEmail === 'nicaemmanuel433qe@gmail.com');
+    const IAmAdmin = (currentEmail === 'kevin.trinity2020@gmail.com');
 
-        if (isOwner) { cardClass += ' owner-post'; badge = `<span class="owner-badge"><i class="fas fa-crown"></i> OWNER</span>`; }
-        else if (isAdmin) { cardClass += ' admin-post'; badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
-        else if (isMod) { cardClass += ' mod-post'; badge = `<span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`; }
+    let cardClass = 'review-card';
+    let badge = '';
+    const displayName = isOwner ? "Lost Soul" : data.name;
 
-        const card = document.createElement('div');
-        card.className = cardClass;
-        card.innerHTML = `
-            <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${displayName} ${badge}</div></div></div>
-            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
-            <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">de acord?:</span><span style="font-size: 10px; color: #666;">${date.toLocaleDateString()}</span></div>
-                <div class="rev-actions">
-                    <button onclick="voteFeedback('${data.id}', 1, this)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
-                    <button onclick="voteFeedback('${data.id}', -1, this)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
-                    <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri</button>
-                </div>
+    if (isOwner) { cardClass += ' owner-card'; badge = `<span class="owner-badge"><i class="fas fa-crown"></i> OWNER</span>`; }
+    else if (isAdmin) { cardClass += ' admin-card'; badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
+    else if (isMod) { cardClass += ' mod-card'; badge = `<span class="mod-badge"><i class="fas fa-star"></i> MOD</span>`; }
+
+    // DELETE BUTTON HTML (Only for Owner/Admin)
+    let deleteBtnHTML = (IAmOwner || IAmAdmin) ? `<button class="delete-staff-btn" onclick="deleteFeedback('${data.id}')"><i class="fas fa-trash"></i> ȘTERGE</button>` : '';
+
+    const card = document.createElement('div');
+    card.className = cardClass;
+    card.innerHTML = `
+        <div class="review-header">
+            <img src="${data.photo}" class="rev-pfp">
+            <div class="rev-info">
+                <div class="rev-name">${displayName} ${badge}</div>
             </div>
-            <div id="comments-${data.id}" class="comments-section" data-loaded="false">
-                <div class="comments-header">Răspunsuri</div>
-                <div id="comList-${data.id}" class="comment-list"></div>
-                <div id="comInputArea-${data.id}" class="comment-input-area">
-                    <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns...">
-                    <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
-                </div>
+            ${deleteBtnHTML}
+        </div>
+        <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
+        <div class="rev-footer">
+            <div style="display:flex; flex-direction:column;">
+                <span class="helpful-text">de acord?:</span>
+                <span style="font-size: 10px; opacity: 0.6;">${date.toLocaleDateString()}</span>
             </div>
-        `;
-        
-        if(prepend) reviewsListContainer.prepend(card);
-        else reviewsListContainer.appendChild(card);
+            <div class="rev-actions">
+                <button onclick="voteFeedback('${data.id}', 1, this)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
+                <button onclick="voteFeedback('${data.id}', -1, this)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
+                <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri</button>
+            </div>
+        </div>
+        <div id="comments-${data.id}" class="comments-section" data-loaded="false">
+            <div class="comments-header">Răspunsuri</div>
+            <div id="comList-${data.id}" class="comment-list"></div>
+            <div id="comInputArea-${data.id}" class="comment-input-area">
+                <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns...">
+                <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    `;
+    
+    if(prepend) reviewsListContainer.prepend(card);
+    else reviewsListContainer.appendChild(card);
+}
+
+// --- ADAUGĂ FUNCȚIA DE DELETE (Globală) ---
+window.deleteFeedback = async (id) => {
+    if(!confirm("Sigur vrei să ștergi acest feedback definitiv?")) return;
+    try {
+        await deleteDoc(doc(db, "feedbacks", id));
+        alert("Feedback șters cu succes!");
+        location.reload(); // Refresh pentru a actualiza lista
+    } catch(e) {
+        alert("Eroare la ștergere: " + e.message);
     }
+};
 
     // --- ACTIONS ---
 
@@ -682,16 +712,17 @@
         const uid = auth.currentUser.uid;
         const email = auth.currentUser.email;
 
-        const feedbackData = { 
-            text: revInput.value.trim(), 
-            name: auth.currentUser.displayName, 
-            photo: auth.currentUser.photoURL, 
-            email: email, // ADDED EMAIL
-            uid: uid, 
-            ip: userIP || "unknown", 
-            createdAt: serverTimestamp(), 
-            votes: {} 
-        };
+        // În interiorul sendBtn.onclick:
+const feedbackData = { 
+    text: revInput.value.trim(), 
+    name: auth.currentUser.displayName, 
+    photo: auth.currentUser.photoURL, 
+    email: auth.currentUser.email, // <--- ADAUGĂ ACEASTA LINIE
+    uid: uid, 
+    ip: userIP || "unknown", 
+    createdAt: serverTimestamp(), 
+    votes: {} 
+};
 
         try {
             const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
