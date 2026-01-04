@@ -30,6 +30,7 @@
       --glass-border: rgba(255, 255, 255, 0.08);
       --text-main: #ffffff;
       --text-muted: #a5b1c2;
+      --discord-color: #5865F2;
       
       /* COLORS FOR ROLES */
       --admin-red-deep: #8b0000;
@@ -388,7 +389,7 @@
     .emoji-btn:hover { background: rgba(255,255,255,0.1); }
     .show-menu { display: block !important; }
     
-    .msg-bubble.deleted { display: none !important; } /* IMPORTANT: COMPLETELY HIDE DELETED */
+    .msg-bubble.deleted { display: none !important; } /* FIXED: Hide deleted messages completely */
     
     .reply-preview-bar { background: rgba(41, 243, 255, 0.1); border-top: 1px solid var(--primary); padding: 10px 20px; display: none; justify-content: space-between; align-items: center; font-size: 12px; color: var(--primary); }
     .cancel-reply-btn { background: none; border: none; color: #ff4757; font-size: 16px; cursor: pointer; }
@@ -446,7 +447,7 @@
     <i class="fas fa-exclamation-circle"></i> <span id="toastMsg">Error message</span>
   </div>
   
-  <!-- SINGLE DYNAMIC REWARD MODAL -->
+  <!-- SINGLE DYNAMIC REWARD MODAL (FIXED TEXT & STYLE) -->
   <div id="rewardModal" class="reward-modal">
     <div class="reward-card">
         <div class="reward-title">
@@ -1512,10 +1513,33 @@
         } catch(e) { console.error(e); } 
     }
     
+    // --- SECURE DELETE FUNCTION (FINAL FIX) ---
     window.deleteMsg = async function(id) { 
         closeAllMenus(); 
-        if(confirm("Ștergi mesajul?")) { 
-            try { await updateDoc(doc(db, "wall_messages", id), { isDeleted: true, text: "", reactions: {} }); } catch(e) { showToast(e.message); } 
+        
+        try {
+            const msgRef = doc(db, "wall_messages", id);
+            const msgSnap = await getDoc(msgRef);
+            
+            if (!msgSnap.exists()) {
+                showToast("Mesajul nu mai există.", "error");
+                return;
+            }
+            
+            const msgData = msgSnap.data();
+            const isMine = msgData.uid === currentUid;
+            
+            // Check ownership OR Admin privileges before deleting
+            if (isMine || isAdmin || isOwner) {
+                if(confirm("Ștergi mesajul?")) { 
+                    await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {} }); 
+                    showToast("Mesaj șters.", "success");
+                } 
+            } else {
+                showToast("Nu poți șterge mesajele altora!", "error");
+            }
+        } catch(e) { 
+            showToast("Eroare: " + e.message); 
         } 
     }
     
