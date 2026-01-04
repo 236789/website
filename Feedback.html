@@ -235,6 +235,20 @@
         .wall-card { height: 100%; border-radius: 16px; }
         .input-area-wrapper { padding: 10px; } .chat-input { height: 50px; } .send-btn { height: 50px; width: 50px; }
     }
+
+
+    /* --- ROLE STYLES FOR FEEDBACKS --- */
+.comment-item.com-owner { background: linear-gradient(135deg, #0044ff 0%, #29f3ff 100%) !important; border: 1.5px solid #ffffff !important; }
+.comment-item.com-admin { background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; border: 1.5px solid #ffffff !important; }
+.comment-item.com-mod { background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%) !important; border: 1.5px solid #ffffff !important; }
+
+/* Ensure text is readable on colored backgrounds */
+.comment-item.com-owner .com-name, .comment-item.com-admin .com-name, .comment-item.com-mod .com-name,
+.comment-item.com-owner .com-text, .comment-item.com-admin .com-text, .comment-item.com-mod .com-text { color: #ffffff !important; }
+
+/* MINI BADGES */
+.admin-badge { display: inline-block; background: #ffffff; color: #b20a2c; border: 1px solid #b20a2c; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 3px; vertical-align: middle; font-family: 'Orbitron'; margin-left: 5px; }
+.owner-badge { display: inline-block; background: linear-gradient(90deg, #29f3ff, #0044ff); color: #000; border: 1px solid var(--primar
   </style>
 </head>
 <body>
@@ -602,34 +616,46 @@
 
     loadMoreBtn.onclick = loadNextBatch;
 
-    function appendReviewCard(data, prepend = false) {
-        const votes = data.votes || {};
-        let likes = 0, dislikes = 0;
-        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
-        const userVote = votes[auth.currentUser?.uid];
-        let date = (data.createdAt && data.createdAt.toDate) ? data.createdAt.toDate() : new Date();
-        
-        const card = document.createElement('div');
-        card.className = 'review-card';
-        card.innerHTML = `
-            <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${data.name}</div></div></div>
-            <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
-            <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">de acord?:</span><span style="font-size: 10px; color: #666;">${date.toLocaleDateString()}</span></div>
-                <div class="rev-actions">
-                    <button onclick="voteFeedback('${data.id}', 1, this)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
-                    <button onclick="voteFeedback('${data.id}', -1, this)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
-                    <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri</button>
-                </div>
+function appendReviewCard(data, prepend = false) {
+    const votes = data.votes || {};
+    let likes = 0, dislikes = 0;
+    Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+    const userVote = votes[auth.currentUser?.uid];
+
+    // BUG FIX: Secure date conversion
+    let dateObj = (data.createdAt && typeof data.createdAt.toDate === 'function') 
+                  ? data.createdAt.toDate() 
+                  : (data.createdAt instanceof Date ? data.createdAt : new Date());
+    
+    const email = data.email || "";
+    let badge = "";
+    if(email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge">OWNER</span>`;
+    else if(email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge">ADMIN</span>`;
+    else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') badge = `<span class="mod-badge">MODERATOR</span>`;
+
+    const card = document.createElement('div');
+    card.className = 'review-card';
+    card.innerHTML = `
+        <div class="review-header"><img src="${data.photo}" class="rev-pfp"><div class="rev-info"><div class="rev-name">${data.name} ${badge}</div></div></div>
+        <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
+        <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">de acord?:</span><span style="font-size: 10px; color: #666;">${dateObj.toLocaleDateString()}</span></div>
+            <div class="rev-actions">
+                <button onclick="voteFeedback('${data.id}', 1, this)" class="vote-btn ${userVote === 1 ? 'active-like' : ''}"><i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span></button>
+                <button onclick="voteFeedback('${data.id}', -1, this)" class="vote-btn ${userVote === -1 ? 'active-dislike' : ''}"><i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span></button>
+                <button onclick="toggleComments('${data.id}')" class="vote-btn"><i class="fas fa-comment-dots"></i> Răspunsuri</button>
             </div>
-            <div id="comments-${data.id}" class="comments-section" data-loaded="false">
-                <div class="comments-header">Răspunsuri</div>
-                <div id="comList-${data.id}" class="comment-list"></div>
-                <div id="comInputArea-${data.id}" class="comment-input-area">
-                    <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns...">
-                    <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
-                </div>
+        </div>
+        <div id="comments-${data.id}" class="comments-section" data-loaded="false">
+            <div class="comments-header">Răspunsuri</div>
+            <div id="comList-${data.id}" class="comment-list"></div>
+            <div id="comInputArea-${data.id}" class="comment-input-area">
+                <input id="comInput-${data.id}" class="com-input" placeholder="Scrie un răspuns...">
+                <button onclick="postComment('${data.id}')" class="com-send-btn"><i class="fas fa-paper-plane"></i></button>
             </div>
-        `;
+        </div>
+    `;
+    if(prepend) reviewsListContainer.prepend(card); else reviewsListContainer.appendChild(card);
+}
         
         if(prepend) reviewsListContainer.prepend(card);
         else reviewsListContainer.appendChild(card);
@@ -645,6 +671,7 @@
         const feedbackData = { 
             text: revInput.value.trim(), 
             name: auth.currentUser.displayName, 
+              email: auth.currentUser.email, // <--- Add this line
             photo: auth.currentUser.photoURL, 
             uid: uid, 
             ip: userIP || "unknown", 
@@ -759,12 +786,34 @@
         }
     };
 
-    function appendCommentHTML(container, data) {
-        const div = document.createElement('div');
-        div.className = 'comment-item';
-        div.innerHTML = `<img src="${data.photo}" class="com-pfp"><div class="com-content"><div class="com-name">${data.name}</div><div class="com-text">${data.text}</div></div>`;
-        container.appendChild(div);
+function appendCommentHTML(container, data) {
+    let dateObj = (data.createdAt && typeof data.createdAt.toDate === 'function') 
+                  ? data.createdAt.toDate() 
+                  : (data.createdAt instanceof Date ? data.createdAt : new Date());
+    
+    const email = data.email || "";
+    let bubbleClass = 'comment-item', badge = '';
+
+    if(email === 'nicaemmanuel433qe@gmail.com') { 
+        bubbleClass += ' com-owner'; badge = `<span class="owner-badge">OWNER</span>`; 
+    } else if(email === 'kevin.trinity2020@gmail.com') { 
+        bubbleClass += ' com-admin'; badge = `<span class="admin-badge">ADMIN</span>`; 
+    } else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') { 
+        bubbleClass += ' com-mod'; badge = `<span class="mod-badge">MODERATOR</span>`; 
     }
+
+    const div = document.createElement('div');
+    div.className = bubbleClass;
+    div.innerHTML = `
+        <img src="${data.photo}" class="com-pfp">
+        <div class="com-content">
+            <div class="com-name">${data.name} ${badge}</div>
+            <div class="com-text">${data.text}</div>
+            <div style="font-size:8px; opacity:0.5; margin-top:4px; text-align:right;">${dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+        </div>
+    `;
+    container.appendChild(div);
+}
 
     // 4. Post Comment
     window.postComment = async (id) => {
@@ -773,8 +822,14 @@
         if(!text || !auth.currentUser) return;
 
         try {
-            const commentData = { text: text, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, ip: userIP || "unknown", createdAt: serverTimestamp() };
-            await addDoc(collection(db, `feedbacks/${id}/comments`), commentData);
+const commentData = { 
+    text: text, 
+    uid: auth.currentUser.uid, 
+    email: auth.currentUser.email, // <--- Add this line
+    name: auth.currentUser.displayName, 
+    photo: auth.currentUser.photoURL, 
+    createdAt: serverTimestamp() 
+};
             
             // Append Locally
             const listDiv = document.getElementById(`comList-${id}`);
