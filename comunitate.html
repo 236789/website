@@ -693,22 +693,41 @@
     const closeAccountPop = document.getElementById('closeAccountPop');
     const rewardModal = document.getElementById('rewardModal');
 
-    // 1. BAN CHECK
+   // 1. GLOBAL BAN CHECK (OPTIMIZED)
     async function checkGlobalBan() {
+        // Check local storage first. If we already checked this session, STOP here.
+        // This saves you 1 Read per page refresh.
+        if (sessionStorage.getItem('isBanned') === 'false') {
+            return; 
+        }
+
         try {
             const res = await fetch('https://api.ipify.org?format=json');
             const data = await res.json();
             const userIP = data.ip;
+
             const banRef = doc(db, "banned_ips", userIP);
             const banSnap = await getDoc(banRef);
+
             if (banSnap.exists()) {
-                siteContent.style.display = 'none';
-                bannedOverlay.style.display = 'flex';
-                globalBanReason.innerText = banSnap.data().reason || "Nespecificat";
-                globalBanIp.innerText = userIP;
+                // User IS banned
+                const banData = banSnap.data();
+                sessionStorage.setItem('isBanned', 'true'); // Remember they are banned
+                
+                if(document.getElementById('siteContent')) document.getElementById('siteContent').style.display = 'none';
+                if(document.getElementById('bannedOverlay')) {
+                    document.getElementById('bannedOverlay').style.display = 'flex';
+                    document.getElementById('globalBanReason').innerText = banData.reason || "Nespecificat";
+                    document.getElementById('globalBanIp').innerText = userIP;
+                }
                 document.body.style.overflow = 'hidden';
+            } else {
+                // User is NOT banned - Remember this!
+                sessionStorage.setItem('isBanned', 'false');
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error("Eroare verificare ban:", e);
+        }
     }
     checkGlobalBan();
 
