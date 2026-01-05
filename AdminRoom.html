@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin To-Do List — KSDAPromovari</title>
+  <link rel="icon" type="image/png" href="https://iili.io/fXks1Dv.png">
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Poppins:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* --- SAME THEME AS FEEDBACK --- */
+    :root {
+      --bg-dark: #050b14;
+      --primary: #29f3ff;
+      --glass-bg: rgba(13, 25, 41, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --text-main: #ffffff;
+      --text-muted: #a5b1c2;
+      --done-green: #2ecc71;
+    }
+
+    * { box-sizing: border-box; outline: none; }
+    body {
+      margin: 0; min-height: 100vh;
+      background-color: var(--bg-dark);
+      background-image: linear-gradient(to bottom, rgba(5, 11, 20, 0.85), var(--bg-dark)), url('https://i.makeagif.com/media/3-03-2021/otrneG.gif');
+      background-position: center; background-size: cover; background-attachment: fixed;
+      font-family: 'Poppins', sans-serif; color: var(--text-main);
+      display: flex; flex-direction: column; overflow-x: hidden;
+    }
+
+    /* FONTS */
+    h1, h2, h3, .logo, .btn, .metallic-title { font-family: 'Orbitron', sans-serif; }
+
+    /* --- BADGES --- */
+    .owner-badge { background: linear-gradient(90deg, #29f3ff, #0044ff); color: #000; border: 1px solid var(--primary); font-size: 10px; font-weight: 900; padding: 2px 8px; border-radius: 4px; font-family: 'Orbitron'; margin-left: 8px; }
+    .admin-badge { background: #ffffff; color: #b20a2c; border: 1px solid #b20a2c; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 4px; font-family: 'Orbitron'; margin-left: 8px; }
+
+    /* --- HEADER --- */
+    .header-container { position: fixed; top: 0; left: 0; right: 0; padding: 20px; z-index: 1000; display: flex; justify-content: center; }
+    header { width: 100%; max-width: 1200px; display: flex; align-items: center; justify-content: space-between; padding: 12px 30px; background: rgba(5, 11, 20, 0.8); border: 1px solid var(--glass-border); border-radius: 100px; backdrop-filter: blur(16px); }
+    .logo img { height: 40px; }
+    nav { display: flex; gap: 32px; align-items: center; }
+    nav a { color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 600; transition: 0.3s; }
+    nav a:hover { color: var(--primary); }
+    
+    /* --- CONTAINER --- */
+    .wall-container { margin-top: 140px; width: 100%; max-width: 900px; margin-left: auto; margin-right: auto; padding: 0 20px 80px; display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .metallic-title { font-size: clamp(32px, 5vw, 46px); background: linear-gradient(180deg, #ffffff 0%, #a2cfff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 10px; text-transform: uppercase; font-weight: 800; }
+    
+    .wall-card { width: 100%; background: var(--glass-bg); border: 1px solid var(--primary); border-radius: 24px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 40px rgba(41, 243, 255, 0.15); backdrop-filter: blur(10px); min-height: 70vh; position: relative; }
+
+    /* VIEWS */
+    .view-section { flex: 1; display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px; }
+    .active-view { display: flex; }
+    
+    /* TO-DO LIST STYLES */
+    .tasks-feed { flex: 1; width: 100%; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+    
+    .task-card { 
+        background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 18px; padding: 15px; 
+        transition: all 0.3s ease; position: relative; display: flex; flex-direction: column; gap: 10px;
+    }
+
+    /* STATUS: DONE (GREEN) */
+    .task-card.done-task {
+        background: rgba(46, 204, 113, 0.1) !important;
+        border: 1px solid var(--done-green) !important;
+        box-shadow: 0 0 15px rgba(46, 204, 113, 0.2);
+    }
+    .task-card.done-task .task-text {
+        text-decoration: line-through;
+        opacity: 0.6;
+    }
+
+    .task-header { display: flex; justify-content: space-between; align-items: center; }
+    .task-author { font-size: 12px; font-weight: 700; color: var(--primary); display: flex; align-items: center; }
+    .task-pfp { width: 25px; height: 25px; border-radius: 50%; margin-right: 8px; border: 1px solid #fff; }
+    
+    .task-text { font-size: 15px; color: #fff; line-height: 1.5; white-space: pre-wrap; }
+    
+    .task-actions { display: flex; gap: 10px; margin-top: 5px; justify-content: flex-end; }
+    
+    /* BUTTONS */
+    .btn-action { padding: 6px 15px; border-radius: 8px; font-family: 'Orbitron'; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.2s; text-transform: uppercase; background: transparent; }
+    
+    .btn-done { border: 1px solid var(--done-green); color: var(--done-green); }
+    .btn-done:hover { background: var(--done-green); color: #000; }
+    
+    .btn-delete { border: 1px solid #ff4757; color: #ff4757; }
+    .btn-delete:hover { background: #ff4757; color: #fff; }
+
+    /* INPUT AREA */
+    .input-area-wrapper { background: rgba(0,0,0,0.5); border-top: 1px solid var(--glass-border); padding: 20px; width: 100%; }
+    .input-row { display: flex; gap: 10px; }
+    .chat-input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 15px; padding: 12px 15px; color: #fff; resize: none; height: 50px; font-family: 'Poppins'; }
+    .add-btn { width: 50px; height: 50px; border-radius: 15px; border: none; background: var(--primary); color: #000; font-size: 20px; cursor: pointer; }
+    .add-btn:hover { box-shadow: 0 0 15px var(--primary); }
+
+    /* RESTRICTED */
+    .lock-icon { font-size: 60px; color: #ff4757; margin-bottom: 20px; }
+    .google-btn { background: #fff; color: #000; font-weight: 700; padding: 10px 20px; border-radius: 50px; border: none; cursor: pointer; display: flex; gap: 10px; align-items: center; margin-top: 20px; }
+
+    /* Responsive */
+    @media (max-width: 768px) { nav { display: none; } }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header-container">
+    <header>
+      <a href="index.html" class="logo"><img src="https://iili.io/fXvBEiB.png" alt="KSDA Logo"></a>
+      <nav>
+        <a href="index.html">Acasă</a>
+        <a href="Wall.html">Wall</a>
+        <a href="Feedback.html">Feedback</a>
+        <a href="ToDo.html" style="color: var(--primary);">To-Do Admin</a>
+      </nav>
+      <div style="width: 24px;"></div> <!-- Spacer -->
+    </header>
+  </div>
+
+  <div class="wall-container">
+    <h1 class="metallic-title">ADMIN TO-DO LIST</h1>
+    <p style="color:#aaa; margin-bottom:30px;">Spațiu privat pentru organizarea task-urilor KSDA.</p>
+
+    <div class="wall-card">
+        
+        <!-- 1. NOT LOGGED IN -->
+        <div id="loginView" class="view-section active-view">
+            <i class="fas fa-lock lock-icon" style="color: var(--primary);"></i>
+            <h2>Acces Restricționat</h2>
+            <p>Trebuie să te loghezi pentru a verifica accesul.</p>
+            <button id="loginBtn" class="google-btn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18"> Logare
+            </button>
+        </div>
+
+        <!-- 2. ACCESS DENIED (Normal Users) -->
+        <div id="deniedView" class="view-section">
+            <i class="fas fa-ban lock-icon"></i>
+            <h2 style="color: #ff4757;">ACCES INTERZIS</h2>
+            <p>Această pagină este destinată doar Administratorilor.</p>
+            <a href="index.html" style="color: var(--primary); margin-top: 20px;">Înapoi acasă</a>
+        </div>
+
+        <!-- 3. ADMIN PANEL (The List) -->
+        <div id="adminView" class="view-section" style="padding:0; justify-content: flex-start; text-align: left;">
+            <div id="taskList" class="tasks-feed">
+                <!-- Tasks go here -->
+                <div style="text-align:center; margin-top:50px;">Se încarcă lista...</div>
+            </div>
+
+            <div class="input-area-wrapper">
+                <div class="input-row">
+                    <textarea id="taskInput" class="chat-input" placeholder="Ce avem de făcut? (Scrie task nou)..."></textarea>
+                    <button id="addTaskBtn" class="add-btn"><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+  </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
+      authDomain: "ksda-7546f.firebaseapp.com",
+      projectId: "ksda-7546f",
+      storageBucket: "ksda-7546f.firebasestorage.app",
+      messagingSenderId: "306437513808",
+      appId: "1:306437513808:web:28479810e3fdf71b32e755"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // DOM
+    const loginView = document.getElementById('loginView');
+    const deniedView = document.getElementById('deniedView');
+    const adminView = document.getElementById('adminView');
+    const taskList = document.getElementById('taskList');
+    const taskInput = document.getElementById('taskInput');
+    const addTaskBtn = document.getElementById('addTaskBtn');
+    const loginBtn = document.getElementById('loginBtn');
+
+    // ALLOWED EMAILS
+    const ALLOWED_ADMINS = [
+        'nicaemmanuel433qe@gmail.com', // Owner
+        'kevin.trinity2020@gmail.com', // Admin
+        'mary.bughi@gmail.com',        // Mod 1
+        'emmanuel.nica83@gmail.com'    // Mod 2
+    ];
+
+    // AUTH
+    loginBtn.onclick = () => signInWithPopup(auth, provider);
+
+    onAuthStateChanged(auth, (user) => {
+        if (!user) {
+            showView('login');
+        } else {
+            if (ALLOWED_ADMINS.includes(user.email)) {
+                showView('admin');
+                loadTasks();
+            } else {
+                showView('denied');
+            }
+        }
+    });
+
+    function showView(viewName) {
+        loginView.classList.remove('active-view');
+        deniedView.classList.remove('active-view');
+        adminView.classList.remove('active-view');
+
+        if(viewName === 'login') loginView.classList.add('active-view');
+        if(viewName === 'denied') deniedView.classList.add('active-view');
+        if(viewName === 'admin') adminView.classList.add('active-view');
+    }
+
+    // --- TASK LOGIC ---
+
+    function loadTasks() {
+        // Order by Status (Not done first) then Date
+        const q = query(collection(db, "admin_todos"), orderBy("isDone", "asc"), orderBy("createdAt", "desc"));
+        
+        onSnapshot(q, (snapshot) => {
+            taskList.innerHTML = '';
+            if (snapshot.empty) {
+                taskList.innerHTML = '<div style="text-align:center; color:#555; margin-top:20px;">Nu sunt task-uri active. Totul e curat! 🎉</div>';
+                return;
+            }
+
+            snapshot.forEach((doc) => {
+                renderTask(doc.id, doc.data());
+            });
+        });
+    }
+
+    function renderTask(id, data) {
+        const isDone = data.isDone === true;
+        const email = data.email || "";
+        
+        let badge = '';
+        if (email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge">OWNER</span>`;
+        else if (email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge">ADMIN</span>`;
+        else badge = `<span class="admin-badge">STAFF</span>`;
+
+        const card = document.createElement('div');
+        card.className = `task-card ${isDone ? 'done-task' : ''}`;
+        
+        card.innerHTML = `
+            <div class="task-header">
+                <div class="task-author">
+                    <img src="${data.photo}" class="task-pfp"> 
+                    ${data.name} ${badge}
+                </div>
+                <div style="font-size:10px; color:#aaa;">${data.createdAt?.toDate().toLocaleDateString() || ''}</div>
+            </div>
+            
+            <div class="task-text">${data.text}</div>
+
+            <div class="task-actions">
+                <button onclick="deleteTask('${id}')" class="btn-action btn-delete">
+                    <i class="fas fa-trash"></i> Șterge
+                </button>
+                <button onclick="toggleDone('${id}', ${isDone})" class="btn-action btn-done">
+                    ${isDone ? '<i class="fas fa-undo"></i> Refă' : '<i class="fas fa-check"></i> Rezolvat'}
+                </button>
+            </div>
+        `;
+        taskList.appendChild(card);
+    }
+
+    // --- GLOBAL FUNCTIONS ---
+
+    // 1. ADD TASK
+    addTaskBtn.onclick = async () => {
+        const text = taskInput.value.trim();
+        if (!text) return;
+
+        try {
+            await addDoc(collection(db, "admin_todos"), {
+                text: text,
+                name: auth.currentUser.displayName,
+                email: auth.currentUser.email,
+                photo: auth.currentUser.photoURL,
+                isDone: false,
+                createdAt: serverTimestamp()
+            });
+            taskInput.value = '';
+        } catch (e) {
+            alert("Eroare: " + e.message);
+        }
+    };
+
+    // 2. TOGGLE DONE (Turns Green)
+    window.toggleDone = async (id, currentStatus) => {
+        try {
+            await updateDoc(doc(db, "admin_todos", id), {
+                isDone: !currentStatus
+            });
+        } catch (e) { console.error(e); }
+    };
+
+    // 3. DELETE
+    window.deleteTask = async (id) => {
+        if(confirm("Ștergi acest task?")) {
+            try {
+                await deleteDoc(doc(db, "admin_todos", id));
+            } catch (e) { console.error(e); }
+        }
+    };
+
+</script>
+
+</body>
+</html>
