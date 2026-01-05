@@ -296,6 +296,29 @@
     let serverTimeOffset = 0; 
     let isAwarding = false;
 
+    // --- SMART ONLINE TRACKER ---
+    let lastStatusUpdate = 0;
+    const UPDATE_INTERVAL = 3 * 60 * 1000; // 3 Minutes
+
+    async function updateOnlineStatus() {
+        if (!auth.currentUser) return;
+        const now = Date.now();
+        
+        if (now - lastStatusUpdate > UPDATE_INTERVAL) {
+            lastStatusUpdate = now;
+            try {
+                await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                    isOnline: true,
+                    lastActive: serverTimestamp()
+                });
+            } catch(e) { console.error(e); }
+        }
+    }
+
+    window.addEventListener('scroll', updateOnlineStatus);
+    window.addEventListener('click', updateOnlineStatus);
+    window.addEventListener('mousemove', updateOnlineStatus);
+
     function generateDailyIds(completedQuests) {
         const oneTimeDone = ['review', 'social3'].filter(id => completedQuests.includes(id));
         const availablePool = quests.filter(q => !oneTimeDone.includes(q.id));
@@ -437,6 +460,7 @@
                     renderQuests(data);
                 }
             });
+            updateOnlineStatus(); // Start Tracking
         } else { window.location.href = 'index.html'; }
     });
 
