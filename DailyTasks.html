@@ -172,6 +172,15 @@
     .btn-tasks:hover { background: var(--primary); color: #000; }
     .btn-logout-pop { background: transparent; border: 1.5px solid #ff4757; color: #ff4757; padding: 10px 25px; border-radius: 12px; font-family: 'Orbitron'; font-weight: 700; cursor: pointer; font-size: 12px; text-transform: uppercase; }
 
+    /* --- NEW EDIT PROFILE STYLES --- */
+    .edit-profile-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+    .edit-label { font-size: 10px; color: var(--primary); text-align: left; text-transform: uppercase; margin-bottom: 2px; margin-left: 5px; }
+    .edit-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 12px; width: 100%; font-family: 'Poppins'; font-size: 12px; }
+    .edit-input:focus { border-color: var(--primary); }
+    .btn-save-profile { background: var(--primary); color: #000; font-family: 'Orbitron'; font-weight: 700; border: none; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
+    .btn-edit-profile { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 50px; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px; transition: 0.3s; font-family: 'Orbitron'; }
+    .btn-edit-profile:hover { background: var(--primary); color: #000; }
+
     /* --- RESPONSIVE FIXES --- */
     @media (max-width: 768px) { 
         .header-container nav { display: none; }
@@ -231,12 +240,32 @@
 
 <div id="questGrid" class="quests-container"></div>
 
+<!-- EDIT PROFILE MODAL (NEW) -->
+<div id="editProfileModal" class="account-modal-overlay">
+    <div class="account-card">
+        <button id="closeEditProfile" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary);">EDITEAZĂ PROFIL</h3>
+        <div class="edit-profile-form">
+            <div><label class="edit-label">Data Nașterii</label><input type="date" id="editBirth" class="edit-input"></div>
+            <div><label class="edit-label">Despre Tine (Bio)</label><textarea id="editBio" class="edit-input" rows="3" placeholder="Scrie ceva despre tine..."></textarea></div>
+            <div><label class="edit-label">Link TikTok</label><input type="text" id="editTikTok" class="edit-input" placeholder="https://tiktok.com/@user"></div>
+            <button id="saveProfileBtn" class="btn-save-profile">SALVEAZĂ</button>
+        </div>
+    </div>
+</div>
+
 <div id="accountModal" class="account-modal-overlay">
     <div class="account-card">
         <button id="closeAccountPop" class="close-pop">✕</button>
         <img id="popUserImg" src="" class="pop-img">
         <h3 id="popUserName" class="pop-user">Utilizator</h3>
         <p id="popUserEmail" class="pop-mail">email@exemplu.com</p>
+        
+        <!-- NEW EDIT BUTTON -->
+        <button id="openEditProfileBtn" class="btn-edit-profile">
+            <i class="fas fa-edit"></i> Editează Profil
+        </button>
+
         <div class="streak-box"><i class="fas fa-fire"></i><span class="streak-txt">Daily Streak: 0</span></div>
         <div class="coins-section">
             <span class="coins-label">Puncte KSDA</span>
@@ -277,6 +306,15 @@
     const resetTimerEl = document.getElementById('resetTimer');
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+
+    // --- NEW EDIT MODAL LOGIC ---
+    const editProfileModal = document.getElementById('editProfileModal');
+    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
+    const closeEditProfile = document.getElementById('closeEditProfile');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const editBirth = document.getElementById('editBirth');
+    const editBio = document.getElementById('editBio');
+    const editTikTok = document.getElementById('editTikTok');
 
     const quests = [
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
@@ -414,6 +452,48 @@
         } catch (e) { console.error(e); } finally { isAwarding = false; }
     }
 
+    // --- EDIT PROFILE HANDLERS ---
+    openEditProfileBtn.onclick = async () => {
+        accountModal.classList.remove('active'); 
+        editProfileModal.classList.add('active'); 
+        
+        if(auth.currentUser) {
+            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            if(snap.exists()) {
+                const data = snap.data();
+                editBirth.value = data.birthDate || "";
+                editBio.value = data.bio || "";
+                editTikTok.value = data.tiktokLink || "";
+            }
+        }
+    };
+
+    closeEditProfile.onclick = () => {
+        editProfileModal.classList.remove('active');
+        accountModal.classList.add('active'); 
+    };
+
+    saveProfileBtn.onclick = async () => {
+        if(!auth.currentUser) return;
+        
+        const birth = editBirth.value;
+        const bio = editBio.value.trim();
+        const tiktok = editTikTok.value.trim();
+
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                birthDate: birth,
+                bio: bio,
+                tiktokLink: tiktok
+            });
+            alert("Profil salvat cu succes!");
+            editProfileModal.classList.remove('active');
+            accountModal.classList.add('active');
+        } catch(e) {
+            alert("Eroare la salvare: " + e.message);
+        }
+    };
+
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
@@ -430,14 +510,12 @@
                         serverTimeOffset = serverDate.getTime() - Date.now();
                         const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
                         
-                        // DACĂ NU EXISTĂ QUESTURI ACTIVE, GENERĂM UNELE NOI
                         if (!data.activeDailyQuests) {
                             const newIds = generateDailyIds(data.completedQuests || []);
                             await updateDoc(userRef, { activeDailyQuests: newIds, latestServerCheck: serverTimestamp() });
                             return;
                         }
 
-                        // DACĂ S-A SCHIMBAT ZIUA, RESETĂM TOT
                         if(data.lastResetDate !== roDate) {
                             const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
                             const newIds = generateDailyIds(persistent);
