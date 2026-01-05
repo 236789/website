@@ -128,7 +128,7 @@
         position: absolute; bottom: 5px; right: 5px;
         width: 25px; height: 25px; border-radius: 50%;
         background: #555; border: 3px solid #08101b;
-        z-index: 5;
+        z-index: 5; transition: 0.3s;
     }
     .podium-status.online { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
 
@@ -183,7 +183,7 @@
     
     .list-status { 
         position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; 
-        background: #555; border-radius: 50%; border: 2px solid #000;
+        background: #555; border-radius: 50%; border: 2px solid #000; transition: 0.3s;
     }
     .list-status.online { background: #00ff88; box-shadow: 0 0 5px #00ff88; }
 
@@ -194,7 +194,7 @@
     .top-coins img { width: 22px; }
     .top-streak { display: flex; align-items: center; gap: 5px; color: #ff4500; font-weight: 700; font-size: 13px; background: rgba(255,69,0,0.1); padding: 4px 10px; border-radius: 50px; }
 
-    /* --- EDIT PROFILE & VIEW PROFILE STYLES --- */
+    /* --- EDIT PROFILE STYLES --- */
     .edit-profile-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; text-align: left; }
     .edit-label { font-size: 10px; color: var(--primary); text-transform: uppercase; margin-bottom: 2px; margin-left: 5px; font-family: 'Orbitron'; }
     .edit-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 12px; width: 100%; font-family: 'Poppins'; font-size: 12px; }
@@ -203,6 +203,7 @@
     .btn-edit-profile { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 50px; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px; transition: 0.3s; font-family: 'Orbitron'; text-transform: uppercase; }
     .btn-edit-profile:hover { background: var(--primary); color: #000; }
 
+    /* --- PROFILE VIEW STYLES --- */
     .view-profile-row { display: flex; justify-content: space-around; margin: 15px 0; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 15px; }
     .view-stat { display: flex; flex-direction: column; align-items: center; }
     .view-stat-val { font-weight: 800; font-size: 14px; color: #fff; }
@@ -238,6 +239,7 @@
         .rank-1 { order: 1; transform: scale(1); }
         .rank-2 { order: 2; }
         .rank-3 { order: 3; }
+        
         .nav-container nav { display: none; } 
         .login-btn-header { display: none !important; }
         .hamburger { display: block; margin-left: auto; }
@@ -267,7 +269,9 @@
 
 <aside id="sideMenu">
     <div class="menu-header">
-        <div class="logo menu-logo"><img src="https://iili.io/fXvBEiB.png" alt="KSDA Logo"></div>
+        <div class="logo menu-logo">
+            <img src="https://iili.io/fXvBEiB.png" alt="KSDA Logo">
+        </div>
         <button id="closeMenu" class="closeBtn">✕</button>
     </div>
     <div class="menu-divider"></div>
@@ -401,7 +405,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, limit, doc, getDoc, setDoc, getDocs, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, orderBy, limit, doc, getDoc, setDoc, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -433,7 +437,7 @@
     const editBio = document.getElementById('editBio');
     const editTikTok = document.getElementById('editTikTok');
 
-    // --- 1. SMART ONLINE STATUS TRACKER (WRITE TO FIREBASE) ---
+    // --- 1. ADVANCED ONLINE STATUS SYSTEM (Live) ---
     let idleTimer;
     let lastStatusUpdate = 0;
     const UPDATE_INTERVAL = 3 * 60 * 1000;
@@ -467,102 +471,109 @@
     document.onclick = resetIdleTimer;
     document.onscroll = resetIdleTimer;
 
-    // --- 2. LEADERBOARD LOGIC ---
+    // --- 2. LIVE LEADERBOARD LOGIC ---
+    // Helper: Determine if a user is online
     function checkIsOnline(user) {
+        // Force online for "Me" if looking at myself (handeled in renderer usually, but good fallback)
+        if (auth.currentUser && user.id === auth.currentUser.uid) return true;
+
         if (user.isOnline === true && user.lastActive) {
             const diff = Date.now() - user.lastActive.toDate().getTime();
-            return diff < 360000; // 6 mins
+            return diff < 360000; // 6 mins (buffer)
         }
         return false;
     }
 
-    async function fetchTopMembers(currentUser) {
+    // Keep global reference to data to re-render without network
+    let currentLeaderboardData = [];
+
+    // Main Listener
+    function setupLeaderboardListener() {
         const q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(50));
         
-        try {
-            const snapshot = await getDocs(q);
-            const members = [];
-            snapshot.forEach(doc => members.push({ id: doc.id, ...doc.data() }));
-
-            // Update Podium (Top 1-3)
-            for (let i = 1; i <= 3; i++) {
-                const m = members[i - 1];
-                const boxEl = document.getElementById(`box-${i}`);
-                const nameEl = document.getElementById(`name-${i}`);
-                const imgEl = document.getElementById(`img-${i}`);
-                const coinsEl = document.getElementById(`coins-${i}`);
-                const streakEl = document.getElementById(`streak-${i}`);
-                const statusEl = document.getElementById(`status-${i}`);
-                
-                if (m) {
-                    imgEl.src = m.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-                    coinsEl.innerHTML = `${m.coins || 0} <img src="https://iili.io/fhc1SKQ.png">`;
-                    streakEl.innerHTML = `<i class="fas fa-fire"></i> ${m.streak || 0} Days`;
-                    
-                    // Logic: Force "Online" for the current user
-                    let isOnline = false;
-                    if(currentUser && currentUser.uid === m.id) {
-                        isOnline = true;
-                    } else {
-                        isOnline = checkIsOnline(m);
-                    }
-
-                    statusEl.className = `podium-status ${isOnline ? 'online' : ''}`;
-
-                    if(m.email === 'nicaemmanuel433qe@gmail.com') {
-                        nameEl.innerHTML = `LOST SOUL <div class="owner-badge-podium">WEBSITE OWNER</div>`;
-                    } else { nameEl.innerText = m.username || "Anonim"; }
-                    
-                    // Click to view profile
-                    boxEl.onclick = () => openUserProfile(m.id);
-                }
-            }
-
-            // Update List 4-50
-            topListEl.innerHTML = '';
-            const others = members.slice(3);
-            others.forEach((m, index) => {
-                const row = document.createElement('div');
-                row.className = 'top-item';
-                
-                // Determine Badge
-                let badge = "";
-                if(m.email === 'nicaemmanuel433qe@gmail.com') {
-                    badge = `<span class="owner-badge" style="font-size:8px;">OWNER</span>`;
-                } else if(m.email === 'kevin.trinity2020@gmail.com') {
-                    badge = `<span class="admin-badge" style="font-size:8px;">ADMIN</span>`;
-                }
-
-                // Force "Online" for Self
-                let isOnline = false;
-                if(currentUser && currentUser.uid === m.id) {
-                    isOnline = true;
-                } else {
-                    isOnline = checkIsOnline(m);
-                }
-
-                row.innerHTML = `
-                    <div class="top-left">
-                        <span class="top-rank-num">${index + 4}</span>
-                        <div class="top-img-box">
-                            <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
-                            <div class="list-status ${isOnline ? 'online' : ''}"></div>
-                        </div>
-                        <span class="top-user-name">${m.username || 'Anonim'} ${badge}</span>
-                    </div>
-                    <div class="top-right">
-                        <div class="top-streak"><i class="fas fa-fire"></i> ${m.streak || 0}</div>
-                        <div class="top-coins">
-                            <span>${m.coins || 0}</span>
-                            <img src="https://iili.io/fhc1SKQ.png">
-                        </div>
-                    </div>
-                `;
-                row.onclick = () => openUserProfile(m.id);
-                topListEl.appendChild(row);
-            });
-        } catch (e) { console.error("Eroare la incarcarea topului:", e); }
+        // Listen for changes
+        onSnapshot(q, (snapshot) => {
+            currentLeaderboardData = [];
+            snapshot.forEach(doc => currentLeaderboardData.push({ id: doc.id, ...doc.data() }));
+            renderLeaderboard(); // Update UI immediately on data change
+        });
     }
+
+    // Render Function (Called by Listener AND Interval)
+    function renderLeaderboard() {
+        const members = currentLeaderboardData;
+        const currentUser = auth.currentUser;
+
+        // Update Podium (Top 1-3)
+        for (let i = 1; i <= 3; i++) {
+            const m = members[i - 1];
+            const boxEl = document.getElementById(`box-${i}`);
+            const nameEl = document.getElementById(`name-${i}`);
+            const imgEl = document.getElementById(`img-${i}`);
+            const coinsEl = document.getElementById(`coins-${i}`);
+            const streakEl = document.getElementById(`streak-${i}`);
+            const statusEl = document.getElementById(`status-${i}`);
+            
+            if (m) {
+                imgEl.src = m.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+                coinsEl.innerHTML = `${m.coins || 0} <img src="https://iili.io/fhc1SKQ.png">`;
+                streakEl.innerHTML = `<i class="fas fa-fire"></i> ${m.streak || 0} Days`;
+                
+                // FORCE SELF ONLINE VISUALLY
+                let isOnline = false;
+                if(currentUser && currentUser.uid === m.id) isOnline = true; 
+                else isOnline = checkIsOnline(m);
+
+                statusEl.className = `podium-status ${isOnline ? 'online' : ''}`;
+
+                if(m.email === 'nicaemmanuel433qe@gmail.com') {
+                    nameEl.innerHTML = `LOST SOUL <div class="owner-badge-podium">WEBSITE OWNER</div>`;
+                } else { nameEl.innerText = m.username || "Anonim"; }
+                
+                boxEl.onclick = () => openUserProfile(m.id);
+            }
+        }
+
+        // Update List 4-50
+        topListEl.innerHTML = '';
+        const others = members.slice(3);
+        others.forEach((m, index) => {
+            const row = document.createElement('div');
+            row.className = 'top-item';
+            
+            let badge = "";
+            if(m.email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge" style="font-size:8px;">OWNER</span>`;
+            else if(m.email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge" style="font-size:8px;">ADMIN</span>`;
+
+            let isOnline = false;
+            if(currentUser && currentUser.uid === m.id) isOnline = true; 
+            else isOnline = checkIsOnline(m);
+
+            row.innerHTML = `
+                <div class="top-left">
+                    <span class="top-rank-num">${index + 4}</span>
+                    <div class="top-img-box">
+                        <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
+                        <div class="list-status ${isOnline ? 'online' : ''}"></div>
+                    </div>
+                    <span class="top-user-name">${m.username || 'Anonim'} ${badge}</span>
+                </div>
+                <div class="top-right">
+                    <div class="top-streak"><i class="fas fa-fire"></i> ${m.streak || 0}</div>
+                    <div class="top-coins">
+                        <span>${m.coins || 0}</span>
+                        <img src="https://iili.io/fhc1SKQ.png">
+                    </div>
+                </div>
+            `;
+            row.onclick = () => openUserProfile(m.id);
+            topListEl.appendChild(row);
+        });
+    }
+
+    // Auto-refresh UI every 30s to catch "Offline" timeouts even if DB doesn't change
+    setInterval(renderLeaderboard, 30000);
+    setupLeaderboardListener(); // Start listening
 
     // --- 3. VIEW PROFILE FUNCTION ---
     window.openUserProfile = async (uid) => {
@@ -577,20 +588,15 @@
                 const data = snap.data();
                 document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
                 
-                // Status logic for Modal
                 let isOnline = false;
-                if(auth.currentUser && auth.currentUser.uid === uid) {
-                    isOnline = true;
-                } else {
-                    isOnline = checkIsOnline(data);
-                }
+                if(auth.currentUser && auth.currentUser.uid === uid) isOnline = true; 
+                else isOnline = checkIsOnline(data);
                 
                 const statusEl = document.getElementById('viewUserStatus');
                 statusEl.innerHTML = isOnline 
                     ? '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>'
                     : '<span style="color:#555;">● OFFLINE</span>';
 
-                // Badge
                 let badge = "";
                 if(data.email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge" style="margin-left:5px;">OWNER</span>`;
                 else if(data.email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge" style="margin-left:5px;">ADMIN</span>`;
@@ -664,19 +670,18 @@
                 if(snap.exists()) {
                     const data = snap.data();
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
-                    document.getElementById('popUserName').innerText = data.username || user.displayName;
+                    document.getElementById('popUserName').innerText = (data.email === 'nicaemmanuel433qe@gmail.com') ? "Lost Soul" : (data.username || user.displayName);
                     document.getElementById('popUserEmail').innerText = data.email || user.email;
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 }
             });
             resetIdleTimer();
-            fetchTopMembers(user); // Pass User to Leaderboard
+            renderLeaderboard(); // Re-render to update self-status
         } else {
             document.getElementById('headerLoginText').innerText = "LOGIN";
             document.getElementById('headerUserImg').style.display = "none";
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-            fetchTopMembers(null); // Load generic
         }
     });
 
