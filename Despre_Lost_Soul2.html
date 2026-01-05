@@ -137,6 +137,15 @@
     }
     .btn-logout-pop:hover { background: #ff4757; color: #fff; box-shadow: 0 0 15px rgba(255, 71, 87, 0.4); }
 
+    /* --- NEW EDIT PROFILE STYLES --- */
+    .edit-profile-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; text-align: left; }
+    .edit-label { font-size: 10px; color: var(--primary); text-transform: uppercase; margin-bottom: 2px; margin-left: 5px; font-family: 'Orbitron'; }
+    .edit-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 12px; width: 100%; font-family: 'Poppins'; font-size: 12px; }
+    .edit-input:focus { border-color: var(--primary); }
+    .btn-save-profile { background: var(--primary); color: #000; font-family: 'Orbitron'; font-weight: 700; border: none; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 10px; text-transform: uppercase; }
+    .btn-edit-profile { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 50px; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px; transition: 0.3s; font-family: 'Orbitron'; text-transform: uppercase; }
+    .btn-edit-profile:hover { background: var(--primary); color: #000; }
+
     /* --- HEADER --- */
     .header-container { position: fixed; top: 0; width: 100%; padding: 15px; z-index: 1000; display: flex; justify-content: center; }
     header {
@@ -353,6 +362,20 @@
     </div>
 </div>
 
+<!-- EDIT PROFILE MODAL (NEW) -->
+<div id="editProfileModal" class="account-modal-overlay">
+    <div class="account-card">
+        <button id="closeEditProfile" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary);">EDITEAZĂ PROFIL</h3>
+        <div class="edit-profile-form">
+            <div><label class="edit-label">Data Nașterii</label><input type="date" id="editBirth" class="edit-input"></div>
+            <div><label class="edit-label">Despre Tine (Bio)</label><textarea id="editBio" class="edit-input" rows="3" placeholder="Scrie ceva despre tine..."></textarea></div>
+            <div><label class="edit-label">Link TikTok</label><input type="text" id="editTikTok" class="edit-input" placeholder="https://tiktok.com/@user"></div>
+            <button id="saveProfileBtn" class="btn-save-profile">SALVEAZĂ</button>
+        </div>
+    </div>
+</div>
+
 <!-- ACCOUNT MODAL -->
 <div id="accountModal" class="account-modal-overlay">
     <div class="account-card">
@@ -360,6 +383,12 @@
         <img id="popUserImg" src="" class="pop-img">
         <h3 id="popUserName" class="pop-user">Utilizator</h3>
         <p id="popUserEmail" class="pop-mail">email@exemplu.com</p>
+        
+        <!-- NEW EDIT BUTTON -->
+        <button id="openEditProfileBtn" class="btn-edit-profile">
+            <i class="fas fa-edit"></i> Editează Profil
+        </button>
+
         <div class="streak-box"><i class="fas fa-fire"></i><span class="streak-txt">Daily Streak: 0</span></div>
         <div class="coins-section">
             <span class="coins-label">Puncte KSDA</span>
@@ -507,7 +536,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // --- CONFIGURATIA TA ---
     const firebaseConfig = {
@@ -540,6 +569,15 @@
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
     const popLogoutBtn = document.getElementById('popLogoutBtn');
+
+    // --- NEW EDIT MODAL LOGIC ---
+    const editProfileModal = document.getElementById('editProfileModal');
+    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
+    const closeEditProfile = document.getElementById('closeEditProfile');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const editBirth = document.getElementById('editBirth');
+    const editBio = document.getElementById('editBio');
+    const editTikTok = document.getElementById('editTikTok');
 
    // 1. GLOBAL BAN CHECK (OPTIMIZED)
     async function checkGlobalBan() {
@@ -579,10 +617,35 @@
     }
     checkGlobalBan();
 
+    // --- SMART ONLINE TRACKER ---
+    let lastStatusUpdate = 0;
+    const UPDATE_INTERVAL = 3 * 60 * 1000; // 3 Minutes
+
+    async function updateOnlineStatus() {
+        if (!auth.currentUser) return;
+        const now = Date.now();
+        
+        if (now - lastStatusUpdate > UPDATE_INTERVAL) {
+            lastStatusUpdate = now;
+            try {
+                await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                    isOnline: true,
+                    lastActive: serverTimestamp()
+                });
+            } catch(e) { console.error(e); }
+        }
+    }
+
+    window.addEventListener('scroll', updateOnlineStatus);
+    window.addEventListener('click', updateOnlineStatus);
+    window.addEventListener('mousemove', updateOnlineStatus);
+
     // 2. AUTH LOGIC
     function handleLogin() {
         if (!auth.currentUser) {
-            signInWithPopup(auth, provider).catch(e => alert(e.message));
+            signInWithPopup(auth, provider).then(() => {
+                updateOnlineStatus(); // Force update on login
+            }).catch(e => alert(e.message));
         } else {
             // Already logged in, open modal instead of logging out
             accountModal.classList.add('active');
@@ -608,6 +671,48 @@
             accountModal.classList.remove('active');
             location.reload();
         });
+    };
+
+    // --- EDIT PROFILE HANDLERS ---
+    openEditProfileBtn.onclick = async () => {
+        accountModal.classList.remove('active'); 
+        editProfileModal.classList.add('active'); 
+        
+        if(auth.currentUser) {
+            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            if(snap.exists()) {
+                const data = snap.data();
+                editBirth.value = data.birthDate || "";
+                editBio.value = data.bio || "";
+                editTikTok.value = data.tiktokLink || "";
+            }
+        }
+    };
+
+    closeEditProfile.onclick = () => {
+        editProfileModal.classList.remove('active');
+        accountModal.classList.add('active'); 
+    };
+
+    saveProfileBtn.onclick = async () => {
+        if(!auth.currentUser) return;
+        
+        const birth = editBirth.value;
+        const bio = editBio.value.trim();
+        const tiktok = editTikTok.value.trim();
+
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                birthDate: birth,
+                bio: bio,
+                tiktokLink: tiktok
+            });
+            alert("Profil salvat cu succes!");
+            editProfileModal.classList.remove('active');
+            accountModal.classList.add('active');
+        } catch(e) {
+            alert("Eroare la salvare: " + e.message);
+        }
     };
 
     // 3. AUTH STATE LISTENER (UPDATED)
@@ -637,6 +742,7 @@
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 }
             });
+            updateOnlineStatus(); // Start tracking
 
         } else {
             // Update Header
