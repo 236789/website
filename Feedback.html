@@ -383,9 +383,14 @@
     <div class="account-card">
         <button id="closeViewProfile" class="close-pop">✕</button>
         <img id="viewUserImg" src="" class="pop-img" style="border-color:#ffd700;">
-        <h3 id="viewUserName" class="pop-user" style="margin-bottom:10px;">User</h3>
+        
+        <h3 id="viewUserName" class="pop-user" style="margin-bottom:2px;">User</h3>
+        
+        <!-- NEW STATUS BADGE -->
+        <div id="viewUserStatus" style="font-size:10px; font-weight:bold; margin-bottom:15px; font-family:'Orbitron';"></div>
         
         <div class="view-profile-row">
+            <!-- ... keep existing stats ... -->
             <div class="view-stat">
                 <img src="https://iili.io/fhc1SKQ.png" style="width:25px; margin-bottom:5px;">
                 <span id="viewUserCoins" class="view-stat-val">0</span>
@@ -766,12 +771,12 @@
     };
 
     // --- VIEW USER PROFILE FUNCTION ---
+    // --- VIEW USER PROFILE FUNCTION (UPDATED WITH ONLINE CHECK) ---
     window.openUserProfile = async (uid) => {
-        // Show Loading state
         const modal = document.getElementById('viewProfileModal');
         modal.classList.add('active');
         document.getElementById('viewUserName').innerText = "Se încarcă...";
-        document.getElementById('viewUserBio').innerText = "";
+        document.getElementById('viewUserStatus').innerHTML = ""; // Clear previous status
         
         try {
             const snap = await getDoc(doc(db, "accounts", uid));
@@ -779,6 +784,28 @@
                 const data = snap.data();
                 document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
                 
+                // --- ONLINE STATUS LOGIC ---
+                const statusEl = document.getElementById('viewUserStatus');
+                let isOnline = false;
+                
+                if (data.lastActive) {
+                    const now = Date.now();
+                    const lastActiveDate = data.lastActive.toDate();
+                    const diff = now - lastActiveDate.getTime();
+                    
+                    // If active in the last 5 minutes (300,000 ms)
+                    if (diff < 300000) { 
+                        isOnline = true;
+                    }
+                }
+
+                if (isOnline) {
+                    statusEl.innerHTML = '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>';
+                } else {
+                    statusEl.innerHTML = '<span style="color:#555;">● OFFLINE</span>';
+                }
+                // ---------------------------
+
                 // --- BADGE LOGIC ---
                 let badge = "";
                 if(data.email === 'nicaemmanuel433qe@gmail.com') {
@@ -806,8 +833,6 @@
                 } else {
                     tiktokBtn.style.display = 'none';
                 }
-            } else {
-                document.getElementById('viewUserName').innerText = "Utilizator Inexistent";
             }
         } catch(e) { console.error(e); }
     };
