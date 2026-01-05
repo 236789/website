@@ -401,15 +401,6 @@
     .react-user-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .react-user-img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--primary); }
     .react-user-name { font-size: 13px; color: #fff; font-weight: 500; }
-    
-    /* --- NEW SEEN BY STYLES --- */
-    .msg-seen-status { font-size: 9px; color: rgba(255,255,255,0.4); margin-top: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: 0.3s; }
-    .msg-seen-status:hover { color: var(--primary); text-shadow: 0 0 5px var(--primary-dim); }
-    .msg-wrapper.mine .msg-seen-status { justify-content: flex-end; }
-    
-    .seen-user-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .seen-user-img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; }
-    .seen-time { font-size: 10px; color: #888; margin-left: auto; }
 
     /* Menu & Tools */
     .msg-options { position: absolute; top: 0; right: -25px; cursor: pointer; padding: 5px; color: var(--text-muted); opacity: 0; transition: 0.2s; }
@@ -614,17 +605,6 @@
         <button onclick="window.closeReactionModal()" class="close-pop">✕</button>
         <h3 id="reactModalTitle" style="font-family:'Orbitron'; margin-bottom: 20px; border-bottom:1px solid var(--glass-border); padding-bottom:10px;">Reacții</h3>
         <div id="reactList" style="text-align: left; overflow-y: auto; max-height: 350px;">
-            <div style="text-align:center; padding:20px;">Se încarcă...</div>
-        </div>
-    </div>
-</div>
-
-<!-- NEW SEEN BY DETAILS MODAL -->
-<div id="seenModal" class="account-modal-overlay">
-    <div class="account-card" style="max-width: 350px; height: auto; max-height: 500px; padding: 25px;">
-        <button onclick="document.getElementById('seenModal').classList.remove('active')" class="close-pop">✕</button>
-        <h3 style="font-family:'Orbitron'; margin-bottom: 20px; border-bottom:1px solid var(--glass-border); padding-bottom:10px;">Seen By</h3>
-        <div id="seenList" style="text-align: left; overflow-y: auto; max-height: 350px;">
             <div style="text-align:center; padding:20px;">Se încarcă...</div>
         </div>
     </div>
@@ -890,10 +870,6 @@
     const onlineCountBtn = document.getElementById('onlineCountBtn');
     const onlineCountVal = document.getElementById('onlineCountVal');
     const onlineUsersContainer = document.getElementById('onlineUsersContainer');
-
-    // SEEN LIST
-    const seenModal = document.getElementById('seenModal');
-    const seenList = document.getElementById('seenList');
 
     // CHAT ELEMENTS
     const userAvatar = document.getElementById('userAvatar');
@@ -1458,8 +1434,7 @@
             isMod: isMod,
             createdAt: serverTimestamp(),
             isDeleted: false,
-            reactions: {},
-            seenBy: {} // Initialize SeenBy Field
+            reactions: {} 
         };
 
         if(replyData) {
@@ -1537,8 +1512,7 @@
                 isOwner: false, 
                 createdAt: serverTimestamp(),
                 isDeleted: false,
-                reactions: {},
-                seenBy: {}
+                reactions: {}
             });
         } catch(e) { console.error("Bot fail", e); }
     }
@@ -1633,20 +1607,6 @@
                         reactionsHtml += `</div>`;
                     }
                 }
-                
-                // --- NEW SEEN LOGIC ---
-                const seenObj = data.seenBy || {};
-                const seenCount = Object.keys(seenObj).length;
-                let seenHtml = `
-                    <div class="msg-seen-status" onclick="window.openSeenList('${msgId}')">
-                        <i class="fas fa-eye"></i> ${seenCount}
-                    </div>
-                `;
-
-                // If not marked as seen by current user, mark it now (safeguarded)
-                if(currentUid && !seenObj[currentUid] && !isBot) {
-                    window.markMsgSeen(msgId);
-                }
 
                 let menuHtml = '';
                 const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -1686,10 +1646,7 @@
                     ${!isMine ? `<div class="msg-author">${nameHtml}</div>` : ''}
                     <div class="${bubbleClass}">${bubbleContent}</div>
                     ${reactionsHtml}
-                    <div class="msg-info">
-                        <span>${time}</span>
-                        ${seenHtml} <!-- NEW SEEN INDICATOR -->
-                    </div>
+                    <div class="msg-info"><span>${time}</span></div>
                     ${menuHtml}
                 `;
                 feed.appendChild(wrapper);
@@ -1740,62 +1697,6 @@
             });
         } catch(e) { console.error(e); list.innerHTML = '<div style="padding:10px; color:#ff4757;">Eroare la încărcare.</div>'; }
     };
-
-    // --- NEW SEEN LIST LOGIC ---
-    window.markMsgSeen = async function(msgId) {
-        if(!currentUid) return;
-        const msgRef = doc(db, "wall_messages", msgId);
-        try {
-            const updateField = {};
-            updateField[`seenBy.${currentUid}`] = serverTimestamp();
-            await updateDoc(msgRef, updateField);
-        } catch(e) { console.error("Seen mark fail", e); }
-    }
-
-    window.openSeenList = async (msgId) => {
-        const modal = document.getElementById('seenModal');
-        const list = document.getElementById('seenList');
-        modal.classList.add('active');
-        list.innerHTML = '<div style="padding:20px; text-align:center;">Se încarcă lista...</div>';
-
-        try {
-            const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
-            if(!msgSnap.exists()) return;
-            
-            const seenData = msgSnap.data().seenBy || {};
-            const userIds = Object.keys(seenData);
-            
-            if(userIds.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Nimeni nu a văzut încă.</div>';
-                return;
-            }
-
-            const userPromises = userIds.map(uid => getDoc(doc(db, "accounts", uid)));
-            const userSnaps = await Promise.all(userPromises);
-            
-            list.innerHTML = '';
-            userSnaps.forEach(snap => {
-                let name = "Necunoscut";
-                let img = "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-                if(snap.exists()) {
-                    name = snap.data().username;
-                    img = snap.data().image;
-                }
-                const div = document.createElement('div');
-                div.className = 'seen-user-row';
-                div.innerHTML = `
-                    <img src="${img}" class="seen-user-img">
-                    <span style="font-size:13px; font-weight:600;">${name}</span>
-                    <i class="fas fa-check" style="color:var(--primary); margin-left:auto; font-size:12px;"></i>
-                `;
-                list.appendChild(div);
-            });
-
-        } catch(e) {
-            console.error(e);
-            list.innerHTML = '<div style="color:red; text-align:center;">Eroare.</div>';
-        }
-    }
 
     window.handleMuteAction = async (targetUid, targetName) => {
         closeAllMenus();
@@ -1850,7 +1751,7 @@
             const isMine = msgData.uid === currentUid;
             if (isMine || isAdmin || isOwner || isMod) {
                 if(confirm("Ștergi mesajul?")) { 
-                    await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {}, seenBy: {} }); 
+                    await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {} }); 
                     showToast("Mesaj șters.", "success");
                 } 
             } else { showToast("Nu poți șterge mesajele altora!", "error"); }
