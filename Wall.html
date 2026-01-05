@@ -1568,7 +1568,6 @@
     }
     window.onclick = function(event) { if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) { closeAllMenus(); } }
   // --- NEW IP BAN FUNCTION ---
-  // --- UPDATED IP BAN FUNCTION (RED MESSAGE) ---
     window.banIpUser = async function(targetUid, targetName, targetIp) {
         closeAllMenus();
         
@@ -1593,6 +1592,7 @@
         if(confirm(`ESTI SIGUR? Această acțiune este PERMANENTĂ pentru IP-ul ${targetIp}.`)) {
             try {
                 // Save to Firestore 'banned_ips' collection
+                // We use the IP address as the Document ID so we can find it easily
                 await setDoc(doc(db, "banned_ips", targetIp), {
                     reason: reason,
                     bannedAt: serverTimestamp(),
@@ -1601,23 +1601,8 @@
                     username: targetName
                 });
 
-                // --- SPECIAL RED ANNOUNCEMENT ---
-                // We manually add the doc here instead of using sendBotMessage
-                // We set isBot: false and isAdmin: true to force the RED bubble style
-                await addDoc(collection(db, "wall_messages"), {
-                    text: `🚨 BAN HAMMER! ${targetName} a fost executat public. Banat Permanent pe IP. Motiv: ${reason}`,
-                    uid: 'kevin-bot',
-                    name: 'Kevin-Bot', // Name stays the same
-                    photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
-                    ip: 'server',
-                    isBot: false,       // <--- FALSE (stops it from being Green)
-                    isAdmin: true,      // <--- TRUE (makes it RED)
-                    isOwner: false,
-                    isMod: false,
-                    createdAt: serverTimestamp(),
-                    isDeleted: false,
-                    reactions: {}
-                });
+                // Announce in Chat
+                sendBotMessage(`🚨 BAN HAMMER! ${targetName} a fost executat public. Banat Permanent pe IP. Motiv: ${reason}`);
                 
                 showToast("IP Banat cu succes!", "success");
 
@@ -1626,7 +1611,7 @@
                 showToast("Eroare la banare: " + e.message, "error");
             }
         }
-    }}
+    }
   </script>
 </body>
 </html>
