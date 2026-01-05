@@ -173,12 +173,12 @@
     .btn-logout-pop { background: transparent; border: 1.5px solid #ff4757; color: #ff4757; padding: 10px 25px; border-radius: 12px; font-family: 'Orbitron'; font-weight: 700; cursor: pointer; font-size: 12px; text-transform: uppercase; }
 
     /* --- NEW EDIT PROFILE STYLES --- */
-    .edit-profile-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
-    .edit-label { font-size: 10px; color: var(--primary); text-align: left; text-transform: uppercase; margin-bottom: 2px; margin-left: 5px; }
+    .edit-profile-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; text-align: left; }
+    .edit-label { font-size: 10px; color: var(--primary); text-transform: uppercase; margin-bottom: 2px; margin-left: 5px; font-family: 'Orbitron'; }
     .edit-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 12px; width: 100%; font-family: 'Poppins'; font-size: 12px; }
     .edit-input:focus { border-color: var(--primary); }
-    .btn-save-profile { background: var(--primary); color: #000; font-family: 'Orbitron'; font-weight: 700; border: none; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 10px; }
-    .btn-edit-profile { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 50px; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px; transition: 0.3s; font-family: 'Orbitron'; }
+    .btn-save-profile { background: var(--primary); color: #000; font-family: 'Orbitron'; font-weight: 700; border: none; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 10px; text-transform: uppercase; }
+    .btn-edit-profile { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 50px; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px; transition: 0.3s; font-family: 'Orbitron'; text-transform: uppercase; }
     .btn-edit-profile:hover { background: var(--primary); color: #000; }
 
     /* --- RESPONSIVE FIXES --- */
@@ -334,14 +334,18 @@
     let serverTimeOffset = 0; 
     let isAwarding = false;
 
-    // --- SMART ONLINE TRACKER ---
+    // --- ADVANCED PRESENCE SYSTEM (Online/Offline) ---
+    let idleTimer;
     let lastStatusUpdate = 0;
-    const UPDATE_INTERVAL = 3 * 60 * 1000; // 3 Minutes
+    const UPDATE_INTERVAL = 3 * 60 * 1000; // Update "Online" every 3 mins to save data
+    const IDLE_TIMEOUT = 5 * 60 * 1000;    // Mark "Offline" after 5 mins of no action
 
-    async function updateOnlineStatus() {
+    // 1. Function to mark user ONLINE
+    async function setStatusOnline() {
         if (!auth.currentUser) return;
         const now = Date.now();
-        
+
+        // Only write to Firebase if 3 minutes have passed since the last write
         if (now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
@@ -349,13 +353,41 @@
                     isOnline: true,
                     lastActive: serverTimestamp()
                 });
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error("Error setting online:", e); }
         }
     }
 
-    window.addEventListener('scroll', updateOnlineStatus);
-    window.addEventListener('click', updateOnlineStatus);
-    window.addEventListener('mousemove', updateOnlineStatus);
+    // 2. Function to mark user OFFLINE (Called automatically)
+    async function setStatusOffline() {
+        if (!auth.currentUser) return;
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                isOnline: false,
+                lastActive: serverTimestamp()
+            });
+            // console.log("Utilizator marcat OFFLINE (Inactivitate)");
+        } catch(e) { console.error("Error setting offline:", e); }
+    }
+
+    // 3. The Reset Function (Runs on every click/move)
+    function resetIdleTimer() {
+        // Stop the countdown to "Offline"
+        clearTimeout(idleTimer);
+
+        // Mark us as Online (if throttled time allows)
+        setStatusOnline();
+
+        // Start a new 5-minute countdown
+        idleTimer = setTimeout(setStatusOffline, IDLE_TIMEOUT);
+    }
+
+    // 4. Listen for User Activity
+    window.onload = resetIdleTimer;
+    document.onmousemove = resetIdleTimer;
+    document.onkeypress = resetIdleTimer;
+    document.ontouchstart = resetIdleTimer; // For mobile
+    document.onclick = resetIdleTimer;
+    document.onscroll = resetIdleTimer;
 
     function generateDailyIds(completedQuests) {
         const oneTimeDone = ['review', 'social3'].filter(id => completedQuests.includes(id));
@@ -538,7 +570,7 @@
                     renderQuests(data);
                 }
             });
-            updateOnlineStatus(); // Start Tracking
+            resetIdleTimer(); // Start Tracking
         } else { window.location.href = 'index.html'; }
     });
 
