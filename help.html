@@ -545,8 +545,14 @@
     const headerLoginText = document.getElementById('headerLoginText');
     const headerUserImg = document.getElementById('headerUserImg');
 
-    // 1. GLOBAL BAN CHECK
+  // 1. GLOBAL BAN CHECK (OPTIMIZED)
     async function checkGlobalBan() {
+        // Check local storage first. If we already checked this session, STOP here.
+        // This saves you 1 Read per page refresh.
+        if (sessionStorage.getItem('isBanned') === 'false') {
+            return; 
+        }
+
         try {
             const res = await fetch('https://api.ipify.org?format=json');
             const data = await res.json();
@@ -556,20 +562,26 @@
             const banSnap = await getDoc(banRef);
 
             if (banSnap.exists()) {
+                // User IS banned
                 const banData = banSnap.data();
-                siteContent.style.display = 'none';
-                bannedOverlay.style.display = 'flex';
+                sessionStorage.setItem('isBanned', 'true'); // Remember they are banned
                 
-                globalBanReason.innerText = banData.reason || "Nespecificat";
-                globalBanIp.innerText = userIP;
+                if(document.getElementById('siteContent')) document.getElementById('siteContent').style.display = 'none';
+                if(document.getElementById('bannedOverlay')) {
+                    document.getElementById('bannedOverlay').style.display = 'flex';
+                    document.getElementById('globalBanReason').innerText = banData.reason || "Nespecificat";
+                    document.getElementById('globalBanIp').innerText = userIP;
+                }
                 document.body.style.overflow = 'hidden';
+            } else {
+                // User is NOT banned - Remember this!
+                sessionStorage.setItem('isBanned', 'false');
             }
         } catch (e) {
             console.error("Eroare verificare ban:", e);
         }
     }
     checkGlobalBan();
-
     // 2. AUTH LOGIC
     function handleLogin() {
         if (!auth.currentUser) {
@@ -613,6 +625,7 @@
 
 </body>
 </html>
+
 
 
 
