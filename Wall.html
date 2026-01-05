@@ -1419,18 +1419,29 @@
                     }
                 }
 
+                // --- STEP 1: DEFINE CONDITIONS ---
                 let menuHtml = '';
                 const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const canDelete = isMine || isAdmin || isOwner || isMod;
+                
+                // Only Owner sees Mute and Ban
                 const showMute = isOwner && !isMine;
+                const showBan = isOwner && !isMine; 
 
+                // --- STEP 2: UPDATE THE HTML ---
                 menuHtml = `
                     <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                     <div id="menu-${msgId}" class="options-dropdown">
                         <button onclick="startReply('${msgId}', '${data.name}', '${rawText}')"><i class="fas fa-reply"></i> Răspunde</button>
                         <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                        
                         ${canDelete ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                        ${showMute ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-volume-mute"></i> Gestionează Mute</button>` : ''}
+                        
+                        ${showMute ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-volume-mute"></i> Mute</button>` : ''}
+                        
+                        <!-- NEW BAN BUTTON (RED) -->
+                        ${showBan ? `<button class="mute-btn" style="border-color:#ff0000; color:#ff0000;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+
                         <div id="emojis-${msgId}" class="emoji-picker-menu">
                             <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
                             <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
@@ -1556,6 +1567,51 @@
         } catch(e) { showToast("Eroare: " + e.message); } 
     }
     window.onclick = function(event) { if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) { closeAllMenus(); } }
+  // --- NEW IP BAN FUNCTION ---
+    window.banIpUser = async function(targetUid, targetName, targetIp) {
+        closeAllMenus();
+        
+        // Security Check
+        if(!isOwner) {
+            showToast("Nu ai permisiunea asta!", "error");
+            return;
+        }
+
+        // Validation
+        if(!targetIp || targetIp === 'unknown' || targetIp === 'server') {
+            showToast("Eroare: Nu pot detecta IP-ul acestui user.", "error");
+            return;
+        }
+
+        // 1. Ask for Reason
+        const reason = prompt(`⚠️ ATENȚIE! Urmează să banezi IP-ul lui ${targetName}.\n\nIP: ${targetIp}\n\nScrie motivul banării:`);
+        
+        if(!reason) return; // Cancelled
+
+        // 2. Final Confirmation
+        if(confirm(`ESTI SIGUR? Această acțiune este PERMANENTĂ pentru IP-ul ${targetIp}.`)) {
+            try {
+                // Save to Firestore 'banned_ips' collection
+                // We use the IP address as the Document ID so we can find it easily
+                await setDoc(doc(db, "banned_ips", targetIp), {
+                    reason: reason,
+                    bannedAt: serverTimestamp(),
+                    bannedBy: "Lost Soul",
+                    userUid: targetUid,
+                    username: targetName
+                });
+
+                // Announce in Chat
+                sendBotMessage(`🚨 BAN HAMMER! ${targetName} a fost executat public. Banat Permanent pe IP. Motiv: ${reason}`);
+                
+                showToast("IP Banat cu succes!", "success");
+
+            } catch(e) {
+                console.error(e);
+                showToast("Eroare la banare: " + e.message, "error");
+            }
+        }
+    }
   </script>
 </body>
 </html>
