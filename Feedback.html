@@ -74,6 +74,19 @@
         box-shadow: 0 0 5px rgba(0,0,0,0.3); margin-left: 8px;
     }
 
+    /* PINNED POST STYLE */
+    .review-card.pinned-post {
+        border: 2px solid #ffd700 !important;
+        background: rgba(255, 215, 0, 0.05);
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+        order: -1; /* Forces it to the top flex container */
+    }
+    .pinned-badge {
+        background: #ffd700; color: #000; font-family: 'Orbitron'; font-weight: 900;
+        font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-right: 8px;
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+
     /* Card Staff Backgrounds */
     .review-card.owner-post { background: linear-gradient(135deg, #0044ff 0%, #29f3ff 100%) !important; border: 2px solid #ffffff !important; box-shadow: 0 0 25px rgba(41, 243, 255, 0.3) !important; }
     .review-card.admin-post { background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; border: 2px solid #ffffff !important; box-shadow: 0 0 20px rgba(255, 0, 0, 0.4) !important; }
@@ -98,11 +111,13 @@
         color: #fff !important;
     }
 
-    /* Delete Button Styling */
-    .btn-delete-staff {
+    /* Action Buttons (Delete / Pin) */
+    .card-actions-top { margin-left: auto; display: flex; gap: 8px; }
+    
+    .btn-action-staff {
         background: rgba(0, 0, 0, 0.3);
-        border: 1px solid #ff4757;
-        color: #ff4757;
+        border: 1px solid #fff;
+        color: #fff;
         padding: 5px 10px;
         border-radius: 8px;
         font-family: 'Orbitron';
@@ -111,9 +126,10 @@
         transition: 0.3s;
         text-transform: uppercase;
         font-weight: 700;
-        margin-left: auto;
     }
-    .btn-delete-staff:hover { background: #ff4757; color: #fff; }
+    .btn-action-staff.delete:hover { background: #ff4757; border-color: #ff4757; }
+    .btn-action-staff.pin:hover { background: #ffd700; border-color: #ffd700; color: #000; }
+    .btn-action-staff.pinned-active { background: #ffd700; color: #000; border-color: #ffd700; }
 
     /* --- FLYING COIN ANIMATION --- */
     .flying-reward {
@@ -377,7 +393,10 @@
 
             <!-- INPUT FORM -->
             <div id="reviewForm">
-                <div class="input-row"><textarea id="revInput" class="chat-input" placeholder="Descrie bug-ul sau ideea ta (max. 1500 caractere)..." maxlength="1500"></textarea><button id="sendBtn" class="send-btn" disabled><i class="fas fa-paper-plane"></i></button></div>
+                <div class="input-row">
+                    <textarea id="revInput" class="chat-input" placeholder="Descrie bug-ul sau ideea ta (min. 50 caractere)..." maxlength="1500"></textarea>
+                    <button id="sendBtn" class="send-btn" disabled><i class="fas fa-paper-plane"></i></button>
+                </div>
                 <div class="char-limit"><span id="charCount">0</span> / 1500</div>
             </div>
         </div>
@@ -492,8 +511,15 @@
 
     fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => userIP = d.ip);
 
-    revInput.oninput = () => { document.getElementById('charCount').innerText = revInput.value.length; validateForm(); };
-    function validateForm() { sendBtn.disabled = (revInput.value.trim().length < 3); }
+    // --- CHARACTER LIMIT LOGIC UPDATED (MIN 50) ---
+    revInput.oninput = () => { 
+        document.getElementById('charCount').innerText = revInput.value.length; 
+        validateForm(); 
+    };
+    function validateForm() { 
+        // Changed from < 3 to < 50
+        sendBtn.disabled = (revInput.value.trim().length < 50); 
+    }
 
     // --- COOLDOWN LOGIC ---
     function updateCooldownUI() {
@@ -592,7 +618,7 @@
         } catch(e) {}
     }
 
-    // --- FEEDBACK LOADING (PAGINATED) ---
+    // --- FEEDBACK LOADING (PAGINATED & SORTED BY PIN) ---
     async function loadNextBatch() {
         if (isFetching) return;
         isFetching = true;
@@ -600,10 +626,12 @@
 
         try {
             let q;
+            // First we want to query PINNED posts if it's the first batch, BUT Firestore sorting is tricky.
+            // Simplified approach: Order by isPinned (descending) then createdAt (descending)
             if (lastVisibleDoc) {
-                q = query(collection(db, "feedbacks"), orderBy("createdAt", "desc"), startAfter(lastVisibleDoc), limit(BATCH_SIZE));
+                q = query(collection(db, "feedbacks"), orderBy("isPinned", "desc"), orderBy("createdAt", "desc"), startAfter(lastVisibleDoc), limit(BATCH_SIZE));
             } else {
-                q = query(collection(db, "feedbacks"), orderBy("createdAt", "desc"), limit(BATCH_SIZE));
+                q = query(collection(db, "feedbacks"), orderBy("isPinned", "desc"), orderBy("createdAt", "desc"), limit(BATCH_SIZE));
             }
 
             const snapshot = await getDocs(q);
@@ -630,6 +658,8 @@
             }
         } catch (e) {
             console.error("Error loading feedbacks:", e);
+            // Fallback if index missing
+            loadMoreBtn.innerText = "Eroare Index (Verifică consola)";
         } finally {
             isFetching = false;
         }
@@ -650,7 +680,10 @@
         const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
         const isAdmin = (email === 'kevin.trinity2020@gmail.com');
         const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
-        const canDelete = (currentEmail === 'nicaemmanuel433qe@gmail.com' || currentEmail === 'kevin.trinity2020@gmail.com');
+        
+        const currentUserIsOwner = (currentEmail === 'nicaemmanuel433qe@gmail.com');
+        const currentUserIsAdmin = (currentEmail === 'kevin.trinity2020@gmail.com');
+        const canManage = currentUserIsOwner || currentUserIsAdmin;
 
         let cardClass = 'review-card';
         let badge = '';
@@ -658,16 +691,45 @@
         else if (isAdmin) { cardClass += ' admin-post'; badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
         else if (isMod) { cardClass += ' mod-post'; badge = `<span class="mod-badge"><i class="fas fa-star"></i> MOD</span>`; }
 
+        // PINNED LOGIC
+        if (data.isPinned) {
+            cardClass += ' pinned-post';
+        }
+
         const displayName = isOwner ? "Lost Soul" : data.name;
-        const delBtn = canDelete ? `<button class="btn-delete-staff" onclick="deleteFeedback('${data.id}')"><i class="fas fa-trash"></i> Șterge</button>` : '';
+
+        // Action Buttons
+        let actionButtons = '';
+        if (canManage) {
+            actionButtons += `
+                <div class="card-actions-top">
+                    <button class="btn-action-staff pin ${data.isPinned ? 'pinned-active' : ''}" onclick="togglePin('${data.id}', ${data.isPinned})">
+                        ${data.isPinned ? '<i class="fas fa-thumbtack"></i> UNPIN' : '<i class="fas fa-thumbtack"></i> PIN'}
+                    </button>
+                    <button class="btn-action-staff delete" onclick="deleteFeedback('${data.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        } else if (currentEmail === data.email) {
+             // User can delete own post
+             actionButtons += `
+                <div class="card-actions-top">
+                    <button class="btn-action-staff delete" onclick="deleteFeedback('${data.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        }
 
         const card = document.createElement('div');
         card.className = cardClass;
         card.innerHTML = `
+            ${data.isPinned ? '<div class="pinned-badge"><i class="fas fa-thumbtack"></i> PINNED</div>' : ''}
             <div class="review-header">
                 <img src="${data.photo}" class="rev-pfp">
                 <div class="rev-info"><div class="rev-name">${displayName} ${badge}</div></div>
-                ${delBtn}
+                ${actionButtons}
             </div>
             <div class="rev-text">${data.text.replace(/</g, "&lt;")}</div>
             <div class="rev-footer"><div style="display:flex; flex-direction:column;"><span class="helpful-text">de acord?:</span><span style="font-size: 10px; opacity:0.6;">${date.toLocaleDateString()}</span></div>
@@ -693,6 +755,19 @@
 
     // --- ACTIONS ---
 
+    // 0. Toggle PIN (New)
+    window.togglePin = async (id, currentStatus) => {
+        try {
+            await updateDoc(doc(db, "feedbacks", id), {
+                isPinned: !currentStatus
+            });
+            alert(currentStatus ? "Post Unpinned!" : "Post Pinned!");
+            location.reload(); // Simplest way to re-sort
+        } catch(e) {
+            alert("Eroare: " + e.message);
+        }
+    }
+
     // 0. Global Delete
     window.deleteFeedback = async (id) => {
         if(!confirm("Sigur vrei să ștergi feedback-ul?")) return;
@@ -703,20 +778,22 @@
         } catch(e) { alert("Eroare: " + e.message); }
     };
 
-    // 1. Send Feedback (UPDATED WITH QUEST LOGIC & EMAIL)
+    // 1. Send Feedback (UPDATED WITH QUEST LOGIC & EMAIL & PIN FIELD)
     sendBtn.onclick = async () => {
         if(!auth.currentUser) return;
         const uid = auth.currentUser.uid;
         
+        // Ensure initial 'isPinned' is false
         const feedbackData = { 
             text: revInput.value.trim(), 
             name: auth.currentUser.displayName, 
             photo: auth.currentUser.photoURL, 
-            email: auth.currentUser.email, // ADDED EMAIL
+            email: auth.currentUser.email, 
             uid: uid, 
             ip: userIP || "unknown", 
             createdAt: serverTimestamp(), 
-            votes: {} 
+            votes: {},
+            isPinned: false 
         };
 
         try {
