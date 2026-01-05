@@ -1003,14 +1003,40 @@ function startBotConversation() {
         } catch(e) { return "Necunoscut"; }
     }
 
+// 1. GLOBAL BAN CHECK (OPTIMIZED)
     async function checkGlobalBan() {
-        const userIP = await getIP();
-        const banSnap = await getDoc(doc(db, "banned_ips", userIP));
-        if (banSnap.exists()) {
-            document.getElementById('siteContent').style.display = 'none';
-            document.getElementById('bannedOverlay').style.display = 'flex';
-            document.getElementById('globalBanReason').innerText = banSnap.data().reason || "Nespecificat";
-            document.getElementById('globalBanIp').innerText = userIP;
+        // Check local storage first to save Firebase Reads
+        if (sessionStorage.getItem('isBanned') === 'false') {
+            return; // User is safe, do not read from database
+        }
+
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            const userIP = data.ip;
+
+            // Check Firebase
+            const banRef = doc(db, "banned_ips", userIP);
+            const banSnap = await getDoc(banRef);
+
+            if (banSnap.exists()) {
+                // User is banned
+                const banData = banSnap.data();
+                sessionStorage.setItem('isBanned', 'true'); // Remember status
+                
+                if(document.getElementById('siteContent')) document.getElementById('siteContent').style.display = 'none';
+                if(document.getElementById('bannedOverlay')) {
+                    document.getElementById('bannedOverlay').style.display = 'flex';
+                    document.getElementById('globalBanReason').innerText = banData.reason || "Nespecificat";
+                    document.getElementById('globalBanIp').innerText = userIP;
+                }
+                document.body.style.overflow = 'hidden';
+            } else {
+                // User is NOT banned - save this so we don't pay for reads again this session
+                sessionStorage.setItem('isBanned', 'false');
+            }
+        } catch (e) {
+            console.error("Eroare verificare ban:", e);
         }
     }
     checkGlobalBan();
@@ -1121,3 +1147,4 @@ function startBotConversation() {
   </script>
 </body>
 </html>
+
