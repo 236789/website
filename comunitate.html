@@ -117,6 +117,15 @@
     }
     .btn-logout-pop:hover { background: #ff4757; color: #fff; }
 
+    /* --- NEW EDIT PROFILE STYLES --- */
+    .edit-profile-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; text-align: left; }
+    .edit-label { font-size: 10px; color: var(--primary); text-transform: uppercase; margin-bottom: 2px; margin-left: 5px; font-family: 'Orbitron'; }
+    .edit-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; border-radius: 12px; width: 100%; font-family: 'Poppins'; font-size: 12px; }
+    .edit-input:focus { border-color: var(--primary); }
+    .btn-save-profile { background: var(--primary); color: #000; font-family: 'Orbitron'; font-weight: 700; border: none; padding: 10px; border-radius: 12px; cursor: pointer; margin-top: 10px; text-transform: uppercase; }
+    .btn-edit-profile { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 50px; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px; transition: 0.3s; font-family: 'Orbitron'; text-transform: uppercase; }
+    .btn-edit-profile:hover { background: var(--primary); color: #000; }
+
     /* REWARD MODAL (TASK BONUS) */
     .reward-modal {
         position: fixed; inset: 0; background: rgba(0,0,0,0.9);
@@ -206,6 +215,20 @@
     </div>
 </div>
 
+<!-- EDIT PROFILE MODAL (NEW) -->
+<div id="editProfileModal" class="account-modal-overlay">
+    <div class="account-card">
+        <button id="closeEditProfile" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary);">EDITEAZĂ PROFIL</h3>
+        <div class="edit-profile-form">
+            <div><label class="edit-label">Data Nașterii</label><input type="date" id="editBirth" class="edit-input"></div>
+            <div><label class="edit-label">Despre Tine (Bio)</label><textarea id="editBio" class="edit-input" rows="3" placeholder="Scrie ceva despre tine..."></textarea></div>
+            <div><label class="edit-label">Link TikTok</label><input type="text" id="editTikTok" class="edit-input" placeholder="https://tiktok.com/@user"></div>
+            <button id="saveProfileBtn" class="btn-save-profile">SALVEAZĂ</button>
+        </div>
+    </div>
+</div>
+
 <!-- ACCOUNT POP-UP MODAL -->
 <div id="accountModal" class="account-modal-overlay">
     <div class="account-card">
@@ -213,6 +236,9 @@
         <img id="popUserImg" src="" class="pop-img">
         <h3 id="popUserName" class="pop-user">Utilizator</h3>
         <p id="popUserEmail" class="pop-mail">email@exemplu.com</p>
+        
+        <!-- NEW EDIT BUTTON -->
+        <button id="openEditProfileBtn" class="btn-edit-profile"><i class="fas fa-edit"></i> Editează Profil</button>
         
         <div class="streak-box">
             <i class="fas fa-fire"></i>
@@ -663,7 +689,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -692,14 +718,20 @@
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
     const rewardModal = document.getElementById('rewardModal');
+    const popLogoutBtn = document.getElementById('popLogoutBtn');
+
+    // --- NEW EDIT MODAL LOGIC ---
+    const editProfileModal = document.getElementById('editProfileModal');
+    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
+    const closeEditProfile = document.getElementById('closeEditProfile');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const editBirth = document.getElementById('editBirth');
+    const editBio = document.getElementById('editBio');
+    const editTikTok = document.getElementById('editTikTok');
 
    // 1. GLOBAL BAN CHECK (OPTIMIZED)
     async function checkGlobalBan() {
-        // Check local storage first. If we already checked this session, STOP here.
-        // This saves you 1 Read per page refresh.
-        if (sessionStorage.getItem('isBanned') === 'false') {
-            return; 
-        }
+        if (sessionStorage.getItem('isBanned') === 'false') return; 
 
         try {
             const res = await fetch('https://api.ipify.org?format=json');
@@ -710,26 +742,43 @@
             const banSnap = await getDoc(banRef);
 
             if (banSnap.exists()) {
-                // User IS banned
                 const banData = banSnap.data();
-                sessionStorage.setItem('isBanned', 'true'); // Remember they are banned
-                
-                if(document.getElementById('siteContent')) document.getElementById('siteContent').style.display = 'none';
-                if(document.getElementById('bannedOverlay')) {
-                    document.getElementById('bannedOverlay').style.display = 'flex';
-                    document.getElementById('globalBanReason').innerText = banData.reason || "Nespecificat";
-                    document.getElementById('globalBanIp').innerText = userIP;
+                sessionStorage.setItem('isBanned', 'true');
+                if(siteContent) siteContent.style.display = 'none';
+                if(bannedOverlay) {
+                    bannedOverlay.style.display = 'flex';
+                    globalBanReason.innerText = banData.reason || "Nespecificat";
+                    globalBanIp.innerText = userIP;
                 }
                 document.body.style.overflow = 'hidden';
             } else {
-                // User is NOT banned - Remember this!
                 sessionStorage.setItem('isBanned', 'false');
             }
-        } catch (e) {
-            console.error("Eroare verificare ban:", e);
-        }
+        } catch (e) { console.error("Eroare verificare ban:", e); }
     }
     checkGlobalBan();
+
+    // --- SMART ONLINE TRACKER ---
+    let lastStatusUpdate = 0;
+    const UPDATE_INTERVAL = 3 * 60 * 1000;
+
+    async function updateOnlineStatus() {
+        if (!auth.currentUser) return;
+        const now = Date.now();
+        if (now - lastStatusUpdate > UPDATE_INTERVAL) {
+            lastStatusUpdate = now;
+            try {
+                await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                    isOnline: true,
+                    lastActive: serverTimestamp()
+                });
+            } catch(e) { console.error(e); }
+        }
+    }
+
+    window.addEventListener('scroll', updateOnlineStatus);
+    window.addEventListener('click', updateOnlineStatus);
+    window.addEventListener('mousemove', updateOnlineStatus);
 
     // 2. QUEST LOGIC (5 Follows)
     window.handleFollowClick = async function(url) {
@@ -760,14 +809,49 @@
 
     // 3. AUTH Flow
     function handleLoginFlow() {
-        if (!auth.currentUser) { signInWithPopup(auth, provider); } 
+        if (!auth.currentUser) { signInWithPopup(auth, provider).then(() => updateOnlineStatus()); } 
         else { accountModal.classList.add('active'); }
     }
 
     if(headerLoginBtn) headerLoginBtn.onclick = handleLoginFlow;
     if(mobileLoginBtn) mobileLoginBtn.onclick = handleLoginFlow;
     closeAccountPop.onclick = () => accountModal.classList.remove('active');
-    document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
+    
+    if(popLogoutBtn) popLogoutBtn.onclick = () => {
+        signOut(auth).then(() => {
+            accountModal.classList.remove('active');
+            location.reload();
+        });
+    };
+
+    // --- EDIT PROFILE HANDLERS ---
+    openEditProfileBtn.onclick = async () => {
+        accountModal.classList.remove('active'); 
+        editProfileModal.classList.add('active'); 
+        if(auth.currentUser) {
+            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            if(snap.exists()) {
+                const data = snap.data();
+                editBirth.value = data.birthDate || "";
+                editBio.value = data.bio || "";
+                editTikTok.value = data.tiktokLink || "";
+            }
+        }
+    };
+    closeEditProfile.onclick = () => { editProfileModal.classList.remove('active'); accountModal.classList.add('active'); };
+    saveProfileBtn.onclick = async () => {
+        if(!auth.currentUser) return;
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                birthDate: editBirth.value,
+                bio: editBio.value.trim(),
+                tiktokLink: editTikTok.value.trim()
+            });
+            alert("Profil salvat!");
+            editProfileModal.classList.remove('active');
+            accountModal.classList.add('active');
+        } catch(e) { alert("Eroare: " + e.message); }
+    };
 
     // 4. AUTH Sync
     onAuthStateChanged(auth, user => {
@@ -775,6 +859,8 @@
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
+            
+            // Sync Data
             onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
@@ -785,6 +871,8 @@
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 }
             });
+            updateOnlineStatus(); // START TRACKING
+
         } else {
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
