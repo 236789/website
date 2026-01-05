@@ -245,20 +245,28 @@
         .hamburger { display: block; margin-left: auto; }
     }
 
-/* FIX FOR COIN SIZE & ALIGNMENT */
-    .coins-display { 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        gap: 8px; 
-    }
+    /* FIX FOR COIN SIZE & ALIGNMENT */
+    .coins-display { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .coins-icon-img { width: 24px !important; height: 24px !important; object-fit: contain; margin-top: -3px; }
 
-    .coins-icon-img { 
-        width: 24px !important;  /* Smaller size (was 30px) */
-        height: 24px !important; 
-        object-fit: contain; 
-        margin-top: -3px; /* Tiny adjustment to align with Orbitron font */
+    /* --- NEW FEATURES CSS --- */
+    .show-more-bubble {
+        background: rgba(41, 243, 255, 0.1);
+        border: 1px dashed var(--primary);
+        border-radius: 20px;
+        padding: 15px;
+        text-align: center;
+        color: var(--text-muted);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 12px;
+        cursor: pointer;
+        transition: 0.3s;
+        margin-top: 10px;
     }
+    .show-more-bubble:hover { background: var(--primary); color: #000; box-shadow: 0 0 15px var(--primary); }
+    #allUsersList::-webkit-scrollbar { width: 5px; }
+    #allUsersList::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+    #allUsersList::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
   </style>
 </head>
 <body>
@@ -408,6 +416,18 @@
     </div>
 </div>
 
+<!-- ALL USERS MODAL (Ranks 51+) -->
+<div id="allUsersModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 500px; height: 80vh; display: flex; flex-direction: column;">
+        <button id="closeAllUsers" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom: 20px;">RESTUL FAMILIEI KSDA</h3>
+        <input type="text" id="searchAllUsers" placeholder="Caută membru..." style="background:rgba(255,255,255,0.1); border:1px solid #333; color:#fff; padding:10px; width:100%; box-sizing:border-box; border-radius:10px; margin-bottom:15px; font-family:'Poppins';">
+        <div id="allUsersList" style="overflow-y: auto; flex: 1; padding-right: 5px;">
+            <div style="text-align:center; color:#aaa;">Se încarcă lista...</div>
+        </div>
+    </div>
+</div>
+
 <script>
     const menuBtn = document.getElementById('menuBtn');
     const sideMenu = document.getElementById('sideMenu');
@@ -420,7 +440,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, limit, doc, getDoc, setDoc, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, orderBy, limit, doc, getDoc, setDoc, onSnapshot, updateDoc, serverTimestamp, getCountFromServer, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -451,6 +471,12 @@
     const editBirth = document.getElementById('editBirth');
     const editBio = document.getElementById('editBio');
     const editTikTok = document.getElementById('editTikTok');
+    
+    // NEW MODAL DOM
+    const allUsersModal = document.getElementById('allUsersModal');
+    const allUsersListEl = document.getElementById('allUsersList');
+    const closeAllUsers = document.getElementById('closeAllUsers');
+    const searchInput = document.getElementById('searchAllUsers');
 
     // --- 1. ADVANCED ONLINE STATUS SYSTEM (Live) ---
     let idleTimer;
@@ -487,34 +513,36 @@
     document.onscroll = resetIdleTimer;
 
     // --- 2. LIVE LEADERBOARD LOGIC ---
-    // Helper: Determine if a user is online
     function checkIsOnline(user) {
-        // Force online for "Me" if looking at myself (handeled in renderer usually, but good fallback)
         if (auth.currentUser && user.id === auth.currentUser.uid) return true;
-
         if (user.isOnline === true && user.lastActive) {
             const diff = Date.now() - user.lastActive.toDate().getTime();
-            return diff < 360000; // 6 mins (buffer)
+            return diff < 360000; 
         }
         return false;
     }
 
-    // Keep global reference to data to re-render without network
     let currentLeaderboardData = [];
+    let totalUserCount = 0;
 
-    // Main Listener
-    function setupLeaderboardListener() {
+    async function setupLeaderboardListener() {
         const q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(50));
         
-        // Listen for changes
         onSnapshot(q, (snapshot) => {
             currentLeaderboardData = [];
             snapshot.forEach(doc => currentLeaderboardData.push({ id: doc.id, ...doc.data() }));
-            renderLeaderboard(); // Update UI immediately on data change
+            renderLeaderboard();
         });
+
+        // Get Total Count
+        try {
+            const coll = collection(db, "accounts");
+            const snapshot = await getCountFromServer(coll);
+            totalUserCount = snapshot.data().count;
+            renderLeaderboard();
+        } catch (err) { console.error("Count Error", err); }
     }
 
-    // Render Function (Called by Listener AND Interval)
     function renderLeaderboard() {
         const members = currentLeaderboardData;
         const currentUser = auth.currentUser;
@@ -534,7 +562,6 @@
                 coinsEl.innerHTML = `${m.coins || 0} <img src="https://iili.io/fhc1SKQ.png">`;
                 streakEl.innerHTML = `<i class="fas fa-fire"></i> ${m.streak || 0} Days`;
                 
-                // FORCE SELF ONLINE VISUALLY
                 let isOnline = false;
                 if(currentUser && currentUser.uid === m.id) isOnline = true; 
                 else isOnline = checkIsOnline(m);
@@ -584,11 +611,90 @@
             row.onclick = () => openUserProfile(m.id);
             topListEl.appendChild(row);
         });
+
+        // 51st BUBBLE
+        const remaining = totalUserCount - members.length;
+        if (remaining > 0) {
+            const moreBubble = document.createElement('div');
+            moreBubble.className = 'show-more-bubble';
+            moreBubble.innerHTML = `<i class="fas fa-users"></i> Încă <strong>${remaining}</strong> membri în familia KSDA<br><span style="font-size:10px; opacity:0.7;">Click pentru a vedea tot clasamentul</span>`;
+            moreBubble.onclick = openAllUsersList;
+            topListEl.appendChild(moreBubble);
+        }
     }
 
-    // Auto-refresh UI every 30s to catch "Offline" timeouts even if DB doesn't change
+    // --- NEW: ALL USERS LIST LOGIC ---
+    let allUsersDataCache = [];
+    async function openAllUsersList() {
+        allUsersModal.classList.add('active');
+        allUsersListEl.innerHTML = '<div style="text-align:center; padding:20px;">Se descarcă lista completă... <i class="fas fa-spinner fa-spin"></i></div>';
+        try {
+            const q = query(collection(db, "accounts"), orderBy("coins", "desc"));
+            const snapshot = await getDocs(q);
+            allUsersDataCache = [];
+            snapshot.forEach(doc => { allUsersDataCache.push({ id: doc.id, ...doc.data() }); });
+            renderAllUsersList(allUsersDataCache);
+        } catch (e) { console.error(e); allUsersListEl.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>'; }
+    }
+
+    function renderAllUsersList(data) {
+        allUsersListEl.innerHTML = '';
+        const startFromIndex = 50; 
+        const listToShow = data.slice(startFromIndex);
+        if(listToShow.length === 0) { allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:20px;">Nu există alți utilizatori.</div>'; return; }
+
+        listToShow.forEach((m, idx) => {
+            const realRank = startFromIndex + idx + 1;
+            const item = document.createElement('div');
+            item.className = 'top-item'; 
+            item.style.marginBottom = '10px';
+            
+            let badge = "";
+            if(m.email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge">OWNER</span>`;
+            
+            item.innerHTML = `
+                <div class="top-left">
+                    <span class="top-rank-num" style="font-size:12px;">#${realRank}</span>
+                    <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" style="width:35px; height:35px; border-radius:50%; margin-left:10px;">
+                    <span class="top-user-name" style="margin-left:10px; font-size:13px;">${m.username || 'Anonim'} ${badge}</span>
+                </div>
+                <div class="top-right"><span style="color:var(--primary); font-weight:bold;">${m.coins || 0}</span></div>
+            `;
+            item.onclick = () => openUserProfile(m.id);
+            allUsersListEl.appendChild(item);
+        });
+    }
+
+    searchInput.addEventListener('input', (e) => {
+        const val = e.target.value.toLowerCase();
+        if(val === "") { renderAllUsersList(allUsersDataCache); return; }
+        
+        const filtered = allUsersDataCache.filter(u => (u.username && u.username.toLowerCase().includes(val)));
+        allUsersListEl.innerHTML = '';
+        filtered.forEach((m) => {
+             const originalRank = allUsersDataCache.findIndex(x => x.id === m.id) + 1;
+             if (originalRank <= 50) return; // Only show non-top-50 results in this modal
+
+             const item = document.createElement('div');
+             item.className = 'top-item';
+             item.style.marginBottom = '10px';
+             item.innerHTML = `
+                <div class="top-left">
+                    <span class="top-rank-num" style="font-size:12px;">#${originalRank}</span>
+                    <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" style="width:35px; height:35px; border-radius:50%; margin-left:10px;">
+                    <span class="top-user-name" style="margin-left:10px; font-size:13px;">${m.username || 'Anonim'}</span>
+                </div>
+                <div class="top-right"><span style="color:var(--primary); font-weight:bold;">${m.coins || 0}</span></div>
+            `;
+            item.onclick = () => openUserProfile(m.id);
+            allUsersListEl.appendChild(item);
+        });
+    });
+    closeAllUsers.onclick = () => allUsersModal.classList.remove('active');
+
+    // Auto-refresh UI every 30s
     setInterval(renderLeaderboard, 30000);
-    setupLeaderboardListener(); // Start listening
+    setupLeaderboardListener(); 
 
     // --- 3. VIEW PROFILE FUNCTION ---
     window.openUserProfile = async (uid) => {
@@ -692,7 +798,7 @@
                 }
             });
             resetIdleTimer();
-            renderLeaderboard(); // Re-render to update self-status
+            renderLeaderboard(); 
         } else {
             document.getElementById('headerLoginText').innerText = "LOGIN";
             document.getElementById('headerUserImg').style.display = "none";
