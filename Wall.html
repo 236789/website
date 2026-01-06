@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -494,6 +493,27 @@
     .flying-reward { position: fixed; z-index: 10000; pointer-events: none; font-family: 'Orbitron', sans-serif; font-weight: 900; color: #ffd700; font-size: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: flex; align-items: center; gap: 5px; transition: all 0.8s cubic-bezier(0.19, 1, 0.22, 1); opacity: 1; }
     .flying-reward img { width: 24px; height: 24px; filter: drop-shadow(0 0 5px #ffd700); }
     .flying-reward.finished { opacity: 0; transform: scale(0.5); }
+    
+    /* --- NEW FEATURES CSS --- */
+    .seen-status { font-size: 9px; margin-left: 8px; cursor: pointer; opacity: 0.7; transition: 0.2s; display: inline-flex; align-items: center; gap: 3px; }
+    .seen-status:hover { opacity: 1; color: var(--primary); }
+    
+    .chat-image {
+        max-width: 100%;
+        max-height: 250px;
+        border-radius: 12px;
+        margin-top: 5px;
+        cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .upload-btn-icon {
+        flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%;
+        border: 1px solid var(--primary); background: transparent; color: var(--primary);
+        font-size: 16px; cursor: pointer; display: none; /* Hidden by default */
+        align-items: center; justify-content: center; transition: 0.3s;
+    }
+    .upload-btn-icon:hover { background: var(--primary); color: #000; }
   </style>
 </head>
 <body>
@@ -600,7 +620,7 @@
     </div>
 </div>
 
-<!-- REACTION DETAILS MODAL -->
+<!-- REACTION/SEEN DETAILS MODAL -->
 <div id="reactionModal" class="account-modal-overlay">
     <div class="account-card" style="max-width: 320px; height: auto; max-height: 500px; padding: 25px;">
         <button onclick="window.closeReactionModal()" class="close-pop">✕</button>
@@ -729,6 +749,12 @@
 
                     <div class="input-area">
                         <div class="input-row">
+                            <!-- NEW: IMAGE UPLOAD (Hidden for normal users) -->
+                            <input type="file" id="imageInput" accept="image/*" style="display:none;">
+                            <button id="uploadImgBtn" class="upload-btn-icon" title="Upload Image (Admins Only)">
+                                <i class="fas fa-camera"></i>
+                            </button>
+                            
                             <!-- TEXT INPUT: Set to 1000 MAX -->
                             <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="1000">
                             <!-- SEND BUTTON -->
@@ -804,6 +830,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -818,6 +845,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     setPersistence(auth, browserLocalPersistence)
@@ -880,6 +908,10 @@
     const sendBtn = document.getElementById('sendBtn');
     const charCount = document.getElementById('charCount');
     const typingIndicator = document.getElementById('typingIndicator');
+
+    // IMAGE UPLOAD ELEMENTS
+    const imageInput = document.getElementById('imageInput');
+    const uploadImgBtn = document.getElementById('uploadImgBtn');
 
     // REPLY
     const replyBar = document.getElementById('replyBar');
@@ -1083,6 +1115,13 @@
             isOwner = (user.email === 'nicaemmanuel433qe@gmail.com');
             isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
             isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
+
+            // --- SHOW IMAGE BUTTON ONLY FOR PRIVILEGED USERS ---
+            if(isOwner || isAdmin || isMod) {
+                uploadImgBtn.style.display = 'flex';
+            } else {
+                uploadImgBtn.style.display = 'none';
+            }
 
             if(userIP) {
                 const banRef = doc(db, "banned_ips", userIP);
@@ -1343,6 +1382,9 @@
         return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank">${url}</a>`; });
     }
 
+    // --- UPLOAD IMAGE HANDLERS ---
+    uploadImgBtn.onclick = () => imageInput.click();
+
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
@@ -1350,7 +1392,9 @@
         if(isSending) return; // ISSUE 2 FIX: Prevent Double Send
 
         const text = msgInput.value.trim();
-        if(!text || !auth.currentUser) return;
+        const file = imageInput.files[0];
+        
+        if((!text && !file) || !auth.currentUser) return;
         
         if(text === '/reset chat') {
             msgInput.value = '';
@@ -1424,8 +1468,31 @@
         let displayName = auth.currentUser.displayName;
         if(isOwner) displayName = "Lost Soul";
 
+        // IMAGE UPLOAD LOGIC
+        let imageUrl = null;
+        if(file) {
+            // RE-CHECK PERMISSIONS ON SEND
+            if(!isOwner && !isAdmin && !isMod) {
+                showToast("Nu ai permisiunea de a trimite imagini!", "error");
+                isSending = false;
+                imageInput.value = ""; 
+                return;
+            }
+            try {
+                const storageRef = ref(storage, `chat_images/${Date.now()}_${file.name}`);
+                await uploadBytes(storageRef, file);
+                imageUrl = await getDownloadURL(storageRef);
+            } catch(e) {
+                console.error("Upload failed", e);
+                showToast("Eroare la upload imagine", "error");
+                isSending = false;
+                return;
+            }
+        }
+
         const payload = {
             text: text,
+            imageUrl: imageUrl, // Add image url if exists
             uid: auth.currentUser.uid,
             name: displayName,
             photo: auth.currentUser.photoURL,
@@ -1435,7 +1502,8 @@
             isMod: isMod,
             createdAt: serverTimestamp(),
             isDeleted: false,
-            reactions: {} 
+            reactions: {},
+            seenBy: {} // Initialize Seen By map
         };
 
         if(replyData) {
@@ -1471,6 +1539,7 @@
             updateTypingStatus(false);
 
             msgInput.value = '';
+            imageInput.value = ''; // Clear image input
             charCount.textContent = '0 / 1000';
             localStorage.setItem('lastMsgTime', Date.now()); 
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
@@ -1513,7 +1582,8 @@
                 isOwner: false, 
                 createdAt: serverTimestamp(),
                 isDeleted: false,
-                reactions: {}
+                reactions: {},
+                seenBy: {}
             });
         } catch(e) { console.error("Bot fail", e); }
     }
@@ -1569,6 +1639,16 @@
                 const msgIsAdmin = data.isAdmin === true;
                 const msgIsOwner = data.isOwner === true;
                 const msgIsMod = data.isMod === true;
+                
+                // --- MARK AS SEEN LOGIC ---
+                // If it's not my message and I haven't seen it yet, update DB
+                if (currentUid && !isMine && data.seenBy && !data.seenBy[currentUid]) {
+                   // Using a timeout to prevent instant write spam on scroll, but for simplicity here we fire it
+                   // Using updateDoc directly inside loop can be heavy, but standard for this scale
+                   const msgRef = doc(db, "wall_messages", msgId);
+                   const seenField = `seenBy.${currentUid}`;
+                   updateDoc(msgRef, { [seenField]: serverTimestamp() }).catch(e => console.log(e));
+                }
 
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
@@ -1583,6 +1663,11 @@
                 let safeText = data.text.replace(/</g, "&lt;");
                 safeText = safeText.replace(/\n/g, "<br>");
                 bubbleContent += linkify(safeText);
+                
+                // RENDER IMAGE IF EXISTS
+                if(data.imageUrl) {
+                    bubbleContent += `<br><a href="${data.imageUrl}" target="_blank"><img src="${data.imageUrl}" class="chat-image"></a>`;
+                }
                 
                 let bubbleClass = 'msg-bubble';
                 if(isBot) bubbleClass += ' bot-msg';
@@ -1606,6 +1691,15 @@
                             reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
                         }
                         reactionsHtml += `</div>`;
+                    }
+                }
+                
+                // --- SEEN COUNT HTML ---
+                let seenHtml = "";
+                if(data.seenBy) {
+                    const seenCount = Object.keys(data.seenBy).length;
+                    if(seenCount > 0) {
+                        seenHtml = `<span class="seen-status" onclick="window.openSeenList('${msgId}')"><i class="fas fa-eye"></i> ${seenCount}</span>`;
                     }
                 }
 
@@ -1647,7 +1741,10 @@
                     ${!isMine ? `<div class="msg-author">${nameHtml}</div>` : ''}
                     <div class="${bubbleClass}">${bubbleContent}</div>
                     ${reactionsHtml}
-                    <div class="msg-info"><span>${time}</span></div>
+                    <div class="msg-info">
+                        <span>${time}</span>
+                        ${seenHtml} <!-- ADDED SEEN ICON HERE -->
+                    </div>
                     ${menuHtml}
                 `;
                 feed.appendChild(wrapper);
@@ -1659,26 +1756,37 @@
         });
     }
 
-    // --- REACTION DETAILS LOGIC ---
+    // --- REACTION & SEEN DETAILS LOGIC ---
     window.closeReactionModal = () => document.getElementById('reactionModal').classList.remove('active');
 
-    window.openReactionList = async (msgId, targetEmoji) => {
+    // GENERIC FUNCTION TO OPEN USER LIST (Used for Reactions and Seen By)
+    async function openUserList(msgId, type, emoji) {
         const modal = document.getElementById('reactionModal');
         const list = document.getElementById('reactList');
         const title = document.getElementById('reactModalTitle');
-        title.innerText = `${targetEmoji} Reacții`;
-        list.innerHTML = '<div style="padding:20px; text-align:center;">Se încarcă...</div>';
+        
+        list.innerHTML = '<div style="text-align:center; padding:20px;">Se încarcă...</div>';
         modal.classList.add('active');
-
+        
         try {
             const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
             if(!msgSnap.exists()) return;
-
-            const reactions = msgSnap.data().reactions || {};
-            const userIds = Object.keys(reactions).filter(uid => reactions[uid] === targetEmoji);
+            
+            let userIds = [];
+            
+            if (type === 'reaction') {
+                title.innerText = `${emoji} Reacții`;
+                const reactions = msgSnap.data().reactions || {};
+                userIds = Object.keys(reactions).filter(uid => reactions[uid] === emoji);
+            } else if (type === 'seen') {
+                title.innerText = `👁️ Seen By`;
+                const seenBy = msgSnap.data().seenBy || {};
+                userIds = Object.keys(seenBy);
+            }
 
             if(userIds.length === 0) { list.innerHTML = '<div style="padding:20px; text-align:center;">Nimeni încă.</div>'; return; }
 
+            // Fetch user profiles
             const userPromises = userIds.map(uid => getDoc(doc(db, "accounts", uid)));
             const userSnaps = await Promise.all(userPromises);
             list.innerHTML = ''; 
@@ -1696,8 +1804,14 @@
                 item.innerHTML = `<img src="${uPic}" class="react-user-img"><span class="react-user-name">${uName}</span>`;
                 list.appendChild(item);
             });
+
         } catch(e) { console.error(e); list.innerHTML = '<div style="padding:10px; color:#ff4757;">Eroare la încărcare.</div>'; }
-    };
+    }
+
+    // WRAPPER FUNCTIONS
+    window.openReactionList = (msgId, emoji) => openUserList(msgId, 'reaction', emoji);
+    window.openSeenList = (msgId) => openUserList(msgId, 'seen', null);
+
 
     window.handleMuteAction = async (targetUid, targetName) => {
         closeAllMenus();
@@ -1752,7 +1866,7 @@
             const isMine = msgData.uid === currentUid;
             if (isMine || isAdmin || isOwner || isMod) {
                 if(confirm("Ștergi mesajul?")) { 
-                    await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {} }); 
+                    await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {}, seenBy: {} }); 
                     showToast("Mesaj șters.", "success");
                 } 
             } else { showToast("Nu poți șterge mesajele altora!", "error"); }
