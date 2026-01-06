@@ -486,7 +486,12 @@
     .preview-img { height: 80px; border-radius: 8px; border: 1px solid var(--primary); }
     .remove-img { position: absolute; top: 5px; left: 85px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; }
     
-    .upload-btn { background: transparent; border: none; color: var(--primary); font-size: 20px; cursor: pointer; margin-right: 8px; display: none; /* hidden by default */ }
+    .upload-btn { 
+        background: transparent; border: none; color: var(--primary); font-size: 20px; cursor: pointer; 
+        margin-right: 8px; display: none; /* toggled via JS */
+        flex-shrink: 0; /* IMPORTANT FOR MOBILE */
+        padding: 5px;
+    }
     .upload-btn:hover { color: #fff; }
 
     @media (max-width: 768px) { 
@@ -1151,9 +1156,9 @@
             isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
             isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
 
-            // NEW: SHOW UPLOAD BTN IF PRIVILEGED
+            // NEW: SHOW UPLOAD BTN IF PRIVILEGED (Force flex for proper alignment)
             if(isOwner || isAdmin || isMod) {
-                uploadTriggerBtn.style.display = 'block';
+                uploadTriggerBtn.style.display = 'flex';
             } else {
                 uploadTriggerBtn.style.display = 'none';
             }
@@ -1681,7 +1686,12 @@
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
 
-                let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+                // --- SAFE DATE HANDLING ---
+                let time = "";
+                if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+                    time = data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+
                 let bubbleContent = "";
                 
                 // --- IMAGE RENDER ---
@@ -1693,7 +1703,7 @@
                     const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                     bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                 }
-                let safeText = data.text.replace(/</g, "&lt;");
+                let safeText = (data.text || "").replace(/</g, "&lt;");
                 safeText = safeText.replace(/\n/g, "<br>");
                 bubbleContent += linkify(safeText);
                 
@@ -1724,6 +1734,7 @@
 
                 // SEEN COUNT HTML
                 let seenHtml = '';
+                // SAFE CHECK FOR SEENBY ARRAY
                 if(data.seenBy && Array.isArray(data.seenBy) && data.seenBy.length > 0) {
                     seenHtml = `
                     <span class="eye-icon" onclick="window.openSeenList('${msgId}')">
@@ -1732,7 +1743,7 @@
                 }
 
                 let menuHtml = '';
-                const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const rawText = (data.text || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const canDelete = isMine || isAdmin || isOwner || isMod;
                 
                 // Only Owner sees Mute and Ban
