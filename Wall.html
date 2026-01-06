@@ -477,6 +477,21 @@
     .footer-pfp-img { width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); transition: 0.3s; }
     .discord-logo { width: 45px; height: auto; filter: drop-shadow(0 0 8px rgba(88, 101, 242, 0.3)); }
 
+    /* --- NEW FEATURES CSS --- */
+    .vocal-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; transition: 0.3s; width: 40px; display: flex; align-items: center; justify-content: center; }
+    .vocal-btn.recording { color: #ff4757; animation: recPulse 1s infinite; }
+    @keyframes recPulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+    
+    .camera-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; transition: 0.3s; width: 40px; display: none; align-items: center; justify-content: center; }
+    .camera-btn:hover { color: var(--primary); }
+
+    .msg-seen-btn { background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; margin-left: 5px; opacity: 0.6; display: flex; align-items: center; gap: 3px; }
+    .msg-seen-btn:hover { color: var(--primary); opacity: 1; }
+    .msg-seen-btn.seen { color: var(--primary); opacity: 1; }
+
+    .msg-audio { max-width: 220px; margin-top: 5px; border-radius: 50px; background: rgba(255,255,255,0.05); }
+    .msg-img-preview { max-width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--glass-border); cursor: pointer; }
+
     @media (max-width: 768px) { 
         nav { display: none; } 
         .hamburger { display: block; } 
@@ -493,17 +508,6 @@
     .flying-reward { position: fixed; z-index: 10000; pointer-events: none; font-family: 'Orbitron', sans-serif; font-weight: 900; color: #ffd700; font-size: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: flex; align-items: center; gap: 5px; transition: all 0.8s cubic-bezier(0.19, 1, 0.22, 1); opacity: 1; }
     .flying-reward img { width: 24px; height: 24px; filter: drop-shadow(0 0 5px #ffd700); }
     .flying-reward.finished { opacity: 0; transform: scale(0.5); }
-
-    /* NEW STYLES FOR VOCAL & SEEN */
-    .vocal-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; transition: 0.3s; width: 40px; }
-    .vocal-btn.recording { color: #ff4757; animation: pulseRed 1s infinite; }
-    .msg-seen-btn { background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; margin-left: 5px; }
-    .msg-seen-btn i { font-size: 12px; }
-    .msg-seen-btn.seen-active { color: var(--primary); }
-    .msg-audio { max-width: 200px; margin-top: 5px; display: block; }
-    .msg-image { max-width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--glass-border); cursor: pointer; }
-    .camera-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; transition: 0.3s; width: 40px; }
-    .camera-btn:hover { color: var(--primary); }
   </style>
 </head>
 <body>
@@ -750,11 +754,14 @@
                         <div class="input-row">
                             <!-- TEXT INPUT: Set to 1000 MAX -->
                             <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="1000">
+                            
                             <!-- VOCAL BUTTON -->
                             <button id="vocalBtn" class="vocal-btn"><i class="fas fa-microphone"></i></button>
-                            <!-- IMAGE BUTTON (STAFF ONLY) -->
-                            <button id="imageBtn" class="camera-btn" style="display:none;"><i class="fas fa-camera"></i></button>
-                            <input type="file" id="imageInput" style="display:none" accept="image/*">
+                            
+                            <!-- CAMERA BUTTON (Staff Only) -->
+                            <button id="cameraBtn" class="camera-btn"><i class="fas fa-camera"></i></button>
+                            <input type="file" id="imageInput" accept="image/*" style="display:none;">
+
                             <!-- SEND BUTTON -->
                             <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
                         </div>
@@ -898,13 +905,6 @@
     const onlineCountVal = document.getElementById('onlineCountVal');
     const onlineUsersContainer = document.getElementById('onlineUsersContainer');
 
-    // VOCAL & SEEN & IMAGES
-    const vocalBtn = document.getElementById('vocalBtn');
-    const imageBtn = document.getElementById('imageBtn');
-    const imageInput = document.getElementById('imageInput');
-    const seenByModal = document.getElementById('seenByModal');
-    const seenByContainer = document.getElementById('seenByContainer');
-
     // CHAT ELEMENTS
     const userAvatar = document.getElementById('userAvatar');
     const userName = document.getElementById('userName');
@@ -913,6 +913,13 @@
     const sendBtn = document.getElementById('sendBtn');
     const charCount = document.getElementById('charCount');
     const typingIndicator = document.getElementById('typingIndicator');
+
+    // NEW FEATURE ELEMENTS
+    const vocalBtn = document.getElementById('vocalBtn');
+    const cameraBtn = document.getElementById('cameraBtn');
+    const imageInput = document.getElementById('imageInput');
+    const seenByModal = document.getElementById('seenByModal');
+    const seenByContainer = document.getElementById('seenByContainer');
 
     // REPLY
     const replyBar = document.getElementById('replyBar');
@@ -929,17 +936,18 @@
     let isAdmin = false; 
     let isOwner = false; 
     let isMod = false; 
-    let isSending = false;
+    let isSending = false; // Issue 2 Fix: Prevent double send
     
     // MUTE TARGETING
     let pendingMuteUid = null;
     let pendingMuteName = null;
     let muteInterval = null;
     
-    // TYPING/RECORDING VARIABLES
+    // TYPING/REC VARIABLES
     let typingTimeout = null;
     let isTyping = false;
-    let mediaRecorder;
+    let isRecording = false;
+    let mediaRecorder = null;
     let audioChunks = [];
     
     // WIPE TIMER INTERVAL
@@ -1119,9 +1127,9 @@
             isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
             isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
 
-            // Toggle Staff Image Button
+            // NEW: SHOW CAMERA BTN IF STAFF
             if(isOwner || isAdmin || isMod) {
-                imageBtn.style.display = 'block';
+                cameraBtn.style.display = 'flex';
             }
 
             if(userIP) {
@@ -1163,9 +1171,12 @@
                     const now = Date.now();
                     const oneHourCooldown = now + (3600000); 
 
+                    // --- QUEST LOGIC INTEGRATION (WITH DOUBLE-FIRE PROTECTION) ---
+                    
+                    // 1. STANDARD MSG3 QUEST
                     if(data.messagesSentToday >= 3 && !completed.includes('msg3') && !(now < (cooldowns['msg3'] || 0))) {
                         if(!localProcessedQuests.has('msg3')) {
-                            localProcessedQuests.add('msg3');
+                            localProcessedQuests.add('msg3'); // Lock local
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(250),
                                 completedQuests: [...completed, 'msg3'],
@@ -1176,9 +1187,10 @@
                         }
                     }
 
+                    // 2. WALL REPLY QUEST (5 Replies)
                     if(data.wallRepliesToday >= 5 && !completed.includes('wall_reply_5')) {
                         if(!localProcessedQuests.has('wall_reply_5')) {
-                            localProcessedQuests.add('wall_reply_5');
+                            localProcessedQuests.add('wall_reply_5'); // Lock local
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(300),
                                 completedQuests: [...completed, 'wall_reply_5']
@@ -1188,9 +1200,10 @@
                         }
                     }
 
+                    // 3. WALL REACT QUEST (10 Reactions)
                     if(data.wallReactionsToday >= 10 && !completed.includes('wall_react_10')) {
                         if(!localProcessedQuests.has('wall_react_10')) {
-                            localProcessedQuests.add('wall_react_10');
+                            localProcessedQuests.add('wall_react_10'); // Lock local
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(200),
                                 completedQuests: [...completed, 'wall_react_10']
@@ -1200,9 +1213,10 @@
                         }
                     }
 
+                    // 4. WALL LONG MSG QUEST (100+ Chars)
                     if(data.wallLongMsgSent === true && !completed.includes('wall_long_msg')) {
                         if(!localProcessedQuests.has('wall_long_msg')) {
-                            localProcessedQuests.add('wall_long_msg');
+                            localProcessedQuests.add('wall_long_msg'); // Lock local
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(500),
                                 completedQuests: [...completed, 'wall_long_msg']
@@ -1231,7 +1245,7 @@
             startWipeCheck(); 
             checkMuteStatus();
             resetIdleTimer();
-            listenOnlineUsers();
+            listenOnlineUsers(); // START LISTENER
 
         } else {
             headerLoginText.innerText = "LOGIN";
@@ -1249,30 +1263,44 @@
     function checkMuteStatus() {
         if(!currentUid) return;
         const muteRef = doc(db, "muted_users", currentUid);
+        
         onSnapshot(muteRef, (snapshot) => {
             if(snapshot.exists()) {
                 const data = snapshot.data();
+                
                 if(data.unmuteAt && Date.now() > data.unmuteAt) {
                     deleteDoc(muteRef);
                     return;
                 }
+
                 inputControls.style.display = 'none';
                 muteBanner.style.display = 'block';
                 muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Admin'}. Motiv: ${data.reason || 'Nespecificat'}`;
+                
                 if(muteInterval) clearInterval(muteInterval);
+                
                 if(data.unmuteAt) {
                     muteInterval = setInterval(() => {
                         const now = Date.now();
                         const diff = data.unmuteAt - now;
-                        if(diff <= 0) { clearInterval(muteInterval); deleteDoc(muteRef); }
-                        else {
+                        
+                        if(diff <= 0) {
+                            clearInterval(muteInterval);
+                            deleteDoc(muteRef); 
+                        } else {
                             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
                             const s = Math.floor((diff % (1000 * 60)) / 1000);
-                            muteTimer.innerText = (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s);
+                            muteTimer.innerText = 
+                                (h < 10 ? "0"+h : h) + ":" + 
+                                (m < 10 ? "0"+m : m) + ":" + 
+                                (s < 10 ? "0"+s : s);
                         }
                     }, 1000);
-                } else { muteTimer.innerText = "PERMANENT"; }
+                } else {
+                    muteTimer.innerText = "PERMANENT";
+                }
+
             } else {
                 inputControls.style.display = 'block';
                 muteBanner.style.display = 'none';
@@ -1285,48 +1313,58 @@
         const len = msgInput.value.length;
         charCount.textContent = `${len} / 1000`;
         charCount.style.color = len >= 1000 ? '#ff4757' : '#a5b1c2';
+
         if (currentUid) {
-            if (!isTyping) { isTyping = true; updateTypingStatus('typing'); }
+            if (!isTyping) {
+                isTyping = true;
+                updateTypingStatus('typing');
+            }
             clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => { isTyping = false; updateTypingStatus(false); }, 3000);
+            typingTimeout = setTimeout(() => {
+                isTyping = false;
+                updateTypingStatus(false);
+            }, 3000);
         }
     });
 
-    async function updateTypingStatus(statusType) {
+    async function updateTypingStatus(type) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
         try {
-            if (statusType) {
+            if (type) {
                 const displayName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
                 await setDoc(typingRef, { 
                     name: displayName, 
                     isAdmin: isAdmin,
                     isOwner: isOwner,
                     isMod: isMod,
-                    type: statusType, // 'typing' or 'recording'
+                    type: type, // 'typing' or 'recording'
                     timestamp: serverTimestamp() 
                 });
             } else {
                 await deleteDoc(typingRef);
             }
-        } catch (e) {}
+        } catch (e) { console.error("Typing status error:", e); }
     }
 
+    // --- LISTENER FOR TYPING/REC ---
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
+        
         onSnapshot(q, (snapshot) => {
             const typers = [];
             snapshot.forEach((doc) => {
                 if (doc.id !== currentUid) { 
                     const data = doc.data();
                     if (data.name) {
-                        let text = data.type === 'recording' ? ' înregistrează un vocal...' : ' scrie...';
+                        let action = data.type === 'recording' ? 'înregistrează un vocal...' : 'scrie...';
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
                         if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
-                        typers.push(nameHtml + text);
+                        typers.push(`${nameHtml} ${action}`);
                     }
                 }
             });
+
             if (typers.length > 0) {
                 typingIndicator.innerHTML = typers[0];
                 typingIndicator.style.opacity = "1";
@@ -1337,59 +1375,63 @@
         });
     }
 
-    // --- VOCAL RECORDING LOGIC ---
-    vocalBtn.addEventListener('mousedown', startRecording);
-    vocalBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
-    vocalBtn.addEventListener('mouseup', stopRecording);
-    vocalBtn.addEventListener('touchend', stopRecording);
-
-    async function startRecording() {
-        if(!navigator.mediaDevices) return showToast("Microfonul nu e suportat.");
+    // --- NEW: VOCAL MESSAGE LOGIC ---
+    vocalBtn.onmousedown = vocalBtn.ontouchstart = async (e) => {
+        e.preventDefault();
+        if(!navigator.mediaDevices) return showToast("Mic access denied");
+        
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = uploadVocal;
+            
+            mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                await uploadMedia(audioBlob, 'vocal');
+                stream.getTracks().forEach(track => track.stop());
+            };
+            
             mediaRecorder.start();
+            isRecording = true;
             vocalBtn.classList.add('recording');
             updateTypingStatus('recording');
-        } catch(e) { showToast("Permite accesul la microfon!"); }
-    }
+        } catch(err) { showToast("Microfonul este necesar!"); }
+    };
 
-    function stopRecording() {
-        if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+    vocalBtn.onmouseup = vocalBtn.onmouseleave = vocalBtn.ontouchend = () => {
+        if (isRecording && mediaRecorder) {
             mediaRecorder.stop();
+            isRecording = false;
             vocalBtn.classList.remove('recording');
             updateTypingStatus(false);
         }
-    }
+    };
 
-    async function uploadVocal() {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const fileName = `vocals/${Date.now()}_${currentUid}.webm`;
-        const storageRef = ref(storage, fileName);
-        try {
-            showToast("Se trimite vocalul...", "success");
-            const snapshot = await uploadBytes(storageRef, audioBlob);
-            const url = await getDownloadURL(snapshot.ref);
-            sendMessage(null, url, 'audio');
-        } catch(e) { showToast("Eroare trimitere vocal."); }
-    }
-
-    // --- IMAGE UPLOAD LOGIC ---
-    imageBtn.onclick = () => imageInput.click();
+    // --- NEW: IMAGE UPLOAD LOGIC ---
+    cameraBtn.onclick = () => imageInput.click();
     imageInput.onchange = async (e) => {
         const file = e.target.files[0];
         if(!file) return;
-        const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+        if(file.size > 5 * 1024 * 1024) return showToast("Imaginea e prea mare (Max 5MB)");
+        await uploadMedia(file, 'image');
+    };
+
+    async function uploadMedia(file, type) {
+        if(!auth.currentUser) return;
+        const path = type === 'vocal' ? `vocals/${Date.now()}.webm` : `images/${Date.now()}_${file.name}`;
+        const storageRef = ref(storage, path);
+        
         try {
-            showToast("Se încarcă imaginea...", "success");
+            showToast(`Se trimite ${type === 'vocal' ? 'vocalul' : 'imaginea'}...`, "success");
             const snapshot = await uploadBytes(storageRef, file);
             const url = await getDownloadURL(snapshot.ref);
-            sendMessage(null, url, 'image');
-        } catch(e) { showToast("Eroare încărcare imagine."); }
-    };
+            
+            if(type === 'vocal') sendMessage(null, { vocalUrl: url });
+            else sendMessage(null, { imageUrl: url });
+            
+        } catch(err) { showToast("Eroare la trimitere media."); }
+    }
 
     window.startReply = function(id, name, text) {
         replyData = { id, name, text };
@@ -1408,33 +1450,97 @@
     sendBtn.addEventListener('click', () => sendMessage());
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
-    async function sendMessage(manualText = null, fileUrl = null, fileType = null) {
-        if(isSending) return;
-        const text = manualText || msgInput.value.trim();
-        if(!text && !fileUrl) return;
+    async function sendMessage(manualText = null, mediaData = null) {
+        if(isSending) return; // ISSUE 2 FIX: Prevent Double Send
+
+        const text = manualText !== null ? manualText : msgInput.value.trim();
+        if(!text && !mediaData && !manualText) return;
         
-        if(text === '/reset chat' && isAdmin) {
-            msgInput.value = ''; initiateWipeSequence(true); return;
+        if(text === '/reset chat') {
+            msgInput.value = '';
+            if(isAdmin) {
+                showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
+                initiateWipeSequence(true); 
+            } else {
+                showToast("Nu ai permisiuni de administrator!", "error");
+            }
+            return;
         }
 
-        isSending = true;
+        if(text && text.startsWith('/mute ')) {
+            if(!isOwner) { showToast("Doar Owner-ul poate da Mute.", "error"); msgInput.value=''; return; }
+            if(!pendingMuteUid) { showToast("Selectează utilizatorul din meniu!", "error"); return; }
+
+            let args = text.substring(6 + pendingMuteName.length).trim();
+            let durationMs = 0;
+            let finalReason = args;
+            const timeRegex = /(\d+)([mhd])$/i;
+            const match = args.match(timeRegex);
+
+            if (match) {
+                const val = parseInt(match[1]);
+                const unit = match[2].toLowerCase();
+                if(unit === 'm') durationMs = val * 60 * 1000;
+                else if(unit === 'h') durationMs = val * 60 * 60 * 1000;
+                else if(unit === 'd') durationMs = val * 24 * 60 * 60 * 1000;
+                finalReason = args.replace(match[0], "").trim();
+            }
+            
+            if(!finalReason) finalReason = "Nespecificat";
+
+            const mutePayload = { mutedBy: "Lost Soul", reason: finalReason, timestamp: serverTimestamp() };
+            if(durationMs > 0) mutePayload.unmuteAt = Date.now() + durationMs;
+
+            try {
+                await setDoc(doc(db, "muted_users", pendingMuteUid), mutePayload);
+                let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul. Motiv: ${finalReason}.`;
+                if(durationMs > 0) announceText += ` Durată: ${match[0]}.`;
+                sendBotMessage(announceText);
+                showToast("User Muted", "success");
+                msgInput.value = '';
+                pendingMuteUid = null;
+            } catch(e) { showToast("Error muting: " + e.message); }
+            return;
+        }
+
+        if(text && text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
+
+        const lastSent = localStorage.getItem('lastMsgTime');
+        const COOLDOWN = 1500; 
+        if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
+            showToast(`Te rog nu fă spam!`);
+            return;
+        }
+
+        isSending = true; // LOCK BUTTON
+
         const btn = document.getElementById('sendBtn');
-        if(btn) flyCoins(btn);
+        if(typeof window.flyCoins === "function" && btn) {
+            window.flyCoins(btn);
+        }
+
+        let displayName = auth.currentUser.displayName;
+        if(isOwner) displayName = "Lost Soul";
 
         const payload = {
             text: text || "",
             uid: auth.currentUser.uid,
-            name: isOwner ? "Lost Soul" : auth.currentUser.displayName,
+            name: displayName,
             photo: auth.currentUser.photoURL,
             ip: userIP || "unknown",
-            isAdmin, isOwner, isMod,
+            isAdmin: isAdmin, 
+            isOwner: isOwner, 
+            isMod: isMod,
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactions: {},
-            seenBy: [auth.currentUser.uid], // Sender saw it
-            audioUrl: fileType === 'audio' ? fileUrl : null,
-            imageUrl: fileType === 'image' ? fileUrl : null
+            seenBy: [auth.currentUser.uid] // NEW: START SEEN LIST
         };
+
+        if(mediaData) {
+            if(mediaData.vocalUrl) payload.vocalUrl = mediaData.vocalUrl;
+            if(mediaData.imageUrl) payload.imageUrl = mediaData.imageUrl;
+        }
 
         if(replyData) {
             payload.replyToId = replyData.id;
@@ -1444,143 +1550,265 @@
 
         try {
             await addDoc(collection(db, "wall_messages"), payload);
+
+            // --- QUEST UPDATES ON SEND ---
             const userRef = doc(db, "accounts", auth.currentUser.uid);
-            const updates = { messagesSentToday: increment(1), coins: increment(10) };
+            const updates = {
+                messagesSentToday: increment(1),
+                coins: increment(10)
+            };
+            
             if(text && text.length >= 100) updates.wallLongMsgSent = true;
             if(replyData) updates.wallRepliesToday = increment(1);
+
             await updateDoc(userRef, updates);
-            msgInput.value = ''; charCount.textContent = '0 / 1000';
+            
+            clearTimeout(typingTimeout);
+            isTyping = false;
+            updateTypingStatus(false);
+
+            msgInput.value = '';
+            charCount.textContent = '0 / 1000';
+            localStorage.setItem('lastMsgTime', Date.now()); 
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
-        } catch(e) {} finally { isSending = false; }
+        } catch(e) { console.error(e); } finally {
+            isSending = false; // UNLOCK BUTTON
+        }
     }
 
+    // --- KEVIN-BOT & WIPE LOGIC ---
     function startWipeCheck() {
         if(wipeCheckInterval) clearInterval(wipeCheckInterval);
         wipeCheckInterval = setInterval(async () => {
             const timerDocRef = doc(db, "sys_config", "timer");
             const timerSnap = await getDoc(timerDocRef);
             const now = Date.now();
-            if(!timerSnap.exists()) await setDoc(timerDocRef, { nextWipe: now + (12 * 3600000) });
-            else if(now >= timerSnap.data().nextWipe) {
-                await updateDoc(timerDocRef, { nextWipe: now + (12 * 3600000) });
-                initiateWipeSequence(false);
+            const twelveHours = 12 * 60 * 60 * 1000;
+
+            if(!timerSnap.exists()) {
+                await setDoc(timerDocRef, { nextWipe: now + twelveHours });
+            } else {
+                const nextWipe = timerSnap.data().nextWipe;
+                if(now >= nextWipe) {
+                    await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
+                    initiateWipeSequence(false);
+                }
             }
         }, 10000);
     }
 
     async function sendBotMessage(text) {
-        await addDoc(collection(db, "wall_messages"), {
-            text, uid: 'kevin-bot', name: 'Kevin-Bot', photo: 'https://iili.io/fXks1Dv.png', isBot: true, createdAt: serverTimestamp(), isDeleted: false, seenBy: []
-        });
+        try {
+            await addDoc(collection(db, "wall_messages"), {
+                text: text,
+                uid: 'kevin-bot',
+                name: 'Kevin-Bot',
+                photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
+                ip: 'server',
+                isBot: true,
+                isAdmin: false,
+                isOwner: false, 
+                createdAt: serverTimestamp(),
+                isDeleted: false,
+                reactions: {},
+                seenBy: []
+            });
+        } catch(e) { console.error("Bot fail", e); }
     }
 
     async function initiateWipeSequence(forced) {
-        await sendBotMessage(forced ? "⚠️ ADMIN RESET!" : "⚠️ CHAT WIPE IN 20s!");
-        setTimeout(async () => { await wipeAllMessages(); sendBotMessage("✅ Done!"); }, 20000);
+        const warningMsg = forced 
+            ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
+            : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza, acest chat va fi curățat în curând.";
+        await sendBotMessage(warningMsg);
+        setTimeout(async () => { await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde."); }, 2000);
+        setTimeout(async () => { await sendBotMessage("⏳ 10 secunde rămase..."); }, 12000);
+        setTimeout(async () => { await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); }, 17000);
+        setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
     }
 
     async function wipeAllMessages() {
-        const q = query(collection(db, "wall_messages"), limit(400));
-        let snap = await getDocs(q);
-        while(snap.size > 0) {
-            const batch = writeBatch(db);
-            snap.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-            snap = await getDocs(q);
-        }
+        const batchSize = 400; 
+        const q = query(collection(db, "wall_messages"), limit(batchSize));
+        return new Promise(async (resolve, reject) => {
+            try {
+                let snapshot = await getDocs(q);
+                while (snapshot.size > 0) {
+                    const batch = writeBatch(db);
+                    snapshot.forEach(doc => { batch.delete(doc.ref); });
+                    await batch.commit();
+                    snapshot = await getDocs(q);
+                }
+                resolve();
+            } catch (error) { console.error("Wipe failed:", error); reject(error); }
+        });
     }
 
     let unsubscribe;
     function loadMessages() {
         if(unsubscribe) unsubscribe();
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
+        
         unsubscribe = onSnapshot(q, snapshot => {
             const feed = messagesFeed;
             const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
+
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
             docs.reverse();
+
             feed.innerHTML = '';
             docs.forEach(data => {
-                if(data.isDeleted) return;
-                
-                // Mark as seen logic
+                if(data.isDeleted) return; 
+
+                // --- NEW: AUTO-MARK AS SEEN ---
                 if(currentUid && !data.seenBy?.includes(currentUid)) {
                     updateDoc(doc(db, "wall_messages", data.id), { seenBy: arrayUnion(currentUid) });
                 }
 
+                const msgId = data.id;
                 const isMine = data.uid === currentUid;
+                const isBot = data.isBot === true;
+
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
-                
+
                 let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
-                let content = "";
-                if(data.replyToName) content += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${data.replyToText.substring(0,60)}</span>`;
+                let bubbleContent = "";
                 
-                if(data.audioUrl) content += `<audio controls class="msg-audio"><source src="${data.audioUrl}" type="audio/webm"></audio>`;
-                else if(data.imageUrl) content += `<img src="${data.imageUrl}" class="msg-image" onclick="window.open('${data.imageUrl}')">`;
+                if(data.replyToName) {
+                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
+                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                }
+
+                // NEW: MEDIA RENDERING
+                if(data.imageUrl) {
+                    bubbleContent += `<img src="${data.imageUrl}" class="msg-img-preview" onclick="window.open('${data.imageUrl}')">`;
+                }
+                if(data.vocalUrl) {
+                    bubbleContent += `<audio controls class="msg-audio"><source src="${data.vocalUrl}" type="audio/webm"></audio>`;
+                }
+
+                let safeText = data.text.replace(/</g, "&lt;");
+                safeText = safeText.replace(/\n/g, "<br>");
+                bubbleContent += linkify(safeText);
                 
-                content += linkify(data.text.replace(/</g, "&lt;")).replace(/\n/g, "<br>");
+                let bubbleClass = 'msg-bubble';
+                if(isBot) bubbleClass += ' bot-msg';
+                else if(data.isOwner) bubbleClass += ' owner-msg';
+                else if(data.isAdmin) bubbleClass += ' admin-msg';
+                else if(data.isMod) bubbleClass += ' mod-msg';
 
                 let nameHtml = data.name;
-                if(data.isOwner) nameHtml += ` <span class="owner-badge">OWNER</span>`;
-                else if(data.isAdmin) nameHtml += ` <span class="admin-badge">ADMIN</span>`;
+                if(data.isOwner) nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> OWNER</span>`;
+                else if(data.isAdmin) nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                else if(data.isMod) nameHtml += ` <span class="mod-badge">MOD</span>`;
 
+                let reactionsHtml = "";
+                if(data.reactions) {
+                    const counts = {};
+                    Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
+                    if(Object.keys(counts).length > 0) {
+                        reactionsHtml = `<div class="msg-reactions">`;
+                        for(let [emoji, count] of Object.entries(counts)) { 
+                            reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
+                        }
+                        reactionsHtml += `</div>`;
+                    }
+                }
+
+                // --- NEW: SEEN LOGIC ---
                 const seenCount = data.seenBy ? data.seenBy.length : 0;
+                const seenClass = seenCount > 0 ? 'seen' : '';
 
                 wrapper.innerHTML = `
                     ${!isMine ? `<div class="msg-author">${nameHtml}</div>` : ''}
-                    <div class="msg-bubble ${data.isOwner?'owner-msg':data.isAdmin?'admin-msg':''}">${content}</div>
+                    <div class="${bubbleClass}">${bubbleContent}</div>
+                    ${reactionsHtml}
                     <div class="msg-info">
-                        ${time} 
-                        <button class="msg-seen-btn ${seenCount>0?'seen-active':''}" onclick="window.openSeenList('${data.id}')">
-                            <i class="fas fa-eye"></i> ${seenCount}
+                        <span>${time}</span>
+                        <button class="msg-seen-btn ${seenClass}" onclick="window.openSeenByList('${msgId}')">
+                             <i class="fas fa-eye"></i> ${seenCount}
                         </button>
                     </div>
-                    <div class="msg-options" onclick="toggleMenu('${data.id}')"><i class="fas fa-ellipsis-v"></i></div>
-                    <div id="menu-${data.id}" class="options-dropdown">
-                        <button onclick="startReply('${data.id}', '${data.name}', '${data.text}')"><i class="fas fa-reply"></i> Răspunde</button>
+                    
+                    <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                    <div id="menu-${msgId}" class="options-dropdown">
+                        <button onclick="startReply('${msgId}', '${data.name}', '${data.text.replace(/'/g, "\\'")}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacții</button>
                         <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                        ${(isMine || isAdmin) ? `<button onclick="deleteMsg('${data.id}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        
+                        ${(isMine || isAdmin || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        ${(isOwner && !isMine) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-volume-mute"></i> Mute</button>` : ''}
+
+                        <div id="emojis-${msgId}" class="emoji-picker-menu">
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                        </div>
                     </div>
                 `;
                 feed.appendChild(wrapper);
             });
+            
             if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
         });
     }
 
-    // --- SEEN BY LIST POPUP ---
-    window.openSeenList = async (msgId) => {
+    // --- NEW: SEEN BY LIST POPUP ---
+    window.openSeenByList = async (msgId) => {
         seenByModal.classList.add('active');
         seenByContainer.innerHTML = 'Se încarcă...';
-        const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
-        if(!msgSnap.exists()) return;
-        const seenIds = msgSnap.data().seenBy || [];
-        seenByContainer.innerHTML = '';
-        for(const uid of seenIds) {
-            const uSnap = await getDoc(doc(db, "accounts", uid));
-            if(uSnap.exists()) {
-                const uData = uSnap.data();
-                const div = document.createElement('div');
-                div.className = 'online-user-item';
-                div.innerHTML = `<img src="${uData.image}" class="online-user-img"><span>${uData.username}</span>`;
-                seenByContainer.appendChild(div);
+        
+        try {
+            const snap = await getDoc(doc(db, "wall_messages", msgId));
+            const seenIds = snap.data().seenBy || [];
+            seenByContainer.innerHTML = '';
+            
+            if(seenIds.length === 0) seenByContainer.innerHTML = 'Nimeni încă';
+            
+            for(const uid of seenIds) {
+                const uSnap = await getDoc(doc(db, "accounts", uid));
+                if(uSnap.exists()) {
+                    const u = uSnap.data();
+                    const div = document.createElement('div');
+                    div.className = 'online-user-item';
+                    div.innerHTML = `<img src="${u.image}" class="online-user-img"><span>${u.username}</span>`;
+                    seenByContainer.appendChild(div);
+                }
             }
-        }
+        } catch(e) { seenByContainer.innerHTML = 'Eroare încărcare'; }
     };
 
-    // KEEP PREVIOUS HELPER FUNCTIONS (Delete, Profile, etc.)
-    window.toggleMenu = (id) => { closeAllMenus(); document.getElementById(`menu-${id}`).classList.toggle('show-menu'); };
-    window.closeAllMenus = () => document.querySelectorAll('.options-dropdown').forEach(e => e.classList.remove('show-menu'));
-    window.deleteMsg = async (id) => { if(confirm("Ștergi?")) await updateDoc(doc(db, "wall_messages", id), { isDeleted: true }); };
+    window.closeReactionModal = () => document.getElementById('reactionModal').classList.remove('active');
+    window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
+    window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
+    window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
     
-    // Profiles
+    window.reactMsg = async function(msgId, emoji) { 
+        if(!currentUid) return; 
+        const msgRef = doc(db, "wall_messages", msgId); 
+        const fieldPath = `reactions.${currentUid}`; 
+        const updateObj = {}; 
+        updateObj[fieldPath] = emoji; 
+        await updateDoc(msgRef, updateObj); 
+        await updateDoc(doc(db, "accounts", currentUid), { wallReactionsToday: increment(1) });
+    }
+    
+    window.deleteMsg = async function(id) { 
+        if(confirm("Ștergi mesajul?")) { 
+            await updateDoc(doc(db, "wall_messages", id), { isDeleted: true }); 
+            showToast("Mesaj șters.", "success");
+        } 
+    }
+
+    // --- PROFILE HANDLERS ---
     openEditProfileBtn.onclick = () => { accountModal.classList.remove('active'); editProfileModal.classList.add('active'); };
     closeEditProfile.onclick = () => editProfileModal.classList.remove('active');
     saveProfileBtn.onclick = async () => {
-        await updateDoc(doc(db, "accounts", auth.currentUser.uid), { birthDate: editBirth.value, bio: editBio.value, tiktokLink: editTikTok.value });
+        await updateDoc(doc(db, "accounts", currentUid), { birthDate: editBirth.value, bio: editBio.value, tiktokLink: editTikTok.value });
         editProfileModal.classList.remove('active');
+        showToast("Profil Salvat!", "success");
     };
 
     window.openUserProfile = async (uid) => {
@@ -1588,14 +1816,14 @@
         const snap = await getDoc(doc(db, "accounts", uid));
         if(snap.exists()) {
             const d = snap.data();
-            document.getElementById('viewUserName').innerText = d.username;
             document.getElementById('viewUserImg').src = d.image;
+            document.getElementById('viewUserName').innerText = d.username;
             document.getElementById('viewUserCoins').innerText = d.coins || 0;
-            document.getElementById('viewUserBio').innerText = d.bio || "Fără descriere.";
+            document.getElementById('viewUserBio').innerText = d.bio || "Fără bio.";
         }
     };
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
-  </script>
+</script>
 </body>
 </html>
