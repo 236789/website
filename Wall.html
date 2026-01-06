@@ -477,23 +477,6 @@
     .footer-pfp-img { width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); transition: 0.3s; }
     .discord-logo { width: 45px; height: auto; filter: drop-shadow(0 0 8px rgba(88, 101, 242, 0.3)); }
 
-    /* NEW STYLES FOR REQUESTED FEATURES */
-    .eye-icon { margin-left:8px; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:3px; opacity:0.7; }
-    .eye-icon:hover { opacity:1; color:var(--primary); }
-    
-    .chat-image { max-width: 100%; border-radius: 10px; margin-top: 5px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); }
-    .img-preview-box { display: none; padding: 10px; background: rgba(0,0,0,0.5); border-top: 1px solid var(--primary); position: relative; }
-    .preview-img { height: 80px; border-radius: 8px; border: 1px solid var(--primary); }
-    .remove-img { position: absolute; top: 5px; left: 85px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; }
-    
-    .upload-btn { 
-        background: transparent; border: none; color: var(--primary); font-size: 20px; cursor: pointer; 
-        margin-right: 8px; display: none; /* toggled via JS */
-        flex-shrink: 0; /* IMPORTANT FOR MOBILE */
-        padding: 5px;
-    }
-    .upload-btn:hover { color: #fff; }
-
     @media (max-width: 768px) { 
         nav { display: none; } 
         .hamburger { display: block; } 
@@ -579,17 +562,6 @@
         <h3 style="font-family:'Orbitron'; margin-bottom:15px;">ONLINE NOW</h3>
         <div id="onlineUsersContainer" class="online-list-popup">
             <div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>
-        </div>
-    </div>
-</div>
-
-<!-- SEEN BY MODAL (NEW) -->
-<div id="seenModal" class="account-modal-overlay">
-    <div class="account-card" style="max-width:320px;">
-        <button onclick="document.getElementById('seenModal').classList.remove('active')" class="close-pop">✕</button>
-        <h3 style="font-family:'Orbitron'; margin-bottom:15px;">Seen By <i class="fas fa-eye"></i></h3>
-        <div id="seenListContainer" class="online-list-popup">
-            <!-- Populated via JS -->
         </div>
     </div>
 </div>
@@ -754,18 +726,8 @@
                         <button id="cancelReply" class="cancel-reply-btn">&times;</button>
                     </div>
 
-                    <!-- NEW IMAGE PREVIEW CONTAINER -->
-                    <div id="imgPreviewContainer" class="img-preview-box">
-                        <img id="imgPreview" class="preview-img">
-                        <button id="removeImgBtn" class="remove-img">×</button>
-                    </div>
-
                     <div class="input-area">
                         <div class="input-row">
-                            <!-- NEW IMAGE BUTTON (Hidden by default via JS) -->
-                            <input type="file" id="imageInput" accept="image/*" style="display: none;">
-                            <button id="uploadTriggerBtn" class="upload-btn"><i class="fas fa-image"></i></button>
-
                             <!-- TEXT INPUT: Set to 1000 MAX -->
                             <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="1000">
                             <!-- SEND BUTTON -->
@@ -840,8 +802,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -856,7 +817,6 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     setPersistence(auth, browserLocalPersistence)
@@ -924,14 +884,6 @@
     const replyBar = document.getElementById('replyBar');
     const replyToUser = document.getElementById('replyToUser');
     const cancelReplyBtn = document.getElementById('cancelReply');
-
-    // NEW IMAGE ELEMENTS
-    const uploadTriggerBtn = document.getElementById('uploadTriggerBtn');
-    const imageInput = document.getElementById('imageInput');
-    const imgPreviewContainer = document.getElementById('imgPreviewContainer');
-    const imgPreview = document.getElementById('imgPreview');
-    const removeImgBtn = document.getElementById('removeImgBtn');
-    let selectedImageFile = null;
 
     // TOAST
     const toast = document.getElementById('toast');
@@ -1090,31 +1042,6 @@
     };
     closeOnlineList.onclick = () => onlineListModal.classList.remove('active');
 
-    // --- IMAGE UPLOAD LOGIC ---
-    uploadTriggerBtn.addEventListener('click', () => {
-        imageInput.click();
-    });
-
-    imageInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            selectedImageFile = file;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                imgPreview.src = evt.target.result;
-                imgPreviewContainer.style.display = 'block';
-            }
-            reader.readAsDataURL(file);
-        }
-    });
-
-    removeImgBtn.addEventListener('click', () => {
-        selectedImageFile = null;
-        imageInput.value = '';
-        imgPreviewContainer.style.display = 'none';
-        imgPreview.src = '';
-    });
-
     // AUTH STATE
     onAuthStateChanged(auth, async (user) => {
         if(user) {
@@ -1155,13 +1082,6 @@
             isOwner = (user.email === 'nicaemmanuel433qe@gmail.com');
             isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
             isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
-
-            // NEW: SHOW UPLOAD BTN IF PRIVILEGED (Force flex for proper alignment)
-            if(isOwner || isAdmin || isMod) {
-                uploadTriggerBtn.style.display = 'flex';
-            } else {
-                uploadTriggerBtn.style.display = 'none';
-            }
 
             if(userIP) {
                 const banRef = doc(db, "banned_ips", userIP);
@@ -1429,8 +1349,7 @@
         if(isSending) return; // ISSUE 2 FIX: Prevent Double Send
 
         const text = msgInput.value.trim();
-        // Allow empty text IF an image is selected
-        if((!text && !selectedImageFile) || !auth.currentUser) return;
+        if(!text || !auth.currentUser) return;
         
         if(text === '/reset chat') {
             msgInput.value = '';
@@ -1504,7 +1423,6 @@
         let displayName = auth.currentUser.displayName;
         if(isOwner) displayName = "Lost Soul";
 
-        // PREPARE PAYLOAD
         const payload = {
             text: text,
             uid: auth.currentUser.uid,
@@ -1516,8 +1434,7 @@
             isMod: isMod,
             createdAt: serverTimestamp(),
             isDeleted: false,
-            reactions: {},
-            seenBy: [] // New Feature: Seen array
+            reactions: {} 
         };
 
         if(replyData) {
@@ -1527,21 +1444,6 @@
         }
 
         try {
-            // IF IMAGE SELECTED, UPLOAD FIRST
-            if (selectedImageFile) {
-                // Ensure user has permission
-                if (!isOwner && !isAdmin && !isMod) {
-                    showToast("Nu ai permisiune să trimiți imagini!", "error");
-                    isSending = false;
-                    return;
-                }
-                
-                const fileRef = sRef(storage, `chat_images/${Date.now()}_${selectedImageFile.name}`);
-                const snapshot = await uploadBytes(fileRef, selectedImageFile);
-                const downloadURL = await getDownloadURL(snapshot.ref);
-                payload.imageUrl = downloadURL; // Add URL to payload
-            }
-
             await addDoc(collection(db, "wall_messages"), payload);
 
             // --- QUEST UPDATES ON SEND ---
@@ -1567,13 +1469,8 @@
             isTyping = false;
             updateTypingStatus(false);
 
-            // CLEANUP
             msgInput.value = '';
             charCount.textContent = '0 / 1000';
-            selectedImageFile = null;
-            imageInput.value = '';
-            imgPreviewContainer.style.display = 'none';
-            
             localStorage.setItem('lastMsgTime', Date.now()); 
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
         } catch(e) { console.error(e); } finally {
@@ -1672,38 +1569,17 @@
                 const msgIsOwner = data.isOwner === true;
                 const msgIsMod = data.isMod === true;
 
-                // --- SEEN LOGIC ---
-                // If it's not my message, and I haven't seen it, mark it.
-                if (currentUid && !isMine && data.seenBy && !data.seenBy.includes(currentUid)) {
-                    // Update the DB to say I saw it
-                    // NOTE: This triggers a write for every unread msg. 
-                    // Optimized by only checking the last 50 loaded here.
-                    updateDoc(doc(db, "wall_messages", msgId), {
-                        seenBy: arrayUnion(currentUid)
-                    }).catch(err => console.log("Seen update err"));
-                }
-
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
 
-                // --- SAFE DATE HANDLING ---
-                let time = "";
-                if (data.createdAt && typeof data.createdAt.toDate === 'function') {
-                    time = data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                }
-
+                let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
                 let bubbleContent = "";
                 
-                // --- IMAGE RENDER ---
-                if(data.imageUrl) {
-                    bubbleContent += `<img src="${data.imageUrl}" class="chat-image" onclick="window.open('${data.imageUrl}', '_blank')"><br>`;
-                }
-
                 if(data.replyToName) {
                     const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                     bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                 }
-                let safeText = (data.text || "").replace(/</g, "&lt;");
+                let safeText = data.text.replace(/</g, "&lt;");
                 safeText = safeText.replace(/\n/g, "<br>");
                 bubbleContent += linkify(safeText);
                 
@@ -1732,18 +1608,8 @@
                     }
                 }
 
-                // SEEN COUNT HTML
-                let seenHtml = '';
-                // SAFE CHECK FOR SEENBY ARRAY
-                if(data.seenBy && Array.isArray(data.seenBy) && data.seenBy.length > 0) {
-                    seenHtml = `
-                    <span class="eye-icon" onclick="window.openSeenList('${msgId}')">
-                        <i class="fas fa-eye"></i> ${data.seenBy.length}
-                    </span>`;
-                }
-
                 let menuHtml = '';
-                const rawText = (data.text || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const canDelete = isMine || isAdmin || isOwner || isMod;
                 
                 // Only Owner sees Mute and Ban
@@ -1780,10 +1646,7 @@
                     ${!isMine ? `<div class="msg-author">${nameHtml}</div>` : ''}
                     <div class="${bubbleClass}">${bubbleContent}</div>
                     ${reactionsHtml}
-                    <div class="msg-info">
-                        <span>${time}</span>
-                        ${seenHtml}
-                    </div>
+                    <div class="msg-info"><span>${time}</span></div>
                     ${menuHtml}
                 `;
                 feed.appendChild(wrapper);
@@ -1833,47 +1696,6 @@
                 list.appendChild(item);
             });
         } catch(e) { console.error(e); list.innerHTML = '<div style="padding:10px; color:#ff4757;">Eroare la încărcare.</div>'; }
-    };
-
-    // --- SEEN LIST LOGIC (New) ---
-    window.openSeenList = async (msgId) => {
-        const modal = document.getElementById('seenModal');
-        const list = document.getElementById('seenListContainer');
-        list.innerHTML = '<div style="padding:20px; text-align:center;">Se încarcă...</div>';
-        modal.classList.add('active');
-
-        try {
-            const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
-            if(!msgSnap.exists()) return;
-
-            const seenBy = msgSnap.data().seenBy || [];
-            if(seenBy.length === 0) {
-                 list.innerHTML = '<div style="padding:20px; text-align:center;">Nimeni.</div>';
-                 return;
-            }
-
-            const userPromises = seenBy.map(uid => getDoc(doc(db, "accounts", uid)));
-            const userSnaps = await Promise.all(userPromises);
-            list.innerHTML = '';
-
-            userSnaps.forEach(accSnap => {
-                let uName = "Utilizator";
-                let uPic = "https://i.imgur.com/HeIi0wU.png"; 
-                if(accSnap.exists()) {
-                    const adata = accSnap.data();
-                    uName = adata.username || "Anonim";
-                    uPic = adata.image || uPic;
-                }
-                const div = document.createElement('div');
-                div.className = 'online-user-item';
-                div.innerHTML = `
-                    <img src="${uPic}" class="online-user-img">
-                    <span style="font-size:12px; font-weight:700;">${uName}</span>
-                `;
-                list.appendChild(div);
-            });
-
-        } catch(e) { console.error(e); list.innerHTML = "Error loading."; }
     };
 
     window.handleMuteAction = async (targetUid, targetName) => {
