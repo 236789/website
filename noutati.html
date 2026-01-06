@@ -134,6 +134,33 @@
     .tiktok-btn { background: #00f2ea; color: #000; text-decoration: none; padding: 8px 20px; border-radius: 50px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 12px; }
     .view-bio { font-size: 12px; color: #ddd; font-style: italic; margin: 15px 0; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 10px; }
 
+    /* --- IMAGE FEATURE STYLES --- */
+    .post-media-grid { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+    .media-box { width: 140px; height: 140px; border: 2px solid #fff; border-radius: 15px; overflow: hidden; cursor: pointer; transition: 0.3s; position: relative; }
+    .media-box img { width: 100%; height: 100%; object-fit: cover; }
+    .media-box:hover { transform: scale(1.05); box-shadow: 0 0 15px rgba(255,255,255,0.3); }
+    .media-count-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .count-txt { font-family: 'Orbitron'; font-size: 18px; font-weight: 900; color: var(--primary); }
+    .count-lbl { font-size: 8px; font-family: 'Orbitron'; color: #fff; opacity: 0.8; }
+
+    /* LIGHTBOX */
+    .lightbox-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 20000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+    .lightbox-overlay.active { display: flex; }
+    .lb-content { position: relative; max-width: 90%; max-height: 85%; display: flex; align-items: center; justify-content: center; }
+    .lb-img { max-width: 100%; max-height: 80vh; border-radius: 10px; border: 2px solid var(--primary); box-shadow: 0 0 40px var(--primary-dim); }
+    .lb-close { position: absolute; top: -50px; right: 0; background: none; border: none; color: #fff; font-size: 35px; cursor: pointer; }
+    .lb-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; width: 50px; height: 50px; border-radius: 50%; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
+    .lb-btn:hover { background: var(--primary); color: #000; }
+    .lb-prev { left: -70px; }
+    .lb-next { right: -70px; }
+
+    /* PREVIEW UI FOR ADMIN */
+    .image-preview-row { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .preview-item { width: 50px; height: 50px; border-radius: 8px; border: 1px solid var(--primary); position: relative; flex-shrink: 0; }
+    .preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+    .remove-prev { position: absolute; top: -5px; right: -5px; background: #ff4757; color: #fff; border: none; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .cam-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border); color: var(--primary); width: 60px; height: 60px; border-radius: 15px; cursor: pointer; font-size: 24px; transition: 0.3s; flex-shrink: 0; }
+    .cam-btn:hover { background: var(--primary-dim); }
 
     /* --- HEADER --- */
     .header-container { position: fixed; top: 0; left: 0; right: 0; padding: 20px; z-index: 1000; display: flex; justify-content: center; }
@@ -378,10 +405,23 @@
         .post-header { flex-wrap: wrap; gap: 5px; }
         .post-name { font-size: 13px; width: 100%; }
         .post-date { margin-left: 57px; margin-top: -5px; opacity: 0.6; font-size: 9px; }
+        
+        .lb-prev { left: 10px; } .lb-next { right: 10px; }
+        .lb-img { max-width: 95%; }
     }
   </style>
 </head>
 <body>
+
+<!-- LIGHTBOX OVERLAY -->
+<div id="lightboxOverlay" class="lightbox-overlay">
+    <div class="lb-content">
+        <button class="lb-close" id="lbClose">✕</button>
+        <button class="lb-btn lb-prev" id="lbPrev">❮</button>
+        <img id="lbMainImg" src="" class="lb-img">
+        <button class="lb-btn lb-next" id="lbNext">❯</button>
+    </div>
+</div>
 
 <!-- REWARD MODAL -->
 <div id="rewardModal" class="reward-modal">
@@ -536,7 +576,16 @@
             <!-- ADMIN INPUT AREA -->
             <div id="adminInputWrapper" class="admin-input-wrapper">
                 <div id="adminInputLabel" style="color:var(--primary); font-size:11px; margin-bottom:5px; font-weight:700;">POSTARE ADMIN / OWNER</div>
+                
+                <!-- NEW IMAGE PREVIEW AREA -->
+                <div id="imagePreviewRow" class="image-preview-row"></div>
+
                 <div class="admin-input-row">
+                    <!-- HIDDEN FILE INPUT -->
+                    <input type="file" id="mediaInput" multiple accept="image/*" style="display:none;">
+                    
+                    <button id="camBtn" class="cam-btn"><i class="fas fa-camera"></i></button>
+
                     <textarea id="adminPostInput" class="admin-input" placeholder="Scrie o noutate sau un anunț oficial... (Enter pt trimitere)"></textarea>
                     <button id="adminPostBtn" class="admin-send-btn"><i class="fas fa-paper-plane"></i></button>
                 </div>
@@ -581,6 +630,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, query, orderBy, where, serverTimestamp, doc, getDoc, setDoc, updateDoc, onSnapshot, getDocs, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -594,6 +644,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     // DOM Elements
@@ -602,6 +653,9 @@
     const adminPostInput = document.getElementById('adminPostInput');
     const adminPostBtn = document.getElementById('adminPostBtn');
     const adminInputLabel = document.getElementById('adminInputLabel');
+    const camBtn = document.getElementById('camBtn');
+    const mediaInput = document.getElementById('mediaInput');
+    const imagePreviewRow = document.getElementById('imagePreviewRow');
     
     // Auth UI
     const headerLoginBtn = document.getElementById('headerLoginBtn');
@@ -630,10 +684,71 @@
     const viewProfileModal = document.getElementById('viewProfileModal');
     const closeViewProfile = document.getElementById('closeViewProfile');
 
+    // Lightbox Elements
+    const lightboxOverlay = document.getElementById('lightboxOverlay');
+    const lbMainImg = document.getElementById('lbMainImg');
+    const lbClose = document.getElementById('lbClose');
+    const lbPrev = document.getElementById('lbPrev');
+    const lbNext = document.getElementById('lbNext');
+
     // State
     let currentCategory = 'noutati'; 
     let unsubscribePosts = null;
     let currentUid = null;
+    let selectedImages = []; // Stores actual file objects
+    let lightboxList = [];
+    let lightboxIndex = 0;
+
+    // --- LIGHTBOX FUNCTIONS ---
+    function openLightbox(images, index) {
+        lightboxList = images;
+        lightboxIndex = index;
+        lbMainImg.src = lightboxList[lightboxIndex];
+        lightboxOverlay.classList.add('active');
+    }
+    lbClose.onclick = () => lightboxOverlay.classList.remove('active');
+    lbPrev.onclick = () => {
+        lightboxIndex = (lightboxIndex - 1 + lightboxList.length) % lightboxList.length;
+        lbMainImg.src = lightboxList[lightboxIndex];
+    };
+    lbNext.onclick = () => {
+        lightboxIndex = (lightboxIndex + 1) % lightboxList.length;
+        lbMainImg.src = lightboxList[lightboxIndex];
+    };
+
+    // --- IMAGE PICKING & PREVIEW ---
+    camBtn.onclick = () => mediaInput.click();
+    mediaInput.onchange = (e) => {
+        const files = Array.from(e.target.files);
+        if (selectedImages.length + files.length > 10) return alert("Poți selecta maxim 10 imagini!");
+        
+        files.forEach(file => {
+            selectedImages.push(file);
+            const div = document.createElement('div');
+            div.className = 'preview-item';
+            div.innerHTML = `<img src="${URL.createObjectURL(file)}"><button class="remove-prev">✕</button>`;
+            div.querySelector('.remove-prev').onclick = () => {
+                selectedImages = selectedImages.filter(f => f !== file);
+                div.remove();
+            };
+            imagePreviewRow.appendChild(div);
+        });
+        mediaInput.value = ""; // Reset for re-selection
+    };
+
+    // Helper to upload images
+    async function uploadAllImages() {
+        if (selectedImages.length === 0) return [];
+        const urls = [];
+        for (let file of selectedImages) {
+            const fileName = `${Date.now()}_${file.name}`;
+            const fileRef = ref(storage, `news_images/${fileName}`);
+            const snapshot = await uploadBytes(fileRef, file);
+            const url = await getDownloadURL(snapshot.ref);
+            urls.push(url);
+        }
+        return urls;
+    }
 
     // --- SMART ONLINE TRACKER (ADDED) ---
     let lastStatusUpdate = 0;
@@ -953,6 +1068,28 @@
         let likes = 0, dislikes = 0; let myVote = votes[currentUid] || 0;
         Object.values(votes).forEach(v => { if(v===1) likes++; else if(v===-1) dislikes++; });
 
+        // MEDIA RENDERING
+        let mediaHtml = "";
+        const imgs = data.images || [];
+        if (imgs.length > 0) {
+            mediaHtml += `<div class="post-media-grid">`;
+            // Box 1: Always first image
+            mediaHtml += `<div class="media-box" onclick='openImageGallery(${JSON.stringify(imgs)}, 0)'>
+                            <img src="${imgs[0]}">
+                          </div>`;
+            // Box 2: If there are more images
+            if (imgs.length > 1) {
+                mediaHtml += `<div class="media-box" onclick='openImageGallery(${JSON.stringify(imgs)}, 1)'>
+                                <img src="${imgs[1]}" style="opacity:0.3;">
+                                <div class="media-count-overlay">
+                                    <span class="count-txt">+${imgs.length - 1}</span>
+                                    <span class="count-lbl">IMAGES</span>
+                                </div>
+                              </div>`;
+            }
+            mediaHtml += `</div>`;
+        }
+
         div.className = cardClass;
         // ADDED PROFILE ICON BUTTON
         div.innerHTML = `
@@ -965,6 +1102,7 @@
                 <div class="post-date">${dateStr}</div>
             </div>
             <div class="post-content">${linkify(data.text)}</div>
+            ${mediaHtml}
             <div class="post-footer">
                 <button class="comments-btn" onclick="toggleComments('${data.id}')"><i class="fas fa-comment-dots"></i> Comentarii</button>
                 <div class="vote-actions">
@@ -980,6 +1118,10 @@
                 </div>
             </div>
         `;
+
+        // Global function helper for gallery
+        window.openImageGallery = (list, idx) => openLightbox(list, idx);
+
         const comInput = div.querySelector(`#comInput-${data.id}`);
         comInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); div.querySelector('.com-send-btn').click(); } });
         messagesFeed.appendChild(div);
@@ -989,14 +1131,25 @@
 
     adminPostBtn.onclick = async () => {
         const text = adminPostInput.value.trim();
-        if(!text) return;
+        if(!text && selectedImages.length === 0) return;
+        
+        // UI Feedback: Disable button while uploading
+        adminPostBtn.disabled = true;
+        adminPostBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
         const email = auth.currentUser.email;
         const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
         const isAdmin = (email === 'kevin.trinity2020@gmail.com');
         const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
+        
         try {
+            // 1. Upload images first
+            const uploadedUrls = await uploadAllImages();
+
+            // 2. Add document to Firestore
             await addDoc(collection(db, "site_news"), { 
                 text: text, 
+                images: uploadedUrls,
                 category: currentCategory, 
                 uid: auth.currentUser.uid, 
                 name: isOwner ? "Lost Soul" : auth.currentUser.displayName, 
@@ -1007,8 +1160,17 @@
                 createdAt: serverTimestamp(), 
                 votes: {} 
             });
+
+            // 3. Clear UI
             adminPostInput.value = '';
-        } catch(e) { alert("Eroare la postare: " + e.message); }
+            selectedImages = [];
+            imagePreviewRow.innerHTML = "";
+        } catch(e) { 
+            alert("Eroare la postare: " + e.message); 
+        } finally {
+            adminPostBtn.disabled = false;
+            adminPostBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+        }
     };
     adminPostInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); } });
   </script>
