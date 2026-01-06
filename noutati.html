@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -411,17 +412,11 @@
     }
 
 
- /* 1. Permitem elementelor să iasă în afara cardului */
-.wall-card { 
-    overflow: visible !important; 
-}
-
-/* 2. Poziționăm cercul în interiorul butonului, în dreapta textului */
+    /* Stil pentru notificarea roșie strălucitoare */
 .notif-badge {
     position: absolute;
-    top: 50%;
-    right: 10px; /* Îl mutăm mai în interior să nu fie lipit de margine */
-    transform: translateY(-50%);
+    top: -8px;
+    right: -12px;
     background: #ff4757;
     color: white;
     font-size: 10px;
@@ -429,13 +424,25 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    display: none; 
+    display: none; /* Ascuns implicit */
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 15px #ff4757;
+    box-shadow: 0 0 15px #ff4757, 0 0 5px #fff;
     border: 2px solid #fff;
-    z-index: 100;
+    z-index: 10;
+    font-family: 'Orbitron', sans-serif;
     animation: pulseRed 1.5s infinite;
+}
+
+@keyframes pulseRed {
+    0% { transform: scale(1); box-shadow: 0 0 8px #ff4757; }
+    50% { transform: scale(1.1); box-shadow: 0 0 20px #ff4757; }
+    100% { transform: scale(1); box-shadow: 0 0 8px #ff4757; }
+}
+
+/* Ajustare pentru nav-link ca să poată conține badge-ul */
+nav a, .hero-btns a {
+    position: relative;
 }
   </style>
 </head>
@@ -903,7 +910,7 @@
     };
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
-onAuthStateChanged(auth, async (user) => {
+   onAuthStateChanged(auth, async (user) => {
         if(user) {
             currentUid = user.uid;
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
@@ -912,8 +919,6 @@ onAuthStateChanged(auth, async (user) => {
             lockedView.style.display = 'none'; chatView.style.display = 'flex';
 
             const userRef = doc(db, "accounts", user.uid);
-
-            // Date profil și Quest existent
             getDoc(userRef).then(async (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
@@ -927,46 +932,6 @@ onAuthStateChanged(auth, async (user) => {
                     }
                 }
             });
-
-            // --- NOU: LOGICA NOTIFICĂRI PE CATEGORII ---
-            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-                const meta = metaSnap.data() || {};
-                const nTotal = meta.noutatiTotal || 0; // Total noutăți global
-                const aTotal = meta.anunturiTotal || 0; // Total anunțuri global
-
-                onSnapshot(userRef, async (uSnap) => {
-                    if(!uSnap.exists()) return;
-                    const uData = uSnap.data();
-                    const nSeen = uData.lastSeenNoutati || 0;
-                    const aSeen = uData.lastSeenAnunturi || 0;
-
-                    // Diferența pentru fiecare tab
-                    const nNew = nTotal - nSeen;
-                    const aNew = aTotal - aSeen;
-
-                    const bN = document.getElementById('badgeNoutati');
-                    const bA = document.getElementById('badgeAnunturi');
-
-                    // Afișăm/Ascundem cerculețele roșii
-                    if(bN) { bN.innerText = `+${nNew}`; bN.style.display = nNew > 0 ? 'flex' : 'none'; }
-                    if(bA) { bA.innerText = `+${aNew}`; bA.style.display = aNew > 0 ? 'flex' : 'none'; }
-
-                    // RESETARE AUTOMATĂ: Dacă utilizatorul este deja pe tab-ul respectiv, îl marcăm ca citit
-                    if (currentCategory === 'noutati' && nNew > 0) {
-                        await updateDoc(userRef, { lastSeenNoutati: nTotal });
-                    } else if (currentCategory === 'anunturi' && aNew > 0) {
-                        await updateDoc(userRef, { lastSeenAnunturi: aTotal });
-                    }
-                });
-            });
-
-            checkInputVisibility();
-            loadPosts();
-        } else {
-            chatView.style.display = 'none';
-            lockedView.style.display = 'flex';
-        }
-    });
 
             // NOTIFICATION ENGINE
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
@@ -1197,37 +1162,15 @@ onAuthStateChanged(auth, async (user) => {
 
     function linkify(text) { if(!text) return ""; const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" style="color:#fff; text-decoration:underline;">${url}</a>`; }); }
 
-adminPostBtn.onclick = async () => {
+    adminPostBtn.onclick = async () => {
         if(!adminPostInput.value.trim() && selectedImages.length === 0) return;
         adminPostBtn.disabled = true;
-        
-        try {
-            const imgs = await uploadAllImages();
-            await addDoc(collection(db, "site_news"), {
-                text: adminPostInput.value,
-                images: imgs,
-                category: currentCategory,
-                uid: auth.currentUser.uid,
-                name: auth.currentUser.displayName,
-                photo: auth.currentUser.photoURL,
-                createdAt: serverTimestamp(),
-                isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com'
-            });
-
-            // UPDATE: Incrementăm contorul SPECIFIC pentru categoria în care am postat
-            const counterField = (currentCategory === 'noutati') ? 'noutatiTotal' : 'anunturiTotal';
-            await setDoc(doc(db, "site_metadata", "counters"), { 
-                [counterField]: increment(1) 
-            }, { merge: true });
-
-            adminPostInput.value = '';
-            selectedImages = [];
-            imagePreviewRow.innerHTML = "";
-        } catch (e) {
-            console.error("Eroare la postare:", e);
-        } finally {
-            adminPostBtn.disabled = false;
-        }
+        const imgs = await uploadAllImages();
+        await addDoc(collection(db, "site_news"), {
+            text: adminPostInput.value, images: imgs, category: currentCategory, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, createdAt: serverTimestamp(), isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com'
+        });
+        await setDoc(doc(db, "site_metadata", "counters"), { totalNews: increment(1) }, { merge: true });
+        adminPostInput.value = ''; selectedImages = []; imagePreviewRow.innerHTML = ""; adminPostBtn.disabled = false;
     };
     adminPostInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); } });
   </script>
