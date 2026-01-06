@@ -504,6 +504,14 @@
         .chat-input { font-size: 14px; }
     }
 
+    /* Add this to your CSS */
+.vocal-btn i, 
+.vocal-btn svg, 
+.send-btn i,
+.camera-btn i {
+    pointer-events: none;
+}
+
     /* --- FLYING COIN ANIMATION --- */
     .flying-reward { position: fixed; z-index: 10000; pointer-events: none; font-family: 'Orbitron', sans-serif; font-weight: 900; color: #ffd700; font-size: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: flex; align-items: center; gap: 5px; transition: all 0.8s cubic-bezier(0.19, 1, 0.22, 1); opacity: 1; }
     .flying-reward img { width: 24px; height: 24px; filter: drop-shadow(0 0 5px #ffd700); }
@@ -1327,22 +1335,24 @@
         }
     });
 
-    async function updateTypingStatus(type) {
+async function updateTypingStatus(type) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
         try {
             if (type) {
                 const displayName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
+                // FIXED: Added { merge: true } to prevent permission errors
                 await setDoc(typingRef, { 
                     name: displayName, 
                     isAdmin: isAdmin,
                     isOwner: isOwner,
                     isMod: isMod,
-                    type: type, // 'typing' or 'recording'
+                    type: type, 
                     timestamp: serverTimestamp() 
-                });
+                }, { merge: true });
             } else {
-                await deleteDoc(typingRef);
+                // FIXED: Catch error if doc doesn't exist
+                try { await deleteDoc(typingRef); } catch(e) {} 
             }
         } catch (e) { console.error("Typing status error:", e); }
     }
@@ -1376,38 +1386,92 @@
     }
 
     // --- NEW: VOCAL MESSAGE LOGIC ---
-    vocalBtn.onmousedown = vocalBtn.ontouchstart = async (e) => {
-        e.preventDefault();
-        if(!navigator.mediaDevices) return showToast("Mic access denied");
+// --- NEW FIXED VOCAL LOGIC ---
+    let isHoldingBtn = false; 
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recStartTime = 0;
+
+    async function startRecording(e) {
+        if(e) e.preventDefault(); // Stop text selection
+        if(!navigator.mediaDevices) return showToast("Microfon indisponibil");
         
+        isHoldingBtn = true; 
+        vocalBtn.classList.add('recording'); 
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // SECURITY CHECK: Did you let go while waiting for permission?
+            if(!isHoldingBtn) {
+                stream.getTracks().forEach(t => t.stop());
+                vocalBtn.classList.remove('recording');
+                return;
+            }
+
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
-            
-            mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                await uploadMedia(audioBlob, 'vocal');
-                stream.getTracks().forEach(track => track.stop());
+            recStartTime = Date.now();
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
             };
-            
+
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                vocalBtn.classList.remove('recording');
+                updateTypingStatus(false); // Stop typing status
+
+                const duration = Date.now() - recStartTime;
+                
+                // FIX: If recording is less than 1 second, DELETE IT
+                if(duration < 1000) {
+                    showToast("Vocal prea scurt (ține apăsat)", "error");
+                    return; 
+                }
+
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                if(blob.size === 0) return showToast("Eroare audio gol", "error");
+
+                await uploadMedia(blob, 'vocal');
+            };
+
             mediaRecorder.start();
-            isRecording = true;
-            vocalBtn.classList.add('recording');
             updateTypingStatus('recording');
-        } catch(err) { showToast("Microfonul este necesar!"); }
-    };
 
-    vocalBtn.onmouseup = vocalBtn.onmouseleave = vocalBtn.ontouchend = () => {
-        if (isRecording && mediaRecorder) {
-            mediaRecorder.stop();
-            isRecording = false;
+            // FIX: Listen for release ANYWHERE on screen
+            document.addEventListener('mouseup', stopRecording);
+            document.addEventListener('touchend', stopRecording);
+
+        } catch(err) {
+            console.error(err);
+            isHoldingBtn = false;
             vocalBtn.classList.remove('recording');
-            updateTypingStatus(false);
         }
-    };
+    }
 
+    function stopRecording() {
+        isHoldingBtn = false;
+        // Remove global listeners
+        document.removeEventListener('mouseup', stopRecording);
+        document.removeEventListener('touchend', stopRecording);
+
+        if(mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        } else {
+            vocalBtn.classList.remove('recording');
+        }
+    }
+
+    // ATTACH EVENTS
+    // Use addEventListener instead of .onmousedown to avoid conflicts
+    vocalBtn.addEventListener('mousedown', (e) => { 
+        if(e.button === 0) startRecording(e); 
+    });
+    vocalBtn.addEventListener('touchstart', (e) => { 
+        startRecording(e); 
+    });
+  
     // --- NEW: IMAGE UPLOAD LOGIC ---
     cameraBtn.onclick = () => imageInput.click();
     imageInput.onchange = async (e) => {
