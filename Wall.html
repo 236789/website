@@ -1804,25 +1804,79 @@ isHelper = (
         } catch(e) { list.innerHTML = 'Eroare.'; }
     };
 
-    // --- IMAGE PREVIEW LOGIC ---
+// --- IMAGE PREVIEW & COMPRESSION LOGIC ---
     imgBtn.onclick = () => imgInputFile.click();
+
     imgInputFile.onchange = (e) => {
         const file = e.target.files[0];
         if(!file) return;
-        if(file.size > 2 * 1024 * 1024) { showToast("Imaginea e prea mare (Max 2MB)"); return; }
-        
+
+        // 1. ALLOW UP TO 200MB INPUT
+        // But we will compress it before saving
+        if(file.size > 200 * 1024 * 1024) { 
+            showToast("Imaginea este mult prea mare! (Max 200MB)"); 
+            return; 
+        }
+
+        showToast("Se procesează imaginea...", "success");
+
         const reader = new FileReader();
-        reader.onload = (ev) => {
-            selectedImgBase64 = ev.target.result;
-            imgPreview.src = selectedImgBase64;
-            imgPreviewContainer.style.display = 'block';
-        };
         reader.readAsDataURL(file);
-    };
-    cancelImg.onclick = () => {
-        selectedImgBase64 = null;
-        imgPreviewContainer.style.display = 'none';
-        imgInputFile.value = '';
+        
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            
+            img.onload = () => {
+                // 2. COMPRESSION LOGIC
+                // Create a canvas to resize the image
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Max dimensions (Resizes huge images to fit in chat)
+                const MAX_WIDTH = 800; 
+                const MAX_HEIGHT = 800;
+                let width = img.width;
+                let height = img.height;
+
+                // Calculate new dimensions
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                // Draw image on canvas
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // 3. CONVERT TO COMPRESSED BASE64 (JPEG, 70% Quality)
+                // This forces the file size down significantly
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+                // Check if the RESULT is under 1MB (Firestore Limit)
+                // Base64 header removes approx 22 chars, estimate size:
+                const sizeInBytes = 4 * Math.ceil((dataUrl.length) / 3) * 0.5624896334383812;
+                
+                if (sizeInBytes > 950000) { // 950KB limit (safety margin for 1MB)
+                     showToast("Chiar și comprimată, imaginea este prea complexă pentru Database.", "error");
+                     return;
+                }
+
+                // Success - Show Preview
+                selectedImgBase64 = dataUrl;
+                imgPreview.src = selectedImgBase64;
+                imgPreviewContainer.style.display = 'block';
+            };
+        };
     };
 
     // --- REACTION DETAILS LOGIC ---
