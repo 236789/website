@@ -338,8 +338,9 @@
     .online-count-btn:hover { background: #2ecc71; color: #000; }
     .online-dot { width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; box-shadow: 0 0 5px #2ecc71; }
 
-    /* MESSAGES AREA */
-    .messages-feed { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+    /* MESSAGES AREA - FIXED SCROLL AND FLICKER */
+    .messages-feed { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 20px; padding-right: 35px; display: flex; flex-direction: column; gap: 15px; }
+    
     .msg-wrapper { display: flex; flex-direction: column; max-width: 80%; position: relative; }
     .msg-wrapper.mine { align-self: flex-end; align-items: flex-end; }
     .msg-wrapper.theirs { align-self: flex-start; align-items: flex-start; }
@@ -402,9 +403,15 @@
     .react-user-img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--primary); }
     .react-user-name { font-size: 13px; color: #fff; font-weight: 500; }
 
-    /* Menu & Tools */
-    .msg-options { position: absolute; top: 0; right: -25px; cursor: pointer; padding: 5px; color: var(--text-muted); opacity: 0; transition: 0.2s; }
-    .msg-wrapper.mine .msg-options { left: -25px; right: auto; }
+    /* Menu & Tools - FIXED POSITIONING AND HITBOX */
+    .msg-options { 
+        position: absolute; top: 0; right: -30px; 
+        cursor: pointer; width: 30px; height: 100%; 
+        display: flex; align-items: center; justify-content: center; 
+        color: var(--text-muted); opacity: 0; transition: 0.2s; 
+        z-index: 10; /* Ensures it stays on top */
+    }
+    .msg-wrapper.mine .msg-options { left: -30px; right: auto; }
     .msg-wrapper:hover .msg-options { opacity: 1; }
 
     .options-dropdown { display: none; position: absolute; top: 20px; z-index: 20; background: #08101b; border: 1px solid var(--glass-border); border-radius: 8px; overflow: hidden; width: 140px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
@@ -514,6 +521,35 @@
         align-items: center; justify-content: center; transition: 0.3s;
     }
     .upload-btn-icon:hover { background: var(--primary); color: #000; }
+    
+    /* --- IMAGE PREVIEW BOX --- */
+    .img-preview-box {
+        display: none; 
+        padding: 10px 15px; 
+        background: rgba(0,0,0,0.3);
+        border-bottom: 1px solid var(--glass-border); 
+        align-items: center; 
+        gap: 15px;
+        margin-bottom: 5px;
+        border-radius: 10px;
+    }
+    .preview-thumb { 
+        height: 50px; 
+        width: 50px;
+        object-fit: cover;
+        border-radius: 8px; 
+        border: 1px solid var(--primary); 
+    }
+    .remove-img-btn { 
+        background: none; 
+        border: none; 
+        color: #ff4757; 
+        cursor: pointer; 
+        font-size: 16px; 
+        padding: 5px;
+        margin-left: auto;
+    }
+    .remove-img-btn:hover { transform: scale(1.2); }
   </style>
 </head>
 <body>
@@ -742,6 +778,14 @@
                 </div>
 
                 <div id="inputControls">
+                    
+                    <!-- NEW IMAGE PREVIEW BOX -->
+                    <div id="imgPreviewBox" class="img-preview-box">
+                        <span style="font-size:11px; color:var(--primary);">Imagine selectată:</span>
+                        <img id="previewThumb" src="" class="preview-thumb">
+                        <button id="removeImgBtn" class="remove-img-btn"><i class="fas fa-times"></i></button>
+                    </div>
+
                     <div id="replyBar" class="reply-preview-bar">
                         <div>Răspuns către <strong id="replyToUser">User</strong></div>
                         <button id="cancelReply" class="cancel-reply-btn">&times;</button>
@@ -912,6 +956,10 @@
     // IMAGE UPLOAD ELEMENTS
     const imageInput = document.getElementById('imageInput');
     const uploadImgBtn = document.getElementById('uploadImgBtn');
+    // NEW PREVIEW ELEMENTS
+    const imgPreviewBox = document.getElementById('imgPreviewBox');
+    const previewThumb = document.getElementById('previewThumb');
+    const removeImgBtn = document.getElementById('removeImgBtn');
 
     // REPLY
     const replyBar = document.getElementById('replyBar');
@@ -1337,37 +1385,6 @@
         } catch (e) { console.error("Typing status error:", e); }
     }
 
-    // --- LISTENER FOR TYPING ---
-    function listenForTypers() {
-        const q = query(collection(db, "typing_status"));
-        
-        onSnapshot(q, (snapshot) => {
-            const typers = [];
-            snapshot.forEach((doc) => {
-                if (doc.id !== currentUid) { 
-                    const data = doc.data();
-                    if (data.name) {
-                        let nameHtml = `<span class="typing-name">${data.name}</span>`;
-                        if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
-                        else if(data.isAdmin) nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
-                        else if(data.isMod) nameHtml += `<span class="mod-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">MODERATOR</span>`;
-                        typers.push(nameHtml);
-                    }
-                }
-            });
-
-            if (typers.length > 0) {
-                if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
-                else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
-                else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
-                typingIndicator.style.opacity = "1";
-            } else {
-                typingIndicator.innerHTML = "";
-                typingIndicator.style.opacity = "0";
-            }
-        });
-    }
-
     window.startReply = function(id, name, text) {
         replyData = { id, name, text };
         replyToUser.textContent = name;
@@ -1384,6 +1401,24 @@
 
     // --- UPLOAD IMAGE HANDLERS ---
     uploadImgBtn.onclick = () => imageInput.click();
+
+    // NEW: IMAGE PREVIEW LOGIC
+    imageInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if(file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                previewThumb.src = ev.target.result;
+                imgPreviewBox.style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
+    removeImgBtn.onclick = () => {
+        imageInput.value = "";
+        imgPreviewBox.style.display = 'none';
+    };
 
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
@@ -1476,6 +1511,7 @@
                 showToast("Nu ai permisiunea de a trimite imagini!", "error");
                 isSending = false;
                 imageInput.value = ""; 
+                imgPreviewBox.style.display = 'none'; // Clear preview if illegal
                 return;
             }
             try {
@@ -1539,7 +1575,11 @@
             updateTypingStatus(false);
 
             msgInput.value = '';
-            imageInput.value = ''; // Clear image input
+            
+            // CLEAR IMAGE INPUT AND PREVIEW
+            imageInput.value = ''; 
+            imgPreviewBox.style.display = 'none';
+            
             charCount.textContent = '0 / 1000';
             localStorage.setItem('lastMsgTime', Date.now()); 
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
