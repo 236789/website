@@ -409,6 +409,40 @@
         .lb-prev { left: 10px; } .lb-next { right: 10px; }
         .lb-img { max-width: 95%; }
     }
+
+
+    /* Stil pentru notificarea roșie strălucitoare */
+.notif-badge {
+    position: absolute;
+    top: -8px;
+    right: -12px;
+    background: #ff4757;
+    color: white;
+    font-size: 10px;
+    font-weight: 900;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: none; /* Ascuns implicit */
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 15px #ff4757, 0 0 5px #fff;
+    border: 2px solid #fff;
+    z-index: 10;
+    font-family: 'Orbitron', sans-serif;
+    animation: pulseRed 1.5s infinite;
+}
+
+@keyframes pulseRed {
+    0% { transform: scale(1); box-shadow: 0 0 8px #ff4757; }
+    50% { transform: scale(1.1); box-shadow: 0 0 20px #ff4757; }
+    100% { transform: scale(1); box-shadow: 0 0 8px #ff4757; }
+}
+
+/* Ajustare pentru nav-link ca să poată conține badge-ul */
+nav a, .hero-btns a {
+    position: relative;
+}
   </style>
 </head>
 <body>
@@ -555,10 +589,14 @@
     
     <div class="wall-card">
         <!-- TABS HEADER -->
-        <div class="tabs-header">
-            <button id="btnNoutati" class="tab-btn active">NOUTĂȚI</button>
-            <button id="btnAnunturi" class="tab-btn">ANUNȚURI</button>
-        </div>
+<div class="tabs-header">
+    <button id="btnNoutati" class="tab-btn active">
+        NOUTĂȚI <span id="badgeNoutati" class="notif-badge"></span>
+    </button>
+    <button id="btnAnunturi" class="tab-btn">
+        ANUNȚURI <span id="badgeAnunturi" class="notif-badge"></span>
+    </button>
+</div>
 
         <div id="lockedView" class="locked-view">
             <i class="fas fa-newspaper" style="font-size: 50px; color: var(--primary); margin-bottom: 15px;"></i>
@@ -871,18 +909,14 @@
     };
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
-    onAuthStateChanged(auth, async (user) => {
+   onAuthStateChanged(auth, async (user) => {
         if(user) {
             currentUid = user.uid;
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-            
-            lockedView.style.display = 'none';
-            chatView.style.display = 'flex';
+            lockedView.style.display = 'none'; chatView.style.display = 'flex';
 
-            // Fill Account Modal & CHECK QUEST
             const userRef = doc(db, "accounts", user.uid);
             getDoc(userRef).then(async (docSnap) => {
                 if(docSnap.exists()) {
@@ -891,33 +925,31 @@
                     document.getElementById('popUserName').innerText = data.username;
                     document.getElementById('popUserEmail').innerText = data.email;
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
-                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-
-                    const completed = data.completedQuests || [];
-                    if (!completed.includes('visit_news')) {
-                        try {
-                            await updateDoc(userRef, {
-                                coins: increment(100),
-                                newsVisitedToday: 1,
-                                completedQuests: [...completed, 'visit_news']
-                            });
-                            rewardModal.classList.add('active');
-                            document.getElementById('popUserCoins').innerText = (data.coins || 0) + 100;
-                        } catch(err) { console.error("Quest Error:", err); }
+                    if (!(data.completedQuests || []).includes('visit_news')) {
+                        await updateDoc(userRef, { coins: increment(100), completedQuests: arrayUnion('visit_news') });
+                        rewardModal.classList.add('active');
                     }
                 }
             });
 
-            checkInputVisibility();
-            loadPosts();
-            updateOnlineStatus(); // Trigger status update
-        } else {
-            currentUid = null;
-            document.getElementById('headerLoginText').innerText = "LOGIN"; 
-            document.getElementById('headerUserImg').style.display = "none";
-            chatView.style.display = 'none'; 
-            lockedView.style.display = 'flex';
-        }
+            // NOTIFICATION ENGINE
+            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+                const totalGlobal = metaSnap.data()?.totalNews || 0;
+                onSnapshot(doc(db, "accounts", user.uid), (userSnap) => {
+                    const userVazute = userSnap.data()?.lastSeenNewsCount || 0;
+                    const noutatiNoi = totalGlobal - userVazute;
+                    const b1 = document.getElementById('badgeNoutati');
+                    const b2 = document.getElementById('badgeAnunturi');
+                    const hb = document.getElementById('headerNotifBadge');
+                    if (noutatiNoi > 0) {
+                        [b1, b2, hb].forEach(b => { if(b){ b.innerText = `+${noutatiNoi}`; b.style.display = 'flex'; }});
+                        setTimeout(async () => { await updateDoc(doc(db, "accounts", user.uid), { lastSeenNewsCount: totalGlobal }); }, 4000);
+                    } else { [b1, b2, hb].forEach(b => { if(b) b.style.display = 'none'; }); }
+                });
+            });
+
+            checkInputVisibility(); loadPosts(); updateOnlineStatus();
+        } else { chatView.style.display = 'none'; lockedView.style.display = 'flex'; }
     });
 
     btnNoutati.onclick = () => { if(currentCategory === 'noutati') return; currentCategory = 'noutati'; updateTabUI(); checkInputVisibility(); loadPosts(); };
@@ -1130,47 +1162,14 @@
     function linkify(text) { if(!text) return ""; const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" style="color:#fff; text-decoration:underline;">${url}</a>`; }); }
 
     adminPostBtn.onclick = async () => {
-        const text = adminPostInput.value.trim();
-        if(!text && selectedImages.length === 0) return;
-        
-        // UI Feedback: Disable button while uploading
+        if(!adminPostInput.value.trim() && selectedImages.length === 0) return;
         adminPostBtn.disabled = true;
-        adminPostBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-        const email = auth.currentUser.email;
-        const isOwner = (email === 'nicaemmanuel433qe@gmail.com');
-        const isAdmin = (email === 'kevin.trinity2020@gmail.com');
-        const isMod = (email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com');
-        
-        try {
-            // 1. Upload images first
-            const uploadedUrls = await uploadAllImages();
-
-            // 2. Add document to Firestore
-            await addDoc(collection(db, "site_news"), { 
-                text: text, 
-                images: uploadedUrls,
-                category: currentCategory, 
-                uid: auth.currentUser.uid, 
-                name: isOwner ? "Lost Soul" : auth.currentUser.displayName, 
-                photo: auth.currentUser.photoURL, 
-                isOwner: isOwner, 
-                isAdmin: isAdmin, 
-                isMod: isMod, 
-                createdAt: serverTimestamp(), 
-                votes: {} 
-            });
-
-            // 3. Clear UI
-            adminPostInput.value = '';
-            selectedImages = [];
-            imagePreviewRow.innerHTML = "";
-        } catch(e) { 
-            alert("Eroare la postare: " + e.message); 
-        } finally {
-            adminPostBtn.disabled = false;
-            adminPostBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-        }
+        const imgs = await uploadAllImages();
+        await addDoc(collection(db, "site_news"), {
+            text: adminPostInput.value, images: imgs, category: currentCategory, uid: auth.currentUser.uid, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL, createdAt: serverTimestamp(), isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com'
+        });
+        await setDoc(doc(db, "site_metadata", "counters"), { totalNews: increment(1) }, { merge: true });
+        adminPostInput.value = ''; selectedImages = []; imagePreviewRow.innerHTML = ""; adminPostBtn.disabled = false;
     };
     adminPostInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); } });
   </script>
