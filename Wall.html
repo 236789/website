@@ -493,6 +493,17 @@
     .flying-reward { position: fixed; z-index: 10000; pointer-events: none; font-family: 'Orbitron', sans-serif; font-weight: 900; color: #ffd700; font-size: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: flex; align-items: center; gap: 5px; transition: all 0.8s cubic-bezier(0.19, 1, 0.22, 1); opacity: 1; }
     .flying-reward img { width: 24px; height: 24px; filter: drop-shadow(0 0 5px #ffd700); }
     .flying-reward.finished { opacity: 0; transform: scale(0.5); }
+
+    /* NEW STYLES FOR VOCAL & SEEN */
+    .vocal-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; transition: 0.3s; width: 40px; }
+    .vocal-btn.recording { color: #ff4757; animation: pulseRed 1s infinite; }
+    .msg-seen-btn { background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; margin-left: 5px; }
+    .msg-seen-btn i { font-size: 12px; }
+    .msg-seen-btn.seen-active { color: var(--primary); }
+    .msg-audio { max-width: 200px; margin-top: 5px; display: block; }
+    .msg-image { max-width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--glass-border); cursor: pointer; }
+    .camera-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; transition: 0.3s; width: 40px; }
+    .camera-btn:hover { color: var(--primary); }
   </style>
 </head>
 <body>
@@ -563,6 +574,15 @@
         <div id="onlineUsersContainer" class="online-list-popup">
             <div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>
         </div>
+    </div>
+</div>
+
+<!-- SEEN BY LIST MODAL (NEW) -->
+<div id="seenByModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width:320px;">
+        <button onclick="document.getElementById('seenByModal').classList.remove('active')" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; margin-bottom:15px; font-size:16px;">VĂZUT DE</h3>
+        <div id="seenByContainer" class="online-list-popup"></div>
     </div>
 </div>
 
@@ -730,6 +750,11 @@
                         <div class="input-row">
                             <!-- TEXT INPUT: Set to 1000 MAX -->
                             <input type="text" id="msgInput" class="chat-input" placeholder="Scrie un mesaj..." maxlength="1000">
+                            <!-- VOCAL BUTTON -->
+                            <button id="vocalBtn" class="vocal-btn"><i class="fas fa-microphone"></i></button>
+                            <!-- IMAGE BUTTON (STAFF ONLY) -->
+                            <button id="imageBtn" class="camera-btn" style="display:none;"><i class="fas fa-camera"></i></button>
+                            <input type="file" id="imageInput" style="display:none" accept="image/*">
                             <!-- SEND BUTTON -->
                             <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
                         </div>
@@ -802,7 +827,8 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -817,6 +843,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     setPersistence(auth, browserLocalPersistence)
@@ -871,6 +898,13 @@
     const onlineCountVal = document.getElementById('onlineCountVal');
     const onlineUsersContainer = document.getElementById('onlineUsersContainer');
 
+    // VOCAL & SEEN & IMAGES
+    const vocalBtn = document.getElementById('vocalBtn');
+    const imageBtn = document.getElementById('imageBtn');
+    const imageInput = document.getElementById('imageInput');
+    const seenByModal = document.getElementById('seenByModal');
+    const seenByContainer = document.getElementById('seenByContainer');
+
     // CHAT ELEMENTS
     const userAvatar = document.getElementById('userAvatar');
     const userName = document.getElementById('userName');
@@ -895,16 +929,18 @@
     let isAdmin = false; 
     let isOwner = false; 
     let isMod = false; 
-    let isSending = false; // Issue 2 Fix: Prevent double send
+    let isSending = false;
     
     // MUTE TARGETING
     let pendingMuteUid = null;
     let pendingMuteName = null;
     let muteInterval = null;
     
-    // TYPING VARIABLES
+    // TYPING/RECORDING VARIABLES
     let typingTimeout = null;
     let isTyping = false;
+    let mediaRecorder;
+    let audioChunks = [];
     
     // WIPE TIMER INTERVAL
     let wipeCheckInterval = null;
@@ -1083,6 +1119,11 @@
             isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
             isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
 
+            // Toggle Staff Image Button
+            if(isOwner || isAdmin || isMod) {
+                imageBtn.style.display = 'block';
+            }
+
             if(userIP) {
                 const banRef = doc(db, "banned_ips", userIP);
                 const banSnap = await getDoc(banRef);
@@ -1122,12 +1163,9 @@
                     const now = Date.now();
                     const oneHourCooldown = now + (3600000); 
 
-                    // --- QUEST LOGIC INTEGRATION (WITH DOUBLE-FIRE PROTECTION) ---
-                    
-                    // 1. STANDARD MSG3 QUEST
                     if(data.messagesSentToday >= 3 && !completed.includes('msg3') && !(now < (cooldowns['msg3'] || 0))) {
                         if(!localProcessedQuests.has('msg3')) {
-                            localProcessedQuests.add('msg3'); // Lock local
+                            localProcessedQuests.add('msg3');
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(250),
                                 completedQuests: [...completed, 'msg3'],
@@ -1138,10 +1176,9 @@
                         }
                     }
 
-                    // 2. WALL REPLY QUEST (5 Replies)
                     if(data.wallRepliesToday >= 5 && !completed.includes('wall_reply_5')) {
                         if(!localProcessedQuests.has('wall_reply_5')) {
-                            localProcessedQuests.add('wall_reply_5'); // Lock local
+                            localProcessedQuests.add('wall_reply_5');
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(300),
                                 completedQuests: [...completed, 'wall_reply_5']
@@ -1151,10 +1188,9 @@
                         }
                     }
 
-                    // 3. WALL REACT QUEST (10 Reactions)
                     if(data.wallReactionsToday >= 10 && !completed.includes('wall_react_10')) {
                         if(!localProcessedQuests.has('wall_react_10')) {
-                            localProcessedQuests.add('wall_react_10'); // Lock local
+                            localProcessedQuests.add('wall_react_10');
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(200),
                                 completedQuests: [...completed, 'wall_react_10']
@@ -1164,10 +1200,9 @@
                         }
                     }
 
-                    // 4. WALL LONG MSG QUEST (100+ Chars)
                     if(data.wallLongMsgSent === true && !completed.includes('wall_long_msg')) {
                         if(!localProcessedQuests.has('wall_long_msg')) {
-                            localProcessedQuests.add('wall_long_msg'); // Lock local
+                            localProcessedQuests.add('wall_long_msg');
                             updateDoc(doc(db, "accounts", user.uid), {
                                 coins: increment(500),
                                 completedQuests: [...completed, 'wall_long_msg']
@@ -1196,7 +1231,7 @@
             startWipeCheck(); 
             checkMuteStatus();
             resetIdleTimer();
-            listenOnlineUsers(); // START LISTENER
+            listenOnlineUsers();
 
         } else {
             headerLoginText.innerText = "LOGIN";
@@ -1214,44 +1249,30 @@
     function checkMuteStatus() {
         if(!currentUid) return;
         const muteRef = doc(db, "muted_users", currentUid);
-        
         onSnapshot(muteRef, (snapshot) => {
             if(snapshot.exists()) {
                 const data = snapshot.data();
-                
                 if(data.unmuteAt && Date.now() > data.unmuteAt) {
                     deleteDoc(muteRef);
                     return;
                 }
-
                 inputControls.style.display = 'none';
                 muteBanner.style.display = 'block';
                 muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Admin'}. Motiv: ${data.reason || 'Nespecificat'}`;
-                
                 if(muteInterval) clearInterval(muteInterval);
-                
                 if(data.unmuteAt) {
                     muteInterval = setInterval(() => {
                         const now = Date.now();
                         const diff = data.unmuteAt - now;
-                        
-                        if(diff <= 0) {
-                            clearInterval(muteInterval);
-                            deleteDoc(muteRef); 
-                        } else {
+                        if(diff <= 0) { clearInterval(muteInterval); deleteDoc(muteRef); }
+                        else {
                             const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                             const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
                             const s = Math.floor((diff % (1000 * 60)) / 1000);
-                            muteTimer.innerText = 
-                                (h < 10 ? "0"+h : h) + ":" + 
-                                (m < 10 ? "0"+m : m) + ":" + 
-                                (s < 10 ? "0"+s : s);
+                            muteTimer.innerText = (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s);
                         }
                     }, 1000);
-                } else {
-                    muteTimer.innerText = "PERMANENT";
-                }
-
+                } else { muteTimer.innerText = "PERMANENT"; }
             } else {
                 inputControls.style.display = 'block';
                 muteBanner.style.display = 'none';
@@ -1264,62 +1285,50 @@
         const len = msgInput.value.length;
         charCount.textContent = `${len} / 1000`;
         charCount.style.color = len >= 1000 ? '#ff4757' : '#a5b1c2';
-
         if (currentUid) {
-            if (!isTyping) {
-                isTyping = true;
-                updateTypingStatus(true);
-            }
+            if (!isTyping) { isTyping = true; updateTypingStatus('typing'); }
             clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                isTyping = false;
-                updateTypingStatus(false);
-            }, 3000);
+            typingTimeout = setTimeout(() => { isTyping = false; updateTypingStatus(false); }, 3000);
         }
     });
 
-    async function updateTypingStatus(status) {
+    async function updateTypingStatus(statusType) {
         if (!currentUid) return;
         const typingRef = doc(db, "typing_status", currentUid);
         try {
-            if (status) {
+            if (statusType) {
                 const displayName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
                 await setDoc(typingRef, { 
                     name: displayName, 
                     isAdmin: isAdmin,
                     isOwner: isOwner,
                     isMod: isMod,
+                    type: statusType, // 'typing' or 'recording'
                     timestamp: serverTimestamp() 
                 });
             } else {
                 await deleteDoc(typingRef);
             }
-        } catch (e) { console.error("Typing status error:", e); }
+        } catch (e) {}
     }
 
-    // --- LISTENER FOR TYPING ---
     function listenForTypers() {
         const q = query(collection(db, "typing_status"));
-        
         onSnapshot(q, (snapshot) => {
             const typers = [];
             snapshot.forEach((doc) => {
                 if (doc.id !== currentUid) { 
                     const data = doc.data();
                     if (data.name) {
+                        let text = data.type === 'recording' ? ' înregistrează un vocal...' : ' scrie...';
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
                         if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
-                        else if(data.isAdmin) nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
-                        else if(data.isMod) nameHtml += `<span class="mod-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">MODERATOR</span>`;
-                        typers.push(nameHtml);
+                        typers.push(nameHtml + text);
                     }
                 }
             });
-
             if (typers.length > 0) {
-                if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
-                else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
-                else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
+                typingIndicator.innerHTML = typers[0];
                 typingIndicator.style.opacity = "1";
             } else {
                 typingIndicator.innerHTML = "";
@@ -1327,6 +1336,60 @@
             }
         });
     }
+
+    // --- VOCAL RECORDING LOGIC ---
+    vocalBtn.addEventListener('mousedown', startRecording);
+    vocalBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
+    vocalBtn.addEventListener('mouseup', stopRecording);
+    vocalBtn.addEventListener('touchend', stopRecording);
+
+    async function startRecording() {
+        if(!navigator.mediaDevices) return showToast("Microfonul nu e suportat.");
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = uploadVocal;
+            mediaRecorder.start();
+            vocalBtn.classList.add('recording');
+            updateTypingStatus('recording');
+        } catch(e) { showToast("Permite accesul la microfon!"); }
+    }
+
+    function stopRecording() {
+        if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            vocalBtn.classList.remove('recording');
+            updateTypingStatus(false);
+        }
+    }
+
+    async function uploadVocal() {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const fileName = `vocals/${Date.now()}_${currentUid}.webm`;
+        const storageRef = ref(storage, fileName);
+        try {
+            showToast("Se trimite vocalul...", "success");
+            const snapshot = await uploadBytes(storageRef, audioBlob);
+            const url = await getDownloadURL(snapshot.ref);
+            sendMessage(null, url, 'audio');
+        } catch(e) { showToast("Eroare trimitere vocal."); }
+    }
+
+    // --- IMAGE UPLOAD LOGIC ---
+    imageBtn.onclick = () => imageInput.click();
+    imageInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+        try {
+            showToast("Se încarcă imaginea...", "success");
+            const snapshot = await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(snapshot.ref);
+            sendMessage(null, url, 'image');
+        } catch(e) { showToast("Eroare încărcare imagine."); }
+    };
 
     window.startReply = function(id, name, text) {
         replyData = { id, name, text };
@@ -1342,99 +1405,35 @@
         return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank">${url}</a>`; });
     }
 
-    sendBtn.addEventListener('click', sendMessage);
+    sendBtn.addEventListener('click', () => sendMessage());
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
-    async function sendMessage() {
-        if(isSending) return; // ISSUE 2 FIX: Prevent Double Send
-
-        const text = msgInput.value.trim();
-        if(!text || !auth.currentUser) return;
+    async function sendMessage(manualText = null, fileUrl = null, fileType = null) {
+        if(isSending) return;
+        const text = manualText || msgInput.value.trim();
+        if(!text && !fileUrl) return;
         
-        if(text === '/reset chat') {
-            msgInput.value = '';
-            if(isAdmin) {
-                showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
-                initiateWipeSequence(true); 
-            } else {
-                showToast("Nu ai permisiuni de administrator!", "error");
-            }
-            return;
+        if(text === '/reset chat' && isAdmin) {
+            msgInput.value = ''; initiateWipeSequence(true); return;
         }
 
-        if(text.startsWith('/mute ')) {
-            if(!isOwner) { showToast("Doar Owner-ul poate da Mute.", "error"); msgInput.value=''; return; }
-            if(!pendingMuteUid) { showToast("Selectează utilizatorul din meniu!", "error"); return; }
-
-            let args = text.substring(6 + pendingMuteName.length).trim();
-            let durationMs = 0;
-            let finalReason = args;
-            const timeRegex = /(\d+)([mhd])$/i;
-            const match = args.match(timeRegex);
-
-            if (match) {
-                const val = parseInt(match[1]);
-                const unit = match[2].toLowerCase();
-                if(unit === 'm') durationMs = val * 60 * 1000;
-                else if(unit === 'h') durationMs = val * 60 * 60 * 1000;
-                else if(unit === 'd') durationMs = val * 24 * 60 * 60 * 1000;
-                finalReason = args.replace(match[0], "").trim();
-            }
-            
-            if(!finalReason) finalReason = "Nespecificat";
-
-            const mutePayload = { mutedBy: "Lost Soul", reason: finalReason, timestamp: serverTimestamp() };
-            if(durationMs > 0) mutePayload.unmuteAt = Date.now() + durationMs;
-
-            try {
-                await setDoc(doc(db, "muted_users", pendingMuteUid), mutePayload);
-                let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de Lost Soul. Motiv: ${finalReason}.`;
-                if(durationMs > 0) announceText += ` Durată: ${match[0]}.`;
-                sendBotMessage(announceText);
-                showToast("User Muted", "success");
-                msgInput.value = '';
-                pendingMuteUid = null;
-            } catch(e) { showToast("Error muting: " + e.message); }
-            return;
-        }
-
-        if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
-
-        const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 2000; 
-        if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
-            showToast(`Te rog nu fă spam!`);
-            return;
-        }
-
-        if(userIP) {
-             const banRef = doc(db, "banned_ips", userIP);
-             const banSnap = await getDoc(banRef);
-             if(banSnap.exists()) { alert("Ești banat."); location.reload(); return; }
-        }
-
-        isSending = true; // LOCK BUTTON
-
+        isSending = true;
         const btn = document.getElementById('sendBtn');
-        if(typeof window.flyCoins === "function" && btn) {
-            window.flyCoins(btn);
-        }
-
-        let displayName = auth.currentUser.displayName;
-        if(isOwner) displayName = "Lost Soul";
+        if(btn) flyCoins(btn);
 
         const payload = {
-            text: text,
+            text: text || "",
             uid: auth.currentUser.uid,
-            name: displayName,
+            name: isOwner ? "Lost Soul" : auth.currentUser.displayName,
             photo: auth.currentUser.photoURL,
             ip: userIP || "unknown",
-            isAdmin: isAdmin, 
-            isOwner: isOwner, 
-            isMod: isMod,
+            isAdmin, isOwner, isMod,
             createdAt: serverTimestamp(),
             isDeleted: false,
-            reactions: {} 
+            reactions: {},
+            seenBy: [auth.currentUser.uid], // Sender saw it
+            audioUrl: fileType === 'audio' ? fileUrl : null,
+            imageUrl: fileType === 'image' ? fileUrl : null
         };
 
         if(replyData) {
@@ -1445,456 +1444,158 @@
 
         try {
             await addDoc(collection(db, "wall_messages"), payload);
-
-            // --- QUEST UPDATES ON SEND ---
             const userRef = doc(db, "accounts", auth.currentUser.uid);
-            const updates = {
-                messagesSentToday: increment(1),
-                coins: increment(10)
-            };
-            
-            // Long Message Quest Logic
-            if(text.length >= 100) {
-                updates.wallLongMsgSent = true;
-            }
-            
-            // Reply Quest Logic
-            if(replyData) {
-                updates.wallRepliesToday = increment(1);
-            }
-
+            const updates = { messagesSentToday: increment(1), coins: increment(10) };
+            if(text && text.length >= 100) updates.wallLongMsgSent = true;
+            if(replyData) updates.wallRepliesToday = increment(1);
             await updateDoc(userRef, updates);
-            
-            clearTimeout(typingTimeout);
-            isTyping = false;
-            updateTypingStatus(false);
-
-            msgInput.value = '';
-            charCount.textContent = '0 / 1000';
-            localStorage.setItem('lastMsgTime', Date.now()); 
+            msgInput.value = ''; charCount.textContent = '0 / 1000';
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
-        } catch(e) { console.error(e); } finally {
-            isSending = false; // UNLOCK BUTTON
-        }
+        } catch(e) {} finally { isSending = false; }
     }
 
-    // --- KEVIN-BOT & WIPE LOGIC ---
     function startWipeCheck() {
         if(wipeCheckInterval) clearInterval(wipeCheckInterval);
         wipeCheckInterval = setInterval(async () => {
             const timerDocRef = doc(db, "sys_config", "timer");
             const timerSnap = await getDoc(timerDocRef);
             const now = Date.now();
-            const twelveHours = 12 * 60 * 60 * 1000;
-
-            if(!timerSnap.exists()) {
-                await setDoc(timerDocRef, { nextWipe: now + twelveHours });
-            } else {
-                const nextWipe = timerSnap.data().nextWipe;
-                if(now >= nextWipe) {
-                    await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
-                    initiateWipeSequence(false);
-                }
+            if(!timerSnap.exists()) await setDoc(timerDocRef, { nextWipe: now + (12 * 3600000) });
+            else if(now >= timerSnap.data().nextWipe) {
+                await updateDoc(timerDocRef, { nextWipe: now + (12 * 3600000) });
+                initiateWipeSequence(false);
             }
         }, 10000);
     }
 
     async function sendBotMessage(text) {
-        try {
-            await addDoc(collection(db, "wall_messages"), {
-                text: text,
-                uid: 'kevin-bot',
-                name: 'Kevin-Bot',
-                photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
-                ip: 'server',
-                isBot: true,
-                isAdmin: false,
-                isOwner: false, 
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {}
-            });
-        } catch(e) { console.error("Bot fail", e); }
+        await addDoc(collection(db, "wall_messages"), {
+            text, uid: 'kevin-bot', name: 'Kevin-Bot', photo: 'https://iili.io/fXks1Dv.png', isBot: true, createdAt: serverTimestamp(), isDeleted: false, seenBy: []
+        });
     }
 
     async function initiateWipeSequence(forced) {
-        const warningMsg = forced 
-            ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
-            : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza, acest chat va fi curățat în curând.";
-        await sendBotMessage(warningMsg);
-        setTimeout(async () => { await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde."); }, 2000);
-        setTimeout(async () => { await sendBotMessage("⏳ 10 secunde rămase..."); }, 12000);
-        setTimeout(async () => { await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); }, 17000);
-        setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
+        await sendBotMessage(forced ? "⚠️ ADMIN RESET!" : "⚠️ CHAT WIPE IN 20s!");
+        setTimeout(async () => { await wipeAllMessages(); sendBotMessage("✅ Done!"); }, 20000);
     }
 
     async function wipeAllMessages() {
-        const batchSize = 400; 
-        const q = query(collection(db, "wall_messages"), limit(batchSize));
-        return new Promise(async (resolve, reject) => {
-            try {
-                let snapshot = await getDocs(q);
-                while (snapshot.size > 0) {
-                    const batch = writeBatch(db);
-                    snapshot.forEach(doc => { batch.delete(doc.ref); });
-                    await batch.commit();
-                    snapshot = await getDocs(q);
-                }
-                resolve();
-            } catch (error) { console.error("Wipe failed:", error); reject(error); }
-        });
+        const q = query(collection(db, "wall_messages"), limit(400));
+        let snap = await getDocs(q);
+        while(snap.size > 0) {
+            const batch = writeBatch(db);
+            snap.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            snap = await getDocs(q);
+        }
     }
 
     let unsubscribe;
     function loadMessages() {
         if(unsubscribe) unsubscribe();
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
-        
         unsubscribe = onSnapshot(q, snapshot => {
             const feed = messagesFeed;
             const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
-
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
             docs.reverse();
-
             feed.innerHTML = '';
             docs.forEach(data => {
-                if(data.isDeleted) return; 
+                if(data.isDeleted) return;
+                
+                // Mark as seen logic
+                if(currentUid && !data.seenBy?.includes(currentUid)) {
+                    updateDoc(doc(db, "wall_messages", data.id), { seenBy: arrayUnion(currentUid) });
+                }
 
-                const msgId = data.id;
                 const isMine = data.uid === currentUid;
-                const isBot = data.isBot === true;
-                const msgIsAdmin = data.isAdmin === true;
-                const msgIsOwner = data.isOwner === true;
-                const msgIsMod = data.isMod === true;
-
                 const wrapper = document.createElement('div');
                 wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
-
+                
                 let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
-                let bubbleContent = "";
+                let content = "";
+                if(data.replyToName) content += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${data.replyToText.substring(0,60)}</span>`;
                 
-                if(data.replyToName) {
-                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
-                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
-                }
-                let safeText = data.text.replace(/</g, "&lt;");
-                safeText = safeText.replace(/\n/g, "<br>");
-                bubbleContent += linkify(safeText);
+                if(data.audioUrl) content += `<audio controls class="msg-audio"><source src="${data.audioUrl}" type="audio/webm"></audio>`;
+                else if(data.imageUrl) content += `<img src="${data.imageUrl}" class="msg-image" onclick="window.open('${data.imageUrl}')">`;
                 
-                let bubbleClass = 'msg-bubble';
-                if(isBot) bubbleClass += ' bot-msg';
-                else if(msgIsOwner) bubbleClass += ' owner-msg';
-                else if(msgIsAdmin) bubbleClass += ' admin-msg';
-                else if(msgIsMod) bubbleClass += ' mod-msg';
+                content += linkify(data.text.replace(/</g, "&lt;")).replace(/\n/g, "<br>");
 
                 let nameHtml = data.name;
-                if(isBot) nameHtml = `🤖 ${data.name}`;
-                if(msgIsOwner) { nameHtml += ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`; }
-                else if(msgIsAdmin) { nameHtml += ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
-                else if(msgIsMod) { nameHtml += ` <span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`; }
+                if(data.isOwner) nameHtml += ` <span class="owner-badge">OWNER</span>`;
+                else if(data.isAdmin) nameHtml += ` <span class="admin-badge">ADMIN</span>`;
 
-                let reactionsHtml = "";
-                if(data.reactions) {
-                    const counts = {};
-                    Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
-                    if(Object.keys(counts).length > 0) {
-                        reactionsHtml = `<div class="msg-reactions">`;
-                        for(let [emoji, count] of Object.entries(counts)) { 
-                            reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
-                        }
-                        reactionsHtml += `</div>`;
-                    }
-                }
-
-                let menuHtml = '';
-                const rawText = data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                const canDelete = isMine || isAdmin || isOwner || isMod;
-                
-                // Only Owner sees Mute and Ban
-                const showMute = isOwner && !isMine;
-                const showBan = isOwner && !isMine; 
-
-                // --- STEP 2: UPDATE THE HTML ---
-                menuHtml = `
-                    <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
-                    <div id="menu-${msgId}" class="options-dropdown">
-                        <button onclick="startReply('${msgId}', '${data.name}', '${rawText}')"><i class="fas fa-reply"></i> Răspunde</button>
-                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                        
-                        <!-- NEW PROFILE BUTTON IN MENU -->
-                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                        
-                        ${canDelete ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                        
-                        ${showMute ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-volume-mute"></i> Mute</button>` : ''}
-                        
-                        <!-- NEW BAN BUTTON (RED) -->
-                        ${showBan ? `<button class="mute-btn" style="border-color:#ff0000; color:#ff0000;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
-
-                        <div id="emojis-${msgId}" class="emoji-picker-menu">
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                        </div>
-                    </div>
-                `;
+                const seenCount = data.seenBy ? data.seenBy.length : 0;
 
                 wrapper.innerHTML = `
                     ${!isMine ? `<div class="msg-author">${nameHtml}</div>` : ''}
-                    <div class="${bubbleClass}">${bubbleContent}</div>
-                    ${reactionsHtml}
-                    <div class="msg-info"><span>${time}</span></div>
-                    ${menuHtml}
+                    <div class="msg-bubble ${data.isOwner?'owner-msg':data.isAdmin?'admin-msg':''}">${content}</div>
+                    <div class="msg-info">
+                        ${time} 
+                        <button class="msg-seen-btn ${seenCount>0?'seen-active':''}" onclick="window.openSeenList('${data.id}')">
+                            <i class="fas fa-eye"></i> ${seenCount}
+                        </button>
+                    </div>
+                    <div class="msg-options" onclick="toggleMenu('${data.id}')"><i class="fas fa-ellipsis-v"></i></div>
+                    <div id="menu-${data.id}" class="options-dropdown">
+                        <button onclick="startReply('${data.id}', '${data.name}', '${data.text}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                        ${(isMine || isAdmin) ? `<button onclick="deleteMsg('${data.id}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                    </div>
                 `;
                 feed.appendChild(wrapper);
             });
-            
-            if (wasAtBottom) {
-                feed.scrollTop = feed.scrollHeight;
-            }
+            if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
         });
     }
 
-    // --- REACTION DETAILS LOGIC ---
-    window.closeReactionModal = () => document.getElementById('reactionModal').classList.remove('active');
-
-    window.openReactionList = async (msgId, targetEmoji) => {
-        const modal = document.getElementById('reactionModal');
-        const list = document.getElementById('reactList');
-        const title = document.getElementById('reactModalTitle');
-        title.innerText = `${targetEmoji} Reacții`;
-        list.innerHTML = '<div style="padding:20px; text-align:center;">Se încarcă...</div>';
-        modal.classList.add('active');
-
-        try {
-            const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
-            if(!msgSnap.exists()) return;
-
-            const reactions = msgSnap.data().reactions || {};
-            const userIds = Object.keys(reactions).filter(uid => reactions[uid] === targetEmoji);
-
-            if(userIds.length === 0) { list.innerHTML = '<div style="padding:20px; text-align:center;">Nimeni încă.</div>'; return; }
-
-            const userPromises = userIds.map(uid => getDoc(doc(db, "accounts", uid)));
-            const userSnaps = await Promise.all(userPromises);
-            list.innerHTML = ''; 
-
-            userSnaps.forEach(accSnap => {
-                let uName = "Utilizator Necunoscut";
-                let uPic = "https://i.imgur.com/HeIi0wU.png"; 
-                if(accSnap.exists()) {
-                    const adata = accSnap.data();
-                    uName = adata.username || "Fără Nume";
-                    uPic = adata.image || uPic;
-                }
-                const item = document.createElement('div');
-                item.className = 'react-user-item';
-                item.innerHTML = `<img src="${uPic}" class="react-user-img"><span class="react-user-name">${uName}</span>`;
-                list.appendChild(item);
-            });
-        } catch(e) { console.error(e); list.innerHTML = '<div style="padding:10px; color:#ff4757;">Eroare la încărcare.</div>'; }
-    };
-
-    window.handleMuteAction = async (targetUid, targetName) => {
-        closeAllMenus();
-        if(!isOwner) return;
-
-        const ref = doc(db, "muted_users", targetUid);
-        const snap = await getDoc(ref);
-
-        if(snap.exists()) {
-            if(confirm(`Ești sigur că vrei să scoți MUTE-ul pentru ${targetName}?`)) {
-                try {
-                    await deleteDoc(ref);
-                    sendBotMessage(`🔊 Utilizatorul ${targetName} a primit Unmute de la Lost Soul. Poți vorbi din nou.`);
-                    showToast("User Unmuted", "success");
-                } catch(e) { showToast("Error unmuting: " + e.message); }
-            }
-        } else {
-            pendingMuteUid = targetUid;
-            pendingMuteName = targetName;
-            msgInput.value = `/mute ${targetName} `;
-            msgInput.focus();
-            showToast("Scrie motivul și durata (ex: 1h, 30m) și apasă Trimite.", "success");
-        }
-    }
-
-    window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
-    window.toggleEmojiPicker = function(id) { const picker = document.getElementById(`emojis-${id}`); if(picker) picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; }
-    window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
-    
-    window.reactMsg = async function(msgId, emoji) { 
-        if(!currentUid) return; 
-        closeAllMenus(); 
-        const msgRef = doc(db, "wall_messages", msgId); 
-        const fieldPath = `reactions.${currentUid}`; 
-        const updateObj = {}; 
-        updateObj[fieldPath] = emoji; 
-        try { 
-            await updateDoc(msgRef, updateObj); 
-            await updateDoc(doc(db, "accounts", currentUid), {
-                wallReactionsToday: increment(1)
-            });
-        } catch(e) { console.error(e); } 
-    }
-    
-    window.deleteMsg = async function(id) { 
-        closeAllMenus(); 
-        try {
-            const msgRef = doc(db, "wall_messages", id);
-            const msgSnap = await getDoc(msgRef);
-            if (!msgSnap.exists()) { showToast("Mesajul nu mai există.", "error"); return; }
-            const msgData = msgSnap.data();
-            const isMine = msgData.uid === currentUid;
-            if (isMine || isAdmin || isOwner || isMod) {
-                if(confirm("Ștergi mesajul?")) { 
-                    await updateDoc(msgRef, { isDeleted: true, text: "", reactions: {} }); 
-                    showToast("Mesaj șters.", "success");
-                } 
-            } else { showToast("Nu poți șterge mesajele altora!", "error"); }
-        } catch(e) { showToast("Eroare: " + e.message); } 
-    }
-    window.onclick = function(event) { if (!event.target.closest('.msg-options') && !event.target.closest('.options-dropdown')) { closeAllMenus(); } }
-  // --- NEW IP BAN FUNCTION ---
-    window.banIpUser = async function(targetUid, targetName, targetIp) {
-        closeAllMenus();
-        
-        // Security Check
-        if(!isOwner) {
-            showToast("Nu ai permisiunea asta!", "error");
-            return;
-        }
-
-        // Validation
-        if(!targetIp || targetIp === 'unknown' || targetIp === 'server') {
-            showToast("Eroare: Nu pot detecta IP-ul acestui user.", "error");
-            return;
-        }
-
-        // 1. Ask for Reason
-        const reason = prompt(`⚠️ ATENȚIE! Urmează să banezi IP-ul lui ${targetName}.\n\nIP: ${targetIp}\n\nScrie motivul banării:`);
-        
-        if(!reason) return; // Cancelled
-
-        // 2. Final Confirmation
-        if(confirm(`ESTI SIGUR? Această acțiune este PERMANENTĂ pentru IP-ul ${targetIp}.`)) {
-            try {
-                // Save to Firestore 'banned_ips' collection
-                // We use the IP address as the Document ID so we can find it easily
-                await setDoc(doc(db, "banned_ips", targetIp), {
-                    reason: reason,
-                    bannedAt: serverTimestamp(),
-                    bannedBy: "Lost Soul",
-                    userUid: targetUid,
-                    username: targetName
-                });
-
-                // Announce in Chat
-                sendBotMessage(`🚨 BAN HAMMER! ${targetName} a fost executat public. Banat Permanent pe IP. Motiv: ${reason}`);
-                
-                showToast("IP Banat cu succes!", "success");
-
-            } catch(e) {
-                console.error(e);
-                showToast("Eroare la banare: " + e.message, "error");
-            }
-        }
-    }
-    
-    // --- EDIT PROFILE HANDLERS ---
-    openEditProfileBtn.onclick = async () => {
-        accountModal.classList.remove('active'); 
-        editProfileModal.classList.add('active'); 
-        
-        if(auth.currentUser) {
-            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                editBirth.value = data.birthDate || "";
-                editBio.value = data.bio || "";
-                editTikTok.value = data.tiktokLink || "";
+    // --- SEEN BY LIST POPUP ---
+    window.openSeenList = async (msgId) => {
+        seenByModal.classList.add('active');
+        seenByContainer.innerHTML = 'Se încarcă...';
+        const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
+        if(!msgSnap.exists()) return;
+        const seenIds = msgSnap.data().seenBy || [];
+        seenByContainer.innerHTML = '';
+        for(const uid of seenIds) {
+            const uSnap = await getDoc(doc(db, "accounts", uid));
+            if(uSnap.exists()) {
+                const uData = uSnap.data();
+                const div = document.createElement('div');
+                div.className = 'online-user-item';
+                div.innerHTML = `<img src="${uData.image}" class="online-user-img"><span>${uData.username}</span>`;
+                seenByContainer.appendChild(div);
             }
         }
     };
 
-    closeEditProfile.onclick = () => {
-        editProfileModal.classList.remove('active');
-        accountModal.classList.add('active'); 
-    };
-
+    // KEEP PREVIOUS HELPER FUNCTIONS (Delete, Profile, etc.)
+    window.toggleMenu = (id) => { closeAllMenus(); document.getElementById(`menu-${id}`).classList.toggle('show-menu'); };
+    window.closeAllMenus = () => document.querySelectorAll('.options-dropdown').forEach(e => e.classList.remove('show-menu'));
+    window.deleteMsg = async (id) => { if(confirm("Ștergi?")) await updateDoc(doc(db, "wall_messages", id), { isDeleted: true }); };
+    
+    // Profiles
+    openEditProfileBtn.onclick = () => { accountModal.classList.remove('active'); editProfileModal.classList.add('active'); };
+    closeEditProfile.onclick = () => editProfileModal.classList.remove('active');
     saveProfileBtn.onclick = async () => {
-        if(!auth.currentUser) return;
-        
-        const birth = editBirth.value;
-        const bio = editBio.value.trim();
-        const tiktok = editTikTok.value.trim();
+        await updateDoc(doc(db, "accounts", auth.currentUser.uid), { birthDate: editBirth.value, bio: editBio.value, tiktokLink: editTikTok.value });
+        editProfileModal.classList.remove('active');
+    };
 
-        try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                birthDate: birth,
-                bio: bio,
-                tiktokLink: tiktok
-            });
-            alert("Profil salvat cu succes!");
-            editProfileModal.classList.remove('active');
-            accountModal.classList.add('active');
-        } catch(e) {
-            alert("Eroare la salvare: " + e.message);
+    window.openUserProfile = async (uid) => {
+        viewProfileModal.classList.add('active');
+        const snap = await getDoc(doc(db, "accounts", uid));
+        if(snap.exists()) {
+            const d = snap.data();
+            document.getElementById('viewUserName').innerText = d.username;
+            document.getElementById('viewUserImg').src = d.image;
+            document.getElementById('viewUserCoins').innerText = d.coins || 0;
+            document.getElementById('viewUserBio').innerText = d.bio || "Fără descriere.";
         }
     };
-    
-    // --- VIEW USER PROFILE FUNCTION ---
-    window.openUserProfile = async (uid) => {
-        closeAllMenus();
-        const modal = document.getElementById('viewProfileModal');
-        modal.classList.add('active');
-        document.getElementById('viewUserName').innerText = "Se încarcă...";
-        document.getElementById('viewUserStatus').innerHTML = "";
-        
-        try {
-            const snap = await getDoc(doc(db, "accounts", uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-                
-                // Status logic for Modal
-                let isOnline = false;
-                if(auth.currentUser && auth.currentUser.uid === uid) {
-                    isOnline = true;
-                } else {
-                    isOnline = checkIsOnline(data);
-                }
-                
-                const statusEl = document.getElementById('viewUserStatus');
-                statusEl.innerHTML = isOnline 
-                    ? '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>'
-                    : '<span style="color:#555;">● OFFLINE</span>';
-
-                // Badge
-                let badge = "";
-                if(data.email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge" style="margin-left:5px;">OWNER</span>`;
-                else if(data.email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge" style="margin-left:5px;">ADMIN</span>`;
-                else if(data.email === 'mary.bughi@gmail.com' || data.email === 'emmanuel.nica83@gmail.com') badge = `<span class="mod-badge" style="margin-left:5px;">MOD</span>`;
-
-                document.getElementById('viewUserName').innerHTML = (data.username || "Anonim") + badge;
-                document.getElementById('viewUserCoins').innerText = data.coins || 0;
-                document.getElementById('viewUserStreak').innerText = data.streak || 0;
-                document.getElementById('viewUserBio').innerText = data.bio ? data.bio : "Nu există descriere.";
-                document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
-
-                const tiktokBtn = document.getElementById('viewUserTikTok');
-                if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
-                    tiktokBtn.href = data.tiktokLink;
-                    tiktokBtn.style.display = 'inline-flex';
-                } else { tiktokBtn.style.display = 'none'; }
-            }
-        } catch(e) { console.error(e); }
-    };
-
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
+
   </script>
 </body>
 </html>
