@@ -771,10 +771,10 @@
         <a href="help.html" class="btn btn-outline">Susține-ne</a>
     </div>
     
-    <!-- Butonul de jos stil "Plin" (Primary), mărime normală -->
-    <a href="noutati.html" class="btn btn-primary">
-        ANUNȚURI ȘI NOUTĂȚI
-    </a>
+<a href="noutati.html" class="btn btn-cyber btn-primary">
+    <span class="glitch-text">ANUNȚURI ȘI NOUTĂȚI</span>
+    <span id="heroNotifBadge" class="notif-badge"></span>
+</a>
 </div>
 </main>
     
@@ -1256,7 +1256,7 @@ function startBotConversation() {
         }
     };
 
-    onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, user => {
         if (user) {
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
@@ -1266,16 +1266,44 @@ function startBotConversation() {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
-            onSnapshot(doc(db, "accounts", user.uid), (doc) => {
-                if(doc.exists()) {
-                    const data = doc.data();
-                    document.getElementById('popUserImg').src = data.image;
-                    document.getElementById('popUserName').innerText = data.username;
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    document.getElementById('popUserCoins').innerText = data.coins || 0;
-                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-                }
+            // 1. Ascultăm numărul TOTAL de postări din metadata
+            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+                const totalGlobal = metaSnap.data()?.totalNews || 0;
+
+                // 2. Ascultăm datele utilizatorului (Coins, Streak ȘI Notificări)
+                onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
+                    if(uSnap.exists()) {
+                        const data = uSnap.data();
+                        
+                        // Actualizăm elementele din Pop-up-ul de cont (existent)
+                        document.getElementById('popUserImg').src = data.image;
+                        document.getElementById('popUserName').innerText = data.username;
+                        document.getElementById('popUserEmail').innerText = data.email;
+                        document.getElementById('popUserCoins').innerText = data.coins || 0;
+                        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+
+                        // --- LOGICA PENTRU CERCULEȚUL ROȘU (BADGE) ---
+                        const userVazute = data.lastSeenNewsCount || 0;
+                        const noutatiNoi = totalGlobal - userVazute;
+
+                        const heroBadge = document.getElementById('heroNotifBadge');
+                        const headerBadge = document.getElementById('headerNotifBadge');
+
+                        // Actualizăm badge-urile de pe pagină (Hero și Header)
+                        [heroBadge, headerBadge].forEach(badge => {
+                            if (badge) {
+                                if (noutatiNoi > 0) {
+                                    badge.innerText = `+${noutatiNoi}`;
+                                    badge.style.display = 'flex';
+                                } else {
+                                    badge.style.display = 'none';
+                                }
+                            }
+                        });
+                    }
+                });
             });
+
             updateOnlineStatus(); // Start tracking
         } else {
             headerLoginText.innerText = "LOGIN";
@@ -1289,6 +1317,7 @@ function startBotConversation() {
   </script>
 </body>
 </html>
+
 
 
 
