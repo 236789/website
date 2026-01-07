@@ -54,7 +54,7 @@
         font-family: 'Orbitron', sans-serif; 
     }
 
-    /* --- REWARD MODAL (ADDED) --- */
+    /* --- REWARD MODAL --- */
     .reward-modal {
         position: fixed; inset: 0; background: rgba(0,0,0,0.9);
         display: none; justify-content: center; align-items: center;
@@ -104,7 +104,7 @@
     .btn-logout-pop { background: transparent; border: 1.5px solid #ff4757; color: #ff4757; padding: 10px 25px; border-radius: 12px; font-family: 'Orbitron'; font-weight: 700; cursor: pointer; transition: 0.3s; }
     .btn-logout-pop:hover { background: #ff4757; color: #fff; box-shadow: 0 0 15px rgba(255, 71, 87, 0.4); }
 
-    /* --- ADDED STYLES FOR PROFILE FEATURES --- */
+    /* --- PROFILE FEATURES --- */
     .view-profile-btn {
         background: transparent; border: 1px solid var(--primary); color: var(--primary);
         width: 20px; height: 20px; border-radius: 50%; font-size: 10px;
@@ -294,6 +294,40 @@
         border-top: 1px solid rgba(255,255,255,0.1);
         padding-top: 10px;
     }
+    
+    /* --- SEEN BUTTON (NEW) --- */
+    .seen-btn {
+        background: rgba(0, 0, 0, 0.4); 
+        border: 1px solid rgba(255,255,255,0.4);
+        color: #fff;
+        padding: 6px 14px;
+        border-radius: 15px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        display: flex; align-items: center; gap: 6px;
+        transition: 0.2s;
+    }
+    .seen-btn:hover { background: rgba(0,0,0,0.6); transform: scale(1.05); }
+
+    /* --- DELETE BUTTON (NEW) --- */
+    .btn-delete-post {
+        background: rgba(255, 71, 87, 0.2); 
+        border: 1px solid #ff4757;
+        color: #fff;
+        width: 30px; height: 30px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        transition: 0.3s;
+        margin-left: auto;
+    }
+    .btn-delete-post:hover { background: #ff4757; }
+
+    /* --- SEEN USERS LIST MODAL STYLE --- */
+    #seenUsersList { text-align: left; max-height: 350px; overflow-y: auto; padding-right: 5px; }
+    .seen-user-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .seen-user-img { width: 30px; height: 30px; border-radius: 50%; }
 
     /* --- VOTE BUTTONS --- */
     .vote-actions { display: flex; gap: 8px; }
@@ -327,11 +361,12 @@
     }
     
     /* HELPER BUTTONS OVERRIDE */
-    .helper-post .vote-btn, .helper-post .comments-btn {
+    .helper-post .vote-btn, .helper-post .comments-btn, .helper-post .seen-btn {
         background: rgba(0,0,0,0.1) !important;
         border-color: #000 !important;
         color: #000 !important;
     }
+    .helper-post .btn-delete-post { border-color: #000; color: #000; }
 
     /* --- COMMENTS SECTION --- */
     .comments-section-wrapper {
@@ -484,6 +519,17 @@ nav a, .hero-btns a {
         <button class="lb-btn lb-prev" id="lbPrev">❮</button>
         <img id="lbMainImg" src="" class="lb-img">
         <button class="lb-btn lb-next" id="lbNext">❯</button>
+    </div>
+</div>
+
+<!-- SEEN BY MODAL (NEW) -->
+<div id="seenModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width:320px; height:auto; max-height:400px;">
+        <button onclick="document.getElementById('seenModal').classList.remove('active')" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; margin-bottom:15px;">VĂZUT DE</h3>
+        <div id="seenUsersList">
+            <div style="text-align:center; color:#aaa;">Se încarcă...</div>
+        </div>
     </div>
 </div>
 
@@ -697,7 +743,7 @@ nav a, .hero-btns a {
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, where, serverTimestamp, doc, getDoc, setDoc, updateDoc, onSnapshot, getDocs, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, where, serverTimestamp, doc, getDoc, setDoc, updateDoc, onSnapshot, getDocs, increment, arrayUnion, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     const firebaseConfig = {
@@ -1007,6 +1053,24 @@ nav a, .hero-btns a {
         }
     }
 
+    // --- SEEN TRACKING OBSERVER ---
+    const seenObserver = new IntersectionObserver((entries) => {
+        entries.forEach(async entry => {
+            if (entry.isIntersecting && currentUid) {
+                const postId = entry.target.dataset.id;
+                const postRef = doc(db, "site_news", postId);
+                // Check local dataset first to avoid spam writes
+                const alreadySeen = entry.target.dataset.seen === 'true';
+                if(!alreadySeen) {
+                   try {
+                       await updateDoc(postRef, { seenBy: arrayUnion(currentUid) });
+                       entry.target.dataset.seen = 'true'; // Mark locally
+                   } catch(e) { }
+                }
+            }
+        });
+    }, { threshold: 0.5 });
+
     function loadPosts() {
         if(unsubscribePosts) unsubscribePosts();
         messagesFeed.innerHTML = '<div style="text-align:center; color:#555; margin-top:50px;">Se încarcă...</div>';
@@ -1032,6 +1096,49 @@ nav a, .hero-btns a {
             await updateDoc(ref, { votes });
         } catch(e) { console.error(e); }
     };
+    
+    // --- DELETE POST (OWNER ONLY) ---
+    window.deleteNewsPost = async (id) => {
+        if(!confirm("Sigur vrei să ștergi această postare?")) return;
+        try {
+            await deleteDoc(doc(db, "site_news", id));
+            // Optional: Decrement counter
+        } catch(e) { alert("Eroare: " + e.message); }
+    }
+
+    // --- OPEN SEEN LIST ---
+    window.openSeenByList = async (id) => {
+        const modal = document.getElementById('seenModal');
+        const listDiv = document.getElementById('seenUsersList');
+        modal.classList.add('active');
+        listDiv.innerHTML = '<div style="text-align:center; color:#aaa;">Se încarcă...</div>';
+        
+        try {
+            const postSnap = await getDoc(doc(db, "site_news", id));
+            if(!postSnap.exists()) return;
+            const uids = postSnap.data().seenBy || [];
+            
+            if(uids.length === 0) { listDiv.innerHTML = '<div style="text-align:center; color:#aaa;">Nimeni încă.</div>'; return; }
+
+            // Fetch user details for these UIDs
+            // Note: Firestore 'in' query supports max 10 items. For simplicity/scale, we fetch individually here or fetch all accounts.
+            // Better approach for small lists: fetch individual docs
+            listDiv.innerHTML = '';
+            // Limit to last 50 viewers to avoid heavy reads
+            const recentUids = uids.slice(-50).reverse(); 
+            
+            for(const uid of recentUids) {
+                const userSnap = await getDoc(doc(db, "accounts", uid));
+                if(userSnap.exists()) {
+                    const u = userSnap.data();
+                    const item = document.createElement('div');
+                    item.className = 'seen-user-item';
+                    item.innerHTML = `<img src="${u.image}" class="seen-user-img"><span>${u.username}</span>`;
+                    listDiv.appendChild(item);
+                }
+            }
+        } catch(e) { console.error(e); listDiv.innerHTML = 'Eroare.'; }
+    }
 
     // --- COMMENTS LOGIC ---
     window.toggleComments = async (id) => {
@@ -1115,10 +1222,8 @@ nav a, .hero-btns a {
         let badge = '';
 
         // --- UPDATED ROLE DETECTION LOGIC ---
-        const email = data.email || ""; // Prioritize email if available
+        const email = data.email || ""; 
 
-        // Check if data.isOwner/Mod/Admin exists (Old posts) OR check email (New Logic)
-        
         if (email === 'nicaemmanuel433qe@gmail.com' || data.isOwner) { 
             cardClass += ' owner-post'; 
             badge = `<span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`; 
@@ -1136,7 +1241,6 @@ nav a, .hero-btns a {
              badge = `<span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
         }
         else {
-            // Default fallback if no flags match (shouldn't happen for staff posts usually)
             cardClass += ' admin-post'; 
             badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
         }
@@ -1153,25 +1257,29 @@ nav a, .hero-btns a {
         const imgs = data.images || [];
         if (imgs.length > 0) {
             mediaHtml += `<div class="post-media-grid">`;
-            // Box 1: Always first image
-            mediaHtml += `<div class="media-box" onclick='openImageGallery(${JSON.stringify(imgs)}, 0)'>
-                            <img src="${imgs[0]}">
-                          </div>`;
-            // Box 2: If there are more images
+            mediaHtml += `<div class="media-box" onclick='openImageGallery(${JSON.stringify(imgs)}, 0)'><img src="${imgs[0]}"></div>`;
             if (imgs.length > 1) {
                 mediaHtml += `<div class="media-box" onclick='openImageGallery(${JSON.stringify(imgs)}, 1)'>
                                 <img src="${imgs[1]}" style="opacity:0.3;">
-                                <div class="media-count-overlay">
-                                    <span class="count-txt">+${imgs.length - 1}</span>
-                                    <span class="count-lbl">IMAGES</span>
-                                </div>
+                                <div class="media-count-overlay"><span class="count-txt">+${imgs.length - 1}</span><span class="count-lbl">IMAGES</span></div>
                               </div>`;
             }
             mediaHtml += `</div>`;
         }
 
+        // --- NEW FEATURES LOGIC ---
+        // 1. DELETE BUTTON (OWNER ONLY)
+        const isMeOwner = auth.currentUser.email === 'nicaemmanuel433qe@gmail.com';
+        const deleteHtml = isMeOwner ? `<button class="btn-delete-post" onclick="deleteNewsPost('${data.id}')"><i class="fas fa-trash"></i></button>` : '';
+
+        // 2. SEEN BUTTON
+        const seenCount = data.seenBy ? data.seenBy.length : 0;
+        const alreadySeen = (data.seenBy || []).includes(currentUid);
+        
         div.className = cardClass;
-        // ADDED PROFILE ICON BUTTON
+        div.dataset.id = data.id; // For observer
+        div.dataset.seen = alreadySeen ? 'true' : 'false';
+
         div.innerHTML = `
             <div class="post-header">
                 <img src="${data.photo}" class="post-pfp">
@@ -1179,6 +1287,7 @@ nav a, .hero-btns a {
                     ${data.name} ${badge}
                     <button class="view-profile-btn" onclick="openUserProfile('${data.uid}')"><i class="fas fa-user"></i></button>
                 </div>
+                ${deleteHtml} <!-- DELETE BTN HERE -->
                 <div class="post-date">${dateStr}</div>
             </div>
             <div class="post-content">${linkify(data.text)}</div>
@@ -1186,6 +1295,7 @@ nav a, .hero-btns a {
             <div class="post-footer">
                 <button class="comments-btn" onclick="toggleComments('${data.id}')"><i class="fas fa-comment-dots"></i> Comentarii</button>
                 <div class="vote-actions">
+                    <button class="seen-btn" onclick="openSeenByList('${data.id}')"><i class="fas fa-eye"></i> ${seenCount}</button>
                     <button class="vote-btn ${myVote===1 ? 'active-like' : ''}" onclick="votePost('${data.id}', 1)"><i class="fas fa-thumbs-up"></i> ${likes}</button>
                     <button class="vote-btn ${myVote===-1 ? 'active-dislike' : ''}" onclick="votePost('${data.id}', -1)"><i class="fas fa-thumbs-down"></i> ${dislikes}</button>
                 </div>
@@ -1198,6 +1308,9 @@ nav a, .hero-btns a {
                 </div>
             </div>
         `;
+
+        // Start tracking visibility
+        seenObserver.observe(div);
 
         // Global function helper for gallery
         window.openImageGallery = (list, idx) => openLightbox(list, idx);
@@ -1224,7 +1337,8 @@ nav a, .hero-btns a {
             email: auth.currentUser.email, // SAVED EMAIL
             photo: auth.currentUser.photoURL, 
             createdAt: serverTimestamp(), 
-            isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com'
+            isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com',
+            seenBy: [auth.currentUser.uid] // Creator sees it immediately
         });
         
         await setDoc(doc(db, "site_metadata", "counters"), { totalNews: increment(1) }, { merge: true });
