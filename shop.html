@@ -44,7 +44,7 @@
       font-family: 'Poppins', sans-serif; color: #fff; overflow-x: hidden;
     }
 
-    h1, h2, h3, .logo, .btn, .package-count, .login-btn-header, .side-menu-login-btn, .pop-user, .streak-txt, .coins-count, .price-tag, .tasks-title { 
+    h1, h2, h3, .logo, .btn, .package-count, .login-btn-header, .side-menu-login-btn, .pop-user, .streak-txt, .coins-count, .price-tag, .tasks-title, .currency-btn { 
         font-family: 'Orbitron', sans-serif; 
     }
 
@@ -77,14 +77,43 @@
 
     /* --- SHOP CONTENT --- */
     .shop-hero { padding: 140px 20px 40px; text-align: center; }
+    
     .user-stats-card {
         display: inline-flex; align-items: center; gap: 20px; background: var(--glass-bg);
         padding: 20px 40px; border-radius: 50px; border: 1px solid var(--primary-dim);
-        backdrop-filter: blur(10px); margin-bottom: 50px;
+        backdrop-filter: blur(10px); margin-bottom: 30px;
     }
     .user-stats-img { width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--primary); }
     .user-stats-info { text-align: left; }
     .user-stats-coins { display: flex; align-items: center; gap: 8px; color: var(--gold); font-weight: 800; font-size: 18px; }
+
+    /* CURRENCY SWITCHER */
+    .currency-switcher {
+        display: inline-flex;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid var(--glass-border);
+        border-radius: 50px;
+        padding: 5px;
+        margin-bottom: 50px;
+        gap: 5px;
+    }
+    .currency-btn {
+        background: transparent;
+        border: none;
+        color: #a5b1c2;
+        padding: 10px 20px;
+        border-radius: 40px;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 14px;
+        transition: 0.3s;
+    }
+    .currency-btn:hover { color: #fff; }
+    .currency-btn.active {
+        background: var(--primary);
+        color: #000;
+        box-shadow: 0 0 15px rgba(41, 243, 255, 0.4);
+    }
 
     .recharge-grid {
         max-width: 1100px; margin: 0 auto 80px;
@@ -107,9 +136,7 @@
     .price-tag { 
         color: var(--primary); font-size: 16px; margin-top: 10px; font-weight: 700; 
         background: rgba(41, 243, 255, 0.1); padding: 5px 15px; border-radius: 50px; 
-        display: flex; flex-direction: column; align-items: center; line-height: 1.2;
     }
-    .euro-price { font-size: 11px; color: #a5b1c2; font-weight: 500; margin-top: 2px; }
 
     /* --- MODALS --- */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 15000; backdrop-filter: blur(10px); padding: 20px; }
@@ -237,6 +264,17 @@
             </div>
         </div>
 
+        <!-- NEW CURRENCY CALCULATOR / SELECTOR -->
+        <div>
+            <div style="font-size: 10px; color: #aaa; margin-bottom: 5px; font-family: 'Orbitron'; text-transform: uppercase;">Alege Moneda</div>
+            <div class="currency-switcher">
+                <button onclick="switchCurrency('RON')" class="currency-btn active" id="btn-RON">RON</button>
+                <button onclick="switchCurrency('EUR')" class="currency-btn" id="btn-EUR">EUR</button>
+                <button onclick="switchCurrency('USD')" class="currency-btn" id="btn-USD">USD</button>
+                <button onclick="switchCurrency('GBP')" class="currency-btn" id="btn-GBP">GBP</button>
+            </div>
+        </div>
+
         <div class="recharge-grid" id="rechargeGrid"></div>
     </main>
 
@@ -248,10 +286,9 @@
             <p style="font-size: 12px; color: #a5b1c2;">Introdu numărul de monede dorit:</p>
             <input type="number" id="customInput" class="calc-input" placeholder="Min. 100" oninput="calculatePrice()">
             
-            <!-- RESULT DISPLAY UPDATE -->
             <div class="calc-res">Total de plată: <span id="priceVal">0.00 RON</span></div>
             
-            <p style="font-size: 11px; color: #666; margin-bottom: 15px;">Rata: 100 Coins = 1 RON</p>
+            <p style="font-size: 11px; color: #666; margin-bottom: 15px;">Rata: 100 Coins = <span id="rateDisplay">1 RON</span></p>
             
             <div class="pay-links-container">
                 <a href="https://revolut.me/florinnica83" target="_blank" class="pay-btn pay-rev"><i class="fas fa-bolt"></i> REVOLUT</a>
@@ -346,8 +383,20 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-    // Exchange Rate Constant (Adjust if needed)
-    const EURO_RATE = 4.97; // 1 Euro approx 4.97 RON
+    // --- CURRENCY RATES ---
+    let selectedCurrency = 'RON';
+    const RATES = {
+        RON: 1,
+        EUR: 4.97,  // 1 EUR = 4.97 RON
+        USD: 4.60,  // 1 USD = 4.60 RON
+        GBP: 5.80   // 1 GBP = 5.80 RON
+    };
+    const SYMBOLS = {
+        RON: 'RON',
+        EUR: '€',
+        USD: '$',
+        GBP: '£'
+    };
 
     // --- BAN CHECK (GLOBAL) ---
     async function checkGlobalBan() {
@@ -398,22 +447,36 @@
         { coins: 10000, price: 100 }
     ];
 
+    window.switchCurrency = (curr) => {
+        selectedCurrency = curr;
+        
+        // Update Buttons
+        document.querySelectorAll('.currency-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`btn-${curr}`).classList.add('active');
+
+        renderShop();
+        calculatePrice(); // Update modal if open
+    }
+
     function renderShop() {
         rechargeGrid.innerHTML = '';
+        
         packages.forEach(p => {
-            const euroPrice = (p.price / EURO_RATE).toFixed(2);
+            // Calculate Price based on selected currency
+            // Base price is RON. To get other, we DIVIDE by rate.
+            // Example: 10 RON / 5 (GBP Rate) = 2 GBP
+            const convertedPrice = (p.price / RATES[selectedCurrency]).toFixed(2);
+            const symbol = SYMBOLS[selectedCurrency];
+
             const card = document.createElement('div');
             card.className = 'package-card';
             card.innerHTML = `
                 <img src="https://iili.io/fhc1SKQ.png">
                 <span class="package-count">${p.coins.toLocaleString()}</span>
-                <div class="price-tag">
-                    <span>RON ${p.price.toFixed(2)}</span>
-                    <span class="euro-price">(€${euroPrice})</span>
-                </div>
+                <span class="price-tag">${symbol} ${convertedPrice}</span>
             `;
             card.onclick = () => {
-                document.getElementById('payDetails').innerHTML = `${p.coins.toLocaleString()} Coins = ${p.price.toFixed(2)} RON<br><span style="font-size:14px; color:#aaa;">(Approx. €${euroPrice})</span>`;
+                document.getElementById('payDetails').innerHTML = `${p.coins.toLocaleString()} Coins = ${symbol} ${convertedPrice}`;
                 document.getElementById('paymentModal').classList.add('active');
             };
             rechargeGrid.appendChild(card);
@@ -424,18 +487,27 @@
         custom.innerHTML = `
             <i class="fas fa-magic" style="font-size:35px; color:var(--primary); margin-bottom:15px;"></i>
             <span class="package-count">Personalizat</span>
-            <span class="price-tag" style="padding: 8px 15px;">Calculator<br><span class="euro-price">Automat</span></span>
+            <span class="price-tag" style="padding: 8px 15px;">Calculator<br><span style="font-size:10px; color:#aaa;">${selectedCurrency}</span></span>
         `;
-        custom.onclick = () => document.getElementById('customModal').classList.add('active');
+        custom.onclick = () => {
+            calculatePrice();
+            document.getElementById('customModal').classList.add('active');
+        }
         rechargeGrid.appendChild(custom);
     }
 
     window.calculatePrice = () => {
         const val = document.getElementById('customInput').value;
-        const ronPrice = (val * 0.01);
-        const euroPrice = (ronPrice / EURO_RATE).toFixed(2);
+        const ronPrice = (val * 0.01); // 100 coins = 1 ron
         
-        document.getElementById('priceVal').innerHTML = `${ronPrice.toFixed(2)} RON <span style="font-size:14px; color:#aaa; margin-left:5px;">(€${euroPrice})</span>`;
+        const finalPrice = (ronPrice / RATES[selectedCurrency]).toFixed(2);
+        const symbol = SYMBOLS[selectedCurrency];
+
+        // Update Rate Display Text
+        const singleRate = (1 / RATES[selectedCurrency]).toFixed(2);
+        document.getElementById('rateDisplay').innerText = `${symbol} ${singleRate}`;
+
+        document.getElementById('priceVal').innerText = `${symbol} ${finalPrice}`;
     };
 
     window.closeModal = (id) => document.getElementById(id).classList.remove('active');
