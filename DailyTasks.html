@@ -42,7 +42,6 @@
     
     nav { display: flex; gap: 32px; align-items: center; }
     
-    /* NAV LINKS */
     nav a { 
         color: var(--text-muted); text-decoration: none; font-size: 13px; 
         font-weight: 700; transition: 0.3s; 
@@ -50,8 +49,9 @@
     }
     nav a:hover { color: var(--primary); }
 
-    .login-btn-header { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); padding: 8px 20px; border-radius: 20px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-    .user-avatar-small { width: 24px; height: 24px; border-radius: 50%; border: 1px solid #fff; display: none; }
+    .login-btn-header { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); padding: 8px 20px; border-radius: 20px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 700; transition: 0.3s; }
+    .login-btn-header:hover { background: var(--primary); color: #000; }
+    .user-avatar-small { width: 24px; height: 24px; border-radius: 50%; border: 1px solid #fff; display: none; object-fit: cover; }
 
     /* --- HAMBURGER --- */
     .hamburger { display: none; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; margin-left: 15px; }
@@ -240,7 +240,7 @@
 
 <div id="questGrid" class="quests-container"></div>
 
-<!-- EDIT PROFILE MODAL (NEW) -->
+<!-- EDIT PROFILE MODAL -->
 <div id="editProfileModal" class="account-modal-overlay">
     <div class="account-card">
         <button id="closeEditProfile" class="close-pop">✕</button>
@@ -261,7 +261,6 @@
         <h3 id="popUserName" class="pop-user">Utilizator</h3>
         <p id="popUserEmail" class="pop-mail">email@exemplu.com</p>
         
-        <!-- NEW EDIT BUTTON -->
         <button id="openEditProfileBtn" class="btn-edit-profile">
             <i class="fas fa-edit"></i> Editează Profil
         </button>
@@ -286,7 +285,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -301,13 +300,33 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
 
     const questGrid = document.getElementById('questGrid');
     const resetTimerEl = document.getElementById('resetTimer');
     const accountModal = document.getElementById('accountModal');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+    const sideMenu = document.getElementById('sideMenu');
 
-    // --- NEW EDIT MODAL LOGIC ---
+    // --- LOGICĂ LOGIN ---
+    const handleLogin = async () => {
+        if (!auth.currentUser) {
+            try {
+                await signInWithPopup(auth, provider);
+                sideMenu.classList.remove('open');
+            } catch (error) {
+                console.error("Eroare la autentificare:", error);
+            }
+        } else {
+            accountModal.classList.add('active');
+            sideMenu.classList.remove('open');
+        }
+    };
+
+    // Legăm ambele butoane de funcția handleLogin
+    document.getElementById('headerLoginBtn').onclick = handleLogin;
+    if (mobileLoginBtn) mobileLoginBtn.onclick = handleLogin;
+
     const editProfileModal = document.getElementById('editProfileModal');
     const openEditProfileBtn = document.getElementById('openEditProfileBtn');
     const closeEditProfile = document.getElementById('closeEditProfile');
@@ -334,18 +353,15 @@
     let serverTimeOffset = 0; 
     let isAwarding = false;
 
-    // --- ADVANCED PRESENCE SYSTEM (Online/Offline) ---
+    // --- PRESENCE SYSTEM ---
     let idleTimer;
     let lastStatusUpdate = 0;
-    const UPDATE_INTERVAL = 3 * 60 * 1000; // Update "Online" every 3 mins to save data
-    const IDLE_TIMEOUT = 5 * 60 * 1000;    // Mark "Offline" after 5 mins of no action
+    const UPDATE_INTERVAL = 3 * 60 * 1000;
+    const IDLE_TIMEOUT = 5 * 60 * 1000;
 
-    // 1. Function to mark user ONLINE
     async function setStatusOnline() {
         if (!auth.currentUser) return;
         const now = Date.now();
-
-        // Only write to Firebase if 3 minutes have passed since the last write
         if (now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
@@ -353,11 +369,10 @@
                     isOnline: true,
                     lastActive: serverTimestamp()
                 });
-            } catch(e) { console.error("Error setting online:", e); }
+            } catch(e) {}
         }
     }
 
-    // 2. Function to mark user OFFLINE (Called automatically)
     async function setStatusOffline() {
         if (!auth.currentUser) return;
         try {
@@ -365,27 +380,19 @@
                 isOnline: false,
                 lastActive: serverTimestamp()
             });
-            // console.log("Utilizator marcat OFFLINE (Inactivitate)");
-        } catch(e) { console.error("Error setting offline:", e); }
+        } catch(e) {}
     }
 
-    // 3. The Reset Function (Runs on every click/move)
     function resetIdleTimer() {
-        // Stop the countdown to "Offline"
         clearTimeout(idleTimer);
-
-        // Mark us as Online (if throttled time allows)
         setStatusOnline();
-
-        // Start a new 5-minute countdown
         idleTimer = setTimeout(setStatusOffline, IDLE_TIMEOUT);
     }
 
-    // 4. Listen for User Activity
     window.onload = resetIdleTimer;
     document.onmousemove = resetIdleTimer;
     document.onkeypress = resetIdleTimer;
-    document.ontouchstart = resetIdleTimer; // For mobile
+    document.ontouchstart = resetIdleTimer;
     document.onclick = resetIdleTimer;
     document.onscroll = resetIdleTimer;
 
@@ -436,26 +443,23 @@
             } else if (q.id === 'gallery_task') {
                 const currentLikes = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
                 const currentComments = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
-                const totalTarget = q.targetLikes + q.targetComments;
-                const prog = ((currentLikes + currentComments) / totalTarget) * 100;
-                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Activitate</span><span>${currentLikes+currentComments}/${totalTarget}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${prog}%"></div></div></div>`;
+                const prog = ((currentLikes + currentComments) / (q.targetLikes + q.targetComments)) * 100;
+                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Activitate</span><span>${currentLikes+currentComments}/${q.targetLikes+q.targetComments}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${prog}%"></div></div></div>`;
                 if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
             } else {
                 let current = 0;
-                // LOGICĂ EXPLICITĂ PENTRU FIECARE ID
                 switch(q.id) {
                     case 'msg3': current = userData.messagesSentToday || 0; break;
                     case 'wall_reply_5': current = userData.wallRepliesToday || 0; break;
                     case 'wall_react_10': current = userData.wallReactionsToday || 0; break;
                     case 'wall_long_msg': current = userData.wallLongMsgSent ? 1 : 0; break;
-                    case 'kevin_talk_15': current = userData.kevinMessagesToday || 0; break; // ACESTA ESTE CÂMPUL DIN INDEX.HTML
+                    case 'kevin_talk_15': current = userData.kevinMessagesToday || 0; break;
                     case 'review': current = userData.hasWrittenReview ? 1 : 0; break;
                     case 'tiktok5': current = userData.tiktoksFollowed || 0; break;
                     case 'social3': current = userData.socialFollowed || 0; break;
                     case 'visit_news': current = userData.newsVisitedToday || 0; break;
                     case 'give_feedback': current = userData.feedbackGivenToday || 0; break;
                 }
-
                 const progress = Math.min((current / q.target) * 100, 100);
                 progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div></div>`;
                 if (current >= q.target) canAward = true;
@@ -481,14 +485,13 @@
                 completedQuests: arrayUnion(questId),
                 latestServerCheck: serverTimestamp() 
             });
-        } catch (e) { console.error(e); } finally { isAwarding = false; }
+        } catch (e) {} finally { isAwarding = false; }
     }
 
-    // --- EDIT PROFILE HANDLERS ---
+    // EDIT PROFILE
     openEditProfileBtn.onclick = async () => {
         accountModal.classList.remove('active'); 
         editProfileModal.classList.add('active'); 
-        
         if(auth.currentUser) {
             const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             if(snap.exists()) {
@@ -507,23 +510,16 @@
 
     saveProfileBtn.onclick = async () => {
         if(!auth.currentUser) return;
-        
-        const birth = editBirth.value;
-        const bio = editBio.value.trim();
-        const tiktok = editTikTok.value.trim();
-
         try {
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                birthDate: birth,
-                bio: bio,
-                tiktokLink: tiktok
+                birthDate: editBirth.value,
+                bio: editBio.value.trim(),
+                tiktokLink: editTikTok.value.trim()
             });
-            alert("Profil salvat cu succes!");
+            alert("Profil salvat!");
             editProfileModal.classList.remove('active');
             accountModal.classList.add('active');
-        } catch(e) {
-            alert("Eroare la salvare: " + e.message);
-        }
+        } catch(e) { alert(e.message); }
     };
 
     onAuthStateChanged(auth, async (user) => {
@@ -532,7 +528,6 @@
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
             const userRef = doc(db, "accounts", user.uid);
-            await updateDoc(userRef, { latestServerCheck: serverTimestamp() });
 
             onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
@@ -544,7 +539,7 @@
                         
                         if (!data.activeDailyQuests) {
                             const newIds = generateDailyIds(data.completedQuests || []);
-                            await updateDoc(userRef, { activeDailyQuests: newIds, latestServerCheck: serverTimestamp() });
+                            await updateDoc(userRef, { activeDailyQuests: newIds });
                             return;
                         }
 
@@ -556,8 +551,7 @@
                                 newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
                                 visited_lost_soul_today: false, visited_kevin_trinity_today: false,
                                 wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                                completedQuests: persistent, activeDailyQuests: newIds, lastResetDate: roDate,
-                                latestServerCheck: serverTimestamp() 
+                                completedQuests: persistent, activeDailyQuests: newIds, lastResetDate: roDate
                             });
                             return; 
                         }
@@ -570,18 +564,18 @@
                     renderQuests(data);
                 }
             });
-            resetIdleTimer(); // Start Tracking
-        } else { window.location.href = 'index.html'; }
+            resetIdleTimer();
+        } else {
+            document.getElementById('headerLoginText').innerText = "LOGIN";
+            document.getElementById('headerUserImg').style.display = "none";
+        }
     });
 
-    // MENIU MOBIL
     const menuBtn = document.getElementById('menuBtn');
-    const sideMenu = document.getElementById('sideMenu');
     const closeMenu = document.getElementById('closeMenu');
     if(menuBtn) menuBtn.onclick = () => sideMenu.classList.add('open');
     if(closeMenu) closeMenu.onclick = () => sideMenu.classList.remove('open');
 
-    document.getElementById('headerLoginBtn').onclick = () => accountModal.classList.add('active');
     document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth);
 </script>
