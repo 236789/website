@@ -103,7 +103,13 @@
     }
     .package-card img { width: 60px; height: 60px; margin-bottom: 15px; filter: drop-shadow(0 0 10px var(--gold)); }
     .package-count { font-size: 24px; font-weight: 900; color: #fff; }
-    .price-tag { color: var(--primary); font-size: 16px; margin-top: 10px; font-weight: 700; background: rgba(41, 243, 255, 0.1); padding: 5px 15px; border-radius: 50px; }
+    
+    .price-tag { 
+        color: var(--primary); font-size: 16px; margin-top: 10px; font-weight: 700; 
+        background: rgba(41, 243, 255, 0.1); padding: 5px 15px; border-radius: 50px; 
+        display: flex; flex-direction: column; align-items: center; line-height: 1.2;
+    }
+    .euro-price { font-size: 11px; color: #a5b1c2; font-weight: 500; margin-top: 2px; }
 
     /* --- MODALS --- */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 15000; backdrop-filter: blur(10px); padding: 20px; }
@@ -241,7 +247,9 @@
             <h2 style="color: var(--primary); font-size: 20px;">PERSONALIZARE</h2>
             <p style="font-size: 12px; color: #a5b1c2;">Introdu numărul de monede dorit:</p>
             <input type="number" id="customInput" class="calc-input" placeholder="Min. 100" oninput="calculatePrice()">
-            <div class="calc-res">Total de plată: <span id="priceVal">0.00</span> RON</div>
+            
+            <!-- RESULT DISPLAY UPDATE -->
+            <div class="calc-res">Total de plată: <span id="priceVal">0.00 RON</span></div>
             
             <p style="font-size: 11px; color: #666; margin-bottom: 15px;">Rata: 100 Coins = 1 RON</p>
             
@@ -338,6 +346,9 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+    // Exchange Rate Constant (Adjust if needed)
+    const EURO_RATE = 4.97; // 1 Euro approx 4.97 RON
+
     // --- BAN CHECK (GLOBAL) ---
     async function checkGlobalBan() {
         try {
@@ -390,15 +401,19 @@
     function renderShop() {
         rechargeGrid.innerHTML = '';
         packages.forEach(p => {
+            const euroPrice = (p.price / EURO_RATE).toFixed(2);
             const card = document.createElement('div');
             card.className = 'package-card';
             card.innerHTML = `
                 <img src="https://iili.io/fhc1SKQ.png">
                 <span class="package-count">${p.coins.toLocaleString()}</span>
-                <span class="price-tag">RON ${p.price.toFixed(2)}</span>
+                <div class="price-tag">
+                    <span>RON ${p.price.toFixed(2)}</span>
+                    <span class="euro-price">(€${euroPrice})</span>
+                </div>
             `;
             card.onclick = () => {
-                document.getElementById('payDetails').innerText = `${p.coins.toLocaleString()} Coins = ${p.price.toFixed(2)} RON`;
+                document.getElementById('payDetails').innerHTML = `${p.coins.toLocaleString()} Coins = ${p.price.toFixed(2)} RON<br><span style="font-size:14px; color:#aaa;">(Approx. €${euroPrice})</span>`;
                 document.getElementById('paymentModal').classList.add('active');
             };
             rechargeGrid.appendChild(card);
@@ -409,7 +424,7 @@
         custom.innerHTML = `
             <i class="fas fa-magic" style="font-size:35px; color:var(--primary); margin-bottom:15px;"></i>
             <span class="package-count">Personalizat</span>
-            <span class="price-tag">Calculator</span>
+            <span class="price-tag" style="padding: 8px 15px;">Calculator<br><span class="euro-price">Automat</span></span>
         `;
         custom.onclick = () => document.getElementById('customModal').classList.add('active');
         rechargeGrid.appendChild(custom);
@@ -417,7 +432,10 @@
 
     window.calculatePrice = () => {
         const val = document.getElementById('customInput').value;
-        document.getElementById('priceVal').innerText = (val * 0.01).toFixed(2);
+        const ronPrice = (val * 0.01);
+        const euroPrice = (ronPrice / EURO_RATE).toFixed(2);
+        
+        document.getElementById('priceVal').innerHTML = `${ronPrice.toFixed(2)} RON <span style="font-size:14px; color:#aaa; margin-left:5px;">(€${euroPrice})</span>`;
     };
 
     window.closeModal = (id) => document.getElementById(id).classList.remove('active');
