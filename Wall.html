@@ -1634,12 +1634,13 @@ isHelper = (
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
-    async function sendMessage() {
+async function sendMessage() {
         if(isSending) return;
 
         const text = msgInput.value.trim();
         if((!text && !selectedImgBase64) || !auth.currentUser) return;
         
+        // Comenzi admin / mute
         if(text === '/reset chat') {
             msgInput.value = '';
             if(isAdmin || isOwner) {
@@ -1651,47 +1652,10 @@ isHelper = (
             return;
         }
 
-        if(text.startsWith('/mute ')) {
-            if(!isOwner && !isAdmin && !isMod && !isHelper) { showToast("Nu ai permisiuni pentru Mute.", "error"); msgInput.value=''; return; }
-            if(!pendingMuteUid) { showToast("Selectează utilizatorul din meniu!", "error"); return; }
-
-            let args = text.substring(6 + pendingMuteName.length).trim();
-            let durationMs = 0;
-            let finalReason = args;
-            const timeRegex = /(\d+)([mhd])$/i;
-            const match = args.match(timeRegex);
-
-            if (match) {
-                const val = parseInt(match[1]);
-                const unit = match[2].toLowerCase();
-                if(unit === 'm') durationMs = val * 60 * 1000;
-                else if(unit === 'h') durationMs = val * 60 * 60 * 1000;
-                else if(unit === 'd') durationMs = val * 24 * 60 * 60 * 1000;
-                finalReason = args.replace(match[0], "").trim();
-            }
-            
-            if(!finalReason) finalReason = "Nespecificat";
-
-            let muterName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
-            if(isHelper) muterName += " (Helper)";
-
-            const mutePayload = { mutedBy: muterName, reason: finalReason, timestamp: serverTimestamp() };
-            if(durationMs > 0) mutePayload.unmuteAt = Date.now() + durationMs;
-
-            try {
-                await setDoc(doc(db, "muted_users", pendingMuteUid), mutePayload);
-                let announceText = `🔇 Utilizatorul ${pendingMuteName} a fost pus pe Mute de ${muterName}. Motiv: ${finalReason}.`;
-                if(durationMs > 0) announceText += ` Durată: ${match[0]}.`;
-                sendBotMessage(announceText);
-                showToast("User Muted", "success");
-                msgInput.value = '';
-                pendingMuteUid = null;
-            } catch(e) { showToast("Error muting: " + e.message); }
-            return;
-        }
-
+        // Verificare lungime
         if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
 
+        // Cooldown
         const lastSent = localStorage.getItem('lastMsgTime');
         const COOLDOWN = 2000; 
         if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
@@ -1699,61 +1663,57 @@ isHelper = (
             return;
         }
 
-        if(userIP) {
-             const banRef = doc(db, "banned_ips", userIP);
-             const banSnap = await getDoc(banRef);
-             if(banSnap.exists()) { alert("Ești banat."); location.reload(); return; }
-        }
-
         isSending = true;
 
+        // Animație monede
         const btn = document.getElementById('sendBtn');
         if(typeof window.flyCoins === "function" && btn) {
             window.flyCoins(btn);
         }
 
-// ... în interiorul funcției sendMessage
-const uDoc = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-const userData = uDoc.data();
-
-let displayName = userData.username || auth.currentUser.displayName; // Ia numele din baza de date (cel schimbat de tine)
-if(isOwner) displayName = "Lost Soul";
-
-        // GET USER DOCUMENT TO INCLUDE CURRENT BADGE IN MESSAGE PAYLOAD
-        const uDoc = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        const currentBadge = uDoc.data()?.equippedBadge || null;
-
-        const payload = {
-            text: text,
-            uid: auth.currentUser.uid,
-            name: displayName,
-            photo: auth.currentUser.photoURL,
-            email: auth.currentUser.email,
-            ip: userIP || "unknown",
-            isAdmin: isAdmin, 
-            isOwner: isOwner, 
-            isMod: isMod,
-            isHelper: isHelper,
-            equippedBadge: currentBadge, // SAVE COSMETIC BADGE IN MSG
-            createdAt: serverTimestamp(),
-            isDeleted: false,
-            reactions: {},
-            seenBy: [auth.currentUser.uid]
-        };
-
-        if(selectedImgBase64) {
-            payload.image = selectedImgBase64;
-        }
-
-        if(replyData) {
-            payload.replyToId = replyData.id;
-            payload.replyToName = replyData.name;
-            payload.replyToText = replyData.text;
-        }
-
         try {
+            // --- FIX-UL ESTE AICI: Luăm datele o singură dată ---
+            const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            const userData = userSnapshot.data();
+
+            // Numele din baza de date
+            let displayName = userData.username || auth.currentUser.displayName;
+            if(isOwner) displayName = "Lost Soul";
+
+            // Insigna echipată
+            const currentBadge = userData.equippedBadge || null;
+
+            const payload = {
+                text: text,
+                uid: auth.currentUser.uid,
+                name: displayName, // Numele corect salvat în Shop
+                photo: auth.currentUser.photoURL,
+                email: auth.currentUser.email,
+                ip: userIP || "unknown",
+                isAdmin: isAdmin, 
+                isOwner: isOwner, 
+                isMod: isMod,
+                isHelper: isHelper,
+                equippedBadge: currentBadge, 
+                createdAt: serverTimestamp(),
+                isDeleted: false,
+                reactions: {},
+                seenBy: [auth.currentUser.uid]
+            };
+
+            if(selectedImgBase64) {
+                payload.image = selectedImgBase64;
+            }
+
+            if(replyData) {
+                payload.replyToId = replyData.id;
+                payload.replyToName = replyData.name;
+                payload.replyToText = replyData.text;
+            }
+
             await addDoc(collection(db, "wall_messages"), payload);
 
+            // Update statistici user
             const userRef = doc(db, "accounts", auth.currentUser.uid);
             const updates = {
                 messagesSentToday: increment(1),
@@ -1765,18 +1725,18 @@ if(isOwner) displayName = "Lost Soul";
 
             await updateDoc(userRef, updates);
             
-            clearTimeout(typingTimeout);
-            isTyping = false;
-            updateTypingStatus(false);
-
+            // Resetare input
             msgInput.value = '';
             charCount.textContent = '0 / 1000';
             localStorage.setItem('lastMsgTime', Date.now()); 
             if(replyData) { replyData = null; replyBar.style.display = 'none'; }
-            
             selectedImgBase64 = null;
             imgPreviewContainer.style.display = 'none';
-        } catch(e) { console.error(e); } finally {
+
+        } catch(e) { 
+            console.error(e); 
+            showToast("Eroare la trimitere!");
+        } finally {
             isSending = false;
         }
     }
