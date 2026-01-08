@@ -1461,9 +1461,13 @@
                 if(banSnap.exists()) { siteContent.style.display = 'none'; bannedOverlay.style.display = 'flex'; return; }
             }
 
-            onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
+onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
+                    
+                    // LINIA NOUĂ: Schimbă "ACCOUNT" cu numele tău din Shop
+                    document.getElementById('headerLoginText').innerText = data.username.toUpperCase();
+
                     document.getElementById('popUserImg').src = data.image;
                     document.getElementById('popUserName').innerText = data.username;
                     document.getElementById('popUserEmail').innerText = data.email;
@@ -1572,57 +1576,67 @@
         }, 1000);
     }
 
-    window.postGalleryComment = async (imgId) => {
+window.postGalleryComment = async (imgId) => {
         if (!auth.currentUser) return alert("Trebuie să fii logat!");
         const input = document.getElementById(`inp-${imgId}`);
         const sendBtn = document.querySelector(`#com-sec-${imgId} .card-send-btn`);
         const lastCommentTime = localStorage.getItem('last_comment_time');
         const now = Date.now();
         const cooldownDuration = 60000;
+
         if (lastCommentTime && (now - parseInt(lastCommentTime) < cooldownDuration)) {
             const remaining = Math.ceil((cooldownDuration - (now - parseInt(lastCommentTime))) / 1000);
             triggerInputCooldown(input, sendBtn, remaining); return;
         }
+
         const text = input.value.trim();
         if(!text) return;
-        if(typeof window.flyCoins === "function" && sendBtn) window.flyCoins(sendBtn);
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
-        const metaRef = doc(db, "gallery_meta", imgId);
-        const snap = await getDoc(metaRef);
-        if(!snap.exists()) await setDoc(metaRef, { votes: {} });
 
-        // SEND EMAIL IN DATA FOR ROLE DETECTION
-        await setDoc(doc(collection(db, `gallery_meta/${imgId}/comments`)), {
-            text: text,
-            uid: auth.currentUser.uid,
-            email: auth.currentUser.email,
-            name: auth.currentUser.displayName,
-            photo: auth.currentUser.photoURL,
-            createdAt: serverTimestamp()
-        });
+        try {
+            // LUĂM DATELE DIN DB PENTRU NUME
+            const userDocSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            const userData = userDocSnap.data();
+            const displayName = userData.username || auth.currentUser.displayName;
 
-        // Update UI logic (Local Refresh)
-        const email = auth.currentUser.email;
-        let bubbleClass = 'mini-comment';
-        let badge = '';
-        if(email === 'nicaemmanuel433qe@gmail.com') { bubbleClass += ' mini-owner'; badge = `<span class="owner-badge"><i class="fas fa-crown"></i> OWNER</span>`; }
-        else if(email === 'kevin.trinity2020@gmail.com') { bubbleClass += ' mini-admin'; badge = `<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`; }
-        else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') { bubbleClass += ' mini-mod'; badge = `<span class="mod-badge"><i class="fas fa-star"></i> MODERATOR</span>`; }
+            if(typeof window.flyCoins === "function" && sendBtn) window.flyCoins(sendBtn);
 
-        const listDiv = document.getElementById(`list-${imgId}`);
-        const div = document.createElement('div');
-        div.className = bubbleClass;
-        div.innerHTML = `<img src="${auth.currentUser.photoURL}" class="mini-com-pfp"><div class="mini-com-body"><div class="mini-com-name">${auth.currentUser.displayName} ${badge}</div><div class="mini-com-text">${text}</div></div>`;
-        listDiv.appendChild(div);
-        listDiv.scrollTop = listDiv.scrollHeight;
+            const metaRef = doc(db, "gallery_meta", imgId);
+            const snap = await getDoc(metaRef);
+            if(!snap.exists()) await setDoc(metaRef, { votes: {} });
 
-        const countSpan = document.querySelector(`.gallery-card[data-id="${imgId}"] .comment-count`);
-        countSpan.innerText = (parseInt(countSpan.innerText) || 0) + 1;
-        countSpan.classList.add('visible'); 
+            // SALVĂM COMENTARIUL CU NUMELE DIN SHOP
+            await addDoc(collection(db, `gallery_meta/${imgId}/comments`), {
+                text: text,
+                uid: auth.currentUser.uid,
+                email: auth.currentUser.email,
+                name: displayName, // Numele corect
+                photo: auth.currentUser.photoURL,
+                createdAt: serverTimestamp()
+            });
 
-        await updateDoc(userRef, { galleryCommentsToday: increment(1), coins: increment(5) });
-        localStorage.setItem('last_comment_time', Date.now());
-        triggerInputCooldown(input, sendBtn, 60);
+            // Update UI local imediat
+            const email = auth.currentUser.email;
+            let bubbleClass = 'mini-comment';
+            let badge = '';
+            if(email === 'nicaemmanuel433qe@gmail.com') { bubbleClass += ' mini-owner'; badge = `<span class="owner-badge">OWNER</span>`; }
+            else if(email === 'kevin.trinity2020@gmail.com') { bubbleClass += ' mini-admin'; badge = `<span class="admin-badge">ADMIN</span>`; }
+            
+            const listDiv = document.getElementById(`list-${imgId}`);
+            const div = document.createElement('div');
+            div.className = bubbleClass;
+            div.innerHTML = `<img src="${auth.currentUser.photoURL}" class="mini-com-pfp"><div class="mini-com-body"><div class="mini-com-name">${displayName} ${badge}</div><div class="mini-com-text">${text}</div></div>`;
+            listDiv.appendChild(div);
+            listDiv.scrollTop = listDiv.scrollHeight;
+
+            const countSpan = document.querySelector(`.gallery-card[data-id="${imgId}"] .comment-count`);
+            countSpan.innerText = (parseInt(countSpan.innerText) || 0) + 1;
+            countSpan.classList.add('visible'); 
+
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { galleryCommentsToday: increment(1), coins: increment(5) });
+            localStorage.setItem('last_comment_time', Date.now());
+            triggerInputCooldown(input, sendBtn, 60);
+
+        } catch(e) { console.error(e); }
     };
 
     document.getElementById('headerLoginBtn').onclick = () => !auth.currentUser ? handleLoginFlow() : accountModal.classList.add('active');
