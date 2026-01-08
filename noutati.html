@@ -995,13 +995,18 @@ nav a, .hero-btns a {
             lockedView.style.display = 'none'; chatView.style.display = 'flex';
 
             const userRef = doc(db, "accounts", user.uid);
-            getDoc(userRef).then(async (docSnap) => {
+getDoc(userRef).then(async (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
+                    
+                    // LINIA NOUĂ CARE REPARĂ HEADER-UL:
+                    document.getElementById('headerLoginText').innerText = data.username.toUpperCase();
+
                     document.getElementById('popUserImg').src = data.image;
                     document.getElementById('popUserName').innerText = data.username;
                     document.getElementById('popUserEmail').innerText = data.email;
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
+                    
                     if (!(data.completedQuests || []).includes('visit_news')) {
                         await updateDoc(userRef, { coins: increment(100), completedQuests: arrayUnion('visit_news') });
                         rewardModal.classList.add('active');
@@ -1157,16 +1162,21 @@ nav a, .hero-btns a {
         }
     };
 
-    window.postComment = async (id) => {
+window.postComment = async (id) => {
         const input = document.getElementById(`comInput-${id}`);
         const text = input.value.trim();
         if(!text || !auth.currentUser) return;
         try {
+            // LUĂM NUMELE DIN BAZA DE DATE
+            const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            const userData = userSnap.data();
+            const displayName = userData.username || auth.currentUser.displayName;
+
             const commentData = { 
                 text: text, 
                 uid: auth.currentUser.uid, 
                 email: auth.currentUser.email, 
-                name: auth.currentUser.displayName, 
+                name: displayName, // Numele corect
                 photo: auth.currentUser.photoURL, 
                 createdAt: serverTimestamp() 
             };
@@ -1197,10 +1207,10 @@ nav a, .hero-btns a {
             bubbleClass += ' com-mod'; 
             badge = `<span class="mod-badge" style="font-size:8px; padding:1px 4px;"><i class="fas fa-star"></i> MODERATOR</span>`; 
         }
-        else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.com' || email === 'violetaflorentinadima@gmail.com') { 
-            bubbleClass += ' com-helper'; 
-            badge = `<span class="helper-badge" style="font-size:8px; padding:1px 4px;"><i class="fas fa-hands-helping"></i> HELPER</span>`; 
-        }
+else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.com' || email === 'violetaflorentinadima@gmail.com' || email === 'biggycelmic.115@gmail.com') { 
+    bubbleClass += ' com-helper'; 
+    badge = `<span class="helper-badge" style="font-size:8px; padding:1px 4px;"><i class="fas fa-hands-helping"></i> HELPER</span>`; 
+}
 
         div.className = bubbleClass;
         // ADDED PROFILE ICON BUTTON
@@ -1322,27 +1332,36 @@ nav a, .hero-btns a {
 
     function linkify(text) { if(!text) return ""; const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" style="color:#fff; text-decoration:underline;">${url}</a>`; }); }
 
-    adminPostBtn.onclick = async () => {
+adminPostBtn.onclick = async () => {
         if(!adminPostInput.value.trim() && selectedImages.length === 0) return;
         adminPostBtn.disabled = true;
-        const imgs = await uploadAllImages();
         
-        // --- SAVE EMAIL HERE TO FIX FUTURE POSTS ---
-        await addDoc(collection(db, "site_news"), {
-            text: adminPostInput.value, 
-            images: imgs, 
-            category: currentCategory, 
-            uid: auth.currentUser.uid, 
-            name: auth.currentUser.displayName, 
-            email: auth.currentUser.email, // SAVED EMAIL
-            photo: auth.currentUser.photoURL, 
-            createdAt: serverTimestamp(), 
-            isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com',
-            seenBy: [auth.currentUser.uid] // Creator sees it immediately
-        });
-        
-        await setDoc(doc(db, "site_metadata", "counters"), { totalNews: increment(1) }, { merge: true });
-        adminPostInput.value = ''; selectedImages = []; imagePreviewRow.innerHTML = ""; adminPostBtn.disabled = false;
+        try {
+            const imgs = await uploadAllImages();
+            
+            // LUĂM DATELE DIN BAZA DE DATE
+            const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            const userData = userSnap.data();
+            const displayName = userData.username || auth.currentUser.displayName;
+
+            await addDoc(collection(db, "site_news"), {
+                text: adminPostInput.value, 
+                images: imgs, 
+                category: currentCategory, 
+                uid: auth.currentUser.uid, 
+                name: displayName, // Numele corect
+                email: auth.currentUser.email, 
+                photo: auth.currentUser.photoURL, 
+                createdAt: serverTimestamp(), 
+                isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com',
+                seenBy: [auth.currentUser.uid] 
+            });
+            
+            await setDoc(doc(db, "site_metadata", "counters"), { totalNews: increment(1) }, { merge: true });
+            adminPostInput.value = ''; selectedImages = []; imagePreviewRow.innerHTML = "";
+        } catch(e) { console.error(e); } finally {
+            adminPostBtn.disabled = false;
+        }
     };
     adminPostInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); } });
   </script>
