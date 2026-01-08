@@ -314,26 +314,15 @@
             try {
                 await signInWithPopup(auth, provider);
                 sideMenu.classList.remove('open');
-            } catch (error) {
-                console.error("Eroare la autentificare:", error);
-            }
+            } catch (error) { console.error("Login Error:", error); }
         } else {
             accountModal.classList.add('active');
             sideMenu.classList.remove('open');
         }
     };
 
-    // Legăm ambele butoane de funcția handleLogin
     document.getElementById('headerLoginBtn').onclick = handleLogin;
     if (mobileLoginBtn) mobileLoginBtn.onclick = handleLogin;
-
-    const editProfileModal = document.getElementById('editProfileModal');
-    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
-    const closeEditProfile = document.getElementById('closeEditProfile');
-    const saveProfileBtn = document.getElementById('saveProfileBtn');
-    const editBirth = document.getElementById('editBirth');
-    const editBio = document.getElementById('editBio');
-    const editTikTok = document.getElementById('editTikTok');
 
     const quests = [
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
@@ -350,7 +339,6 @@
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
     ];
 
-    let serverTimeOffset = 0; 
     let isAwarding = false;
 
     // --- PRESENCE SYSTEM ---
@@ -403,18 +391,13 @@
         return shuffled.slice(0, 6).map(q => q.id);
     }
 
-function updateResetTimer() {
-    // Get current seconds
-    const now = new Date();
-    const seconds = now.getSeconds();
-    
-    // Calculate seconds remaining until the next full minute
-    let secondsLeft = 60 - seconds;
-    if (secondsLeft === 60) secondsLeft = 0;
-
-    // Display in 00:00:SS format
-    resetTimerEl.innerText = `00:00:${secondsLeft.toString().padStart(2, '0')}`;
-}
+    // --- TESTING TIMER (1 MINUTE) ---
+    function updateResetTimer() {
+        const now = new Date();
+        let secondsLeft = 60 - now.getSeconds();
+        if (secondsLeft === 60) secondsLeft = 0;
+        resetTimerEl.innerText = `00:00:${secondsLeft.toString().padStart(2, '0')}`;
+    }
     setInterval(updateResetTimer, 1000);
 
     function renderQuests(userData) {
@@ -472,148 +455,91 @@ function updateResetTimer() {
         });
     }
 
-   async function awardQuest(questId, amount) {
-    if (isAwarding) return;
-    isAwarding = true;
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    try {
-        await updateDoc(userRef, { 
-            coins: increment(amount), 
-            completedQuests: arrayUnion(questId)
-            // Removed: latestServerCheck: serverTimestamp() 
-        });
-    } catch (e) {
-        console.error("Award error:", e);
-    } finally { 
-        isAwarding = false; 
+    async function awardQuest(questId, amount) {
+        if (isAwarding) return;
+        isAwarding = true;
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
+                coins: increment(amount), 
+                completedQuests: arrayUnion(questId)
+            });
+        } catch (e) { console.error("Award error:", e); } finally { isAwarding = false; }
     }
-}
 
-    // EDIT PROFILE
-    openEditProfileBtn.onclick = async () => {
-        accountModal.classList.remove('active'); 
-        editProfileModal.classList.add('active'); 
-        if(auth.currentUser) {
-            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                editBirth.value = data.birthDate || "";
-                editBio.value = data.bio || "";
-                editTikTok.value = data.tiktokLink || "";
-            }
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            document.getElementById('headerLoginText').innerText = "ACCOUNT";
+            document.getElementById('headerUserImg').src = user.photoURL;
+            document.getElementById('headerUserImg').style.display = "block";
+            const userRef = doc(db, "accounts", user.uid);
+
+            onSnapshot(userRef, async (snap) => {
+                if(snap.exists()) {
+                    const data = snap.data();
+                    
+                    // TESTING RESET LOGIC: Every time the minute changes on the clock
+                    const roDate = new Date().toLocaleTimeString("en-GB", { 
+                        timeZone: "Europe/Bucharest", 
+                        hour: "2-digit", 
+                        minute: "2-digit" 
+                    });
+                    
+                    if (!data.activeDailyQuests) {
+                        const newIds = generateDailyIds(data.completedQuests || []);
+                        await updateDoc(userRef, { activeDailyQuests: newIds });
+                        return;
+                    }
+
+                    if(data.lastResetDate !== roDate) {
+                        const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+                        const newIds = generateDailyIds(persistent);
+                        await updateDoc(userRef, {
+                            messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                            newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                            visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                            wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                            completedQuests: persistent, 
+                            activeDailyQuests: newIds, 
+                            lastResetDate: roDate
+                        });
+                        return; 
+                    }
+
+                    document.getElementById('popUserImg').src = data.image || user.photoURL;
+                    document.getElementById('popUserName').innerText = data.username || user.displayName;
+                    document.getElementById('popUserEmail').innerText = data.email || user.email;
+                    document.getElementById('popUserCoins').innerText = data.coins || 0;
+                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+                    renderQuests(data);
+                }
+            });
+            resetIdleTimer();
+        } else {
+            document.getElementById('headerLoginText').innerText = "LOGIN";
+            document.getElementById('headerUserImg').style.display = "none";
         }
-    };
+    });
 
-    closeEditProfile.onclick = () => {
-        editProfileModal.classList.remove('active');
-        accountModal.classList.add('active'); 
-    };
-
-    saveProfileBtn.onclick = async () => {
+    // Profile Edits
+    document.getElementById('openEditProfileBtn').onclick = () => { accountModal.classList.remove('active'); document.getElementById('editProfileModal').classList.add('active'); };
+    document.getElementById('closeEditProfile').onclick = () => { document.getElementById('editProfileModal').classList.remove('active'); accountModal.classList.add('active'); };
+    document.getElementById('saveProfileBtn').onclick = async () => {
         if(!auth.currentUser) return;
         try {
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                birthDate: editBirth.value,
-                bio: editBio.value.trim(),
-                tiktokLink: editTikTok.value.trim()
+                birthDate: document.getElementById('editBirth').value,
+                bio: document.getElementById('editBio').value.trim(),
+                tiktokLink: document.getElementById('editTikTok').value.trim()
             });
-            alert("Profil salvat!");
-            editProfileModal.classList.remove('active');
+            document.getElementById('editProfileModal').classList.remove('active');
             accountModal.classList.add('active');
         } catch(e) { alert(e.message); }
     };
 
-onSnapshot(userRef, async (snap) => {
-    if(snap.exists()) {
-        const data = snap.data();
-        
-        // FOR TESTING: We use "Hour:Minute" (e.g. "16:45") instead of the Date.
-        // This causes a mismatch—and a reset—every single minute.
-        const roDate = new Date().toLocaleTimeString("en-GB", { 
-            timeZone: "Europe/Bucharest", 
-            hour: "2-digit", 
-            minute: "2-digit" 
-        });
-        
-        if (!data.activeDailyQuests) {
-            const newIds = generateDailyIds(data.completedQuests || []);
-            await updateDoc(userRef, { activeDailyQuests: newIds });
-            return;
-        }
-
-        // If the stored minute (lastResetDate) is different from the current minute
-        if(data.lastResetDate !== roDate) {
-            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-            const newIds = generateDailyIds(persistent);
-            
-            await updateDoc(userRef, {
-                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
-                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
-                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
-                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                completedQuests: persistent, 
-                activeDailyQuests: newIds, 
-                lastResetDate: roDate // Saves the current minute to the DB
-            });
-            return; 
-        }
-
-        // Update UI
-        document.getElementById('popUserImg').src = data.image || user.photoURL;
-        document.getElementById('popUserName').innerText = data.username || user.displayName;
-        document.getElementById('popUserEmail').innerText = data.email || user.email;
-        document.getElementById('popUserCoins').innerText = data.coins || 0;
-        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-        renderQuests(data);
-    }
-});
-    if(snap.exists()) {
-        const data = snap.data();
-        
-        // Use the current date in Romania as the "Standard"
-        const roDate = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
-        
-        // If there are no quests assigned yet, assign them
-        if (!data.activeDailyQuests) {
-            const newIds = generateDailyIds(data.completedQuests || []);
-            await updateDoc(userRef, { activeDailyQuests: newIds });
-            return;
-        }
-
-        // RESET LOGIC: If the stored date is different from today's Romania date
-        if(data.lastResetDate !== roDate) {
-            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-            const newIds = generateDailyIds(persistent);
-            
-            await updateDoc(userRef, {
-                // Reset all daily progress counters
-                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
-                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
-                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
-                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                // Clean quests
-                completedQuests: persistent, 
-                activeDailyQuests: newIds, 
-                lastResetDate: roDate
-                // NOTE: We do NOT increment 'streak' here anymore.
-            });
-            return; 
-        }
-
-        // Update UI
-        document.getElementById('popUserImg').src = data.image || user.photoURL;
-        document.getElementById('popUserName').innerText = data.username || user.displayName;
-        document.getElementById('popUserEmail').innerText = data.email || user.email;
-        document.getElementById('popUserCoins').innerText = data.coins || 0;
-        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-        renderQuests(data);
-    }
-});
     const menuBtn = document.getElementById('menuBtn');
     const closeMenu = document.getElementById('closeMenu');
     if(menuBtn) menuBtn.onclick = () => sideMenu.classList.add('open');
     if(closeMenu) closeMenu.onclick = () => sideMenu.classList.remove('open');
-
     document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth);
 </script>
