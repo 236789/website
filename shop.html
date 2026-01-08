@@ -617,15 +617,20 @@
     </div>
 
     <!-- INVENTORY MODAL -->
-    <div id="inventoryModal" class="modal-overlay">
-        <div class="shop-modal-card">
-            <button class="close-modal-btn" onclick="closeModal('inventoryModal')">✕</button>
-            <h2 style="color: var(--primary); font-family:'Orbitron'; margin-bottom:20px;">INVENTARUL TĂU</h2>
-            <div id="inventoryList" class="badges-container">
-                <p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>
-            </div>
+<!-- INVENTORY MODAL -->
+<div id="inventoryModal" class="modal-overlay">
+    <div class="shop-modal-card">
+        <button class="close-modal-btn" onclick="closeModal('inventoryModal')">✕</button>
+        <h2 id="inventoryTitle" style="color: var(--primary); font-family:'Orbitron'; margin-bottom:20px;">INVENTARUL TĂU</h2>
+        
+        <div id="inventoryList" class="badges-container">
+            <p style="width:100%; text-align:center; color:#aaa;">Se încarcă...</p>
         </div>
+
+        <!-- ADAUGĂ ACEST DIV AICI: -->
+        <div id="inventoryActions"></div>
     </div>
+</div>
 
 
 <!-- BANNER SHOP MODAL -->
@@ -690,22 +695,29 @@
         </div>
     </div>
     
-    <!-- COSMETICS SELECTION MODAL (FROM PROFILE) -->
-    <div id="cosmeticsSelectModal" class="modal-overlay">
-        <div class="account-card" style="max-width:300px;">
-            <button class="close-pop" onclick="closeModal('cosmeticsSelectModal')">✕</button>
-            <h3 style="font-family:'Orbitron'; margin-bottom:20px;">ALEGE CATEGORIA</h3>
-            <button class="btn-tasks" onclick="closeModal('cosmeticsSelectModal'); document.getElementById('inventoryModal').classList.add('active'); openInventory('badges');">
-                <i class="fas fa-certificate"></i> INSIGNE (BADGES)
-            </button>
-            <button class="btn-tasks" style="opacity:0.5; cursor:not-allowed;">
-                <i class="fas fa-crop-alt"></i> RAME (FRAMES)
-<button class="btn-tasks" onclick="closeModal('cosmeticsSelectModal'); document.getElementById('inventoryModal').classList.add('active'); openInventory('banners');">
-    <i class="fas fa-image"></i> BANNERE (THEMES)
-</button>
-        </div>
+<!-- COSMETICS SELECTION MODAL -->
+<div id="cosmeticsSelectModal" class="modal-overlay">
+    <div class="account-card" style="max-width:300px; position: relative;">
+        <button class="close-pop" onclick="closeModal('cosmeticsSelectModal')">✕</button>
+        <h3 style="font-family:'Orbitron'; margin-bottom:20px;">ALEGE CATEGORIA</h3>
+        
+        <!-- Buton Insigne -->
+        <button class="btn-tasks" onclick="closeModal('cosmeticsSelectModal'); document.getElementById('inventoryModal').classList.add('active'); openInventory('badges');">
+            <i class="fas fa-certificate"></i> INSIGNE (BADGES)
+        </button>
+        
+        <!-- Buton Rame (Inactiv) -->
+        <button class="btn-tasks" style="opacity:0.5; cursor:not-allowed;">
+            <i class="fas fa-crop-alt"></i> RAME (ÎN CURÂND)
+        </button>
+
+        <!-- Buton Bannere (Activează Temele de Chat) -->
+        <button class="btn-tasks" onclick="closeModal('cosmeticsSelectModal'); document.getElementById('inventoryModal').classList.add('active'); openInventory('banners');">
+            <i class="fas fa-image"></i> BANNERE (THEMES)
+        </button>
     </div>
 </div>
+
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -891,11 +903,16 @@ window.buyBanner = async (id, price) => {
 };
 
 // Actualizăm funcția de inventar pentru a suporta și bannere
+// Actualizăm funcția de inventar pentru a suporta ambele categorii
 window.openInventory = async (mode = 'badges') => {
     const list = document.getElementById('inventoryList');
-    const title = document.querySelector('#inventoryModal h2');
-    list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
+    const actions = document.getElementById('inventoryActions'); // Zona de butoane
+    const title = document.getElementById('inventoryTitle');
     
+    // Resetăm totul înainte de încărcare
+    list.innerHTML = '<div style="color:#aaa; width:100%; text-align:center;">Se încarcă...</div>';
+    actions.innerHTML = ''; 
+
     const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const userData = userSnap.data();
 
@@ -905,41 +922,85 @@ window.openInventory = async (mode = 'badges') => {
         title.innerText = "INVENTAR INSIGNE";
         const ownedIds = userData.ownedBadges || [];
         const equipped = userData.equippedBadge?.id || null;
-        if(ownedIds.length === 0) { list.innerHTML = '<p>Nu ai insigne.</p>'; return; }
+
+        if(ownedIds.length === 0) {
+            list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>';
+            return;
+        }
+
         ownedIds.forEach(id => {
             const badge = BADGES_DB.find(b => b.id === id);
             if(!badge) return;
             const isEq = (id === equipped);
             const div = document.createElement('div');
             div.className = 'shop-badge-item';
-            div.innerHTML = `<span class="shop-badge-preview" style="background:${badge.color}; color:#000;"><i class="fas ${badge.icon}"></i> ${badge.text}</span>
-            ${isEq ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`}`;
+            div.innerHTML = `
+                <span class="shop-badge-preview" style="background:${badge.color}; color:#000;">
+                    <i class="fas ${badge.icon}"></i> ${badge.text}
+                </span>
+                ${isEq ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`}
+            `;
             list.appendChild(div);
         });
-    } else {
-        title.innerText = "INVENTAR BANNERE";
-        let owned = userData.ownedBanners || [];
-        const equipped = userData.equippedBanner || null;
-        
-        // --- SPECIAL STAFF LOGIC ---
-        const staffBn = getStaffBannerId(userData.email);
-        if(staffBn) {
-            const div = document.createElement('div');
-            div.className = 'shop-badge-item';
-            div.innerHTML = `<div class="banner-preview ${staffBn.class}">${staffBn.text}</div>
-            ${equipped === staffBn.id ? `<button class="equip-btn" style="background:#555;">ACTIVĂ</button>` : `<button class="equip-btn" onclick="equipBanner('${staffBn.id}')">REVENIRE LA STAFF</button>`}`;
-            list.prepend(div); // Punem stilul de staff primul
+
+        // Adăugăm butonul de unequip doar dacă există ceva echipat
+        if(equipped) {
+            const btn = document.createElement('button');
+            btn.className = 'unequip-all-btn';
+            btn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ INSIGNA';
+            btn.onclick = async () => {
+                await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null });
+                openInventory('badges');
+            };
+            actions.appendChild(btn);
         }
 
-        owned.forEach(id => {
-            const bn = BANNERS_DB.find(b => b.id === id);
-            if(!bn) return;
+    } else if (mode === 'banners') {
+        title.innerText = "INVENTAR BANNERE";
+        const ownedBanners = userData.ownedBanners || [];
+        const equippedBanner = userData.equippedBanner || null;
+
+        // Adăugăm stilul de STAFF dacă utilizatorul este admin/helper/etc.
+        const staffStyle = getStaffBannerId(userData.email);
+        if(staffStyle) {
             const div = document.createElement('div');
             div.className = 'shop-badge-item';
-            div.innerHTML = `<div class="banner-preview ${bn.class}">${bn.text}</div>
-            ${equipped === bn.id ? `<button class="equip-btn" style="background:#555;">ACTIVĂ</button>` : `<button class="equip-btn" onclick="equipBanner('${bn.id}')">ECHIPEAZĂ</button>`}`;
+            const isStaffActive = (equippedBanner === staffStyle.id);
+            div.innerHTML = `
+                <div class="banner-preview ${staffStyle.class}">${staffStyle.text}</div>
+                ${isStaffActive ? `<button class="equip-btn" style="background:#555; cursor:default;">ACTIVĂ</button>` : `<button class="equip-btn" onclick="equipBanner('${staffStyle.id}')">REVENIRE LA STAFF</button>`}
+            `;
+            list.appendChild(div);
+        }
+
+        if(ownedBanners.length === 0 && !staffStyle) {
+            list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai teme de chat (bannere).</p>';
+            return;
+        }
+
+        ownedBanners.forEach(id => {
+            const bn = BANNERS_DB.find(b => b.id === id);
+            if(!bn) return;
+            const isEq = (id === equippedBanner);
+            const div = document.createElement('div');
+            div.className = 'shop-badge-item';
+            div.innerHTML = `
+                <div class="banner-preview ${bn.class}">${bn.text}</div>
+                ${isEq ? `<button class="equip-btn" style="background:#555; cursor:default;">ACTIVĂ</button>` : `<button class="equip-btn" onclick="equipBanner('${bn.id}')">ECHIPEAZĂ</button>`}
+            `;
             list.appendChild(div);
         });
+
+        if(equippedBanner) {
+            const btn = document.createElement('button');
+            btn.className = 'unequip-all-btn';
+            btn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ BANNER';
+            btn.onclick = async () => {
+                await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBanner: null });
+                openInventory('banners');
+            };
+            actions.appendChild(btn);
+        }
     }
 };
 
