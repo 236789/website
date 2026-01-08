@@ -403,21 +403,18 @@
         return shuffled.slice(0, 6).map(q => q.id);
     }
 
-    function updateResetTimer() {
-        const nowMs = Date.now() + serverTimeOffset; 
-        const nowReal = new Date(nowMs);
-        const roTime = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Bucharest', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false });
-        const parts = roTime.formatToParts(nowReal);
-        const h = parseInt(parts.find(p => p.type === 'hour').value);
-        const m = parseInt(parts.find(p => p.type === 'minute').value);
-        const s = parseInt(parts.find(p => p.type === 'second').value);
-        let secondsLeft = 86400 - ((h * 3600) + (m * 60) + s); 
-        if (secondsLeft < 0) secondsLeft = 0;
-        const hLeft = Math.floor(secondsLeft / 3600);
-        const mLeft = Math.floor((secondsLeft % 3600) / 60);
-        const sLeft = secondsLeft % 60;
-        resetTimerEl.innerText = `${hLeft.toString().padStart(2,'0')}:${mLeft.toString().padStart(2,'0')}:${sLeft.toString().padStart(2,'0')}`;
-    }
+function updateResetTimer() {
+    // Get current seconds
+    const now = new Date();
+    const seconds = now.getSeconds();
+    
+    // Calculate seconds remaining until the next full minute
+    let secondsLeft = 60 - seconds;
+    if (secondsLeft === 60) secondsLeft = 0;
+
+    // Display in 00:00:SS format
+    resetTimerEl.innerText = `00:00:${secondsLeft.toString().padStart(2, '0')}`;
+}
     setInterval(updateResetTimer, 1000);
 
     function renderQuests(userData) {
@@ -475,18 +472,22 @@
         });
     }
 
-    async function awardQuest(questId, amount) {
-        if (isAwarding) return;
-        isAwarding = true;
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
-        try {
-            await updateDoc(userRef, { 
-                coins: increment(amount), 
-                completedQuests: arrayUnion(questId),
-                latestServerCheck: serverTimestamp() 
-            });
-        } catch (e) {} finally { isAwarding = false; }
+   async function awardQuest(questId, amount) {
+    if (isAwarding) return;
+    isAwarding = true;
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    try {
+        await updateDoc(userRef, { 
+            coins: increment(amount), 
+            completedQuests: arrayUnion(questId)
+            // Removed: latestServerCheck: serverTimestamp() 
+        });
+    } catch (e) {
+        console.error("Award error:", e);
+    } finally { 
+        isAwarding = false; 
     }
+}
 
     // EDIT PROFILE
     openEditProfileBtn.onclick = async () => {
@@ -522,55 +523,92 @@
         } catch(e) { alert(e.message); }
     };
 
-    onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            document.getElementById('headerLoginText').innerText = "ACCOUNT";
-            document.getElementById('headerUserImg').src = user.photoURL;
-            document.getElementById('headerUserImg').style.display = "block";
-            const userRef = doc(db, "accounts", user.uid);
-
-            onSnapshot(userRef, async (snap) => {
-                if(snap.exists()) {
-                    const data = snap.data();
-                    if (data.latestServerCheck) {
-                        const serverDate = data.latestServerCheck.toDate();
-                        serverTimeOffset = serverDate.getTime() - Date.now();
-                        const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
-                        
-                        if (!data.activeDailyQuests) {
-                            const newIds = generateDailyIds(data.completedQuests || []);
-                            await updateDoc(userRef, { activeDailyQuests: newIds });
-                            return;
-                        }
-
-                        if(data.lastResetDate !== roDate) {
-                            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                            const newIds = generateDailyIds(persistent);
-                            await updateDoc(userRef, {
-                                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
-                                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
-                                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
-                                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                                completedQuests: persistent, activeDailyQuests: newIds, lastResetDate: roDate
-                            });
-                            return; 
-                        }
-                    }
-                    document.getElementById('popUserImg').src = data.image || user.photoURL;
-                    document.getElementById('popUserName').innerText = data.username || user.displayName;
-                    document.getElementById('popUserEmail').innerText = data.email || user.email;
-                    document.getElementById('popUserCoins').innerText = data.coins || 0;
-                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-                    renderQuests(data);
-                }
-            });
-            resetIdleTimer();
-        } else {
-            document.getElementById('headerLoginText').innerText = "LOGIN";
-            document.getElementById('headerUserImg').style.display = "none";
+onSnapshot(userRef, async (snap) => {
+    if(snap.exists()) {
+        const data = snap.data();
+        
+        // FOR TESTING: We use "Hour:Minute" (e.g. "16:45") instead of the Date.
+        // This causes a mismatch—and a reset—every single minute.
+        const roDate = new Date().toLocaleTimeString("en-GB", { 
+            timeZone: "Europe/Bucharest", 
+            hour: "2-digit", 
+            minute: "2-digit" 
+        });
+        
+        if (!data.activeDailyQuests) {
+            const newIds = generateDailyIds(data.completedQuests || []);
+            await updateDoc(userRef, { activeDailyQuests: newIds });
+            return;
         }
-    });
 
+        // If the stored minute (lastResetDate) is different from the current minute
+        if(data.lastResetDate !== roDate) {
+            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+            const newIds = generateDailyIds(persistent);
+            
+            await updateDoc(userRef, {
+                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                completedQuests: persistent, 
+                activeDailyQuests: newIds, 
+                lastResetDate: roDate // Saves the current minute to the DB
+            });
+            return; 
+        }
+
+        // Update UI
+        document.getElementById('popUserImg').src = data.image || user.photoURL;
+        document.getElementById('popUserName').innerText = data.username || user.displayName;
+        document.getElementById('popUserEmail').innerText = data.email || user.email;
+        document.getElementById('popUserCoins').innerText = data.coins || 0;
+        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+        renderQuests(data);
+    }
+});
+    if(snap.exists()) {
+        const data = snap.data();
+        
+        // Use the current date in Romania as the "Standard"
+        const roDate = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+        
+        // If there are no quests assigned yet, assign them
+        if (!data.activeDailyQuests) {
+            const newIds = generateDailyIds(data.completedQuests || []);
+            await updateDoc(userRef, { activeDailyQuests: newIds });
+            return;
+        }
+
+        // RESET LOGIC: If the stored date is different from today's Romania date
+        if(data.lastResetDate !== roDate) {
+            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+            const newIds = generateDailyIds(persistent);
+            
+            await updateDoc(userRef, {
+                // Reset all daily progress counters
+                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                // Clean quests
+                completedQuests: persistent, 
+                activeDailyQuests: newIds, 
+                lastResetDate: roDate
+                // NOTE: We do NOT increment 'streak' here anymore.
+            });
+            return; 
+        }
+
+        // Update UI
+        document.getElementById('popUserImg').src = data.image || user.photoURL;
+        document.getElementById('popUserName').innerText = data.username || user.displayName;
+        document.getElementById('popUserEmail').innerText = data.email || user.email;
+        document.getElementById('popUserCoins').innerText = data.coins || 0;
+        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+        renderQuests(data);
+    }
+});
     const menuBtn = document.getElementById('menuBtn');
     const closeMenu = document.getElementById('closeMenu');
     if(menuBtn) menuBtn.onclick = () => sideMenu.classList.add('open');
