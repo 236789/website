@@ -286,7 +286,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp, arrayUnion, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -305,35 +305,10 @@
     const questGrid = document.getElementById('questGrid');
     const resetTimerEl = document.getElementById('resetTimer');
     const accountModal = document.getElementById('accountModal');
-    const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-    const sideMenu = document.getElementById('sideMenu');
-
-    // --- LOGICĂ LOGIN ---
-    const handleLogin = async () => {
-        if (!auth.currentUser) {
-            try {
-                await signInWithPopup(auth, provider);
-                sideMenu.classList.remove('open');
-            } catch (error) {
-                console.error("Eroare la autentificare:", error);
-            }
-        } else {
-            accountModal.classList.add('active');
-            sideMenu.classList.remove('open');
-        }
-    };
-
-    // Legăm ambele butoane de funcția handleLogin
-    document.getElementById('headerLoginBtn').onclick = handleLogin;
-    if (mobileLoginBtn) mobileLoginBtn.onclick = handleLogin;
-
-    const editProfileModal = document.getElementById('editProfileModal');
-    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
-    const closeEditProfile = document.getElementById('closeEditProfile');
-    const saveProfileBtn = document.getElementById('saveProfileBtn');
-    const editBirth = document.getElementById('editBirth');
-    const editBio = document.getElementById('editBio');
-    const editTikTok = document.getElementById('editTikTok');
+    
+    // Tracking claimed quests in current session to prevent "Double dipping"
+    let claimedInSession = new Set();
+    let isAwarding = false;
 
     const quests = [
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
@@ -350,83 +325,37 @@
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
     ];
 
-    let serverTimeOffset = 0; 
-    let isAwarding = false;
-
-    // --- PRESENCE SYSTEM ---
-    let idleTimer;
-    let lastStatusUpdate = 0;
-    const UPDATE_INTERVAL = 3 * 60 * 1000;
-    const IDLE_TIMEOUT = 5 * 60 * 1000;
-
-    async function setStatusOnline() {
-        if (!auth.currentUser) return;
-        const now = Date.now();
-        if (now - lastStatusUpdate > UPDATE_INTERVAL) {
-            lastStatusUpdate = now;
-            try {
-                await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                    isOnline: true,
-                    lastActive: serverTimestamp()
-                });
-            } catch(e) {}
-        }
-    }
-
-    async function setStatusOffline() {
-        if (!auth.currentUser) return;
-        try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                isOnline: false,
-                lastActive: serverTimestamp()
-            });
-        } catch(e) {}
-    }
-
-    function resetIdleTimer() {
-        clearTimeout(idleTimer);
-        setStatusOnline();
-        idleTimer = setTimeout(setStatusOffline, IDLE_TIMEOUT);
-    }
-
-    window.onload = resetIdleTimer;
-    document.onmousemove = resetIdleTimer;
-    document.onkeypress = resetIdleTimer;
-    document.ontouchstart = resetIdleTimer;
-    document.onclick = resetIdleTimer;
-    document.onscroll = resetIdleTimer;
-
-    function generateDailyIds(completedQuests) {
-        const oneTimeDone = ['review', 'social3'].filter(id => completedQuests.includes(id));
-        const availablePool = quests.filter(q => !oneTimeDone.includes(q.id));
-        const shuffled = availablePool.sort(() => 0.5 - Math.random());
-        return shuffled.slice(0, 6).map(q => q.id);
-    }
-
+    // --- TIMER LOGIC (Fixes the "7 hours stuck" issue) ---
     function updateResetTimer() {
-        const nowMs = Date.now() + serverTimeOffset; 
-        const nowReal = new Date(nowMs);
-        const roTime = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Bucharest', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false });
-        const parts = roTime.formatToParts(nowReal);
-        const h = parseInt(parts.find(p => p.type === 'hour').value);
-        const m = parseInt(parts.find(p => p.type === 'minute').value);
-        const s = parseInt(parts.find(p => p.type === 'second').value);
-        let secondsLeft = 86400 - ((h * 3600) + (m * 60) + s); 
-        if (secondsLeft < 0) secondsLeft = 0;
+        const now = new Date();
+        // Convert to Romania Time
+        const roTime = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/Bucharest',
+            hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
+        }).format(now);
+
+        const [h, m, s] = roTime.split(':').map(Number);
+        
+        // Seconds until next midnight
+        let secondsLeft = 86400 - ((h * 3600) + (m * 60) + s);
+        
         const hLeft = Math.floor(secondsLeft / 3600);
         const mLeft = Math.floor((secondsLeft % 3600) / 60);
         const sLeft = secondsLeft % 60;
+
         resetTimerEl.innerText = `${hLeft.toString().padStart(2,'0')}:${mLeft.toString().padStart(2,'0')}:${sLeft.toString().padStart(2,'0')}`;
     }
     setInterval(updateResetTimer, 1000);
 
+    // --- QUEST RENDERING ---
     function renderQuests(userData) {
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
         const activeIds = userData.activeDailyQuests || [];
 
         quests.forEach(q => {
-            if (activeIds.length > 0 && !activeIds.includes(q.id)) return;
+            // If we have active daily quests set, only show those (unless it's a one-time quest)
+            if (activeIds.length > 0 && !activeIds.includes(q.id) && q.id !== 'review' && q.id !== 'social3') return;
 
             const isCompleted = completed.includes(q.id);
             const card = document.createElement('div');
@@ -434,34 +363,27 @@
             let progressHTML = '';
             let canAward = false;
 
+            // Progress Logic
             if (q.id === 'meet_team_hunt') {
-                const visitedLost = userData.visited_lost_soul_today ? 1 : 0;
-                const visitedKevin = userData.visited_kevin_trinity_today ? 1 : 0;
-                const totalTeam = visitedLost + visitedKevin;
-                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Echipa</span><span>${totalTeam}/2</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${totalTeam * 50}%"></div></div></div>`;
+                const totalTeam = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
+                progressHTML = generateBar(totalTeam, 2);
                 if (totalTeam >= 2) canAward = true;
             } else if (q.id === 'gallery_task') {
-                const currentLikes = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
-                const currentComments = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
-                const prog = ((currentLikes + currentComments) / (q.targetLikes + q.targetComments)) * 100;
-                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Activitate</span><span>${currentLikes+currentComments}/${q.targetLikes+q.targetComments}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${prog}%"></div></div></div>`;
-                if (currentLikes >= q.targetLikes && currentComments >= q.targetComments) canAward = true;
+                const curL = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
+                const curC = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
+                progressHTML = generateBar(curL + curC, q.targetLikes + q.targetComments);
+                if (curL >= q.targetLikes && curC >= q.targetComments) canAward = true;
             } else {
                 let current = 0;
-                switch(q.id) {
-                    case 'msg3': current = userData.messagesSentToday || 0; break;
-                    case 'wall_reply_5': current = userData.wallRepliesToday || 0; break;
-                    case 'wall_react_10': current = userData.wallReactionsToday || 0; break;
-                    case 'wall_long_msg': current = userData.wallLongMsgSent ? 1 : 0; break;
-                    case 'kevin_talk_15': current = userData.kevinMessagesToday || 0; break;
-                    case 'review': current = userData.hasWrittenReview ? 1 : 0; break;
-                    case 'tiktok5': current = userData.tiktoksFollowed || 0; break;
-                    case 'social3': current = userData.socialFollowed || 0; break;
-                    case 'visit_news': current = userData.newsVisitedToday || 0; break;
-                    case 'give_feedback': current = userData.feedbackGivenToday || 0; break;
-                }
-                const progress = Math.min((current / q.target) * 100, 100);
-                progressHTML = `<div class="progress-wrapper"><div class="progress-info"><span>Progres</span><span>${Math.min(current, q.target)}/${q.target}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progress}%"></div></div></div>`;
+                const mapping = {
+                    msg3: 'messagesSentToday', wall_reply_5: 'wallRepliesToday', wall_react_10: 'wallReactionsToday',
+                    wall_long_msg: 'wallLongMsgSent', kevin_talk_15: 'kevinMessagesToday', review: 'hasWrittenReview',
+                    tiktok5: 'tiktoksFollowed', social3: 'socialFollowed', visit_news: 'newsVisitedToday', give_feedback: 'feedbackGivenToday'
+                };
+                current = userData[mapping[q.id]] || 0;
+                if (typeof current === 'boolean') current = current ? 1 : 0;
+                
+                progressHTML = generateBar(current, q.target);
                 if (current >= q.target) canAward = true;
             }
 
@@ -471,113 +393,115 @@
             card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
             questGrid.appendChild(card);
 
-            if (canAward && !isCompleted && !isAwarding) { awardQuest(q.id, q.reward); }
+            // AUTO-AWARD LOGIC (Anti-Infinite Fix)
+            if (canAward && !isCompleted && !claimedInSession.has(q.id)) {
+                awardQuest(q.id, q.reward);
+            }
         });
     }
 
+    function generateBar(cur, tar) {
+        const perc = Math.min((cur / tar) * 100, 100);
+        return `<div class="progress-wrapper"><div class="progress-info"><span>Progres</span><span>${cur}/${tar}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${perc}%"></div></div></div>`;
+    }
+
     async function awardQuest(questId, amount) {
-        if (isAwarding) return;
+        if (isAwarding || claimedInSession.has(questId)) return;
         isAwarding = true;
+        claimedInSession.add(questId); // Lock immediately in frontend
+
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         try {
             await updateDoc(userRef, { 
                 coins: increment(amount), 
-                completedQuests: arrayUnion(questId),
-                latestServerCheck: serverTimestamp() 
+                completedQuests: arrayUnion(questId)
             });
-        } catch (e) {} finally { isAwarding = false; }
+            console.log(`Quest ${questId} awarded.`);
+        } catch (e) {
+            console.error("Award error:", e);
+            claimedInSession.delete(questId); // Unlock if DB failed
+        } finally {
+            isAwarding = false;
+        }
     }
 
-    // EDIT PROFILE
-    openEditProfileBtn.onclick = async () => {
-        accountModal.classList.remove('active'); 
-        editProfileModal.classList.add('active'); 
-        if(auth.currentUser) {
-            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                editBirth.value = data.birthDate || "";
-                editBio.value = data.bio || "";
-                editTikTok.value = data.tiktokLink || "";
-            }
-        }
-    };
-
-    closeEditProfile.onclick = () => {
-        editProfileModal.classList.remove('active');
-        accountModal.classList.add('active'); 
-    };
-
-    saveProfileBtn.onclick = async () => {
-        if(!auth.currentUser) return;
-        try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                birthDate: editBirth.value,
-                bio: editBio.value.trim(),
-                tiktokLink: editTikTok.value.trim()
-            });
-            alert("Profil salvat!");
-            editProfileModal.classList.remove('active');
-            accountModal.classList.add('active');
-        } catch(e) { alert(e.message); }
-    };
+    // --- RESET LOGIC (Fixes the Quest Reset failure) ---
+    function generateDailyIds(completedQuests) {
+        const persistent = ['review', 'social3'];
+        const availablePool = quests.filter(q => !persistent.includes(q.id));
+        const shuffled = availablePool.sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, 6).map(q => q.id);
+    }
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
+
             const userRef = doc(db, "accounts", user.uid);
 
             onSnapshot(userRef, async (snap) => {
-                if(snap.exists()) {
-                    const data = snap.data();
-                    if (data.latestServerCheck) {
-                        const serverDate = data.latestServerCheck.toDate();
-                        serverTimeOffset = serverDate.getTime() - Date.now();
-                        const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
-                        
-                        if (!data.activeDailyQuests) {
-                            const newIds = generateDailyIds(data.completedQuests || []);
-                            await updateDoc(userRef, { activeDailyQuests: newIds });
-                            return;
-                        }
+                if (!snap.exists()) return;
+                
+                const data = snap.data();
+                // Use a reliable date string for comparison (Romania Time)
+                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
 
-                        if(data.lastResetDate !== roDate) {
-                            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                            const newIds = generateDailyIds(persistent);
-                            await updateDoc(userRef, {
-                                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
-                                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
-                                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
-                                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                                completedQuests: persistent, activeDailyQuests: newIds, lastResetDate: roDate
-                            });
-                            return; 
-                        }
-                    }
-                    document.getElementById('popUserImg').src = data.image || user.photoURL;
-                    document.getElementById('popUserName').innerText = data.username || user.displayName;
-                    document.getElementById('popUserEmail').innerText = data.email || user.email;
-                    document.getElementById('popUserCoins').innerText = data.coins || 0;
-                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-                    renderQuests(data);
+                // Check for Daily Reset
+                if (data.lastResetDate !== todayStr) {
+                    console.log("New day detected. Resetting quests...");
+                    const persistentCompleted = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+                    const newIds = generateDailyIds(persistentCompleted);
+                    
+                    await updateDoc(userRef, {
+                        messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                        newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                        visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                        wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                        completedQuests: persistentCompleted, 
+                        activeDailyQuests: newIds, 
+                        lastResetDate: todayStr
+                    });
+                    claimedInSession.clear();
+                    return; 
                 }
+
+                // Update UI
+                document.getElementById('popUserImg').src = data.image || user.photoURL;
+                document.getElementById('popUserName').innerText = data.username || user.displayName;
+                document.getElementById('popUserEmail').innerText = data.email || user.email;
+                document.getElementById('popUserCoins').innerText = data.coins || 0;
+                document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+                renderQuests(data);
             });
-            resetIdleTimer();
+
         } else {
             document.getElementById('headerLoginText').innerText = "LOGIN";
             document.getElementById('headerUserImg').style.display = "none";
+            questGrid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5;">Te rugăm să te autentifici pentru a vedea task-urile.</p>';
         }
     });
 
+    // Handle Login/Modals
+    const handleLogin = async () => {
+        if (!auth.currentUser) {
+            try { await signInWithPopup(auth, provider); } catch (e) { console.error(e); }
+        } else {
+            accountModal.classList.add('active');
+        }
+    };
+    document.getElementById('headerLoginBtn').onclick = handleLogin;
+    document.getElementById('mobileLoginBtn').onclick = handleLogin;
+    document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
+    document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
+
+    // Basic Menu Toggle
     const menuBtn = document.getElementById('menuBtn');
+    const sideMenu = document.getElementById('sideMenu');
     const closeMenu = document.getElementById('closeMenu');
     if(menuBtn) menuBtn.onclick = () => sideMenu.classList.add('open');
     if(closeMenu) closeMenu.onclick = () => sideMenu.classList.remove('open');
-
-    document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
-    document.getElementById('popLogoutBtn').onclick = () => signOut(auth);
 </script>
 </body>
 </html>
