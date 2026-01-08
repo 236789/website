@@ -1058,9 +1058,14 @@
             document.getElementById('chatView').style.display = 'flex';
             
             // Get User Data (One Time)
+// Get User Data (One Time)
             getDoc(doc(db, "accounts", user.uid)).then(docSnap => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
+                    
+                    // LINIA NOUĂ: Repară numele din Header
+                    document.getElementById('headerLoginText').innerText = data.username.toUpperCase();
+
                     document.getElementById('popUserImg').src = data.image;
                     document.getElementById('popUserName').innerText = data.username;
                     document.getElementById('popUserEmail').innerText = data.email;
@@ -1285,62 +1290,53 @@ window.approveToTodo = async (id, text, authorName, authorPhoto, authorEmail, au
     };
 
     // 1. Send Feedback (UPDATED WITH QUEST LOGIC & EMAIL & PIN FIELD)
-    sendBtn.onclick = async () => {
+sendBtn.onclick = async () => {
         if(!auth.currentUser) return;
         const uid = auth.currentUser.uid;
         const text = revInput.value.trim();
 
-        // --- VALIDATION: LENGTH CHECK ---
         if (text.length < 50) {
-            showErrorToast(); // Show Red Pop-up
-            return; // STOP EXECUTION
+            showErrorToast();
+            return;
         }
         
-        // Fetch current Equipped Badge to save with post
-        const userSnap = await getDoc(doc(db, "accounts", uid));
-        const equippedBadge = userSnap.data().equippedBadge || null;
-        
-        // Ensure initial 'isPinned' is false
-        const feedbackData = { 
-            text: text, 
-            name: auth.currentUser.displayName, 
-            photo: auth.currentUser.photoURL, 
-            email: auth.currentUser.email, 
-            uid: uid, 
-            ip: userIP || "unknown", 
-            createdAt: serverTimestamp(), 
-            votes: {},
-            isPinned: false,
-            equippedBadge: equippedBadge // SAVE BADGE
-        };
-
         try {
-            const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
+            // Luăm datele din baza de date ca să avem numele nou
+            const userSnapshot = await getDoc(doc(db, "accounts", uid));
+            const userData = userSnapshot.data();
+            const displayName = userData.username || auth.currentUser.displayName;
+            const equippedBadge = userData.equippedBadge || null;
             
-            // UI Update (Prepend)
+            const feedbackData = { 
+                text: text, 
+                name: displayName, // <-- AICI folosește numele schimbat
+                photo: auth.currentUser.photoURL, 
+                email: auth.currentUser.email, 
+                uid: uid, 
+                ip: userIP || "unknown", 
+                createdAt: serverTimestamp(), 
+                votes: {},
+                isPinned: false,
+                equippedBadge: equippedBadge
+            };
+
+            const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
             appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
             
-            // 1. AWARD BASIC 25 COINS
             await updateDoc(doc(db, "accounts", uid), { coins: increment(25) });
             localStorage.setItem('last_feedback_time', Date.now());
             updateCooldownUI();
 
-            // 2. CHECK DAILY QUEST
-            const userRef = doc(db, "accounts", uid);
-            if (userSnap.exists()) {
-                const userData = userSnap.data();
-                const completed = userData.completedQuests || [];
-                
-                if (!completed.includes('give_feedback')) {
-                    await updateDoc(userRef, {
-                        coins: increment(250), 
-                        feedbackGivenToday: 1, 
-                        completedQuests: [...completed, 'give_feedback']
-                    });
-                    questRewardModal.classList.add('active');
-                } else {
-                    if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
-                }
+            const completed = userData.completedQuests || [];
+            if (!completed.includes('give_feedback')) {
+                await updateDoc(doc(db, "accounts", uid), {
+                    coins: increment(250),  
+                    feedbackGivenToday: 1, 
+                    completedQuests: [...completed, 'give_feedback']
+                });
+                questRewardModal.classList.add('active');
+            } else {
+                if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
             }
             
             revInput.value = ''; document.getElementById('charCount').innerText = '0'; 
@@ -1421,29 +1417,30 @@ window.approveToTodo = async (id, text, authorName, authorPhoto, authorEmail, au
     }
 
     // 4. Post Comment
-    window.postComment = async (id) => {
+  window.postComment = async (id) => {
         const input = document.getElementById(`comInput-${id}`);
         const text = input.value.trim();
         if(!text || !auth.currentUser) return;
         
-        // Fetch current Equipped Badge to save with comment
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        const equippedBadge = userSnap.data().equippedBadge || null;
-
         try {
+            // Luăm datele utilizatorului pentru nume
+            const uSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            const uData = uSnapshot.data();
+            const displayName = uData.username || auth.currentUser.displayName;
+            const equippedBadge = uData.equippedBadge || null;
+
             const commentData = { 
                 text: text, 
                 uid: auth.currentUser.uid, 
-                name: auth.currentUser.displayName, 
-                email: auth.currentUser.email, // ADDED EMAIL
+                name: displayName, // <-- Numele nou
+                email: auth.currentUser.email,
                 photo: auth.currentUser.photoURL, 
                 ip: userIP || "unknown", 
                 createdAt: serverTimestamp(),
-                equippedBadge: equippedBadge // SAVE BADGE
+                equippedBadge: equippedBadge
             };
             await addDoc(collection(db, `feedbacks/${id}/comments`), commentData);
             
-            // Append Locally
             const listDiv = document.getElementById(`comList-${id}`);
             appendCommentHTML(listDiv, commentData);
             input.value = '';
