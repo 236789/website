@@ -314,15 +314,26 @@
             try {
                 await signInWithPopup(auth, provider);
                 sideMenu.classList.remove('open');
-            } catch (error) { console.error("Login Error:", error); }
+            } catch (error) {
+                console.error("Eroare la autentificare:", error);
+            }
         } else {
             accountModal.classList.add('active');
             sideMenu.classList.remove('open');
         }
     };
 
+    // Legăm ambele butoane de funcția handleLogin
     document.getElementById('headerLoginBtn').onclick = handleLogin;
     if (mobileLoginBtn) mobileLoginBtn.onclick = handleLogin;
+
+    const editProfileModal = document.getElementById('editProfileModal');
+    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
+    const closeEditProfile = document.getElementById('closeEditProfile');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const editBirth = document.getElementById('editBirth');
+    const editBio = document.getElementById('editBio');
+    const editTikTok = document.getElementById('editTikTok');
 
     const quests = [
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
@@ -339,6 +350,7 @@
         { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
     ];
 
+    let serverTimeOffset = 0; 
     let isAwarding = false;
 
     // --- PRESENCE SYSTEM ---
@@ -391,35 +403,21 @@
         return shuffled.slice(0, 6).map(q => q.id);
     }
 
-    // --- TESTING TIMER (1 MINUTE) ---
-function updateResetTimer() {
-    const now = new Date();
-    const roTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Bucharest"}));
-    
-    // Create the target time
-    const target = new Date(roTime);
-    
-    if (roTime.getHours() < 12) {
-        // If it's morning, count down to 12:00 PM
-        target.setHours(12, 0, 0, 0);
-    } else {
-        // If it's afternoon, count down to 12:00 AM (Midnight)
-        target.setHours(24, 0, 0, 0);
+    function updateResetTimer() {
+        const nowMs = Date.now() + serverTimeOffset; 
+        const nowReal = new Date(nowMs);
+        const roTime = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Bucharest', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false });
+        const parts = roTime.formatToParts(nowReal);
+        const h = parseInt(parts.find(p => p.type === 'hour').value);
+        const m = parseInt(parts.find(p => p.type === 'minute').value);
+        const s = parseInt(parts.find(p => p.type === 'second').value);
+        let secondsLeft = 86400 - ((h * 3600) + (m * 60) + s); 
+        if (secondsLeft < 0) secondsLeft = 0;
+        const hLeft = Math.floor(secondsLeft / 3600);
+        const mLeft = Math.floor((secondsLeft % 3600) / 60);
+        const sLeft = secondsLeft % 60;
+        resetTimerEl.innerText = `${hLeft.toString().padStart(2,'0')}:${mLeft.toString().padStart(2,'0')}:${sLeft.toString().padStart(2,'0')}`;
     }
-
-    const diff = target - roTime;
-    
-    if (diff <= 0) {
-        resetTimerEl.innerText = "00:00:00"; 
-        return;
-    }
-
-    const h = Math.floor(diff / (1000 * 60 * 60));
-    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const s = Math.floor((diff % (1000 * 60)) / 1000);
-
-    resetTimerEl.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-}
     setInterval(updateResetTimer, 1000);
 
     function renderQuests(userData) {
@@ -480,13 +478,49 @@ function updateResetTimer() {
     async function awardQuest(questId, amount) {
         if (isAwarding) return;
         isAwarding = true;
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
         try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
+            await updateDoc(userRef, { 
                 coins: increment(amount), 
-                completedQuests: arrayUnion(questId)
+                completedQuests: arrayUnion(questId),
+                latestServerCheck: serverTimestamp() 
             });
-        } catch (e) { console.error("Award error:", e); } finally { isAwarding = false; }
+        } catch (e) {} finally { isAwarding = false; }
     }
+
+    // EDIT PROFILE
+    openEditProfileBtn.onclick = async () => {
+        accountModal.classList.remove('active'); 
+        editProfileModal.classList.add('active'); 
+        if(auth.currentUser) {
+            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            if(snap.exists()) {
+                const data = snap.data();
+                editBirth.value = data.birthDate || "";
+                editBio.value = data.bio || "";
+                editTikTok.value = data.tiktokLink || "";
+            }
+        }
+    };
+
+    closeEditProfile.onclick = () => {
+        editProfileModal.classList.remove('active');
+        accountModal.classList.add('active'); 
+    };
+
+    saveProfileBtn.onclick = async () => {
+        if(!auth.currentUser) return;
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                birthDate: editBirth.value,
+                bio: editBio.value.trim(),
+                tiktokLink: editTikTok.value.trim()
+            });
+            alert("Profil salvat!");
+            editProfileModal.classList.remove('active');
+            accountModal.classList.add('active');
+        } catch(e) { alert(e.message); }
+    };
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
@@ -498,35 +532,30 @@ function updateResetTimer() {
             onSnapshot(userRef, async (snap) => {
                 if(snap.exists()) {
                     const data = snap.data();
-                    
-                    // TESTING RESET LOGIC: Every time the minute changes on the clock
-const now = new Date();
-const roTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Bucharest"}));
-const dateStr = roTime.toLocaleDateString("en-CA"); // Result: "2024-05-20"
-const cycle = roTime.getHours() < 12 ? "AM" : "PM"; 
-const roDate = `${dateStr}-${cycle}`; // Result: "2024-05-20-AM" or "2024-05-20-PM"
-                    
-                    if (!data.activeDailyQuests) {
-                        const newIds = generateDailyIds(data.completedQuests || []);
-                        await updateDoc(userRef, { activeDailyQuests: newIds });
-                        return;
-                    }
+                    if (data.latestServerCheck) {
+                        const serverDate = data.latestServerCheck.toDate();
+                        serverTimeOffset = serverDate.getTime() - Date.now();
+                        const roDate = serverDate.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+                        
+                        if (!data.activeDailyQuests) {
+                            const newIds = generateDailyIds(data.completedQuests || []);
+                            await updateDoc(userRef, { activeDailyQuests: newIds });
+                            return;
+                        }
 
-                    if(data.lastResetDate !== roDate) {
-                        const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                        const newIds = generateDailyIds(persistent);
-                        await updateDoc(userRef, {
-                            messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
-                            newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
-                            visited_lost_soul_today: false, visited_kevin_trinity_today: false,
-                            wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                            completedQuests: persistent, 
-                            activeDailyQuests: newIds, 
-                            lastResetDate: roDate
-                        });
-                        return; 
+                        if(data.lastResetDate !== roDate) {
+                            const persistent = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
+                            const newIds = generateDailyIds(persistent);
+                            await updateDoc(userRef, {
+                                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                                completedQuests: persistent, activeDailyQuests: newIds, lastResetDate: roDate
+                            });
+                            return; 
+                        }
                     }
-
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
                     document.getElementById('popUserName').innerText = data.username || user.displayName;
                     document.getElementById('popUserEmail').innerText = data.email || user.email;
@@ -542,26 +571,11 @@ const roDate = `${dateStr}-${cycle}`; // Result: "2024-05-20-AM" or "2024-05-20-
         }
     });
 
-    // Profile Edits
-    document.getElementById('openEditProfileBtn').onclick = () => { accountModal.classList.remove('active'); document.getElementById('editProfileModal').classList.add('active'); };
-    document.getElementById('closeEditProfile').onclick = () => { document.getElementById('editProfileModal').classList.remove('active'); accountModal.classList.add('active'); };
-    document.getElementById('saveProfileBtn').onclick = async () => {
-        if(!auth.currentUser) return;
-        try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                birthDate: document.getElementById('editBirth').value,
-                bio: document.getElementById('editBio').value.trim(),
-                tiktokLink: document.getElementById('editTikTok').value.trim()
-            });
-            document.getElementById('editProfileModal').classList.remove('active');
-            accountModal.classList.add('active');
-        } catch(e) { alert(e.message); }
-    };
-
     const menuBtn = document.getElementById('menuBtn');
     const closeMenu = document.getElementById('closeMenu');
     if(menuBtn) menuBtn.onclick = () => sideMenu.classList.add('open');
     if(closeMenu) closeMenu.onclick = () => sideMenu.classList.remove('open');
+
     document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth);
 </script>
