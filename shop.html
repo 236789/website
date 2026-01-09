@@ -844,25 +844,33 @@
 }
 
 /* Shop Preview Container */
+/* --- FRAME PREVIEW STYLES (REQUIRED FOR INVENTORY) --- */
 .shop-frame-preview-box {
     position: relative;
     width: 60px;
     height: 60px;
-    margin: 0 auto 10px;
+    margin: 0 auto 10px auto;
+    display: block; /* Ensures it takes up space */
 }
+
+/* User image inside the preview */
 .shop-frame-user-img {
     width: 100%;
     height: 100%;
     border-radius: 50%;
     object-fit: cover;
+    border: 1px solid #333;
 }
+
+/* The frame image inside the preview */
 .shop-frame-img {
     position: absolute;
-    top: -3px;
-    left: -3px;
-    width: 66px;
-    height: 66px;
+    top: -5%; 
+    left: -5%;
+    width: 110%; /* Slightly larger to cover edges */
+    height: 110%;
     z-index: 2;
+    pointer-events: none;
 }
   </style>
 </head>
@@ -1050,7 +1058,7 @@
             <input type="text" id="newNameInput" class="calc-input" placeholder="Nume nou..." maxlength="20">
             <button class="pay-btn pay-rev" id="confirmNameBtn" onclick="processNameChange()">CONFIRMĂ (2500 Coins)</button>
         </div>
-    </div>
+    </div> 
 
     <!-- DONATION LIST MODAL -->
 <div id="donationListModal" class="modal-overlay">
@@ -1359,7 +1367,7 @@
             id: 'frame_gold_design', 
             name: 'GOLDEN FLOW', 
             // Corrected Link (must end in .jpg)
-            img: 'https://i.ibb.co/ycK9NRth/938e710295d7d5b7038c7b27f7afd93f.jpg', 
+            img: 'https://i.ibb.co/5hmPh8LP/db5713a5-198a-4634-9f18-21026b81b198-removalai-preview.png', 
             price: 2500,
             desc: 'Lux și eleganță.'
         }
@@ -1728,110 +1736,124 @@ window.openInventory = async (type = 'badges') => {
     const modal = document.getElementById('inventoryModal');
     const list = document.getElementById('inventoryList');
     
-    // Clear immediately to prevent stacking bugs
-    list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
+    // 1. Show Loading State
+    list.innerHTML = '<div style="color:#aaa; padding:20px;">Se încarcă...</div>';
     modal.classList.add('active');
     
-    if(!auth.currentUser) return;
-
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const data = userSnap.data();
-    
-    // Clear loading text
-    list.innerHTML = '';
-
-    // --- BADGES ---
-    if(type === 'badges') {
-        const ownedIds = data.ownedBadges || [];
-        const equipped = data.equippedBadge?.id || null;
-        
-        if(ownedIds.length === 0) {
-            list.innerHTML = '<p style="color:#aaa;">Nu ai insigne.</p>'; 
-            return;
-        }
-
-        ownedIds.forEach(id => {
-             const badge = BADGES_DB.find(b => b.id === id);
-             if(badge) {
-                const isEquipped = (id === equipped);
-                list.innerHTML += `
-                    <div class="shop-badge-item">
-                        <span class="shop-badge-preview" style="background:${badge.color}; color:#000;"><i class="fas ${badge.icon}"></i> ${badge.text}</span>
-                        ${isEquipped 
-                            ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
-                            : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
-                        }
-                    </div>`;
-             }
-        });
-        // Add unequip button ONLY ONCE at the end if something is equipped
-        if(equipped) {
-             list.innerHTML += `<button class="btn-tasks" style="width:100%; margin-top:15px;" onclick="unequipItem('badge')"><i class="fas fa-ban"></i> SCOATE INSIGNA</button>`;
-        }
-    } 
-    
-    // --- BANNERS ---
-    else if (type === 'banners') {
-        const ownedIds = data.ownedBanners || [];
-        const equipped = data.equippedBanner?.id || null;
-        
-        if(ownedIds.length === 0) {
-            list.innerHTML = '<p style="color:#aaa;">Nu ai bannere.</p>';
-            return;
-        }
-        
-        ownedIds.forEach(id => {
-            const item = BANNERS_DB.find(b => b.id === id);
-            if(item) {
-                const isEquipped = (id === equipped);
-                list.innerHTML += `
-                    <div class="shop-badge-item">
-                        <div class="${item.cssClass}" style="padding:5px; border-radius:5px; font-size:10px;">PREVIEW</div>
-                        <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                        ${isEquipped 
-                            ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` 
-                            : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
-                        }
-                    </div>`;
-            }
-        });
-        if(equipped) {
-            list.innerHTML += `<button class="btn-tasks" style="width:100%; margin-top:15px;" onclick="unequipItem('banner')"><i class="fas fa-ban"></i> SCOATE BANNER</button>`;
-        }
+    if(!auth.currentUser) {
+        list.innerHTML = '<p>Trebuie să fii logat.</p>';
+        return;
     }
 
-    // --- FRAMES (NEW) ---
-    else if (type === 'frames') {
-        const ownedIds = data.ownedFrames || [];
-        const equipped = data.equippedFrame?.id || null;
-        const userImg = auth.currentUser.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+    try {
+        // 2. Get latest data
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const data = userSnap.data();
+        
+        // Clear list before rendering
+        list.innerHTML = '';
 
-        if(ownedIds.length === 0) {
-            list.innerHTML = '<p style="color:#aaa;">Nu ai rame.</p>';
-            return;
-        }
+        // --- FRAMES LOGIC ---
+        if (type === 'frames') {
+            const ownedIds = data.ownedFrames || [];
+            const equipped = data.equippedFrame?.id || null;
+            const userImg = auth.currentUser.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
 
-        ownedIds.forEach(id => {
-            const item = FRAMES_DB.find(f => f.id === id);
-            if(item) {
-                const isEquipped = (id === equipped);
-                list.innerHTML += `
-                    <div class="shop-badge-item">
-                        <div class="shop-frame-preview-box">
-                            <img src="${userImg}" class="shop-frame-user-img">
-                            <img src="${item.img}" class="shop-frame-img">
-                        </div>
-                        <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                        ${isEquipped 
-                            ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` 
-                            : `<button class="equip-btn" onclick="equipFrame('${item.id}', '${item.img}')">ECHIPEAZĂ</button>`
-                        }
-                    </div>`;
+            if(ownedIds.length === 0) {
+                list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu deții nicio ramă.</p>';
+                return;
             }
-        });
-        if(equipped) {
-            list.innerHTML += `<button class="btn-tasks" style="width:100%; margin-top:15px;" onclick="unequipItem('frame')"><i class="fas fa-ban"></i> SCOATE RAMA</button>`;
+
+            ownedIds.forEach(id => {
+                const item = FRAMES_DB.find(f => f.id === id);
+                if(item) {
+                    const isEquipped = (id === equipped);
+                    const btnHtml = isEquipped 
+                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipFrame('${item.id}', '${item.img}')">ECHIPEAZĂ</button>`;
+
+                    const html = `
+                        <div class="shop-badge-item">
+                            <div class="shop-frame-preview-box">
+                                <img src="${userImg}" class="shop-frame-user-img">
+                                <img src="${item.img}" class="shop-frame-img">
+                            </div>
+                            <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
+                            ${btnHtml}
+                        </div>`;
+                    list.innerHTML += html;
+                }
+            });
+
+            if(equipped) {
+                list.innerHTML += `<button class="btn-tasks" style="width:100%; margin-top:15px;" onclick="unequipItem('frame')"><i class="fas fa-ban"></i> SCOATE RAMA</button>`;
+            }
+        } 
+        
+        // --- BADGES LOGIC ---
+        else if(type === 'badges') {
+            const ownedIds = data.ownedBadges || [];
+            const equipped = data.equippedBadge?.id || null;
+            
+            if(ownedIds.length === 0) {
+                list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai insigne.</p>'; 
+                return;
+            }
+
+            ownedIds.forEach(id => {
+                 const badge = BADGES_DB.find(b => b.id === id);
+                 if(badge) {
+                    const isEquipped = (id === equipped);
+                    const btnHtml = isEquipped 
+                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`;
+
+                    list.innerHTML += `
+                        <div class="shop-badge-item">
+                            <span class="shop-badge-preview" style="background:${badge.color}; color:#000;"><i class="fas ${badge.icon}"></i> ${badge.text}</span>
+                            ${btnHtml}
+                        </div>`;
+                 }
+            });
+            if(equipped) {
+                 list.innerHTML += `<button class="btn-tasks" style="width:100%; margin-top:15px;" onclick="unequipItem('badge')"><i class="fas fa-ban"></i> SCOATE INSIGNA</button>`;
+            }
+        } 
+        
+        // --- BANNERS LOGIC ---
+        else if (type === 'banners') {
+            const ownedIds = data.ownedBanners || [];
+            const equipped = data.equippedBanner?.id || null;
+            
+            if(ownedIds.length === 0) {
+                list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai bannere.</p>';
+                return;
+            }
+            
+            ownedIds.forEach(id => {
+                const item = BANNERS_DB.find(b => b.id === id);
+                if(item) {
+                    const isEquipped = (id === equipped);
+                    const btnHtml = isEquipped 
+                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`;
+
+                    list.innerHTML += `
+                        <div class="shop-badge-item">
+                            <div class="${item.cssClass}" style="padding:5px; border-radius:5px; font-size:10px;">PREVIEW</div>
+                            <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
+                            ${btnHtml}
+                        </div>`;
+                }
+            });
+            if(equipped) {
+                list.innerHTML += `<button class="btn-tasks" style="width:100%; margin-top:15px;" onclick="unequipItem('banner')"><i class="fas fa-ban"></i> SCOATE BANNER</button>`;
+            }
         }
+
+    } catch(e) {
+        console.error(e);
+        list.innerHTML = '<p style="color:red;">Eroare la încărcare inventar.</p>';
     }
 };
 
