@@ -2002,7 +2002,8 @@ window.approveToTodo = async (id, text, authorName, authorPhoto, authorEmail, au
     };
 
     // 1. Send Feedback (UPDATED WITH QUEST LOGIC & EMAIL & PIN FIELD)
-sendBtn.onclick = async () => {
+// 1. Send Feedback (FULL CORRECTED FUNCTION)
+    sendBtn.onclick = async () => {
         if(!auth.currentUser) return;
         const uid = auth.currentUser.uid;
         const text = revInput.value.trim();
@@ -2013,13 +2014,15 @@ sendBtn.onclick = async () => {
         }
         
         try {
-            // Luăm datele din baza de date ca să avem numele nou
+            // Get latest user data (for name/cosmetics/quests)
             const userSnapshot = await getDoc(doc(db, "accounts", uid));
             const userData = userSnapshot.data();
             const displayName = userData.username || auth.currentUser.displayName;
+            
+            // Cosmetics
             const equippedBadge = userData.equippedBadge || null;
             const equippedBanner = userData.equippedBanner || null;
-            const equippedFrame = userData.equippedFrame || null; // <--- ADD THIS
+            const equippedFrame = userData.equippedFrame || null;
 
             const feedbackData = { 
                 text: text, 
@@ -2033,10 +2036,13 @@ sendBtn.onclick = async () => {
                 isPinned: false,
                 equippedBadge: equippedBadge,
                 equippedBanner: equippedBanner,
-                equippedFrame: equippedFrame // <--- SAVE IT
+                equippedFrame: equippedFrame 
             };
 
-// 2. Update UI locally
+            // 1. DEFINE docRef HERE (This fixes your error)
+            const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
+            
+            // 2. Update UI locally using docRef.id
             appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
             
             // 3. BASE REWARD: Always give 25 coins & increment counter
@@ -2053,8 +2059,8 @@ sendBtn.onclick = async () => {
             const completed = userData.completedQuests || [];
 
             // Only give 250 Coins + Popup IF:
-            // 1. The quest is in their active list
-            // 2. They haven't finished it yet
+            // A. The quest is in their active list
+            // B. They haven't finished it yet
             if (activeQuests.includes('give_feedback') && !completed.includes('give_feedback')) {
                 await updateDoc(doc(db, "accounts", uid), {
                     coins: increment(250),  
@@ -2068,7 +2074,11 @@ sendBtn.onclick = async () => {
 
             revInput.value = ''; 
             document.getElementById('charCount').innerText = '0'; 
-        } catch(e) { alert("Eroare: " + e.message); }
+
+        } catch(e) { 
+            console.error(e);
+            alert("Eroare: " + e.message); 
+        }
     };
 
     // 2. Vote (Optimistic)
