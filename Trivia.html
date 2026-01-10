@@ -2606,11 +2606,10 @@ onAuthStateChanged(auth, user => {
         }
     });
 
-// --- MULTIPLAYER LOGIC (FINAL V4: SELF-HEALING & AUTO-RESET) ---
+// --- MULTIPLAYER LOGIC (V5: FIXED JOINING & AUTO-RESET) ---
     let multiUnsubscribe = null;
     let currentLobbyId = "public_lobby"; 
     
-    // Timers & State
     let lobbyTimerInterval = null;
     let votingTimerInterval = null;
     let gameTimerInterval = null;
@@ -2618,8 +2617,7 @@ onAuthStateChanged(auth, user => {
     let currentGameState = 'waiting'; 
     let localQIndex = -1; 
 
-    // CONSTANTS
-    const MIN_PLAYERS = 3; // Keeps the 3 player requirement
+    const MIN_PLAYERS = 3; 
 
     window.initMultiplayer = async () => {
         const user = auth.currentUser; 
@@ -2630,30 +2628,26 @@ onAuthStateChanged(auth, user => {
         try {
             const docSnap = await getDoc(lobbyRef);
             
-            // --- FIX 1: STUCK LOBBY RESET ---
-            // If lobby exists AND is not waiting, but implies it's broken/old/empty, RESET IT.
             if(docSnap.exists()) {
                 const data = docSnap.data();
-                const now = Date.now();
-                const lastUpdate = data.lastUpdate ? data.lastUpdate.toMillis() : 0;
-                const isStale = (now - lastUpdate) > 1000 * 60 * 30; // 30 mins old
-                const isEmpty = (!data.players || data.players.length === 0);
+                const playerCount = data.players ? data.players.length : 0;
 
-                if ((data.state !== 'waiting' && isEmpty) || isStale) {
-                    console.log("Lobby is stuck/stale. Forcing reset...");
-                    await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [] });
+                // --- CRITICAL FIX HERE ---
+                // If there are less than 3 players, the game CANNOT be running.
+                // Force state to 'waiting' so others can join.
+                if (data.state !== 'waiting' && playerCount < MIN_PLAYERS) {
+                    await updateDoc(lobbyRef, { state: 'waiting' });
                 } 
+                // If there ARE 3+ players and state is playing, THEN block new joins
                 else if (data.state !== 'waiting') {
-                    // Genuine active game
-                    alert("Jocul este deja în desfășurare! Așteaptă să se termine.");
+                    alert("Jocul este deja în desfășurare!");
                     return; 
                 }
             }
 
-            // 1. Join Lobby
             window.showScreen('screenMultiLobby');
             
-            // Add player and update 'lastUpdate' timestamp to keep lobby alive
+            // Join the lobby
             await setDoc(lobbyRef, {
                 players: arrayUnion({
                     uid: user.uid,
@@ -2666,24 +2660,20 @@ onAuthStateChanged(auth, user => {
 
         } catch(e) { console.error("Join error:", e); }
 
-        // 2. Listen to updates
         multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
             if(!docSnap.exists()) return;
             const data = docSnap.data();
             
-            // Safety check: If we were kicked or lobby reset while listening
+            // Kick check
             const amIInLobby = data.players?.some(p => p.uid === user.uid);
             if(!amIInLobby && currentGameState !== 'waiting') {
-                window.leaveMultiplayer(); // Auto-kick if lobby wiped
+                window.leaveMultiplayer();
                 return;
             }
 
-            // UI Updates
             renderLobby(data.players || []);
 
-            // --- STATE MACHINE ---
-            
-            // PHASE 1: VOTING
+            // STATE MACHINE
             if(data.state === 'voting') {
                 if(currentGameState !== 'voting') {
                     currentGameState = 'voting';
@@ -2692,19 +2682,15 @@ onAuthStateChanged(auth, user => {
                 renderVotes(data.votes || []);
             }
 
-            // PHASE 2: PLAYING
             if(data.state === 'playing') {
                 currentGameState = 'playing';
                 if(votingTimerInterval) clearInterval(votingTimerInterval);
-                
-                // Detect New Question
                 if (data.currentQIndex !== localQIndex) {
                     localQIndex = data.currentQIndex;
                     renderMultiplayerQuestion(data);
                 }
             }
             
-            // PHASE 3: FINISHED
             if(data.state === 'finished') {
                 if(currentGameState !== 'finished') {
                     currentGameState = 'finished';
@@ -2714,7 +2700,6 @@ onAuthStateChanged(auth, user => {
         });
     };
 
-    // --- LOBBY FUNCTIONS ---
     function renderLobby(players) {
         const list = document.getElementById('lobbyList');
         const status = document.getElementById('lobbyStatus');
@@ -2727,7 +2712,7 @@ onAuthStateChanged(auth, user => {
             list.innerHTML += `<div class="lobby-player"><img src="${p.pic}" class="lobby-pfp"><span class="lobby-name">${p.name}</span></div>`;
         });
 
-        // HOST TIMER LOGIC (Only Player 1 counts down)
+        // COUNTDOWN LOGIC (Host Only)
         if(players.length >= MIN_PLAYERS && !lobbyTimerInterval && currentGameState === 'waiting') {
             timerEl.style.display = 'block';
             let seconds = 10;
@@ -2738,25 +2723,26 @@ onAuthStateChanged(auth, user => {
 
                 if (seconds <= 0) {
                     clearInterval(lobbyTimerInterval);
-                    // ONLY HOST TRIGGERS STATE CHANGE
-                    if (auth.currentUser.uid === players[0].uid) {
+                    // Check players length again to be safe
+                    if (auth.currentUser.uid === players[0].uid && players.length >= MIN_PLAYERS) {
                         await updateDoc(doc(db, "lobbies", currentLobbyId), { 
                             state: 'voting', 
-                            votes: [],
-                            lastUpdate: serverTimestamp()
+                            votes: [] 
                         });
                     }
                 }
             }, 1000);
         } else if (players.length < MIN_PLAYERS) {
-            // Stop timer if someone leaves
-            if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
-            lobbyTimerInterval = null;
+            if(lobbyTimerInterval) {
+                clearInterval(lobbyTimerInterval);
+                lobbyTimerInterval = null;
+            }
             timerEl.style.display = 'none';
+            timerEl.innerText = "Jocul începe în 10...";
         }
     }
 
-    // --- VOTING FUNCTIONS ---
+    // --- VOTING ---
     function startVotingPhase(players) {
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
         window.showScreen('screenMultiVote');
@@ -2768,7 +2754,6 @@ onAuthStateChanged(auth, user => {
             voteTimerEl.innerText = `${seconds}s`;
             if (seconds <= 0) {
                 clearInterval(votingTimerInterval);
-                // ONLY HOST DECIDES WINNER
                 if (auth.currentUser.uid === players[0].uid) {
                     decideCategoryAndStart();
                 }
@@ -2787,11 +2772,8 @@ onAuthStateChanged(auth, user => {
             const snap = await getDoc(lobbyRef);
             if(snap.exists()) {
                 let votes = snap.data().votes || [];
-                // Remove MY previous vote so I don't stack votes
                 votes = votes.filter(v => v.uid !== user.uid);
-                // Add NEW vote
                 votes.push({ uid: user.uid, cat: cat, pic: user.photoURL });
-                
                 await updateDoc(lobbyRef, { votes: votes });
             }
         } catch(e) { console.error(e); }
@@ -2810,26 +2792,20 @@ onAuthStateChanged(auth, user => {
         const snap = await getDoc(lobbyRef);
         const votes = snap.data().votes || [];
         
-        // Count votes
         let counts = { ksda:0, geo:0, history:0, random:0 };
         votes.forEach(v => { if(counts[v.cat] !== undefined) counts[v.cat]++ });
-        
-        // Find winner (random tie-break built-in by order)
         let winner = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b);
 
-        // Generate shared questions
         const questions = generateQuestionSet(winner);
-        
         await updateDoc(lobbyRef, {
             state: 'playing',
             selectedCategory: winner,
             gameQuestions: questions,
-            currentQIndex: 0,
-            lastUpdate: serverTimestamp()
+            currentQIndex: 0
         });
     }
 
-    // --- GAMEPLAY LOGIC ---
+    // --- GAMEPLAY ---
     function renderMultiplayerQuestion(data) {
         window.showScreen('screenGame');
         if(gameTimerInterval) clearInterval(gameTimerInterval);
@@ -2837,7 +2813,6 @@ onAuthStateChanged(auth, user => {
         const qData = data.gameQuestions[data.currentQIndex];
         if(!qData) return;
 
-        // UI Setup
         document.getElementById('qCounter').innerText = `Runda ${data.currentQIndex + 1}/15`;
         document.getElementById('scorePreview').innerText = ""; 
         document.getElementById('questionText').innerText = qData.q;
@@ -2851,18 +2826,16 @@ onAuthStateChanged(auth, user => {
             imgContainer.style.display = 'none';
         }
 
-        // Render Clickable Buttons
         const optContainer = document.getElementById('optionsContainer');
         optContainer.innerHTML = '';
         qData.a.forEach((optText, idx) => {
             const btn = document.createElement('div');
             btn.className = 'option-btn';
             btn.innerText = optText;
-            btn.onclick = () => handleMultiAnswer(idx, btn, qData.c); // Click logic
+            btn.onclick = () => handleMultiAnswer(idx, btn, qData.c);
             optContainer.appendChild(btn);
         });
 
-        // Start 10s Timer
         let timeLeft = 10;
         const bar = document.getElementById('timerBar');
         bar.style.width = '100%';
@@ -2877,21 +2850,17 @@ onAuthStateChanged(auth, user => {
 
             if (timeLeft <= 0) {
                 clearInterval(gameTimerInterval);
-                // Only Host moves to next round
                 handleRoundEnd(data);
             }
         }, 100);
     }
 
     function handleMultiAnswer(selectedIndex, btn, correctIndex) {
-        // Disable all buttons immediately
         const allBtns = document.querySelectorAll('.option-btn');
         allBtns.forEach(b => b.style.pointerEvents = 'none');
 
         if(selectedIndex === correctIndex) {
             btn.classList.add('correct');
-            // Here you could send score update to DB:
-            // updateMyScore(25); 
         } else {
             btn.classList.add('wrong');
             allBtns[correctIndex].classList.add('correct');
@@ -2902,19 +2871,12 @@ onAuthStateChanged(auth, user => {
         const user = auth.currentUser;
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         
-        // Host Check
         if (user.uid === data.players[0].uid) {
-            // Wait 2s for people to see colors, then next
             setTimeout(async () => {
                 let nextIndex = data.currentQIndex + 1;
-                
                 if (nextIndex < 15) {
-                    await updateDoc(lobbyRef, {
-                        currentQIndex: nextIndex,
-                        lastUpdate: serverTimestamp()
-                    });
+                    await updateDoc(lobbyRef, { currentQIndex: nextIndex });
                 } else {
-                    // --- FIX 3: GAME OVER & RESET ---
                     await updateDoc(lobbyRef, { state: 'finished' });
                 }
             }, 2000);
@@ -2923,20 +2885,15 @@ onAuthStateChanged(auth, user => {
 
     function showFinalResultsAndReset(data) {
         window.showScreen('screenResult');
-        document.getElementById('resName').innerText = "Joc Multiplayer Terminat";
-        document.getElementById('resCorrect').parentElement.style.display = 'none'; // Hide stats for now
+        document.getElementById('resName').innerText = "Joc Terminat";
+        document.getElementById('resCorrect').parentElement.style.display = 'none';
         
-        // Reset everything after 5 seconds
         setTimeout(async () => {
             const user = auth.currentUser;
-            // Host wipes the lobby
-            if (data.players && user.uid === data.players[0].uid) {
+            // Host Resets the lobby COMPLETELY for the next group
+            if (data.players && data.players.length > 0 && user.uid === data.players[0].uid) {
                 const lobbyRef = doc(db, "lobbies", currentLobbyId);
-                await setDoc(lobbyRef, {
-                    state: 'waiting',
-                    players: [],
-                    votes: []
-                });
+                await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [] });
             }
             window.leaveMultiplayer();
         }, 5000);
@@ -2952,19 +2909,19 @@ onAuthStateChanged(auth, user => {
         localQIndex = -1;
         window.showScreen('screenMode');
         
-        // Remove player logic
         const user = auth.currentUser;
         if(user) {
             const lobbyRef = doc(db, "lobbies", currentLobbyId);
             const snap = await getDoc(lobbyRef);
             if(snap.exists()) {
                 const data = snap.data();
-                // If I am the last player, reset the lobby
-                if(data.players && data.players.length <= 1) {
+                // Filter out the user
+                let newPlayers = (data.players || []).filter(p => p.uid !== user.uid);
+                
+                // --- FIX 3: AUTO DELETE / RESET IF EMPTY ---
+                if(newPlayers.length === 0) {
                     await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [] });
                 } else {
-                    // Otherwise just remove me
-                    let newPlayers = (data.players || []).filter(p => p.uid !== user.uid);
                     await updateDoc(lobbyRef, { players: newPlayers });
                 }
             }
