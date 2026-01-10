@@ -2607,21 +2607,26 @@ onAuthStateChanged(auth, user => {
     });
 
 
-// --- MULTIPLAYER LOGIC ---
+// --- MULTIPLAYER LOGIC (FIXED TIMER & TRANSITION) ---
     let multiUnsubscribe = null;
-    let currentLobbyId = "public_lobby"; // Simple single lobby for now
+    let currentLobbyId = "public_lobby"; 
+    let lobbyTimerInterval = null; // Variable to hold the timer
+    let secondsLeft = 10;          // Start time
 
     window.initMultiplayer = async () => {
-        window.showScreen('screenMultiLobby');
-        const user = auth.currentUser;
+        const user = auth.currentUser; 
         
-        // Add player to Firestore Lobby
+        if(!user) {
+            alert("Eroare: Nu ești logat corect.");
+            return;
+        }
+
+        window.showScreen('screenMultiLobby');
+        
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         
-        // 1. Join logic
-        // For simplicity, we just add the user to a list. 
-        // In a real app, we'd use transactions to prevent duplicates.
         try {
+            // Join the lobby array
             await setDoc(lobbyRef, {
                 players: arrayUnion({
                     uid: user.uid,
@@ -2629,18 +2634,22 @@ onAuthStateChanged(auth, user => {
                     pic: user.photoURL,
                     score: 0
                 }),
-                state: 'waiting' // Default state
+                // Ensure state is waiting when we join if it doesn't exist
             }, { merge: true });
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error("Error joining lobby:", e); }
 
-        // 2. Listen to changes
+        // Listen for updates
         multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
             if(!docSnap.exists()) return;
             const data = docSnap.data();
+            
+            // 1. Render Players
             renderLobby(data.players || []);
             
-            // Check if game started
+            // 2. CHECK FOR GAME START
+            // If Firebase says "voting", switch screens immediately!
             if(data.state === 'voting') {
+                if(lobbyTimerInterval) clearInterval(lobbyTimerInterval); // Stop local timer
                 window.showScreen('screenMultiVote');
             }
         });
@@ -2649,9 +2658,11 @@ onAuthStateChanged(auth, user => {
     function renderLobby(players) {
         const list = document.getElementById('lobbyList');
         const status = document.getElementById('lobbyStatus');
-        list.innerHTML = '';
+        const timerEl = document.getElementById('lobbyTimer');
         
-        // Update Count
+        if(!list) return;
+        
+        list.innerHTML = '';
         status.innerText = `Waiting for players... (${players.length}/10)`;
 
         players.forEach(p => {
@@ -2664,32 +2675,61 @@ onAuthStateChanged(auth, user => {
             list.appendChild(div);
         });
 
-        // 3. Auto-start logic (Simulated for UI)
-        if(players.length >= 3) {
-            document.getElementById('lobbyTimer').style.display = 'block';
-            // Note: In real code, the HOST (server) handles the timer, not the client.
-            // For now, this just shows the UI element you asked for.
+        // --- TIMER LOGIC ---
+        
+        // CASE A: Enough players (3+) AND Timer not running yet
+        if(players.length >= 3 && !lobbyTimerInterval) {
+            timerEl.style.display = 'block';
+            secondsLeft = 10; // Reset to 10
+            
+            lobbyTimerInterval = setInterval(async () => {
+                secondsLeft--;
+                timerEl.innerText = `Jocul începe în ${secondsLeft}...`;
+
+                // When Timer hits 0
+                if (secondsLeft <= 0) {
+                    clearInterval(lobbyTimerInterval);
+                    lobbyTimerInterval = null;
+                    
+                    // IMPORTANT: Only the "Host" (Player 1) updates the database
+                    // This prevents 10 people trying to update the DB at once.
+                    const amIHost = (auth.currentUser.uid === players[0].uid);
+                    
+                    if (amIHost) {
+                        await updateDoc(doc(db, "lobbies", currentLobbyId), {
+                            state: 'voting' // This triggers the screen switch for everyone
+                        });
+                    }
+                }
+            }, 1000);
+        } 
+        // CASE B: Someone left, drop below 3 -> Cancel Timer
+        else if (players.length < 3) {
+            if(lobbyTimerInterval) {
+                clearInterval(lobbyTimerInterval);
+                lobbyTimerInterval = null;
+            }
+            timerEl.style.display = 'none';
+            timerEl.innerText = "Jocul începe în 10..."; // Reset text
         }
     }
 
     window.leaveMultiplayer = async () => {
         if(multiUnsubscribe) multiUnsubscribe();
+        if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
+        
         // Remove self from DB (Clean up)
-        const user = auth.currentUser;
-        const lobbyRef = doc(db, "lobbies", currentLobbyId);
-        // Note: Removing form array requires exact object match, 
-        // which is hard without a specific ID map. 
-        // For now, simply go back to menu.
+        // Note: For arrayRemove to work, we need the EXACT object. 
+        // Since we don't have it stored easily, we will skip this strictly for now 
+        // or you can implement a more complex remove logic later.
+        
         window.showScreen('screenMode');
     };
 
     window.castVote = (cat) => {
-        // Visual feedback
         document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
-        event.currentTarget.classList.add('selected');
-        
-        // Here we would push the vote to Firestore
-        // db.update(lobbyRef, { votes: arrayUnion({uid: user.uid, cat: cat}) })
+        if(event && event.currentTarget) event.currentTarget.classList.add('selected');
+        // Voting logic will go here in next step
     };
   </script>
 </body>
