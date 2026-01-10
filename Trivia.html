@@ -1454,8 +1454,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";​
-
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -2508,72 +2507,76 @@ onAuthStateChanged(auth, user => {
     // RULES
     const MIN_PLAYERS = 3; 
 
-window.initMultiplayer = async () => {
-        const user = auth.currentUser;
+    window.initMultiplayer = async () => {
+        const user = auth.currentUser; 
         if(!user) { alert("Trebuie să fii logat!"); return; }
 
-        // 1. SEARCH FOR AN OPEN LOBBY
-        const lobbiesRef = collection(db, "lobbies");
-        // Look for lobbies that are 'waiting'
-        const q = query(lobbiesRef, where("state", "==", "waiting"));
-        const snapshot = await getDocs(q);
-        
-        let foundLobbyId = null;
-        
-        // Check found lobbies to see if they have space (< 10 players)
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.players && data.players.length < 10) {
-                foundLobbyId = doc.id;
-            }
-        });
-
-        // 2. IF NO LOBBY FOUND, CREATE A NEW ONE
-        if (!foundLobbyId) {
-            foundLobbyId = "lobby_" + Date.now(); // Create unique ID
-            await setDoc(doc(db, "lobbies", foundLobbyId), {
-                state: 'waiting',
-                players: [],
-                votes: [],
-                createdAt: serverTimestamp()
-            });
-        }
-
-        currentLobbyId = foundLobbyId; // Set the global ID
-
-        // 3. JOIN THE FOUND LOBBY
-        window.showScreen('screenMultiLobby');
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
 
         try {
-            await updateDoc(lobbyRef, {
+            const docSnap = await getDoc(lobbyRef);
+            
+            // 1. CHECK IF LOBBY IS STUCK OR OPEN
+            if(docSnap.exists()) {
+                const data = docSnap.data();
+                const now = Date.now();
+                const lastUpdate = data.lastUpdate ? data.lastUpdate.toMillis() : 0;
+                
+                // FORCE RESET if:
+                // a) Game hasn't updated in 2 minutes (Stale/Crashed Host)
+                // b) State is NOT waiting, but player list is empty (Bugged)
+                if ((now - lastUpdate > 120000) || (data.state !== 'waiting' && (!data.players || data.players.length === 0))) {
+                    console.log("Resetting stuck lobby...");
+                    await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
+                } 
+                // BLOCK JOIN if game is actually running
+                else if (data.state !== 'waiting') {
+                    // One exception: If I am already in the list (refresh page), let me back in
+                    const amIIn = data.players?.some(p => p.uid === user.uid);
+                    if (!amIIn) {
+                        alert("Jocul a început deja! Așteaptă să se termine.");
+                        return; 
+                    }
+                }
+            } else {
+                // Creates lobby if it doesn't exist
+                await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [] });
+            }
+
+            window.showScreen('screenMultiLobby');
+            
+            // 2. ADD PLAYER TO DB
+            // We use arrayUnion to prevent duplicates (same UID won't be added twice)
+            await setDoc(lobbyRef, {
                 players: arrayUnion({
                     uid: user.uid,
                     name: user.displayName,
                     pic: user.photoURL,
-                    score: 0
+                    score: 0 
                 }),
-                lastUpdate: serverTimestamp()
-            });
-        } catch(e) { console.error("Join fail", e); }
+                lastUpdate: serverTimestamp() // Keep lobby alive
+            }, { merge: true });
 
-        // 4. START LISTENING
+        } catch(e) { console.error("Join error:", e); }
+
+        // 3. LISTEN TO GAME STATE
         multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
             if(!docSnap.exists()) return;
             const data = docSnap.data();
             const players = data.players || [];
-
-            // Auto-Kick if you are not in the player list anymore
-            const amIIn = players.some(p => p.uid === user.uid);
-            if(!amIIn && currentGameState !== 'waiting') {
+            
+            // Auto-Kick if I was removed
+            const amIInLobby = players.some(p => p.uid === user.uid);
+            if(!amIInLobby && currentGameState !== 'waiting') {
                 window.leaveMultiplayer();
                 return;
             }
 
-            // Update UI
             renderLobby(players);
 
-            // --- STATE MANAGER ---
+            // --- STATE MACHINE ---
+            
+            // VOTING START
             if(data.state === 'voting') {
                 if(currentGameState !== 'voting') {
                     currentGameState = 'voting';
@@ -2581,22 +2584,28 @@ window.initMultiplayer = async () => {
                 }
                 renderVotes(data.votes || []);
             }
+
+            // GAME START / NEXT QUESTION
             if(data.state === 'playing') {
-                // Stop intermission timer if running
                 if(intermissionTimerInterval) clearInterval(intermissionTimerInterval);
                 
-                if(data.currentQIndex !== localQIndex) {
+                // Detect new question by index change
+                if (data.currentQIndex !== localQIndex) {
                     localQIndex = data.currentQIndex;
                     currentGameState = 'playing';
                     renderMultiplayerQuestion(data);
                 }
             }
+
+            // INTERMISSION (Results)
             if(data.state === 'intermission') {
                 if(currentGameState !== 'intermission') {
                     currentGameState = 'intermission';
                     showRoundLeaderboard(data);
                 }
             }
+            
+            // FINISHED
             if(data.state === 'finished') {
                 if(currentGameState !== 'finished') {
                     currentGameState = 'finished';
@@ -2897,54 +2906,33 @@ window.initMultiplayer = async () => {
         }
     }
 
-window.leaveMultiplayer = async () => {
-        // 1. Stop Listening to Firebase
+    window.leaveMultiplayer = async () => {
         if(multiUnsubscribe) multiUnsubscribe();
-        
-        // 2. Kill all timers
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
         if(votingTimerInterval) clearInterval(votingTimerInterval);
         if(gameTimerInterval) clearInterval(gameTimerInterval);
         if(intermissionTimerInterval) clearInterval(intermissionTimerInterval);
         
-        // 3. Reset Local State
         currentGameState = 'waiting';
         localQIndex = -1;
         window.showScreen('screenMode');
         
         const user = auth.currentUser;
-
-        // 4. Remove Player from Database
-        // We check if currentLobbyId exists so we know WHICH lobby to delete from
-        if(currentLobbyId && user) {
+        if(user) {
             const lobbyRef = doc(db, "lobbies", currentLobbyId);
-            try {
-                const snap = await getDoc(lobbyRef);
-                if(snap.exists()) {
-                    const data = snap.data();
-                    let newPlayers = (data.players || []).filter(p => p.uid !== user.uid);
-                    
-                    // If lobby is empty after I leave, RESET IT completely
-                    if(newPlayers.length === 0) {
-                        await setDoc(lobbyRef, { 
-                            state: 'waiting', 
-                            players: [], 
-                            votes: [], 
-                            roundVotes: [],
-                            lastUpdate: serverTimestamp()
-                        });
-                    } else {
-                        // Otherwise just remove me from the list
-                        await updateDoc(lobbyRef, { players: newPlayers });
-                    }
+            const snap = await getDoc(lobbyRef);
+            if(snap.exists()) {
+                const data = snap.data();
+                let newPlayers = (data.players || []).filter(p => p.uid !== user.uid);
+                
+                // If empty, Force Reset state to waiting immediately
+                if(newPlayers.length === 0) {
+                    await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
+                } else {
+                    await updateDoc(lobbyRef, { players: newPlayers });
                 }
-            } catch(e) {
-                console.error("Error leaving lobby:", e);
             }
         }
-
-        // 5. Reset the global ID so next time we search for a room fresh
-        currentLobbyId = null;
     };
   </script>
 </body>
