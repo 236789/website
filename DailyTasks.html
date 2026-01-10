@@ -187,6 +187,17 @@
         .hamburger { display: block; margin-left: auto; }
         .login-btn-header { display: none !important; }
     }
+
+
+
+/* Add this near your other button styles */
+    .btn-owner-reset {
+        background: #ff0000; color: #fff; border: 2px solid #fff;
+        padding: 10px 20px; border-radius: 50px; font-weight: 900;
+        font-family: 'Orbitron'; cursor: pointer; display: none; /* Hidden by default */
+        margin-top: 15px; box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+    }
+    .btn-owner-reset:hover { transform: scale(1.1); background: #cc0000; }
   </style>
 </head>
 <body>
@@ -236,6 +247,8 @@
             <a href="Topksdacoins.html" class="btn-top">Vezi Clasament</a>
         </div>
     </div>
+    <!-- NEW OWNER BUTTON -->
+    <button id="ownerResetBtn" class="btn-owner-reset">👑 FORCE RESET (OWNER)</button>
 </main>
 
 <div id="questGrid" class="quests-container"></div>
@@ -305,30 +318,47 @@
     const questGrid = document.getElementById('questGrid');
     const resetTimerEl = document.getElementById('resetTimer');
     const accountModal = document.getElementById('accountModal');
+    const ownerResetBtn = document.getElementById('ownerResetBtn');
     
-    // Tracking claimed quests in current session to prevent "Double dipping"
     let claimedInSession = new Set();
     let isAwarding = false;
 
+    // --- 1. NEW EXPANDED QUEST DATABASE ---
     const quests = [
+        // Community Quests
         { id: 'wall_reply_5', title: 'Răspunde la 5 persoane pe Wall', reward: 300, target: 5, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'wall_react_10', title: 'Reacționează la 10 mesaje pe Wall', reward: 200, target: 10, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'wall_long_msg', title: 'Scrie un mesaj lung (+100 caractere)', reward: 500, target: 1, link: 'Wall.html', pageName: 'Community Wall' },
         { id: 'kevin_talk_15', title: 'Vorbește cu Kevin Bot (15 mesaje)', reward: 350, target: 15, link: 'index.html', pageName: 'Hai să vorbim' },
         { id: 'meet_team_hunt', title: 'Cunoaște Echipa (Quest Secret)', reward: 400, target: 2, link: 'despre_noi.html', pageName: 'Despre Noi' },
         { id: 'msg3', title: 'Trimite 3 mesaje (Standard)', reward: 250, target: 3, link: 'Wall.html', pageName: 'Community Wall' },
-        { id: 'gallery_task', title: 'Activitate Galerie (Like & Com)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'Galerie' },
         { id: 'visit_news', title: 'Vizitează pagina Noutăți/Anunțuri', reward: 100, target: 1, link: 'noutati.html', pageName: 'Anunțuri' },
         { id: 'give_feedback', title: 'Dă-ne un feedback sau idei noi', reward: 250, target: 1, link: 'Feedback.html', pageName: 'Feedback' },
+        
+        // TikTok Quest
         { id: 'tiktok5', title: 'Urmărește 5 membri pe TikTok', reward: 300, target: 5, link: 'comunitate.html', pageName: 'Comunitate' },
-        { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media' },
-        { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii' }
+        
+        // SPECIAL: Gallery (Double Bar)
+        { id: 'gallery_task', title: 'Activitate Galerie (Like & Com)', reward: 150, targetLikes: 10, targetComments: 3, link: 'Galerie.html', pageName: 'Galerie' },
+
+        // NEW: Shop Quests
+        { id: 'buy_badge', title: 'Cumpără o Insignă (Badge)', reward: 500, target: 1, link: 'Shop.html', pageName: 'Shop Cosmetics' },
+        { id: 'buy_banner', title: 'Cumpără un Banner', reward: 500, target: 1, link: 'Shop.html', pageName: 'Shop Cosmetics' },
+        { id: 'buy_frame', title: 'Cumpără o Ramă (Frame)', reward: 600, target: 1, link: 'Shop.html', pageName: 'Shop Cosmetics' },
+        { id: 'donate_100', title: 'Donează 100 Coins cuiva', reward: 300, target: 1, link: 'Shop.html', pageName: 'Shop / Profil' },
+
+        // NEW: Trivia Quests
+        { id: 'trivia_single_5', title: '5 Răspunsuri Corecte (Single)', reward: 250, target: 5, link: 'Trivia.html', pageName: 'Trivia' },
+        { id: 'trivia_multi_5', title: '5 Răspunsuri Corecte (Multi)', reward: 400, target: 5, link: 'Trivia.html', pageName: 'Trivia Multiplayer' },
+
+        // ONE TIME ONLY (Permanent)
+        { id: 'social3', title: 'Urmărește-ne pe Social Media', reward: 400, target: 3, link: 'social.html', pageName: 'Social Media', oneTime: true },
+        { id: 'review', title: 'Scrie-ne o recenzie (One Time)', reward: 500, target: 1, link: 'recenzii.html', pageName: 'Recenzii', oneTime: true }
     ];
 
-    // --- TIMER LOGIC (Fixes the "7 hours stuck" issue) ---
+    // --- 2. 12-HOUR TIMER LOGIC ---
     function updateResetTimer() {
         const now = new Date();
-        // Convert to Romania Time
         const roTime = new Intl.DateTimeFormat('en-GB', {
             timeZone: 'Europe/Bucharest',
             hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
@@ -336,9 +366,10 @@
 
         const [h, m, s] = roTime.split(':').map(Number);
         
-        // Seconds until next midnight
-        let secondsLeft = 86400 - ((h * 3600) + (m * 60) + s);
-        
+        // Calculate seconds until next 12:00 or 24:00
+        let targetH = (h < 12) ? 12 : 24;
+        let secondsLeft = ((targetH * 3600) - ((h * 3600) + (m * 60) + s));
+
         const hLeft = Math.floor(secondsLeft / 3600);
         const mLeft = Math.floor((secondsLeft % 3600) / 60);
         const sLeft = secondsLeft % 60;
@@ -347,15 +378,18 @@
     }
     setInterval(updateResetTimer, 1000);
 
-    // --- QUEST RENDERING ---
+    // --- 3. RENDERING ENGINE ---
     function renderQuests(userData) {
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
         const activeIds = userData.activeDailyQuests || [];
 
         quests.forEach(q => {
-            // If we have active daily quests set, only show those (unless it's a one-time quest)
-            if (activeIds.length > 0 && !activeIds.includes(q.id) && q.id !== 'review' && q.id !== 'social3') return;
+            // Logic 1: If One-Time and completed, NEVER show again
+            if (q.oneTime && completed.includes(q.id)) return;
+
+            // Logic 2: If Daily, only show if in active set (or if it's a one-time not yet done)
+            if (!q.oneTime && activeIds.length > 0 && !activeIds.includes(q.id)) return;
 
             const isCompleted = completed.includes(q.id);
             const card = document.createElement('div');
@@ -363,25 +397,47 @@
             let progressHTML = '';
             let canAward = false;
 
-            // Progress Logic
-            if (q.id === 'meet_team_hunt') {
-                const totalTeam = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
-                progressHTML = generateBar(totalTeam, 2);
-                if (totalTeam >= 2) canAward = true;
-            } else if (q.id === 'gallery_task') {
+            // --- SPECIAL: GALLERY (2 BARS) ---
+            if (q.id === 'gallery_task') {
                 const curL = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
                 const curC = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
-                progressHTML = generateBar(curL + curC, q.targetLikes + q.targetComments);
+                
+                progressHTML = `
+                    <div class="progress-wrapper">
+                        <div class="progress-info"><span>Likes</span><span>${curL}/${q.targetLikes}</span></div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${(curL/q.targetLikes)*100}%"></div></div>
+                    </div>
+                    <div class="progress-wrapper">
+                        <div class="progress-info"><span>Comentarii</span><span>${curC}/${q.targetComments}</span></div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${(curC/q.targetComments)*100}%"></div></div>
+                    </div>
+                `;
                 if (curL >= q.targetLikes && curC >= q.targetComments) canAward = true;
-            } else {
+            } 
+            // --- STANDARD QUESTS ---
+            else {
                 let current = 0;
+                // Mapping DB fields to Quest IDs
                 const mapping = {
                     msg3: 'messagesSentToday', wall_reply_5: 'wallRepliesToday', wall_react_10: 'wallReactionsToday',
                     wall_long_msg: 'wallLongMsgSent', kevin_talk_15: 'kevinMessagesToday', review: 'hasWrittenReview',
-                    tiktok5: 'tiktoksFollowed', social3: 'socialFollowed', visit_news: 'newsVisitedToday', give_feedback: 'feedbackGivenToday'
+                    tiktok5: 'tiktoksFollowed', social3: 'socialFollowed', visit_news: 'newsVisitedToday', give_feedback: 'feedbackGivenToday',
+                    meet_team_hunt: 'teamHuntCount', 
+                    // New Mappings
+                    buy_badge: 'shopBadgeBought', buy_banner: 'shopBannerBought', buy_frame: 'shopFrameBought',
+                    donate_100: 'coinsDonatedToday', trivia_single_5: 'triviaSingleCorrectToday', trivia_multi_5: 'triviaMultiCorrectToday'
                 };
-                current = userData[mapping[q.id]] || 0;
-                if (typeof current === 'boolean') current = current ? 1 : 0;
+
+                // Special calc for team hunt
+                if(q.id === 'meet_team_hunt') {
+                    current = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
+                } else if (q.id === 'donate_100') {
+                    // Check if donated amount > 0 (Tracking > 100 usually done by setting flag to 1)
+                    current = userData.coinsDonatedToday >= 100 ? 1 : 0; 
+                } else {
+                    current = userData[mapping[q.id]] || 0;
+                    if (typeof current === 'boolean') current = current ? 1 : 0;
+                }
                 
                 progressHTML = generateBar(current, q.target);
                 if (current >= q.target) canAward = true;
@@ -393,7 +449,6 @@
             card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
             questGrid.appendChild(card);
 
-            // AUTO-AWARD LOGIC (Anti-Infinite Fix)
             if (canAward && !isCompleted && !claimedInSession.has(q.id)) {
                 awardQuest(q.id, q.reward);
             }
@@ -408,77 +463,108 @@
     async function awardQuest(questId, amount) {
         if (isAwarding || claimedInSession.has(questId)) return;
         isAwarding = true;
-        claimedInSession.add(questId); // Lock immediately in frontend
-
+        claimedInSession.add(questId);
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         try {
-            await updateDoc(userRef, { 
-                coins: increment(amount), 
-                completedQuests: arrayUnion(questId)
-            });
-            console.log(`Quest ${questId} awarded.`);
-        } catch (e) {
-            console.error("Award error:", e);
-            claimedInSession.delete(questId); // Unlock if DB failed
-        } finally {
-            isAwarding = false;
-        }
+            await updateDoc(userRef, { coins: increment(amount), completedQuests: arrayUnion(questId) });
+        } catch (e) { console.error(e); claimedInSession.delete(questId); } 
+        finally { isAwarding = false; }
     }
 
-    // --- RESET LOGIC (Fixes the Quest Reset failure) ---
-    function generateDailyIds(completedQuests) {
-        const persistent = ['review', 'social3'];
-        const availablePool = quests.filter(q => !persistent.includes(q.id));
-        const shuffled = availablePool.sort(() => 0.5 - Math.random());
+    // --- 4. RESET SYSTEM (12 HOURS) ---
+    function generateDailyIds() {
+        // Exclude one-time quests from the daily rotation pool
+        const dailyPool = quests.filter(q => !q.oneTime);
+        const shuffled = dailyPool.sort(() => 0.5 - Math.random());
         return shuffled.slice(0, 6).map(q => q.id);
     }
 
+    async function resetUserQuests(userRef, snapData) {
+        // Calculate current 12h block (e.g., "2024-01-01-AM" or "PM")
+        const now = new Date();
+        const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+        const hours = parseInt(now.toLocaleTimeString("en-GB", { timeZone: "Europe/Bucharest", hour: '2-digit' }));
+        const block = hours < 12 ? 'AM' : 'PM';
+        const resetKey = `${dateStr}-${block}`;
+
+        if (snapData.lastResetBlock !== resetKey) {
+            console.log("New 12h block detected. Resetting...");
+            
+            // Keep completed one-time quests
+            const persistentCompleted = (snapData.completedQuests || []).filter(id => {
+                const q = quests.find(x => x.id === id);
+                return q && q.oneTime;
+            });
+
+            const newIds = generateDailyIds();
+
+            await updateDoc(userRef, {
+                // Reset Counters
+                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                shopBadgeBought: 0, shopBannerBought: 0, shopFrameBought: 0,
+                coinsDonatedToday: 0, triviaSingleCorrectToday: 0, triviaMultiCorrectToday: 0,
+                
+                // Set New State
+                completedQuests: persistentCompleted, 
+                activeDailyQuests: newIds, 
+                lastResetBlock: resetKey
+            });
+            claimedInSession.clear();
+        }
+    }
+
+    // --- 5. AUTH & LOGIC ---
     onAuthStateChanged(auth, async (user) => {
         if (user) {
+            // Update Headers
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
+            
+            // UPDATE SIDE MENU TEXT
+            const mobileBtn = document.getElementById('mobileLoginBtn');
+            if(mobileBtn) {
+                mobileBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+            }
+
+            // OWNER CHECK
+            if (user.email === 'nicaemmanuel433qe@gmail.com') {
+                ownerResetBtn.style.display = 'block';
+                ownerResetBtn.onclick = async () => {
+                   if(confirm("Force Reset Quests?")) {
+                       // Corrupt the key to force a reset on next update
+                       await updateDoc(doc(db, "accounts", user.uid), { lastResetBlock: "FORCE_RESET" });
+                       alert("Reset triggered. Wait for refresh.");
+                   }
+                };
+            }
 
             const userRef = doc(db, "accounts", user.uid);
-
             onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
-                
                 const data = snap.data();
-                // Use a reliable date string for comparison (Romania Time)
-                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
-
-                // Check for Daily Reset
-                if (data.lastResetDate !== todayStr) {
-                    console.log("New day detected. Resetting quests...");
-                    const persistentCompleted = (data.completedQuests || []).filter(id => id === 'review' || id === 'social3');
-                    const newIds = generateDailyIds(persistentCompleted);
-                    
-                    await updateDoc(userRef, {
-                        messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
-                        newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
-                        visited_lost_soul_today: false, visited_kevin_trinity_today: false,
-                        wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
-                        completedQuests: persistentCompleted, 
-                        activeDailyQuests: newIds, 
-                        lastResetDate: todayStr
-                    });
-                    claimedInSession.clear();
-                    return; 
-                }
-
-                // Update UI
+                
+                await resetUserQuests(userRef, data);
+                
+                // Populate Account Modal
                 document.getElementById('popUserImg').src = data.image || user.photoURL;
                 document.getElementById('popUserName').innerText = data.username || user.displayName;
                 document.getElementById('popUserEmail').innerText = data.email || user.email;
                 document.getElementById('popUserCoins').innerText = data.coins || 0;
                 document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+                
                 renderQuests(data);
             });
 
         } else {
             document.getElementById('headerLoginText').innerText = "LOGIN";
             document.getElementById('headerUserImg').style.display = "none";
+            if(document.getElementById('mobileLoginBtn')) {
+                 document.getElementById('mobileLoginBtn').innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+            }
             questGrid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5;">Te rugăm să te autentifici pentru a vedea task-urile.</p>';
         }
     });
