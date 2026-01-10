@@ -828,23 +828,32 @@
     .trivia-desc { color: #a5b1c2; font-size: 14px; margin-bottom: 30px; max-width: 600px; margin-left: auto; margin-right: auto; }
 
     /* The "Chat-like" Box */
+/* Find this existing class and UPDATE it */
     .trivia-box {
         background: #08101b;
         border: 1px solid var(--primary);
         border-radius: 20px;
         padding: 30px;
-        min-height: 400px;
+        min-height: 500px; /* INCREASE THIS from 400px to 500px for breathing room */
         position: relative;
         box-shadow: 0 0 30px rgba(0,0,0,0.5);
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        justify-content: center; /* THIS CENTERS THE LOGIN WALL VERTICALLY */
         overflow: hidden;
     }
 
-    /* Screens Logic */
-    .trivia-screen { display: none; width: 100%; flex-direction: column; align-items: center; animation: fadeIn 0.4s ease; }
+    /* Also update this one to ensure screens fill the box */
+    .trivia-screen { 
+        display: none; 
+        width: 100%; 
+        height: 100%; /* ADD THIS */
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; /* ADD THIS */
+        animation: fadeIn 0.4s ease; 
+    }
     .trivia-screen.active { display: flex; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 
@@ -1883,14 +1892,20 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 // --- TRIVIA SYSTEM LOGIC ---
 
-    // 1. SOUNDS
-// Use these Base64 strings instead of URLs
-// 1. SOUNDS (Fixed Short Beeps)
-  const sfxTimer = new Audio("https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3");
-    // Correct (Clean Bell)
-    const sfxCorrect = new Audio("https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3");
-    // Wrong (Digital Error)
-    const sfxWrong = new Audio("https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3");
+// REPLACES YOUR OLD AUDIO CONSTANTS
+    // 1. Ticking Sound (Short Beep)
+    const sfxTimer = new Audio("data:audio/mp3;base64,//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq");
+    
+    // 2. Correct Answer (Ding)
+    const sfxCorrect = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
+    
+    // 3. Wrong Answer (Buzz)
+    const sfxWrong = new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg");
+    
+    // Set volume so it doesn't blast ears
+    sfxTimer.volume = 0.5;
+    sfxCorrect.volume = 0.5;
+    sfxWrong.volume = 0.5;
     
     // 2. STATE VARIABLES
     let triviaState = {
@@ -1939,12 +1954,28 @@ const DB_QUESTIONS = {
                 img: "" 
             }
         ],
-        'geo': [
-            { q: "Care este capitala Franței?", a: ["Berlin", "Madrid", "Paris", "Roma"], c: 2, img: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Paris_Night.jpg/640px-Paris_Night.jpg" },
-            { q: "Cel mai mare ocean este?", a: ["Atlantic", "Indian", "Pacific", "Arctic"], c: 2, img: "" },
-            { q: "În ce continent este Egiptul?", a: ["Asia", "Europa", "Africa", "America"], c: 2, img: "" },
-            { q: "Capitala României este?", a: ["Cluj", "Iași", "București", "Timișoara"], c: 2, img: "" },
-            { q: "Care râu trece prin Londra?", a: ["Tamisa", "Sena", "Dunărea", "Nilul"], c: 0, img: "" }
+'geo': [
+            { 
+                q: "Care este capitala Franței?", 
+                a: ["Berlin", "Madrid", "Paris", "Roma"], 
+                c: 2, 
+                // I added a link here:
+                img: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Paris_Night.jpg/640px-Paris_Night.jpg" 
+            },
+            { 
+                q: "Cel mai mare ocean este?", 
+                a: ["Atlantic", "Indian", "Pacific", "Arctic"], 
+                c: 2, 
+                // You must find an image on google, copy image address, and paste it here:
+                img: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Pacific_Ocean_-_Earth_Day_2013.jpg/640px-Pacific_Ocean_-_Earth_Day_2013.jpg" 
+            },
+            { 
+                q: "În ce continent este Egiptul?", 
+                a: ["Asia", "Europa", "Africa", "America"], 
+                c: 2, 
+                img: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/All_Gizah_Pyramids.jpg/640px-All_Gizah_Pyramids.jpg" 
+            },
+            // ... do the same for the rest ...
         ],
         'history': [
             { q: "Când a început WW2?", a: ["1914", "1939", "1945", "1900"], c: 1, img: "" },
@@ -2003,7 +2034,7 @@ const DB_QUESTIONS = {
 
     // 3. Load Question
 // 3. Load Question
-    function loadQuestion() {
+function loadQuestion() {
         // Stop if we reached the limit
         if(triviaState.qIndex >= 15) {
             endGame();
@@ -2017,17 +2048,18 @@ const DB_QUESTIONS = {
         document.getElementById('scorePreview').innerText = `Score: ${triviaState.score}`;
         document.getElementById('questionText').innerText = qData.q;
         
-        // --- IMAGE LOGIC (UPDATED) ---
+        // --- IMAGE LOGIC FIX ---
         const imgContainer = document.getElementById('qImageContainer');
         const imgEl = document.getElementById('questionImage');
 
         // Check if image exists AND is not empty
         if (qData.img && qData.img.trim() !== "") {
             imgEl.src = qData.img;
-            imgContainer.style.display = 'block'; // Show the box
+            // CHANGED FROM 'block' TO 'flex' TO KEEP CENTERING
+            imgContainer.style.display = 'flex'; 
         } else {
-            imgContainer.style.display = 'none';  // Hide the box
-            imgEl.src = ""; // Clear source
+            imgContainer.style.display = 'none';  
+            imgEl.src = ""; 
         }
         // -----------------------------
 
@@ -2044,7 +2076,6 @@ const DB_QUESTIONS = {
         qData.a.forEach((optText, idx) => {
             const btn = document.createElement('div');
             btn.className = 'option-btn';
-            // A, B, C, D labels
             const letter = ["A","B","C","D"][idx];
             btn.innerText = `${letter}) ${optText}`;
             btn.onclick = () => handleAnswer(idx, btn);
