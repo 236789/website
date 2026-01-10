@@ -1447,90 +1447,7 @@
     menuLinks.forEach(link => link.addEventListener('click', () => sideMenu.classList.remove('open')));
 
 
-// --- MULTIPLAYER LOGIC ---
-    let multiUnsubscribe = null;
-    let currentLobbyId = "public_lobby"; // Simple single lobby for now
 
-    window.initMultiplayer = async () => {
-        window.showScreen('screenMultiLobby');
-        const user = auth.currentUser;
-        
-        // Add player to Firestore Lobby
-        const lobbyRef = doc(db, "lobbies", currentLobbyId);
-        
-        // 1. Join logic
-        // For simplicity, we just add the user to a list. 
-        // In a real app, we'd use transactions to prevent duplicates.
-        try {
-            await setDoc(lobbyRef, {
-                players: arrayUnion({
-                    uid: user.uid,
-                    name: user.displayName,
-                    pic: user.photoURL,
-                    score: 0
-                }),
-                state: 'waiting' // Default state
-            }, { merge: true });
-        } catch(e) { console.error(e); }
-
-        // 2. Listen to changes
-        multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
-            if(!docSnap.exists()) return;
-            const data = docSnap.data();
-            renderLobby(data.players || []);
-            
-            // Check if game started
-            if(data.state === 'voting') {
-                window.showScreen('screenMultiVote');
-            }
-        });
-    };
-
-    function renderLobby(players) {
-        const list = document.getElementById('lobbyList');
-        const status = document.getElementById('lobbyStatus');
-        list.innerHTML = '';
-        
-        // Update Count
-        status.innerText = `Waiting for players... (${players.length}/10)`;
-
-        players.forEach(p => {
-            const div = document.createElement('div');
-            div.className = 'lobby-player';
-            div.innerHTML = `
-                <img src="${p.pic}" class="lobby-pfp">
-                <span class="lobby-name">${p.name}</span>
-            `;
-            list.appendChild(div);
-        });
-
-        // 3. Auto-start logic (Simulated for UI)
-        if(players.length >= 3) {
-            document.getElementById('lobbyTimer').style.display = 'block';
-            // Note: In real code, the HOST (server) handles the timer, not the client.
-            // For now, this just shows the UI element you asked for.
-        }
-    }
-
-    window.leaveMultiplayer = async () => {
-        if(multiUnsubscribe) multiUnsubscribe();
-        // Remove self from DB (Clean up)
-        const user = auth.currentUser;
-        const lobbyRef = doc(db, "lobbies", currentLobbyId);
-        // Note: Removing form array requires exact object match, 
-        // which is hard without a specific ID map. 
-        // For now, simply go back to menu.
-        window.showScreen('screenMode');a
-    };
-
-    window.castVote = (cat) => {
-        // Visual feedback
-        document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
-        event.currentTarget.classList.add('selected');
-        
-        // Here we would push the vote to Firestore
-        // db.update(lobbyRef, { votes: arrayUnion({uid: user.uid, cat: cat}) })
-    };
 
   </script>
  <!-- FIREBASE GLOBAL LOGIC -->
@@ -2688,6 +2605,92 @@ onAuthStateChanged(auth, user => {
             }
         }
     });
+
+
+// --- MULTIPLAYER LOGIC ---
+    let multiUnsubscribe = null;
+    let currentLobbyId = "public_lobby"; // Simple single lobby for now
+
+    window.initMultiplayer = async () => {
+        window.showScreen('screenMultiLobby');
+        const user = auth.currentUser;
+        
+        // Add player to Firestore Lobby
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        
+        // 1. Join logic
+        // For simplicity, we just add the user to a list. 
+        // In a real app, we'd use transactions to prevent duplicates.
+        try {
+            await setDoc(lobbyRef, {
+                players: arrayUnion({
+                    uid: user.uid,
+                    name: user.displayName,
+                    pic: user.photoURL,
+                    score: 0
+                }),
+                state: 'waiting' // Default state
+            }, { merge: true });
+        } catch(e) { console.error(e); }
+
+        // 2. Listen to changes
+        multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
+            if(!docSnap.exists()) return;
+            const data = docSnap.data();
+            renderLobby(data.players || []);
+            
+            // Check if game started
+            if(data.state === 'voting') {
+                window.showScreen('screenMultiVote');
+            }
+        });
+    };
+
+    function renderLobby(players) {
+        const list = document.getElementById('lobbyList');
+        const status = document.getElementById('lobbyStatus');
+        list.innerHTML = '';
+        
+        // Update Count
+        status.innerText = `Waiting for players... (${players.length}/10)`;
+
+        players.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'lobby-player';
+            div.innerHTML = `
+                <img src="${p.pic}" class="lobby-pfp">
+                <span class="lobby-name">${p.name}</span>
+            `;
+            list.appendChild(div);
+        });
+
+        // 3. Auto-start logic (Simulated for UI)
+        if(players.length >= 3) {
+            document.getElementById('lobbyTimer').style.display = 'block';
+            // Note: In real code, the HOST (server) handles the timer, not the client.
+            // For now, this just shows the UI element you asked for.
+        }
+    }
+
+    window.leaveMultiplayer = async () => {
+        if(multiUnsubscribe) multiUnsubscribe();
+        // Remove self from DB (Clean up)
+        const user = auth.currentUser;
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        // Note: Removing form array requires exact object match, 
+        // which is hard without a specific ID map. 
+        // For now, simply go back to menu.
+        window.showScreen('screenMode');
+    };
+
+    window.castVote = (cat) => {
+        // Visual feedback
+        document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+        
+        // Here we would push the vote to Firestore
+        // db.update(lobbyRef, { votes: arrayUnion({uid: user.uid, cat: cat}) })
+    };
   </script>
 </body>
 </html>
