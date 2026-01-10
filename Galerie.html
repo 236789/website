@@ -1503,13 +1503,30 @@ onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
         }
     });
 
-    async function checkGalleryReward(data, uid) {
+async function checkGalleryReward(data, uid) {
         const likes = data.galleryLikesToday || 0;
         const comms = data.galleryCommentsToday || 0;
+        
+        // 1. Get Quests
+        const activeQuests = data.activeDailyQuests || [];
         const completed = data.completedQuests || [];
-        if (likes >= 10 && comms >= 3 && !completed.includes('gallery_task')) {
+
+        // 2. Check if Quest is Active AND Goals met AND Not Completed
+        if (activeQuests.includes('gallery_task') && 
+            likes >= 10 && 
+            comms >= 3 && 
+            !completed.includes('gallery_task')) {
+            
             const userRef = doc(db, "accounts", uid);
-            await updateDoc(userRef, { coins: increment(150), completedQuests: arrayUnion('gallery_task') });
+            
+            // 3. Award Big Prize
+            await updateDoc(userRef, { 
+                coins: increment(150), 
+                completedQuests: arrayUnion('gallery_task') 
+            });
+            
+            // 4. Update UI Popup
+            document.getElementById('rewardAmount').innerText = "150";
             rewardModal.classList.add('active');
         }
     }
