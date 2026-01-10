@@ -2606,27 +2606,28 @@ onAuthStateChanged(auth, user => {
         }
     });
 
-
-// --- MULTIPLAYER LOGIC (FIXED TIMER & TRANSITION) ---
+// --- MULTIPLAYER LOGIC (LOBBY + VOTING FIXED) ---
     let multiUnsubscribe = null;
     let currentLobbyId = "public_lobby"; 
-    let lobbyTimerInterval = null; // Variable to hold the timer
-    let secondsLeft = 10;          // Start time
+    
+    // Timers
+    let lobbyTimerInterval = null;
+    let votingTimerInterval = null;
+    let lobbySeconds = 10;
+    let votingSeconds = 15;
+
+    // State Tracking to prevent re-running logic
+    let currentGameState = 'waiting'; 
 
     window.initMultiplayer = async () => {
         const user = auth.currentUser; 
-        
-        if(!user) {
-            alert("Eroare: Nu ești logat corect.");
-            return;
-        }
+        if(!user) { alert("Login required!"); return; }
 
         window.showScreen('screenMultiLobby');
-        
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         
+        // 1. Join Lobby
         try {
-            // Join the lobby array
             await setDoc(lobbyRef, {
                 players: arrayUnion({
                     uid: user.uid,
@@ -2634,102 +2635,170 @@ onAuthStateChanged(auth, user => {
                     pic: user.photoURL,
                     score: 0
                 }),
-                // Ensure state is waiting when we join if it doesn't exist
+                // Initialize default fields if they don't exist
             }, { merge: true });
-        } catch(e) { console.error("Error joining lobby:", e); }
+        } catch(e) { console.error("Join error:", e); }
 
-        // Listen for updates
+        // 2. Listen to updates
         multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
             if(!docSnap.exists()) return;
             const data = docSnap.data();
             
-            // 1. Render Players
+            // Render Lobby List (Always update this in case people leave/join)
             renderLobby(data.players || []);
+
+            // --- STATE MACHINE ---
             
-            // 2. CHECK FOR GAME START
-            // If Firebase says "voting", switch screens immediately!
-            if(data.state === 'voting') {
-                if(lobbyTimerInterval) clearInterval(lobbyTimerInterval); // Stop local timer
-                window.showScreen('screenMultiVote');
+            // STATE 1: VOTING
+            if(data.state === 'voting' && currentGameState !== 'voting') {
+                currentGameState = 'voting';
+                startVotingPhase(data.players);
+            }
+            
+            // UPDATE VOTES REAL-TIME (Show avatars)
+            if(data.state === 'voting' && data.votes) {
+                renderVotes(data.votes);
+            }
+
+            // STATE 2: PLAYING (Coming soon...)
+            if(data.state === 'playing' && currentGameState !== 'playing') {
+                currentGameState = 'playing';
+                if(votingTimerInterval) clearInterval(votingTimerInterval);
+                alert(`Categoria câștigătoare: ${data.selectedCategory}`);
+                // Next step will be: window.startMultiplayerGame(data.selectedCategory);
             }
         });
     };
 
+    // --- LOBBY FUNCTIONS ---
     function renderLobby(players) {
         const list = document.getElementById('lobbyList');
         const status = document.getElementById('lobbyStatus');
         const timerEl = document.getElementById('lobbyTimer');
         
         if(!list) return;
-        
         list.innerHTML = '';
         status.innerText = `Waiting for players... (${players.length}/10)`;
 
         players.forEach(p => {
             const div = document.createElement('div');
             div.className = 'lobby-player';
-            div.innerHTML = `
-                <img src="${p.pic}" class="lobby-pfp">
-                <span class="lobby-name">${p.name}</span>
-            `;
+            div.innerHTML = `<img src="${p.pic}" class="lobby-pfp"><span class="lobby-name">${p.name}</span>`;
             list.appendChild(div);
         });
 
-        // --- TIMER LOGIC ---
-        
-        // CASE A: Enough players (3+) AND Timer not running yet
-        if(players.length >= 3 && !lobbyTimerInterval) {
+        // Lobby Timer Logic (Host Only triggers DB, everyone sees UI)
+        if(players.length >= 3 && !lobbyTimerInterval && currentGameState === 'waiting') {
             timerEl.style.display = 'block';
-            secondsLeft = 10; // Reset to 10
+            lobbySeconds = 10;
             
             lobbyTimerInterval = setInterval(async () => {
-                secondsLeft--;
-                timerEl.innerText = `Jocul începe în ${secondsLeft}...`;
+                lobbySeconds--;
+                timerEl.innerText = `Jocul începe în ${lobbySeconds}...`;
 
-                // When Timer hits 0
-                if (secondsLeft <= 0) {
+                if (lobbySeconds <= 0) {
                     clearInterval(lobbyTimerInterval);
-                    lobbyTimerInterval = null;
-                    
-                    // IMPORTANT: Only the "Host" (Player 1) updates the database
-                    // This prevents 10 people trying to update the DB at once.
-                    const amIHost = (auth.currentUser.uid === players[0].uid);
-                    
-                    if (amIHost) {
-                        await updateDoc(doc(db, "lobbies", currentLobbyId), {
-                            state: 'voting' // This triggers the screen switch for everyone
-                        });
+                    // HOST LOGIC: Switch DB state to 'voting'
+                    if (auth.currentUser.uid === players[0].uid) {
+                        await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'voting', votes: [] });
                     }
                 }
             }, 1000);
-        } 
-        // CASE B: Someone left, drop below 3 -> Cancel Timer
-        else if (players.length < 3) {
-            if(lobbyTimerInterval) {
-                clearInterval(lobbyTimerInterval);
-                lobbyTimerInterval = null;
-            }
-            timerEl.style.display = 'none';
-            timerEl.innerText = "Jocul începe în 10..."; // Reset text
         }
+    }
+
+    // --- VOTING FUNCTIONS ---
+    function startVotingPhase(players) {
+        // 1. Switch Screen
+        if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
+        window.showScreen('screenMultiVote');
+        
+        // 2. Start Local Timer
+        const voteTimerEl = document.getElementById('voteTimer');
+        votingSeconds = 15;
+        voteTimerEl.innerText = `${votingSeconds}s`;
+
+        votingTimerInterval = setInterval(async () => {
+            votingSeconds--;
+            voteTimerEl.innerText = `${votingSeconds}s`;
+
+            if (votingSeconds <= 0) {
+                clearInterval(votingTimerInterval);
+                
+                // HOST LOGIC: Decide Winner
+                if (auth.currentUser.uid === players[0].uid) {
+                    decideCategoryAndStart();
+                }
+            }
+        }, 1000);
+    }
+
+    function renderVotes(votesArray) {
+        // Clear previous avatars
+        ['ksda', 'geo', 'history', 'random'].forEach(cat => {
+            document.getElementById(`votes-${cat}`).innerHTML = '';
+        });
+
+        // Add avatars to the cards
+        votesArray.forEach(v => {
+            const container = document.getElementById(`votes-${v.cat}`);
+            if(container) {
+                const img = document.createElement('img');
+                img.src = v.pic;
+                img.className = 'mini-vote-pfp';
+                container.appendChild(img);
+            }
+        });
+    }
+
+    window.castVote = async (cat) => {
+        // Visual Selection
+        document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
+        if(event && event.currentTarget) event.currentTarget.classList.add('selected');
+
+        // Send to Firebase
+        const user = auth.currentUser;
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        
+        // NOTE: In a simple app, we just add to the array. 
+        // Logic to prevent double voting would go here or via Rules.
+        await updateDoc(lobbyRef, {
+            votes: arrayUnion({ uid: user.uid, cat: cat, pic: user.photoURL })
+        });
+    };
+
+    async function decideCategoryAndStart() {
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        const snap = await getDoc(lobbyRef);
+        const data = snap.data();
+        const votes = data.votes || [];
+
+        // Count votes
+        let counts = { ksda:0, geo:0, history:0, random:0 };
+        votes.forEach(v => { if(counts[v.cat] !== undefined) counts[v.cat]++ });
+
+        // Find winner (Simple max)
+        let winner = 'random';
+        let max = -1;
+        for (const [key, value] of Object.entries(counts)) {
+            if (value > max) { max = value; winner = key; }
+        }
+
+        // Update DB to Start Game
+        await updateDoc(lobbyRef, {
+            state: 'playing',
+            selectedCategory: winner,
+            currentQuestionIndex: 0,
+            questionStartTime: serverTimestamp() // For syncing timer later
+        });
     }
 
     window.leaveMultiplayer = async () => {
         if(multiUnsubscribe) multiUnsubscribe();
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
-        
-        // Remove self from DB (Clean up)
-        // Note: For arrayRemove to work, we need the EXACT object. 
-        // Since we don't have it stored easily, we will skip this strictly for now 
-        // or you can implement a more complex remove logic later.
-        
+        if(votingTimerInterval) clearInterval(votingTimerInterval);
+        currentGameState = 'waiting';
         window.showScreen('screenMode');
-    };
-
-    window.castVote = (cat) => {
-        document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
-        if(event && event.currentTarget) event.currentTarget.classList.add('selected');
-        // Voting logic will go here in next step
     };
   </script>
 </body>
