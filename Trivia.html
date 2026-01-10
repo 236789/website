@@ -2606,26 +2606,37 @@ onAuthStateChanged(auth, user => {
         }
     });
 
-// --- MULTIPLAYER LOGIC (V3: VOTING FIX + GAME START) ---
+// --- MULTIPLAYER LOGIC (FINAL: JOIN FIX + GAME LOOP + CLICKS) ---
     let multiUnsubscribe = null;
     let currentLobbyId = "public_lobby"; 
     
-    // Timers
+    // Timers & State
     let lobbyTimerInterval = null;
     let votingTimerInterval = null;
+    let gameTimerInterval = null;
     
-    // State Tracking
     let currentGameState = 'waiting'; 
+    let localQIndex = -1; // Tracks which question we are on locally
 
     window.initMultiplayer = async () => {
         const user = auth.currentUser; 
         if(!user) { alert("Trebuie să fii logat!"); return; }
 
-        window.showScreen('screenMultiLobby');
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
-        
-        // 1. Join Lobby
+
+        // --- FIX 3: PREVENT LATE JOIN ---
         try {
+            const docSnap = await getDoc(lobbyRef);
+            if(docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.state !== 'waiting') {
+                    alert("Jocul este deja în desfășurare!");
+                    return; // Stop here
+                }
+            }
+
+            // 1. Join Lobby (Safe now)
+            window.showScreen('screenMultiLobby');
             await setDoc(lobbyRef, {
                 players: arrayUnion({
                     uid: user.uid,
@@ -2642,7 +2653,7 @@ onAuthStateChanged(auth, user => {
             const data = docSnap.data();
             const players = data.players || [];
             
-            // ALWAYS Update Lobby List
+            // UI Updates
             renderLobby(players);
 
             // --- STATE MACHINE ---
@@ -2653,52 +2664,50 @@ onAuthStateChanged(auth, user => {
                     currentGameState = 'voting';
                     startVotingPhase(players);
                 }
-                // Update avatars in real-time
                 renderVotes(data.votes || []);
             }
 
-            // PHASE 2: GAME START
+            // PHASE 2: PLAYING (GAME LOOP)
             if(data.state === 'playing') {
-                if(currentGameState !== 'playing') {
-                    currentGameState = 'playing';
-                    // Stop voting timer
-                    if(votingTimerInterval) clearInterval(votingTimerInterval);
-                    // Launch Game
-                    initMultiplayerGame(data);
+                currentGameState = 'playing';
+                if(votingTimerInterval) clearInterval(votingTimerInterval);
+                
+                // Check if Question Changed (Next Round)
+                if (data.currentQIndex !== localQIndex) {
+                    localQIndex = data.currentQIndex;
+                    renderMultiplayerQuestion(data);
                 }
+            }
+            
+            // PHASE 3: FINISHED
+            if(data.state === 'finished') {
+                endMultiplayerGame(data);
             }
         });
     };
 
-    // --- LOBBY FUNCTIONS ---
+    // --- LOBBY & VOTING (Existing Logic) ---
     function renderLobby(players) {
         const list = document.getElementById('lobbyList');
         const status = document.getElementById('lobbyStatus');
         const timerEl = document.getElementById('lobbyTimer');
-        
         if(!list) return;
+        
         list.innerHTML = '';
-        status.innerText = `Jucători conectați: ${players.length}`;
-
+        status.innerText = `Jucători: ${players.length}`;
         players.forEach(p => {
-            const div = document.createElement('div');
-            div.className = 'lobby-player';
-            div.innerHTML = `<img src="${p.pic}" class="lobby-pfp"><span class="lobby-name">${p.name}</span>`;
-            list.appendChild(div);
+            list.innerHTML += `<div class="lobby-player"><img src="${p.pic}" class="lobby-pfp"><span class="lobby-name">${p.name}</span></div>`;
         });
 
-        // Host Timer Logic
+        // Host Lobby Timer
         if(players.length >= 3 && !lobbyTimerInterval && currentGameState === 'waiting') {
             timerEl.style.display = 'block';
             let seconds = 10;
-            
             lobbyTimerInterval = setInterval(async () => {
                 seconds--;
-                timerEl.innerText = `Jocul începe în ${seconds}...`;
-
+                timerEl.innerText = `Start în ${seconds}...`;
                 if (seconds <= 0) {
                     clearInterval(lobbyTimerInterval);
-                    // HOST ONLY: Trigger Voting
                     if (auth.currentUser.uid === players[0].uid) {
                         await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'voting', votes: [] });
                     }
@@ -2707,22 +2716,17 @@ onAuthStateChanged(auth, user => {
         }
     }
 
-    // --- VOTING FUNCTIONS ---
     function startVotingPhase(players) {
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
         window.showScreen('screenMultiVote');
-        
         const voteTimerEl = document.getElementById('voteTimer');
         let seconds = 15;
-        voteTimerEl.innerText = `${seconds}s`;
-
+        
         votingTimerInterval = setInterval(async () => {
             seconds--;
             voteTimerEl.innerText = `${seconds}s`;
-
             if (seconds <= 0) {
                 clearInterval(votingTimerInterval);
-                // HOST ONLY: Decide Winner & Start Game
                 if (auth.currentUser.uid === players[0].uid) {
                     decideCategoryAndStart();
                 }
@@ -2730,96 +2734,63 @@ onAuthStateChanged(auth, user => {
         }, 1000);
     }
 
-    // FIX: Prevents multiple votes by reading, filtering, and writing back
     window.castVote = async (cat) => {
-        // Visual
         document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
-        if(event && event.currentTarget) event.currentTarget.classList.add('selected');
-
+        if(event.currentTarget) event.currentTarget.classList.add('selected');
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         const user = auth.currentUser;
-
-        try {
-            const snap = await getDoc(lobbyRef);
-            if(snap.exists()) {
-                let currentVotes = snap.data().votes || [];
-                // Remove MY previous vote
-                currentVotes = currentVotes.filter(v => v.uid !== user.uid);
-                // Add NEW vote
-                currentVotes.push({ uid: user.uid, cat: cat, pic: user.photoURL });
-                
-                await updateDoc(lobbyRef, { votes: currentVotes });
-            }
-        } catch(e) { console.error(e); }
+        const snap = await getDoc(lobbyRef);
+        let votes = snap.data().votes || [];
+        votes = votes.filter(v => v.uid !== user.uid); // Remove old
+        votes.push({ uid: user.uid, cat: cat, pic: user.photoURL }); // Add new
+        await updateDoc(lobbyRef, { votes: votes });
     };
 
-    function renderVotes(votesArray) {
-        // Clear old avatars
-        ['ksda', 'geo', 'history', 'random'].forEach(cat => {
-            const el = document.getElementById(`votes-${cat}`);
-            if(el) el.innerHTML = '';
-        });
-
-        // Add new avatars
-        votesArray.forEach(v => {
-            const container = document.getElementById(`votes-${v.cat}`);
-            if(container) {
-                const img = document.createElement('img');
-                img.src = v.pic;
-                img.className = 'mini-vote-pfp';
-                container.appendChild(img);
-            }
+    function renderVotes(votes) {
+        ['ksda', 'geo', 'history', 'random'].forEach(c => document.getElementById(`votes-${c}`).innerHTML = '');
+        votes.forEach(v => {
+            const el = document.getElementById(`votes-${v.cat}`);
+            if(el) el.innerHTML += `<img src="${v.pic}" class="mini-vote-pfp">`;
         });
     }
 
     async function decideCategoryAndStart() {
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         const snap = await getDoc(lobbyRef);
-        const data = snap.data();
-        const votes = data.votes || [];
-
-        // Count votes
+        const votes = snap.data().votes || [];
+        
+        // Count Votes
         let counts = { ksda:0, geo:0, history:0, random:0 };
         votes.forEach(v => { if(counts[v.cat] !== undefined) counts[v.cat]++ });
+        let winner = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
 
-        // Find winner
-        let winner = 'random';
-        let max = -1;
-        for (const [key, value] of Object.entries(counts)) {
-            if (value > max) { max = value; winner = key; }
-        }
-
-        // GENERATE QUESTIONS (HOST DOES THIS SO EVERYONE GETS THE SAME)
-        const gameQuestions = generateQuestionSet(winner);
-
-        // Update DB to playing
+        // Generate Questions & Start
+        const questions = generateQuestionSet(winner);
         await updateDoc(lobbyRef, {
             state: 'playing',
             selectedCategory: winner,
-            gameQuestions: gameQuestions, // Save questions to DB
+            gameQuestions: questions,
             currentQIndex: 0,
-            questionStartTime: serverTimestamp() 
+            questionEndTime: Date.now() + 10000 // 10 seconds from now
         });
     }
 
-    // --- GAME FUNCTIONS ---
-    function initMultiplayerGame(data) {
-        // Switch to Game Screen
+    // --- GAMEPLAY LOGIC (FIXED) ---
+    
+    function renderMultiplayerQuestion(data) {
         window.showScreen('screenGame');
         
-        // Load the shared questions from DB (Not local random)
-        // For now, we just mock the load logic to prove transition works
-        const qData = data.gameQuestions[0];
-        
-        // Hide Multiplayer Specific UI for now to use the existing Game Screen
-        document.getElementById('qCounter').innerText = "Runda 1/15";
-        document.getElementById('scorePreview').innerText = ""; // Hide score for now
-        
-        // Show Question (Reusing Single Player UI)
+        // Get current question
+        const qData = data.gameQuestions[data.currentQIndex];
+        if(!qData) return; // End of game protection
+
+        // 1. UI Setup
+        document.getElementById('qCounter').innerText = `Runda ${data.currentQIndex + 1}/15`;
+        document.getElementById('scorePreview').innerText = ""; 
         document.getElementById('questionText').innerText = qData.q;
+        
         const imgContainer = document.getElementById('qImageContainer');
         const imgEl = document.getElementById('questionImage');
-        
         if (qData.img && qData.img.trim() !== "") {
             imgEl.src = qData.img;
             imgContainer.style.display = 'flex';
@@ -2827,27 +2798,113 @@ onAuthStateChanged(auth, user => {
             imgContainer.style.display = 'none';
         }
 
+        // 2. Render Buttons (FIXED: CLICKABLE)
         const optContainer = document.getElementById('optionsContainer');
         optContainer.innerHTML = '';
-        
         qData.a.forEach((optText, idx) => {
             const btn = document.createElement('div');
             btn.className = 'option-btn';
             btn.innerText = optText;
-            // No click logic yet for Multi - next step
+            // Add Click Event!
+            btn.onclick = () => handleMultiAnswer(idx, btn, qData.c);
             optContainer.appendChild(btn);
         });
+
+        // 3. Start Timer Bar (FIXED: ANIMATION)
+        if(gameTimerInterval) clearInterval(gameTimerInterval);
+        
+        let timeLeft = 10;
+        const bar = document.getElementById('timerBar');
+        bar.style.width = '100%';
+        bar.style.background = '#29f3ff';
+
+        gameTimerInterval = setInterval(() => {
+            timeLeft -= 0.1; // Smooth update
+            const pct = (timeLeft / 10) * 100;
+            bar.style.width = `${pct}%`;
+            
+            if (timeLeft <= 3) bar.style.background = '#ff4757';
+
+            if (timeLeft <= 0) {
+                clearInterval(gameTimerInterval);
+                handleRoundEnd(data);
+            }
+        }, 100);
+    }
+
+    // --- FIX 1: CLICK HANDLING ---
+    function handleMultiAnswer(selectedIndex, btn, correctIndex) {
+        // Disable clicks
+        const allBtns = document.querySelectorAll('.option-btn');
+        allBtns.forEach(b => b.style.pointerEvents = 'none');
+
+        // Visual Feedback
+        if(selectedIndex === correctIndex) {
+            btn.classList.add('correct');
+            // Logic to update score in DB would go here
+        } else {
+            btn.classList.add('wrong');
+            allBtns[correctIndex].classList.add('correct');
+        }
+    }
+
+    // --- HOST LOGIC: CONTROL THE GAME FLOW ---
+    async function handleRoundEnd(data) {
+        // Only Host moves the game forward
+        const user = auth.currentUser;
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        const snap = await getDoc(lobbyRef);
+        const hostUid = snap.data().players[0].uid;
+
+        if (user.uid === hostUid) {
+            // Wait 2 seconds then next question
+            setTimeout(async () => {
+                let nextIndex = data.currentQIndex + 1;
+                
+                if (nextIndex < 15) {
+                    await updateDoc(lobbyRef, {
+                        currentQIndex: nextIndex,
+                        questionEndTime: Date.now() + 12000 // 2s buffer + 10s
+                    });
+                } else {
+                    await updateDoc(lobbyRef, { state: 'finished' });
+                }
+            }, 2000);
+        }
+    }
+
+    function endMultiplayerGame(data) {
+        window.showScreen('screenResult');
+        document.getElementById('resName').innerText = "Joc Terminat";
+        document.getElementById('resCorrect').parentElement.style.display = 'none'; // Hide single player stats
+        // In Part 3 we will add the Leaderboard here
+        window.leaveMultiplayer();
     }
 
     window.leaveMultiplayer = async () => {
         if(multiUnsubscribe) multiUnsubscribe();
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
         if(votingTimerInterval) clearInterval(votingTimerInterval);
+        if(gameTimerInterval) clearInterval(gameTimerInterval);
+        
         currentGameState = 'waiting';
-        
-        // Remove player logic would go here
-        
+        localQIndex = -1;
         window.showScreen('screenMode');
+        
+        // Remove player logic:
+        const user = auth.currentUser;
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        const snap = await getDoc(lobbyRef);
+        if(snap.exists()) {
+            let players = snap.data().players || [];
+            let newPlayers = players.filter(p => p.uid !== user.uid);
+            // If empty, reset lobby
+            if(newPlayers.length === 0) {
+                await updateDoc(lobbyRef, { players: [], state: 'waiting', votes: [] });
+            } else {
+                await updateDoc(lobbyRef, { players: newPlayers });
+            }
+        }
     };
   </script>
 </body>
