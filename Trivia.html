@@ -2606,7 +2606,7 @@ onAuthStateChanged(auth, user => {
         }
     });
 
-// --- MULTIPLAYER LOGIC (FINAL: INTERMISSION + SCORING + REWARDS) ---
+// --- MULTIPLAYER LOGIC (V6: 3-PLAYER REQUIREMENT + AUTO-WIPE) ---
     let multiUnsubscribe = null;
     let currentLobbyId = "public_lobby"; 
     
@@ -2618,8 +2618,8 @@ onAuthStateChanged(auth, user => {
     
     let currentGameState = 'waiting'; 
     let localQIndex = -1; 
-    let myAnswerTime = 0; // Tracks how fast I answered
 
+    // RULES
     const MIN_PLAYERS = 3; 
 
     window.initMultiplayer = async () => {
@@ -2631,42 +2631,56 @@ onAuthStateChanged(auth, user => {
         try {
             const docSnap = await getDoc(lobbyRef);
             
-            // AUTO-RESET STUCK LOBBIES
+            // 1. CHECK IF LOBBY IS STUCK OR OPEN
             if(docSnap.exists()) {
                 const data = docSnap.data();
                 const now = Date.now();
                 const lastUpdate = data.lastUpdate ? data.lastUpdate.toMillis() : 0;
-                // Reset if older than 10 mins or empty but playing
-                if ((now - lastUpdate > 600000) || (data.state !== 'waiting' && (!data.players || data.players.length === 0))) {
+                
+                // FORCE RESET if:
+                // a) Game hasn't updated in 2 minutes (Stale/Crashed Host)
+                // b) State is NOT waiting, but player list is empty (Bugged)
+                if ((now - lastUpdate > 120000) || (data.state !== 'waiting' && (!data.players || data.players.length === 0))) {
                     console.log("Resetting stuck lobby...");
                     await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
                 } 
+                // BLOCK JOIN if game is actually running
                 else if (data.state !== 'waiting') {
-                    alert("Jocul este deja în desfășurare!");
-                    return; 
+                    // One exception: If I am already in the list (refresh page), let me back in
+                    const amIIn = data.players?.some(p => p.uid === user.uid);
+                    if (!amIIn) {
+                        alert("Jocul a început deja! Așteaptă să se termine.");
+                        return; 
+                    }
                 }
+            } else {
+                // Creates lobby if it doesn't exist
+                await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [] });
             }
 
             window.showScreen('screenMultiLobby');
             
+            // 2. ADD PLAYER TO DB
+            // We use arrayUnion to prevent duplicates (same UID won't be added twice)
             await setDoc(lobbyRef, {
                 players: arrayUnion({
                     uid: user.uid,
                     name: user.displayName,
                     pic: user.photoURL,
-                    score: 0 // Game Score
+                    score: 0 
                 }),
-                lastUpdate: serverTimestamp()
+                lastUpdate: serverTimestamp() // Keep lobby alive
             }, { merge: true });
 
         } catch(e) { console.error("Join error:", e); }
 
+        // 3. LISTEN TO GAME STATE
         multiUnsubscribe = onSnapshot(lobbyRef, (docSnap) => {
             if(!docSnap.exists()) return;
             const data = docSnap.data();
             const players = data.players || [];
             
-            // KICK CHECK
+            // Auto-Kick if I was removed
             const amIInLobby = players.some(p => p.uid === user.uid);
             if(!amIInLobby && currentGameState !== 'waiting') {
                 window.leaveMultiplayer();
@@ -2677,7 +2691,7 @@ onAuthStateChanged(auth, user => {
 
             // --- STATE MACHINE ---
             
-            // 1. VOTING
+            // VOTING START
             if(data.state === 'voting') {
                 if(currentGameState !== 'voting') {
                     currentGameState = 'voting';
@@ -2686,11 +2700,11 @@ onAuthStateChanged(auth, user => {
                 renderVotes(data.votes || []);
             }
 
-            // 2. PLAYING (Question)
+            // GAME START / NEXT QUESTION
             if(data.state === 'playing') {
-                // If we were in intermission, stop that timer
                 if(intermissionTimerInterval) clearInterval(intermissionTimerInterval);
                 
+                // Detect new question by index change
                 if (data.currentQIndex !== localQIndex) {
                     localQIndex = data.currentQIndex;
                     currentGameState = 'playing';
@@ -2698,7 +2712,7 @@ onAuthStateChanged(auth, user => {
                 }
             }
 
-            // 3. INTERMISSION (Round Results)
+            // INTERMISSION (Results)
             if(data.state === 'intermission') {
                 if(currentGameState !== 'intermission') {
                     currentGameState = 'intermission';
@@ -2706,7 +2720,7 @@ onAuthStateChanged(auth, user => {
                 }
             }
             
-            // 4. FINISHED
+            // FINISHED
             if(data.state === 'finished') {
                 if(currentGameState !== 'finished') {
                     currentGameState = 'finished';
@@ -2716,7 +2730,6 @@ onAuthStateChanged(auth, user => {
         });
     };
 
-    // --- LOBBY ---
     function renderLobby(players) {
         const list = document.getElementById('lobbyList');
         const status = document.getElementById('lobbyStatus');
@@ -2724,29 +2737,46 @@ onAuthStateChanged(auth, user => {
         if(!list) return;
         
         list.innerHTML = '';
-        status.innerText = `Jucători: ${players.length}/${MIN_PLAYERS} necesari`;
+        status.innerText = `Jucători: ${players.length}/${MIN_PLAYERS} necesari`; // Show 3 required
         players.forEach(p => {
             list.innerHTML += `<div class="lobby-player"><img src="${p.pic}" class="lobby-pfp"><span class="lobby-name">${p.name}</span></div>`;
         });
 
-        // HOST COUNTDOWN
+        // COUNTDOWN LOGIC
+        // Only starts if 3+ players exist
         if(players.length >= MIN_PLAYERS && !lobbyTimerInterval && currentGameState === 'waiting') {
             timerEl.style.display = 'block';
             let seconds = 10;
+            
             lobbyTimerInterval = setInterval(async () => {
                 seconds--;
                 timerEl.innerText = `Jocul începe în ${seconds}...`;
+
                 if (seconds <= 0) {
                     clearInterval(lobbyTimerInterval);
+                    // LOCK THE GAME: Host changes state to 'voting'
+                    // This is the point of no return for new players
                     if (auth.currentUser.uid === players[0].uid) {
-                        await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'voting', votes: [], lastUpdate: serverTimestamp() });
+                        await updateDoc(doc(db, "lobbies", currentLobbyId), { 
+                            state: 'voting', 
+                            votes: [], 
+                            lastUpdate: serverTimestamp() 
+                        });
                     }
                 }
             }, 1000);
+        } 
+        // CANCEL TIMER if someone leaves and drops below 3
+        else if (players.length < MIN_PLAYERS) {
+            if(lobbyTimerInterval) {
+                clearInterval(lobbyTimerInterval);
+                lobbyTimerInterval = null;
+            }
+            timerEl.style.display = 'none';
+            timerEl.innerText = "Jocul începe în 10...";
         }
     }
 
-    // --- VOTING ---
     function startVotingPhase(players) {
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
         window.showScreen('screenMultiVote');
@@ -2797,7 +2827,6 @@ onAuthStateChanged(auth, user => {
         votes.forEach(v => { if(counts[v.cat] !== undefined) counts[v.cat]++ });
         let winner = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b);
 
-        // RANDOM QUESTIONS GENERATED HERE
         const questions = generateQuestionSet(winner);
         
         await updateDoc(lobbyRef, {
@@ -2805,12 +2834,11 @@ onAuthStateChanged(auth, user => {
             selectedCategory: winner,
             gameQuestions: questions,
             currentQIndex: 0,
-            roundVotes: [], // Clear round answers
+            roundVotes: [],
             lastUpdate: serverTimestamp()
         });
     }
 
-    // --- GAMEPLAY ---
     function renderMultiplayerQuestion(data) {
         window.showScreen('screenGame');
         if(gameTimerInterval) clearInterval(gameTimerInterval);
@@ -2819,11 +2847,12 @@ onAuthStateChanged(auth, user => {
         const qData = data.gameQuestions[data.currentQIndex];
         if(!qData) return;
 
-        // UI
         document.getElementById('qCounter').innerText = `Runda ${data.currentQIndex + 1}/15`;
         document.getElementById('questionText').innerText = qData.q;
+        document.getElementById('scorePreview').innerText = ""; 
         const imgContainer = document.getElementById('qImageContainer');
         const imgEl = document.getElementById('questionImage');
+        
         if (qData.img && qData.img.trim() !== "") {
             imgEl.src = qData.img;
             imgContainer.style.display = 'flex';
@@ -2841,15 +2870,12 @@ onAuthStateChanged(auth, user => {
             optContainer.appendChild(btn);
         });
 
-        // TIMER BAR LOGIC
+        // 10s Timer
         let timeLeft = 10;
         const bar = document.getElementById('timerBar');
         bar.style.width = '100%';
         bar.style.background = '#29f3ff';
         
-        // Reset Answer Tracking
-        myAnswerTime = 0;
-
         gameTimerInterval = setInterval(() => {
             timeLeft -= 0.1;
             const pct = (timeLeft / 10) * 100;
@@ -2859,7 +2885,6 @@ onAuthStateChanged(auth, user => {
 
             if (timeLeft <= 0) {
                 clearInterval(gameTimerInterval);
-                // Host moves to Intermission
                 if (auth.currentUser.uid === data.players[0].uid) {
                     processRoundResults(data);
                 }
@@ -2868,20 +2893,21 @@ onAuthStateChanged(auth, user => {
     }
 
     async function handleMultiAnswer(selectedIndex, btn, correctIndex) {
-        // Stop clicks
         const allBtns = document.querySelectorAll('.option-btn');
         allBtns.forEach(b => b.style.pointerEvents = 'none');
 
         const isCorrect = (selectedIndex === correctIndex);
         const timeTaken = (10 - (document.getElementById('timerBar').offsetWidth / document.getElementById('timerBar').parentElement.offsetWidth * 10)).toFixed(2);
         
-        if(isCorrect) btn.classList.add('correct');
-        else {
+        if(isCorrect) {
+            btn.classList.add('correct');
+            sfxCorrect.play();
+        } else {
             btn.classList.add('wrong');
+            sfxWrong.play();
             allBtns[correctIndex].classList.add('correct');
         }
 
-        // SEND RESULT TO DB
         const user = auth.currentUser;
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         
@@ -2896,14 +2922,13 @@ onAuthStateChanged(auth, user => {
         });
     }
 
-    // --- HOST LOGIC: CALCULATE SCORES ---
     async function processRoundResults(data) {
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         const snap = await getDoc(lobbyRef);
         const roundData = snap.data().roundVotes || [];
         let players = snap.data().players;
 
-        // Update Scores (25 points for correct)
+        // SCORING
         roundData.forEach(vote => {
             if(vote.correct) {
                 const playerIndex = players.findIndex(p => p.uid === vote.uid);
@@ -2913,22 +2938,19 @@ onAuthStateChanged(auth, user => {
             }
         });
 
-        // Set State to Intermission
         await updateDoc(lobbyRef, {
             state: 'intermission',
-            players: players, // Save updated scores
+            players: players,
             lastUpdate: serverTimestamp()
         });
     }
 
-    // --- INTERMISSION SCREEN ---
     function showRoundLeaderboard(data) {
         window.showScreen('screenMultiRoundRes');
         const container = document.getElementById('roundLeaderboard');
         container.innerHTML = '';
 
         const votes = data.roundVotes || [];
-        // Sort: Correct first, then fastest time
         votes.sort((a, b) => {
             if (a.correct === b.correct) return a.time - b.time;
             return b.correct - a.correct;
@@ -2952,55 +2974,49 @@ onAuthStateChanged(auth, user => {
             container.appendChild(row);
         });
 
-        // Host starts next round after 5s
+        // Next round logic
         if (auth.currentUser.uid === data.players[0].uid) {
             setTimeout(async () => {
                 let nextIndex = data.currentQIndex + 1;
                 if (nextIndex < 15) {
                     await updateDoc(doc(db, "lobbies", currentLobbyId), {
                         state: 'playing',
-                        roundVotes: [], // Clear previous answers
+                        roundVotes: [], 
                         currentQIndex: nextIndex,
                         lastUpdate: serverTimestamp()
                     });
                 } else {
                     await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'finished' });
                 }
-            }, 5000);
+            }, 5000); // 5s Intermission
         }
     }
 
-    // --- GAME OVER ---
     async function endMultiplayerGame(data) {
         window.showScreen('screenResult');
         
-        // Find MY stats
         const user = auth.currentUser;
         const myData = data.players.find(p => p.uid === user.uid);
         const myScore = myData ? myData.score : 0;
 
         document.getElementById('resName').innerText = user.displayName;
         document.getElementById('resPfp').src = user.photoURL;
-        
-        // SHOW SCORE
         document.getElementById('resCoins').innerText = myScore; 
-        
-        // HIDE Single player correct/wrong counters as we don't track them in multi
         document.querySelector('.stat-row').style.display = 'none';
 
-        // UPDATE WALLET (Real Reward)
         const accountRef = doc(db, "accounts", user.uid);
         try {
             await updateDoc(accountRef, { coins: increment(myScore) });
             const btn = document.getElementById('collectRewardBtn');
             btn.innerText = "MENIU PRINCIPAL";
             btn.onclick = window.leaveMultiplayer;
-        } catch(e) { console.error("Reward error", e); }
+        } catch(e) { console.error(e); }
 
-        // Host resets lobby after 10s
+        // HOST WIPES LOBBY AFTER 10S
         if (user.uid === data.players[0].uid) {
             setTimeout(async () => {
-                await setDoc(doc(db, "lobbies", currentLobbyId), { state: 'waiting', players: [], votes: [], roundVotes: [] });
+                const lobbyRef = doc(db, "lobbies", currentLobbyId);
+                await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
             }, 10000);
         }
     }
@@ -3010,12 +3026,12 @@ onAuthStateChanged(auth, user => {
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
         if(votingTimerInterval) clearInterval(votingTimerInterval);
         if(gameTimerInterval) clearInterval(gameTimerInterval);
+        if(intermissionTimerInterval) clearInterval(intermissionTimerInterval);
         
         currentGameState = 'waiting';
         localQIndex = -1;
         window.showScreen('screenMode');
         
-        // Remove player logic
         const user = auth.currentUser;
         if(user) {
             const lobbyRef = doc(db, "lobbies", currentLobbyId);
@@ -3024,6 +3040,7 @@ onAuthStateChanged(auth, user => {
                 const data = snap.data();
                 let newPlayers = (data.players || []).filter(p => p.uid !== user.uid);
                 
+                // If empty, Force Reset state to waiting immediately
                 if(newPlayers.length === 0) {
                     await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
                 } else {
