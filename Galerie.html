@@ -1503,15 +1503,19 @@ onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
         }
     });
 
-async function checkGalleryReward(data, uid) {
+// --- FIXED REWARD CHECKER ---
+    async function checkGalleryReward(data, uid) {
         const likes = data.galleryLikesToday || 0;
         const comms = data.galleryCommentsToday || 0;
         
-        // 1. Get Quests
-        const activeQuests = data.activeDailyQuests || [];
+        // 1. Get Lists from Firebase
         const completed = data.completedQuests || [];
+        const activeQuests = data.activeDailyQuests || []; // <--- IMPORTANTA
 
-        // 2. Check if Quest is Active AND Goals met AND Not Completed
+        // 2. STRICT CONDITION:
+        // - Must have 'gallery_task' in the ACTIVE list
+        // - Must meet targets (10 likes, 3 comments)
+        // - Must NOT be in the COMPLETED list
         if (activeQuests.includes('gallery_task') && 
             likes >= 10 && 
             comms >= 3 && 
@@ -1519,13 +1523,13 @@ async function checkGalleryReward(data, uid) {
             
             const userRef = doc(db, "accounts", uid);
             
-            // 3. Award Big Prize
+            // 3. Grant Reward
             await updateDoc(userRef, { 
                 coins: increment(150), 
                 completedQuests: arrayUnion('gallery_task') 
             });
             
-            // 4. Update UI Popup
+            // 4. Show Popup
             document.getElementById('rewardAmount').innerText = "150";
             rewardModal.classList.add('active');
         }
