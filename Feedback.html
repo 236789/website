@@ -2036,26 +2036,38 @@ sendBtn.onclick = async () => {
                 equippedFrame: equippedFrame // <--- SAVE IT
             };
 
-            const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
-            // ... rest of the logic ...
+// 2. Update UI locally
             appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
-            await updateDoc(doc(db, "accounts", uid), { coins: increment(25) });
-                          feedbackGivenToday: increment(1) // <--- THIS UPDATES THE QUEST
+            
+            // 3. BASE REWARD: Always give 25 coins & increment counter
+            await updateDoc(doc(db, "accounts", uid), { 
+                coins: increment(25),
+                feedbackGivenToday: increment(1) 
+            });
+
             localStorage.setItem('last_feedback_time', Date.now());
             updateCooldownUI();
 
+            // 4. QUEST LOGIC: Check if user actually HAS this quest today
+            const activeQuests = userData.activeDailyQuests || [];
             const completed = userData.completedQuests || [];
-            if (!completed.includes('give_feedback')) {
+
+            // Only give 250 Coins + Popup IF:
+            // 1. The quest is in their active list
+            // 2. They haven't finished it yet
+            if (activeQuests.includes('give_feedback') && !completed.includes('give_feedback')) {
                 await updateDoc(doc(db, "accounts", uid), {
                     coins: increment(250),  
-                    feedbackGivenToday: 1, 
-                    completedQuests: [...completed, 'give_feedback']
+                    completedQuests: arrayUnion('give_feedback')
                 });
                 questRewardModal.classList.add('active');
             } else {
+                // Just show the small +25 animation
                 if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
             }
-            revInput.value = ''; document.getElementById('charCount').innerText = '0'; 
+
+            revInput.value = ''; 
+            document.getElementById('charCount').innerText = '0'; 
         } catch(e) { alert("Eroare: " + e.message); }
     };
 
