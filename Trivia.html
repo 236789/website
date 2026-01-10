@@ -1087,15 +1087,20 @@
 </div>
 
 <!-- QUEST REWARD MODAL (FOR KEVIN BOT 15 MESSAGES) -->
+<!-- QUEST REWARD MODAL (Reused for all quests) -->
 <div id="questRewardModal" class="reward-modal">
     <div class="reward-card">
+        <!-- The JS changes this text dynamically -->
         <h2><span style="font-size: 24px;">🎯</span> QUEST COMPLET!</h2>
-        <p>Mersi că ai vorbit cu Kevin Bot! Uite aici 350 KSDA monede pentru fidelitatea ta! 😉</p>
+        <p>Felicitări! Ai completat un task.</p>
+        
         <div class="reward-coins-box">
             <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
-            <span>350</span>
+            <span>0</span> <!-- The JS updates this number -->
         </div>
+        
         <p style="color: #ffd700; font-weight: 800; font-family: 'Orbitron'; font-size: 12px; letter-spacing: 2px;">KSDA COINS</p>
+        
         <button class="super-btn" onclick="document.getElementById('questRewardModal').classList.remove('active')">SUPER!</button>
     </div>
 </div>
@@ -2180,6 +2185,49 @@ const DB_QUESTIONS = {
         }));
     }
 
+// --- QUEST LOGIC HELPER ---
+    async function checkTriviaQuest(mode) {
+        if(!auth.currentUser) return;
+        const uid = auth.currentUser.uid;
+        
+        // Determine which quest we are checking
+        const field = mode === 'single' ? 'triviaSingleCorrectToday' : 'triviaMultiCorrectToday';
+        const questId = mode === 'single' ? 'trivia_single_5' : 'trivia_multi_5';
+        const reward = mode === 'single' ? 250 : 400; // 250 for Single, 400 for Multi
+
+        try {
+            // 1. Always increment the counter in Firebase
+            await updateDoc(doc(db, "accounts", uid), {
+                [field]: increment(1)
+            });
+
+            // 2. Check if we should give the BIG reward
+            const snap = await getDoc(doc(db, "accounts", uid));
+            const data = snap.data();
+            const active = data.activeDailyQuests || [];
+            const completed = data.completedQuests || [];
+            const count = data[field] || 0;
+
+            // IF: Quest is Active AND Not Completed AND Count is 5 or more
+            if(active.includes(questId) && !completed.includes(questId) && count >= 5) {
+                // Award Prize
+                await updateDoc(doc(db, "accounts", uid), {
+                    coins: increment(reward),
+                    completedQuests: arrayUnion(questId)
+                });
+                
+                // Show Popup
+                const modal = document.getElementById('questRewardModal');
+                const card = modal.querySelector('.reward-card');
+                // Customize text based on mode
+                card.querySelector('h2').innerText = "🎯 QUEST COMPLET!";
+                card.querySelector('p').innerHTML = `Ai răspuns corect la 5 întrebări (${mode === 'single' ? 'Single' : 'Multi'})!<br>Ai primit ${reward} Coins.`;
+                card.querySelector('.reward-coins-box span').innerText = reward;
+                modal.classList.add('active');
+            }
+        } catch(e) { console.error("Quest Error:", e); }
+    }
+
     // --- GLOBAL FUNCTIONS (Attached to WINDOW) ---
 
     // 1. Navigation
@@ -2289,27 +2337,30 @@ function gameTick() {
     }
 
     // 5. Handle Answer
-    function handleAnswer(selectedIndex, btnElement) {
-        clearInterval(triviaState.timer); // Stop timer immediately
+function handleAnswer(selectedIndex, btnElement) {
+        clearInterval(triviaState.timer); 
         
-        // Disable all buttons
         const allBtns = document.querySelectorAll('.option-btn');
         allBtns.forEach(b => b.style.pointerEvents = 'none');
 
         const currentQ = triviaState.questions[triviaState.qIndex];
         
         if(selectedIndex === currentQ.c) {
-            // CORRECT
+            // --- CORRECT ANSWER ---
             btnElement.classList.add('correct');
             sfxCorrect.play();
-            triviaState.score += 25; // Add theoretical score
+            triviaState.score += 25; 
             triviaState.correctCount++;
+
+            // >>> ADD THIS LINE HERE <<<
+            checkTriviaQuest('single'); 
+            // ==========================
+
         } else {
-            // WRONG
+            // --- WRONG ANSWER ---
             btnElement.classList.add('wrong');
             sfxWrong.play();
             triviaState.wrongCount++;
-            // Show correct one
             allBtns[currentQ.c].classList.add('correct');
         }
 
@@ -2777,34 +2828,47 @@ onAuthStateChanged(auth, user => {
         }, 100);
     }
 
-    async function handleMultiAnswer(selectedIndex, btn, correctIndex) {
+async function handleMultiAnswer(selectedIndex, btn, correctIndex) {
+        // Disable clicks immediately
         const allBtns = document.querySelectorAll('.option-btn');
         allBtns.forEach(b => b.style.pointerEvents = 'none');
 
         const isCorrect = (selectedIndex === correctIndex);
-        const timeTaken = (10 - (document.getElementById('timerBar').offsetWidth / document.getElementById('timerBar').parentElement.offsetWidth * 10)).toFixed(2);
+        
+        // Calculate time left (visual estimation based on bar width) for leaderboard
+        const bar = document.getElementById('timerBar');
+        const parent = bar.parentElement;
+        const timeTaken = (10 - ((bar.offsetWidth / parent.offsetWidth) * 10)).toFixed(2);
         
         if(isCorrect) {
             btn.classList.add('correct');
             sfxCorrect.play();
+            
+            // --- QUEST LOGIC ADDED HERE ---
+            checkTriviaQuest('multi'); 
+            // -----------------------------
+            
         } else {
             btn.classList.add('wrong');
             sfxWrong.play();
             allBtns[correctIndex].classList.add('correct');
         }
 
+        // Send result to Firebase Lobby
         const user = auth.currentUser;
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         
-        await updateDoc(lobbyRef, {
-            roundVotes: arrayUnion({
-                uid: user.uid,
-                name: user.displayName,
-                pic: user.photoURL,
-                correct: isCorrect,
-                time: timeTaken
-            })
-        });
+        try {
+            await updateDoc(lobbyRef, {
+                roundVotes: arrayUnion({
+                    uid: user.uid,
+                    name: user.displayName,
+                    pic: user.photoURL,
+                    correct: isCorrect,
+                    time: timeTaken
+                })
+            });
+        } catch(e) { console.error("Error sending answer:", e); }
     }
 
     async function processRoundResults(data) {
