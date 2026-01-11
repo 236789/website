@@ -2000,34 +2000,41 @@ const TEXTS_DB = [
 
 
 window.openTextShop = async () => {
-    if(!auth.currentUser) return alert("Loghează-te!");
-    const modal = document.getElementById('textShopModal');
-    const list = document.getElementById('textList');
-    list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
-    modal.classList.add('active');
+        if(!auth.currentUser) return alert("Loghează-te!");
+        const modal = document.getElementById('textShopModal');
+        const list = document.getElementById('textList');
+        list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
+        modal.classList.add('active');
 
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const owned = userSnap.data().ownedTexts || [];
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const owned = userSnap.data().ownedTexts || [];
 
-    list.innerHTML = '';
-    TEXTS_DB.forEach(item => {
-        const isOwned = owned.includes(item.id);
-        const card = document.createElement('div');
-        card.className = 'shop-badge-item';
-        card.innerHTML = `
-            <div class="${item.cssClass}" style="font-size:16px; margin-bottom:10px;">${item.name}</div>
-            
-            <div class="shop-badge-price">
-                ${isOwned ? 'DEȚINUT' : `<img src="https://iili.io/fhc1SKQ.png" width="15"> ${item.price}`}
+        // Buton Buy All la început
+        list.innerHTML = `
+            <div style="grid-column: 1 / -1; margin-bottom: 15px;">
+                <button class="buy-badge-btn" style="background:#ff00ff; color:#fff; padding:15px;" onclick="buyAllItems('texts')">
+                    <i class="fas fa-font"></i> BUY ALL TEXT COLORS
+                </button>
             </div>
-            ${isOwned 
-                ? `<span class="owned-label"><i class="fas fa-check"></i></span>` 
-                : `<button class="buy-badge-btn" onclick="buyText('${item.id}', ${item.price})">CUMPĂRĂ</button>`
-            }
         `;
-        list.appendChild(card);
-    });
-};
+
+        TEXTS_DB.forEach(item => {
+            const isOwned = owned.includes(item.id);
+            const card = document.createElement('div');
+            card.className = 'shop-badge-item';
+            card.innerHTML = `
+                <div class="${item.cssClass}" style="font-size:16px; margin-bottom:10px;">${item.name}</div>
+                <div class="shop-badge-price">
+                    ${isOwned ? 'DEȚINUT' : `<img src="https://iili.io/fhc1SKQ.png" width="15"> ${item.price}`}
+                </div>
+                ${isOwned 
+                    ? `<span class="owned-label"><i class="fas fa-check"></i></span>` 
+                    : `<button class="buy-badge-btn" onclick="buyText('${item.id}', ${item.price})">CUMPĂRĂ</button>`
+                }
+            `;
+            list.appendChild(card);
+        });
+    };
 
 window.buyText = async (id, price) => {
     const confirmed = await showCustomConfirm(`Cumperi culoarea pentru ${price} coins?`);
@@ -2122,8 +2129,7 @@ window.processDonation = async () => {
         } catch(e) { console.error(e); }
     };
 
-    // --- BADGE SHOP LOGIC ---
-    window.openBadgeShop = async () => {
+window.openBadgeShop = async () => {
         if(!auth.currentUser) return alert("Loghează-te!");
         const modal = document.getElementById('badgeShopModal');
         const list = document.getElementById('badgeList');
@@ -2133,7 +2139,15 @@ window.processDonation = async () => {
         const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         const owned = userSnap.data().ownedBadges || [];
 
-        list.innerHTML = '';
+        // Buton Buy All la început
+        list.innerHTML = `
+            <div style="grid-column: 1 / -1; margin-bottom: 15px;">
+                <button class="buy-badge-btn" style="background:var(--gold); color:#000; padding:15px; font-size:13px;" onclick="buyAllItems('badges')">
+                    <i class="fas fa-shopping-cart"></i> BUY ALL BADGES
+                </button>
+            </div>
+        `;
+
         BADGES_DB.forEach(badge => {
             const isOwned = owned.includes(badge.id);
             const item = document.createElement('div');
@@ -2177,6 +2191,64 @@ window.buyBadge = async (badgeId, price) => {
             window.openBadgeShop(); 
         } catch(e) { console.error(e); }
     };
+
+window.buyAllItems = async (category) => {
+    if (!auth.currentUser) return showCustomAlert("Loghează-te mai întâi!", "EROARE");
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
+
+    let database, ownedField, categoryName;
+
+    // Configurăm categoria
+    if (category === 'badges') { database = BADGES_DB; ownedField = 'ownedBadges'; categoryName = "BADGES"; }
+    else if (category === 'frames') { database = FRAMES_DB; ownedField = 'ownedFrames'; categoryName = "RAME"; }
+    else if (category === 'banners') { database = BANNERS_DB; ownedField = 'ownedBanners'; categoryName = "BANNERE"; }
+    else if (category === 'texts') { database = TEXTS_DB; ownedField = 'ownedTexts'; categoryName = "TEXT COLORS"; }
+
+    const ownedIds = userData[ownedField] || [];
+    
+    // Filtrăm doar ce NU are deja utilizatorul
+    const itemsToBuy = database.filter(item => !ownedIds.includes(item.id));
+
+    if (itemsToBuy.length === 0) {
+        return showCustomAlert(`Deții deja toate obiectele din categoria ${categoryName}!`, "INFO");
+    }
+
+    // Calculăm prețul total
+    const totalCost = itemsToBuy.reduce((sum, item) => sum + item.price, 0);
+
+    // Confirmare stilizată (exact cum ai cerut)
+    const confirmed = await showCustomConfirm(`All cost ${totalCost.toLocaleString()} do you want to buy all?`, `CUMPĂRĂ TOT (${categoryName})`);
+    
+    if (!confirmed) return;
+
+    if ((userData.coins || 0) < totalCost) {
+        return showCustomAlert("Nu ai suficienți coins pentru tot pachetul!", "EROARE");
+    }
+
+    try {
+        const newIds = itemsToBuy.map(i => i.id);
+        
+        await updateDoc(userRef, {
+            coins: increment(-totalCost),
+            [ownedField]: arrayUnion(...newIds) // Adăugăm toate ID-urile noi deodată
+        });
+
+        await showCustomAlert(`Felicitări! Ai deblocat tot din ${categoryName}!`, "SUCCES");
+        
+        // Refresh la shop-ul respectiv
+        if (category === 'badges') openBadgeShop();
+        else if (category === 'frames') openFrameShop();
+        else if (category === 'banners') openBannerShop();
+        else if (category === 'texts') openTextShop();
+
+    } catch (e) {
+        console.error(e);
+        showCustomAlert("A apărut o eroare la procesare.", "EROARE");
+    }
+};
 
     // --- INVENTORY LOGIC ---
 window.openInventory = async (type = 'badges') => {
@@ -2287,8 +2359,7 @@ window.openInventory = async (type = 'badges') => {
 
 
 
-// --- FRAME SHOP LOGIC ---
-    window.openFrameShop = async () => {
+window.openFrameShop = async () => {
         if(!auth.currentUser) return alert("Loghează-te!");
         
         const modal = document.getElementById('frameShopModal');
@@ -2296,17 +2367,22 @@ window.openInventory = async (type = 'badges') => {
         list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
         modal.classList.add('active');
 
-        // Fetch User Data to check owned items and get profile pic
         const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         const userData = userSnap.data();
         const owned = userData.ownedFrames || [];
         const userPic = userData.image || auth.currentUser.photoURL;
 
-        list.innerHTML = '';
+        // Buton Buy All la început
+        list.innerHTML = `
+            <div style="grid-column: 1 / -1; margin-bottom: 15px;">
+                <button class="buy-badge-btn" style="background:#bf55ec; color:#fff; padding:15px;" onclick="buyAllItems('frames')">
+                    <i class="fas fa-gem"></i> BUY ALL FRAMES
+                </button>
+            </div>
+        `;
+
         FRAMES_DB.forEach(item => {
             const isOwned = owned.includes(item.id);
-            
-            // HTML for the Item
             const card = document.createElement('div');
             card.className = 'shop-badge-item';
             card.innerHTML = `
@@ -2315,7 +2391,6 @@ window.openInventory = async (type = 'badges') => {
                     <img src="${item.img}" class="frame-preview-img">
                 </div>
                 <div style="font-weight:700; font-size:12px; margin-bottom:5px;">${item.name}</div>
-                
                 <div class="shop-badge-price">
                     ${isOwned ? 'DEȚINUT' : `<img src="https://iili.io/fhc1SKQ.png" width="15"> ${item.price}`}
                 </div>
@@ -2327,6 +2402,7 @@ window.openInventory = async (type = 'badges') => {
             list.appendChild(card);
         });
     };
+
 
 window.buyFrame = async (id, price) => {
         const confirmed = await showCustomConfirm(`Cumperi această ramă pentru ${price} coins?`);
@@ -2360,7 +2436,7 @@ window.buyFrame = async (id, price) => {
     };
 
 // --- BANNER SHOP LOGIC ---
-    window.openBannerShop = async () => {
+   window.openBannerShop = async () => {
         if(!auth.currentUser) return alert("Loghează-te!");
         const modal = document.getElementById('bannerShopModal');
         const list = document.getElementById('bannerList');
@@ -2370,19 +2446,25 @@ window.buyFrame = async (id, price) => {
         const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         const owned = userSnap.data().ownedBanners || [];
 
-        list.innerHTML = '';
+        // Buton Buy All la început
+        list.innerHTML = `
+            <div style="grid-column: 1 / -1; margin-bottom: 15px;">
+                <button class="buy-badge-btn" style="background:#00e5ff; color:#000; padding:15px;" onclick="buyAllItems('banners')">
+                    <i class="fas fa-layer-group"></i> BUY ALL BANNERS
+                </button>
+            </div>
+        `;
+
         BANNERS_DB.forEach(item => {
             const isOwned = owned.includes(item.id);
-            // Create a preview element
             const card = document.createElement('div');
-            card.className = 'shop-badge-item'; // Reusing badge styles for layout
+            card.className = 'shop-badge-item';
             card.innerHTML = `
                 <div class="${item.cssClass}" style="padding:10px; border-radius:10px; font-size:10px; width:100%; margin-bottom:10px;">
                     Test Mesaj
                 </div>
                 <div style="font-weight:700; font-size:12px;">${item.name}</div>
                 <div style="font-size:10px; color:#aaa; margin-bottom:5px;">${item.desc}</div>
-                
                 <div class="shop-badge-price">
                     ${isOwned ? 'DEȚINUT' : `<img src="https://iili.io/fhc1SKQ.png" width="15"> ${item.price}`}
                 </div>
