@@ -1949,15 +1949,41 @@ window.openInventory = async (type = 'badges') => {
 
 
 // --- QUEST HELPER ---
+// --- QUEST HELPER (FIXED TEXTS & COUNTS) ---
     async function checkWallQuest(questId) {
         if(!auth.currentUser) return;
         const uid = auth.currentUser.uid;
         
-        let reward = 0;
-        if(questId === 'msg3') reward = 250;
-        if(questId === 'wall_react_10') reward = 200;
-        if(questId === 'wall_long_msg') reward = 500;
-        if(questId === 'wall_reply_5') reward = 300; // If you count replies too
+        // 1. CONFIGURATION
+        const questConfig = {
+            'msg3': { 
+                reward: 250, 
+                target: 3, 
+                field: 'messagesSentToday',
+                text: "Hey, mersi că ai comunicat pe chat! Uite aici recompensa ta:" 
+            },
+            'wall_reply_5': { 
+                reward: 300, 
+                target: 5, 
+                field: 'wallRepliesToday',
+                text: "Super! Ai răspuns la 5 persoane. Socializarea contează!" 
+            },
+            'wall_long_msg': { 
+                reward: 500, 
+                target: 1, 
+                field: 'wallLongMsgSent', // This is a boolean in DB, handled separately
+                text: "Wow! Ai scris un mesaj complex și interesant. Continuă așa!" 
+            },
+            'wall_react_10': {
+                reward: 200,
+                target: 10,
+                field: 'wallReactionsToday',
+                text: "Ești activ! Ai reacționat la 10 mesaje pe Wall."
+            }
+        };
+
+        const config = questConfig[questId];
+        if(!config) return;
 
         try {
             const snap = await getDoc(doc(db, "accounts", uid));
@@ -1965,28 +1991,34 @@ window.openInventory = async (type = 'badges') => {
             const active = data.activeDailyQuests || [];
             const completed = data.completedQuests || [];
             
-            // Check targets
-            let count = 0;
-            let target = 0;
-            
-            if(questId === 'msg3') { count = data.messagesSentToday; target = 3; }
-            if(questId === 'wall_react_10') { count = data.wallReactionsToday; target = 10; }
-            if(questId === 'wall_long_msg') { count = data.wallLongMsgSent ? 1 : 0; target = 1; }
+            // 2. CHECK PROGRESS
+            let currentCount = 0;
+            if (questId === 'wall_long_msg') {
+                currentCount = data.wallLongMsgSent ? 1 : 0;
+            } else {
+                currentCount = data[config.field] || 0;
+            }
 
-            if(active.includes(questId) && !completed.includes(questId) && count >= target) {
-                // Award
+            // 3. VALIDATE (Must have quest + Not done + Target reached)
+            if(active.includes(questId) && !completed.includes(questId) && currentCount >= config.target) {
+                
+                // Award Prize
                 await updateDoc(doc(db, "accounts", uid), {
-                    coins: increment(reward),
+                    coins: increment(config.reward),
                     completedQuests: arrayUnion(questId)
                 });
                 
-                // Show Popup
-                const modal = document.getElementById('rewardModal'); // Note: This uses the existing single modal logic you have
-                document.getElementById('rewardText').innerText = "QUEST COMPLET!";
-                document.getElementById('rewardAmount').innerText = reward;
+                // Show Custom Popup
+                const modal = document.getElementById('rewardModal');
+                const card = modal.querySelector('.reward-card');
+                
+                // Set Custom Text
+                document.getElementById('rewardText').innerText = config.text; // <--- YOUR CUSTOM TEXT
+                document.getElementById('rewardAmount').innerText = config.reward;
+                
                 modal.classList.add('active');
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error("Quest Check Error:", e); }
     }
     
     // --- 1. ADVANCED PRESENCE SYSTEM (Online/Offline) ---
@@ -2352,14 +2384,24 @@ isHelper = (
         } catch (e) { console.error("Typing status error:", e); }
     }
 
-    function listenForTypers() {
+function listenForTypers() {
         const q = query(collection(db, "typing_status"));
         
         onSnapshot(q, (snapshot) => {
             const typers = [];
+            const now = Date.now();
+
             snapshot.forEach((doc) => {
                 if (doc.id !== currentUid) { 
                     const data = doc.data();
+                    
+                    // --- FIX: IGNORE STUCK USERS ---
+                    // If timestamp is older than 10 seconds, ignore them
+                    if (data.timestamp) {
+                        const timeDiff = now - data.timestamp.toMillis();
+                        if (timeDiff > 10000) return; 
+                    }
+
                     if (data.name) {
                         let nameHtml = `<span class="typing-name">${data.name}</span>`;
                         if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">WEBSITE OWNER</span>`;
@@ -2406,7 +2448,7 @@ async function sendMessage() {
         const text = msgInput.value.trim();
         if((!text && !selectedImgBase64) || !auth.currentUser) return;
         
-        // Comenzi admin / mute
+        // 1. Admin Commands
         if(text === '/reset chat') {
             msgInput.value = '';
             if(isAdmin || isOwner) {
@@ -2418,10 +2460,9 @@ async function sendMessage() {
             return;
         }
 
-        // Verificare lungime
+        // 2. Validation
         if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
 
-        // Cooldown
         const lastSent = localStorage.getItem('lastMsgTime');
         const COOLDOWN = 2000; 
         if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
@@ -2431,29 +2472,26 @@ async function sendMessage() {
 
         isSending = true;
 
-        // Animație monede
+        // 3. Animation
         const btn = document.getElementById('sendBtn');
         if(typeof window.flyCoins === "function" && btn) {
             window.flyCoins(btn);
         }
 
         try {
-            // --- FIX-UL ESTE AICI: Luăm datele o singură dată ---
             const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             const userData = userSnapshot.data();
 
-            // Numele din baza de date
             let displayName = userData.username || auth.currentUser.displayName;
             if(isOwner) displayName = "Lost Soul";
 
-            // Insigna echipată
             const currentBadge = userData.equippedBadge || null;
-            const currentBanner = userData.equippedBanner || null; // <--- ADD THIS
+            const currentBanner = userData.equippedBanner || null;
 
             const payload = {
                 text: text,
                 uid: auth.currentUser.uid,
-                name: displayName, // Numele corect salvat în Shop
+                name: displayName,
                 photo: auth.currentUser.photoURL,
                 email: auth.currentUser.email,
                 ip: userIP || "unknown",
@@ -2462,16 +2500,14 @@ async function sendMessage() {
                 isMod: isMod,
                 isHelper: isHelper,
                 equippedBadge: currentBadge, 
-                equippedBanner: currentBanner, // <--- ADD THIS
+                equippedBanner: currentBanner,
                 createdAt: serverTimestamp(),
                 isDeleted: false,
                 reactions: {},
                 seenBy: [auth.currentUser.uid]
             };
 
-            if(selectedImgBase64) {
-                payload.image = selectedImgBase64;
-            }
+            if(selectedImgBase64) payload.image = selectedImgBase64;
 
             if(replyData) {
                 payload.replyToId = replyData.id;
@@ -2479,34 +2515,37 @@ async function sendMessage() {
                 payload.replyToText = replyData.text;
             }
 
+            // 4. Send Message
             await addDoc(collection(db, "wall_messages"), payload);
 
-            // Update statistici user
+            // 5. Update Stats
             const userRef = doc(db, "accounts", auth.currentUser.uid);
             const updates = {
                 messagesSentToday: increment(1),
                 coins: increment(10)
             };
             
-            if(text.length >= 100) updates.wallLongMsgSent = true;
-            if(replyData) updates.wallRepliesToday = increment(1);
+            // Flags for Quest Checks
+            let isLongMsg = false;
+            let isReply = false;
 
-// ... inside sendMessage ...
+            if(text.length >= 100) {
+                updates.wallLongMsgSent = true;
+                isLongMsg = true;
+            }
+            if(replyData) {
+                updates.wallRepliesToday = increment(1);
+                isReply = true;
+            }
+
             await updateDoc(userRef, updates);
 
-            // --- QUEST CHECKS ---
-            checkWallQuest('msg3'); // Check if they hit 3 messages
-            if (text.length >= 100) {
-                checkWallQuest('wall_long_msg'); // Check if long message
-            }
-            if (replyData) {
-                 // If you are tracking replies separately:
-                 checkWallQuest('wall_reply_5'); 
-            }
-            // --------------------
+            // 6. CHECK QUESTS (Using new Helper)
+            checkWallQuest('msg3'); // Standard messages
+            if (isLongMsg) checkWallQuest('wall_long_msg');
+            if (isReply) checkWallQuest('wall_reply_5');
             
-            // Resetare input ...            
-            // Resetare input
+            // 7. Reset UI
             msgInput.value = '';
             charCount.textContent = '0 / 1000';
             localStorage.setItem('lastMsgTime', Date.now()); 
@@ -2519,6 +2558,9 @@ async function sendMessage() {
             showToast("Eroare la trimitere!");
         } finally {
             isSending = false;
+            // FIX: Force clear typing status immediately
+            isTyping = false;
+            updateTypingStatus(false);
         }
     }
 
