@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -2108,37 +2107,42 @@ window.openInventory = async (type = 'badges') => {
         } catch(e) { console.error("Quest Check Error:", e); }
     }
     
-    // --- 1. ADVANCED PRESENCE SYSTEM (Online/Offline) ---
+// --- 1. ADVANCED PRESENCE SYSTEM (Online/Offline) ---
     let idleTimer;
     let lastStatusUpdate = 0;
-    const UPDATE_INTERVAL = 3 * 60 * 1000;
-    const IDLE_TIMEOUT = 5 * 60 * 1000;
+    // FIX: Faster updates for real-time feel
+    const UPDATE_INTERVAL = 60 * 1000; // 1 minute
+    const IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
 
-async function setStatusOnline() {
+    async function setStatusOnline() {
         if (!auth.currentUser) return;
         const now = Date.now();
+        // Update if enough time passed OR if we are forcing a status change
         if (now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
                 await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
                     isOnline: true, 
                     lastActive: serverTimestamp(),
-                    currentPage: 'wall' // <--- ADD THIS LINE
+                    currentPage: 'wall' 
                 });
             } catch(e) {}
         }
     }
+
     async function setStatusOffline() {
         if (!auth.currentUser) return;
         try {
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), { isOnline: false, lastActive: serverTimestamp() });
         } catch(e) {}
     }
+
     function resetIdleTimer() {
         clearTimeout(idleTimer);
-        setStatusOnline();
+        setStatusOnline(); // This keeps them "green"
         idleTimer = setTimeout(setStatusOffline, IDLE_TIMEOUT);
     }
+
     window.onload = resetIdleTimer;
     document.onmousemove = resetIdleTimer;
     document.onkeypress = resetIdleTimer;
@@ -2146,15 +2150,14 @@ async function setStatusOnline() {
     document.onclick = resetIdleTimer;
     document.onscroll = resetIdleTimer;
 
-
-
-// Remove "In Chat" status when closing/refreshing
+    // Remove "In Chat" status when closing/refreshing
     window.addEventListener('beforeunload', () => {
         if(auth.currentUser) {
-            // NOTE: Firestore requests might not always finish on close, 
-            // but this helps clean up status immediately when possible.
-            // The idle timer will eventually catch it if this fails.
-            updateDoc(doc(db, "accounts", auth.currentUser.uid), { currentPage: null });
+            // Attempt to set offline immediately
+            updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
+                currentPage: null,
+                isOnline: false 
+            });
         }
     });
 
@@ -2162,28 +2165,41 @@ async function setStatusOnline() {
     function checkIsOnline(user) {
         if (user.isOnline === true && user.lastActive) {
             const diff = Date.now() - user.lastActive.toDate().getTime();
-            return diff < 360000; // 6 mins buffer
+            // FIX: Reduce buffer to 2min 10sec (130000ms) to remove ghosts faster
+            return diff < 130000; 
         }
         return false;
     }
 
     let onlineUsersCache = [];
     function listenOnlineUsers() {
+        // Query users marked as online
         const q = query(collection(db, "accounts"), where("isOnline", "==", true));
+        
         onSnapshot(q, (snapshot) => {
             onlineUsersCache = [];
             let count = 0;
+            
             snapshot.forEach(doc => {
                 const data = doc.data();
+                // Double check timestamp to ensure they aren't ghosts
                 if(checkIsOnline(data)) {
                     onlineUsersCache.push(data);
                     count++;
                 }
             });
-            onlineCountVal.innerText = count;
+            
+            // Update the green button count
+            if(onlineCountVal) onlineCountVal.innerText = count;
+
+            // FIX: Real-time update inside the popup
+            // If the modal is open, re-render the list immediately
+            const modal = document.getElementById('onlineListModal');
+            if (modal && modal.classList.contains('active')) {
+                renderOnlineList();
+            }
         });
     }
-
 // --- 3. SHOW ONLINE LIST POPUP (UPDATED) ---
     let currentOnlineFilter = 'global'; // Default
 
