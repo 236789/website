@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -188,12 +189,12 @@
     .wall-desc { text-align: center; color: var(--text-muted); font-size: 16px; margin-bottom: 40px; max-width: 600px; }
     
     /* CARD LAYOUT */
-.wall-card {
-    height: 100%; /* Fill container */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* Prevent double scrollbars */
-}
+    .wall-card { 
+        width: 100%; background: var(--glass-bg); border: 1px solid var(--primary); 
+        border-radius: 24px; display: flex; flex-direction: column; overflow: hidden; 
+        box-shadow: 0 0 40px rgba(41, 243, 255, 0.15); backdrop-filter: blur(10px); 
+        height: 75vh; 
+    }
 
     /* TABS */
     .tabs-header { display: flex; border-bottom: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); flex-shrink: 0; }
@@ -202,27 +203,19 @@
     .tab-btn.active { color: var(--primary); border-bottom: 3px solid var(--primary); background: rgba(41, 243, 255, 0.05); text-shadow: 0 0 10px var(--primary-dim); }
 
     /* CHAT VIEW LAYOUT */
-.chat-view {
-    display: none;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0; /* CRITICAL for scrolling inside flex items */
-    height: 100%;
-    overflow: hidden;
-}
+    .chat-view { 
+        display: none; 
+        flex-direction: column; 
+        flex: 1; 
+        min-height: 0; 
+        overflow: hidden; 
+    }
     
     .locked-view { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px; }
     .google-btn { background: #fff; color: #000; font-weight: 700; padding: 12px 30px; border-radius: 50px; border: none; cursor: pointer; display: flex; align-items: center; gap: 10px; margin-top: 20px; transition: 0.3s; }
     
-.messages-feed {
-    flex: 1;
-    overflow-y: auto;
-    padding: 15px; /* Reduced padding for mobile */
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    -webkit-overflow-scrolling: touch; /* Smooth scroll iOS */
-}    
+    .messages-feed { flex: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 25px; }
+    
     /* --- POST STYLES --- */
     .post-card {
         padding: 25px; border-radius: 18px; position: relative;
@@ -567,18 +560,18 @@ nav a, .hero-btns a {
 
 
     /* UPDATE THIS CLASS */
-.post-content {
-    font-size: 14px;
-    line-height: 1.5;
-    color: #fff;
-    white-space: pre-wrap; /* Keeps paragraphs */
+.post-content { 
+    font-size: 15px; 
+    line-height: 1.6; 
+    color: #fff; 
+    white-space: pre-wrap; 
     font-weight: 500;
     
-    /* FORCE BREAKING LONG WORDS/LINKS */
-    overflow-wrap: anywhere; 
-    word-wrap: break-word;
-    word-break: break-word;
-    max-width: 100%;
+    /* NEW FIXES BELOW */
+    word-wrap: break-word;       /* Breaks long words */
+    overflow-wrap: anywhere;     /* Forces long URLs/text to break */
+    word-break: break-word;      /* Ensures text stays inside */
+    max-width: 100%;             /* Prevents horizontal overflow */
 }
 
 /* UPDATE THIS CLASS */
@@ -653,30 +646,6 @@ nav a, .hero-btns a {
     .lb-prev { left: 10px; } 
     .lb-next { right: 10px; }
     .lb-img { max-width: 95%; max-height: 70vh; }
-}
-
-
-/* 5. Mobile Specific Fixes */
-@media (max-width: 768px) {
-    .wall-container {
-        /* Adjust height to fit screen exactly minus header/footer space */
-        height: calc(100vh - 80px);
-        margin-top: 75px;
-        padding: 0 10px 10px 10px;
-    }
-    
-    .wall-card {
-        border-radius: 15px;
-    }
-    
-    /* Ensure images don't push content out */
-    .post-media-grid {
-        gap: 5px;
-    }
-    .media-box {
-        width: 48%; /* 2 per row */
-        height: 120px;
-    }
 }
   </style>
 </head>
@@ -1159,95 +1128,52 @@ nav a, .hero-btns a {
     };
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
-onAuthStateChanged(auth, async (user) => {
+   onAuthStateChanged(auth, async (user) => {
         if(user) {
             currentUid = user.uid;
-            
-            // 1. Basic UI Updates
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
-            lockedView.style.display = 'none'; 
-            chatView.style.display = 'flex';
+            lockedView.style.display = 'none'; chatView.style.display = 'flex';
 
             const userRef = doc(db, "accounts", user.uid);
-
-            // 2. Fetch User Data & Run Quest Detection
-            getDoc(userRef).then(async (docSnap) => {
+getDoc(userRef).then(async (docSnap) => {
                 if(docSnap.exists()) {
                     const data = docSnap.data();
                     
-                    // Update Header & Account Modal Info
-                    document.getElementById('headerLoginText').innerText = (data.username || "User").toUpperCase();
+                    // LINIA NOUĂ CARE REPARĂ HEADER-UL:
+                    document.getElementById('headerLoginText').innerText = data.username.toUpperCase();
+
                     document.getElementById('popUserImg').src = data.image;
                     document.getElementById('popUserName').innerText = data.username;
                     document.getElementById('popUserEmail').innerText = data.email;
                     document.getElementById('popUserCoins').innerText = data.coins || 0;
                     
-                    // --- QUEST DETECTION SYSTEM ---
-                    const questId = 'visit_news'; // The ID for this specific quest
-                    const rewardAmount = 100;     // Reward amount
-                    const completed = data.completedQuests || []; // Get list of completed quests
-
-                    // CHECK: If the quest ID is NOT in the completed list
-                    if (!completed.includes(questId)) {
-                        console.log("Quest 'visit_news' not completed. Granting reward...");
-
-                        // A. Update Database (Add Coins + Mark Quest as Done)
-                        await updateDoc(userRef, { 
-                            coins: increment(rewardAmount), 
-                            completedQuests: arrayUnion(questId) 
-                        });
-
-                        // B. Update UI Coins immediately (so user sees it without refresh)
-                        const currentCoins = data.coins || 0;
-                        document.getElementById('popUserCoins').innerText = currentCoins + rewardAmount;
-
-                        // C. Prepare Modal Text
-                        const rewardBox = document.querySelector('#rewardModal .reward-coins-box span');
-                        if(rewardBox) rewardBox.innerText = rewardAmount;
-
-                        // D. Trigger the Pop-up Modal
-                        const modal = document.getElementById('rewardModal');
-                        modal.classList.add('active');
+                    if (!(data.completedQuests || []).includes('visit_news')) {
+                        await updateDoc(userRef, { coins: increment(100), completedQuests: arrayUnion('visit_news') });
+                        rewardModal.classList.add('active');
                     }
                 }
             });
 
-            // 3. Notification Engine (Preserved)
+            // NOTIFICATION ENGINE
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
                 onSnapshot(doc(db, "accounts", user.uid), (userSnap) => {
                     const userVazute = userSnap.data()?.lastSeenNewsCount || 0;
                     const noutatiNoi = totalGlobal - userVazute;
-                    
                     const b1 = document.getElementById('badgeNoutati');
                     const b2 = document.getElementById('badgeAnunturi');
-                    const hb = document.getElementById('headerNotifBadge'); // Ensure this ID exists in HTML if used
-                    
+                    const hb = document.getElementById('headerNotifBadge');
                     if (noutatiNoi > 0) {
-                        [b1, b2, hb].forEach(b => { 
-                            if(b){ b.innerText = `+${noutatiNoi}`; b.style.display = 'flex'; }
-                        });
-                        // Auto-mark as seen after 4 seconds
-                        setTimeout(async () => { 
-                            await updateDoc(doc(db, "accounts", user.uid), { lastSeenNewsCount: totalGlobal }); 
-                        }, 4000);
-                    } else { 
-                        [b1, b2, hb].forEach(b => { if(b) b.style.display = 'none'; }); 
-                    }
+                        [b1, b2, hb].forEach(b => { if(b){ b.innerText = `+${noutatiNoi}`; b.style.display = 'flex'; }});
+                        setTimeout(async () => { await updateDoc(doc(db, "accounts", user.uid), { lastSeenNewsCount: totalGlobal }); }, 4000);
+                    } else { [b1, b2, hb].forEach(b => { if(b) b.style.display = 'none'; }); }
                 });
             });
 
-            checkInputVisibility(); 
-            loadPosts(); 
-            updateOnlineStatus();
-
-        } else { 
-            // Logged Out State
-            chatView.style.display = 'none'; 
-            lockedView.style.display = 'flex'; 
-        }
+            checkInputVisibility(); loadPosts(); updateOnlineStatus();
+        } else { chatView.style.display = 'none'; lockedView.style.display = 'flex'; }
     });
 
     btnNoutati.onclick = () => { if(currentCategory === 'noutati') return; currentCategory = 'noutati'; updateTabUI(); checkInputVisibility(); loadPosts(); };
