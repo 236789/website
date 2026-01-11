@@ -903,10 +903,11 @@
     <img id="viewUserImg" src="" class="pop-img-inner">
     <img id="viewUserFrame" src="" class="pop-frame-overlay" style="display: none;">
 </div>        
-        <h3 id="viewUserName" class="pop-user" style="margin-bottom:2px;">User</h3>
-        
-        <!-- NEW STATUS BADGE -->
-        <div id="viewUserStatus" style="font-size:10px; font-weight:bold; margin-bottom:15px; font-family:'Orbitron';"></div>
+<!-- Username (Colored Text goes here) -->
+<h3 id="viewUserName" class="pop-user" style="margin-bottom:5px; line-height:1;">User</h3>
+
+<!-- Badges Container (Stacked Vertical) -->
+<div id="viewUserBadges" style="display: flex; flex-direction: column; align-items: center; gap: 5px; margin-bottom: 15px;"></div>
         
         <div class="view-profile-row">
             <div class="view-stat">
@@ -1705,19 +1706,24 @@ window.openInventory = async (type = 'badges') => {
 window.openUserProfile = async (uid) => {
         const modal = document.getElementById('viewProfileModal');
         modal.classList.add('active');
+        
         const viewUserName = document.getElementById('viewUserName');
+        const viewUserBadges = document.getElementById('viewUserBadges');
+        const viewUserStatus = document.getElementById('viewUserStatus');
+
+        // Reset UI
         viewUserName.innerText = "Se încarcă...";
-        viewUserName.className = 'pop-user'; // Reset class
-        document.getElementById('viewUserStatus').innerHTML = ""; 
+        viewUserName.className = 'pop-user'; 
+        viewUserBadges.innerHTML = "";
+        viewUserStatus.innerHTML = ""; 
         
         try {
             const snap = await getDoc(doc(db, "accounts", uid));
             if(snap.exists()) {
                 const data = snap.data();
                 
-                // IMAGE & FRAME
+                // 1. IMAGE & FRAME
                 document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-                
                 const viewFrame = document.getElementById('viewUserFrame');
                 if(viewFrame) {
                     if (data.equippedFrame && data.equippedFrame.img) {
@@ -1728,63 +1734,58 @@ window.openUserProfile = async (uid) => {
                         viewFrame.style.height = (scale * 100) + '%';
                     } else {
                         viewFrame.style.display = 'none';
-                        viewFrame.src = "";
                     }
                 }
 
-                // --- ONLINE STATUS LOGIC ---
-                const statusEl = document.getElementById('viewUserStatus');
+                // 2. ONLINE STATUS
                 let isOnline = false;
-                
                 if (data.lastActive) {
-                    const now = Date.now();
-                    const lastActiveDate = data.lastActive.toDate();
-                    const diff = now - lastActiveDate.getTime();
-                    // If active in the last 5 minutes (300,000 ms)
+                    const diff = Date.now() - data.lastActive.toDate().getTime();
                     if (diff < 300000) isOnline = true;
                 }
+                viewUserStatus.innerHTML = isOnline 
+                    ? '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>' 
+                    : '<span style="color:#555;">● OFFLINE</span>';
 
-                if (isOnline) statusEl.innerHTML = '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>';
-                else statusEl.innerHTML = '<span style="color:#555;">● OFFLINE</span>';
-
-                // --- BADGE LOGIC ---
-                let badge = "";
-                if(data.email === 'nicaemmanuel433qe@gmail.com') {
-                    badge = `<span class="owner-badge" style="font-size:8px; padding:1px 4px; vertical-align:middle; margin-left:5px;"><i class="fas fa-crown"></i> OWNER</span>`;
-                } else if(data.email === 'kevin.trinity2020@gmail.com') {
-                    badge = `<span class="admin-badge" style="font-size:8px; padding:1px 4px; vertical-align:middle; margin-left:5px;"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
-                } else if(data.email === 'mary.bughi@gmail.com' || data.email === 'emmanuel.nica83@gmail.com') {
-                    badge = `<span class="mod-badge" style="font-size:8px; padding:1px 4px; vertical-align:middle; margin-left:5px;"><i class="fas fa-star"></i> MOD</span>`;
-                } else if(data.email === 'norbyims@gmail.com' || data.email === 'promovarideafaceri7@gmail.com' || data.email === 'violetaflorentinadima@gmail.com') {
-                    badge = `<span class="helper-badge" style="font-size:8px; padding:1px 4px; vertical-align:middle; margin-left:5px;"><i class="fas fa-hands-helping"></i> HELPER</span>`;
-                }
-                
-                // COSMETIC BADGE
-                let cosmetic = getCosmeticBadge(data.equippedBadge);
-
-                // TEXT COLOR LOGIC
+                // 3. TEXT COLOR LOGIC (Username Only)
                 let nameHtml = data.username || "Anonim";
                 if (data.equippedText && data.equippedText.cssClass) {
                     nameHtml = `<span class="${data.equippedText.cssClass}">${nameHtml}</span>`;
                 }
+                viewUserName.innerHTML = nameHtml;
 
-                viewUserName.innerHTML = nameHtml + badge + cosmetic;
+                // 4. BADGES LOGIC (Stacked Vertical)
+                let badgesHtml = "";
+                
+                // Staff Badge
+                if(data.email === 'nicaemmanuel433qe@gmail.com') {
+                    badgesHtml += `<span class="owner-badge" style="margin:0;"><i class="fas fa-crown"></i> OWNER</span>`;
+                } else if(data.email === 'kevin.trinity2020@gmail.com') {
+                    badgesHtml += `<span class="admin-badge" style="margin:0;"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                } else if(data.email === 'mary.bughi@gmail.com' || data.email === 'emmanuel.nica83@gmail.com') {
+                    badgesHtml += `<span class="mod-badge" style="margin:0;"><i class="fas fa-star"></i> MOD</span>`;
+                } else if(data.email === 'norbyims@gmail.com' || data.email === 'promovarideafaceri7@gmail.com' || data.email === 'violetaflorentinadima@gmail.com') {
+                    badgesHtml += `<span class="helper-badge" style="margin:0;"><i class="fas fa-hands-helping"></i> HELPER</span>`;
+                }
+                
+                // Cosmetic Badge
+                if (data.equippedBadge) {
+                    // Re-create badge HTML without margin-left for the stack
+                    badgesHtml += `<span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color}; margin:0;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span>`;
+                }
+
+                viewUserBadges.innerHTML = badgesHtml;
+
+                // 5. STATS
                 document.getElementById('viewUserCoins').innerText = data.coins || 0;
                 document.getElementById('viewUserStreak').innerText = data.streak || 0;
-                
-                const bioText = data.bio ? data.bio : "Acest utilizator nu are o descriere.";
-                document.getElementById('viewUserBio').innerText = bioText;
-                
-                const birthText = data.birthDate ? `🎂 ${data.birthDate}` : "";
-                document.getElementById('viewUserBirth').innerText = birthText;
+                document.getElementById('viewUserBio').innerText = data.bio ? data.bio : "Nu există descriere.";
+                document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
 
                 const tiktokBtn = document.getElementById('viewUserTikTok');
                 if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
-                    tiktokBtn.href = data.tiktokLink;
-                    tiktokBtn.style.display = 'inline-flex';
-                } else {
-                    tiktokBtn.style.display = 'none';
-                }
+                    tiktokBtn.href = data.tiktokLink; tiktokBtn.style.display = 'inline-flex';
+                } else { tiktokBtn.style.display = 'none'; }
             }
         } catch(e) { console.error(e); }
     };
@@ -2228,7 +2229,6 @@ function appendCommentHTML(container, data) {
         }
 
         let badge = '';
-        // Only apply staff class if NO banner is present
         if (isOwner) { 
             if(!data.equippedBanner) bubbleClass += ' com-owner'; 
             badge = `<span class="owner-badge" style="font-size:8px; padding:1px 4px;"><i class="fas fa-crown"></i> OWNER</span>`; 
@@ -2255,6 +2255,12 @@ function appendCommentHTML(container, data) {
             frameHtml = `<img src="${data.equippedFrame.img}" class="card-frame-overlay" style="width:${sizePct}%; height:${sizePct}%">`;
         }
 
+        // --- NEW TEXT COLOR LOGIC FOR COMMENTS ---
+        let nameHtml = displayName;
+        if(data.equippedText && data.equippedText.cssClass) {
+            nameHtml = `<span class="${data.equippedText.cssClass}">${displayName}</span>`;
+        }
+
         div.className = bubbleClass;
         div.innerHTML = `
             <div class="com-pfp-wrapper">
@@ -2262,7 +2268,7 @@ function appendCommentHTML(container, data) {
                 ${frameHtml}
             </div>
             <div class="com-content">
-                <div class="com-name">${displayName} ${badge} ${cosmetic}</div>
+                <div class="com-name">${nameHtml} ${badge} ${cosmetic}</div>
                 <div class="com-text">${data.text}</div>
             </div>
         `;
