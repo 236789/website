@@ -1945,6 +1945,49 @@ window.openInventory = async (type = 'badges') => {
         accountModal.classList.remove('active');
         document.getElementById('cosmeticsSelectModal').classList.add('active');
     };
+
+
+
+// --- QUEST HELPER ---
+    async function checkWallQuest(questId) {
+        if(!auth.currentUser) return;
+        const uid = auth.currentUser.uid;
+        
+        let reward = 0;
+        if(questId === 'msg3') reward = 250;
+        if(questId === 'wall_react_10') reward = 200;
+        if(questId === 'wall_long_msg') reward = 500;
+        if(questId === 'wall_reply_5') reward = 300; // If you count replies too
+
+        try {
+            const snap = await getDoc(doc(db, "accounts", uid));
+            const data = snap.data();
+            const active = data.activeDailyQuests || [];
+            const completed = data.completedQuests || [];
+            
+            // Check targets
+            let count = 0;
+            let target = 0;
+            
+            if(questId === 'msg3') { count = data.messagesSentToday; target = 3; }
+            if(questId === 'wall_react_10') { count = data.wallReactionsToday; target = 10; }
+            if(questId === 'wall_long_msg') { count = data.wallLongMsgSent ? 1 : 0; target = 1; }
+
+            if(active.includes(questId) && !completed.includes(questId) && count >= target) {
+                // Award
+                await updateDoc(doc(db, "accounts", uid), {
+                    coins: increment(reward),
+                    completedQuests: arrayUnion(questId)
+                });
+                
+                // Show Popup
+                const modal = document.getElementById('rewardModal'); // Note: This uses the existing single modal logic you have
+                document.getElementById('rewardText').innerText = "QUEST COMPLET!";
+                document.getElementById('rewardAmount').innerText = reward;
+                modal.classList.add('active');
+            }
+        } catch(e) { console.error(e); }
+    }
     
     // --- 1. ADVANCED PRESENCE SYSTEM (Online/Offline) ---
     let idleTimer;
@@ -2197,64 +2240,8 @@ isHelper = (
                     let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
                     userName.innerHTML = (isOwner ? "Lost Soul" : data.username) + staffBadge + cosmeticHtml;
 
-                    // --- QUEST LOGIC (Existing) ---
-                    const completed = data.completedQuests || [];
-                    const cooldowns = data.questCooldowns || {};
-                    const now = Date.now();
-                    const oneHourCooldown = now + (3600000); 
 
-                    // 1. STANDARD MSG3 QUEST
-                    if(data.messagesSentToday >= 3 && !completed.includes('msg3') && !(now < (cooldowns['msg3'] || 0))) {
-                        if(!localProcessedQuests.has('msg3')) {
-                            localProcessedQuests.add('msg3');
-                            updateDoc(doc(db, "accounts", user.uid), {
-                                coins: increment(250),
-                                completedQuests: [...completed, 'msg3'],
-                                [`questCooldowns.msg3`]: oneHourCooldown
-                            }).then(() => {
-                                showRewardModal("Hey, mersi că ai comunicat pe chat! Uite aici recompensa ta:", "250");
-                            });
-                        }
-                    }
 
-                    // 2. WALL REPLY QUEST (5 Replies)
-                    if(data.wallRepliesToday >= 5 && !completed.includes('wall_reply_5')) {
-                        if(!localProcessedQuests.has('wall_reply_5')) {
-                            localProcessedQuests.add('wall_reply_5');
-                            updateDoc(doc(db, "accounts", user.uid), {
-                                coins: increment(300),
-                                completedQuests: [...completed, 'wall_reply_5']
-                            }).then(() => {
-                                showRewardModal("Super! Ai răspuns la 5 persoane. Socializarea contează!", "300");
-                            });
-                        }
-                    }
-
-                    // 3. WALL REACT QUEST (10 Reactions)
-                    if(data.wallReactionsToday >= 10 && !completed.includes('wall_react_10')) {
-                        if(!localProcessedQuests.has('wall_react_10')) {
-                            localProcessedQuests.add('wall_react_10');
-                            updateDoc(doc(db, "accounts", user.uid), {
-                                coins: increment(200),
-                                completedQuests: [...completed, 'wall_react_10']
-                            }).then(() => {
-                                showRewardModal("Ești activ! Ai reacționat la 10 mesaje pe Wall.", "200");
-                            });
-                        }
-                    }
-
-                    // 4. WALL LONG MSG QUEST (100+ Chars)
-                    if(data.wallLongMsgSent === true && !completed.includes('wall_long_msg')) {
-                        if(!localProcessedQuests.has('wall_long_msg')) {
-                            localProcessedQuests.add('wall_long_msg');
-                            updateDoc(doc(db, "accounts", user.uid), {
-                                coins: increment(500),
-                                completedQuests: [...completed, 'wall_long_msg']
-                            }).then(() => {
-                                showRewardModal("Wow! Ai scris un mesaj complex și interesant. Continuă așa!", "500");
-                            });
-                        }
-                    }
                 }
             });
             
@@ -2504,8 +2491,21 @@ async function sendMessage() {
             if(text.length >= 100) updates.wallLongMsgSent = true;
             if(replyData) updates.wallRepliesToday = increment(1);
 
+// ... inside sendMessage ...
             await updateDoc(userRef, updates);
+
+            // --- QUEST CHECKS ---
+            checkWallQuest('msg3'); // Check if they hit 3 messages
+            if (text.length >= 100) {
+                checkWallQuest('wall_long_msg'); // Check if long message
+            }
+            if (replyData) {
+                 // If you are tracking replies separately:
+                 checkWallQuest('wall_reply_5'); 
+            }
+            // --------------------
             
+            // Resetare input ...            
             // Resetare input
             msgInput.value = '';
             charCount.textContent = '0 / 1000';
@@ -2858,6 +2858,7 @@ async function sendMessage() {
         try { 
             await updateDoc(msgRef, updateObj); 
             await updateDoc(doc(db, "accounts", currentUid), { wallReactionsToday: increment(1) });
+            checkWallQuest('wall_react_10'); // <--- ADD THIS
         } catch(e) {} 
     }
     
