@@ -1116,6 +1116,42 @@
             margin-right: 2px;
         }
     }
+
+
+/* --- ONLINE FILTER BUTTONS --- */
+.online-filter-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    justify-content: center;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 15px;
+}
+
+.online-filter-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #a5b1c2;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-family: 'Orbitron', sans-serif;
+    cursor: pointer;
+    transition: 0.3s;
+    font-weight: 700;
+}
+
+.online-filter-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+.online-filter-btn.active {
+    background: var(--primary);
+    color: #000;
+    box-shadow: 0 0 10px rgba(41, 243, 255, 0.3);
+    border-color: var(--primary);
+}
   </style>
 
 </head>
@@ -1179,6 +1215,24 @@
     <div class="account-card" style="max-width:350px;">
         <button id="closeOnlineList" class="close-pop">✕</button>
         <h3 style="font-family:'Orbitron'; margin-bottom:15px;">ONLINE NOW</h3>
+
+<!-- ONLINE LIST MODAL -->
+<div id="onlineListModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width:350px;">
+        <button id="closeOnlineList" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; margin-bottom:15px;">ONLINE NOW</h3>
+        
+        <!-- NEW FILTER BUTTONS -->
+        <div class="online-filter-row">
+            <button id="btnOnlineGlobal" class="online-filter-btn active">GLOBAL</button>
+            <button id="btnOnlineChat" class="online-filter-btn">IN CHAT</button>
+        </div>
+
+        <div id="onlineUsersContainer" class="online-list-popup">
+            <div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>
+        </div>
+    </div>
+</div>
         <div id="onlineUsersContainer" class="online-list-popup">
             <div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>
         </div>
@@ -2069,13 +2123,17 @@ window.openInventory = async (type = 'badges') => {
     const UPDATE_INTERVAL = 3 * 60 * 1000;
     const IDLE_TIMEOUT = 5 * 60 * 1000;
 
-    async function setStatusOnline() {
+async function setStatusOnline() {
         if (!auth.currentUser) return;
         const now = Date.now();
         if (now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
-                await updateDoc(doc(db, "accounts", auth.currentUser.uid), { isOnline: true, lastActive: serverTimestamp() });
+                await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
+                    isOnline: true, 
+                    lastActive: serverTimestamp(),
+                    currentPage: 'wall' // <--- ADD THIS LINE
+                });
             } catch(e) {}
         }
     }
@@ -2096,6 +2154,18 @@ window.openInventory = async (type = 'badges') => {
     document.ontouchstart = resetIdleTimer;
     document.onclick = resetIdleTimer;
     document.onscroll = resetIdleTimer;
+
+
+
+// Remove "In Chat" status when closing/refreshing
+    window.addEventListener('beforeunload', () => {
+        if(auth.currentUser) {
+            // NOTE: Firestore requests might not always finish on close, 
+            // but this helps clean up status immediately when possible.
+            // The idle timer will eventually catch it if this fails.
+            updateDoc(doc(db, "accounts", auth.currentUser.uid), { currentPage: null });
+        }
+    });
 
     // --- 2. ONLINE USERS LIST (Listener) ---
     function checkIsOnline(user) {
@@ -2124,47 +2194,85 @@ window.openInventory = async (type = 'badges') => {
     }
 
     // --- 3. SHOW ONLINE LIST POPUP ---
-onlineCountBtn.onclick = () => {
-        onlineListModal.classList.add('active');
-        onlineUsersContainer.innerHTML = '';
-        if(onlineUsersCache.length === 0) {
-            onlineUsersContainer.innerHTML = '<div style="padding:15px; text-align:center;">Nimeni online :(</div>';
-        } else {
-            onlineUsersCache.forEach(u => {
-                const div = document.createElement('div');
-                
-                // Add Banner Class
-                let divClass = 'online-user-item';
-                if(u.equippedBanner && u.equippedBanner.cssClass) divClass += ` ${u.equippedBanner.cssClass}`;
-                div.className = divClass;
-                div.style.cursor = 'pointer'; // Make it look clickable
-                
-                // CLICK EVENT TO OPEN PROFILE
-                div.onclick = () => window.openUserProfile(u.uid);
+// --- 3. SHOW ONLINE LIST POPUP (UPDATED) ---
+    let currentOnlineFilter = 'global'; // Default
 
-                // Frame HTML
-                let frameHtml = '';
-                if(u.equippedFrame && u.equippedFrame.img) {
-                    const scale = u.equippedFrame.scale || 1.45;
-                    frameHtml = `<img src="${u.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%">`;
-                }
-
-                // Badge HTML
-                let badgeHtml = getCosmeticBadge(u.equippedBadge);
-
-                div.innerHTML = `
-                    <div class="list-avatar-wrapper">
-                        <img src="${u.image}" class="list-avatar-img">
-                        ${frameHtml}
-                    </div>
-                    <span style="font-size:12px; font-weight:700; margin-left:10px;">${u.username}</span>
-                    ${badgeHtml}
-                    <div class="online-dot-small" style="margin-left:auto;"></div>
-                `;
-                onlineUsersContainer.appendChild(div);
-            });
-        }
+    // Filter Button Click Handlers
+    document.getElementById('btnOnlineGlobal').onclick = () => {
+        currentOnlineFilter = 'global';
+        updateFilterStyles();
+        renderOnlineList();
     };
+
+    document.getElementById('btnOnlineChat').onclick = () => {
+        currentOnlineFilter = 'chat';
+        updateFilterStyles();
+        renderOnlineList();
+    };
+
+    function updateFilterStyles() {
+        if(currentOnlineFilter === 'global') {
+            document.getElementById('btnOnlineGlobal').classList.add('active');
+            document.getElementById('btnOnlineChat').classList.remove('active');
+        } else {
+            document.getElementById('btnOnlineChat').classList.add('active');
+            document.getElementById('btnOnlineGlobal').classList.remove('active');
+        }
+    }
+
+    // Open Modal
+    onlineCountBtn.onclick = () => {
+        onlineListModal.classList.add('active');
+        renderOnlineList();
+    };
+
+    function renderOnlineList() {
+        onlineUsersContainer.innerHTML = '';
+        
+        // Filter the cache based on selection
+        let displayList = onlineUsersCache;
+        if(currentOnlineFilter === 'chat') {
+            displayList = onlineUsersCache.filter(u => u.currentPage === 'wall');
+        }
+
+        if(displayList.length === 0) {
+            onlineUsersContainer.innerHTML = '<div style="padding:15px; text-align:center;">Nimeni găsit :(</div>';
+            return;
+        }
+
+        displayList.forEach(u => {
+            const div = document.createElement('div');
+            
+            let divClass = 'online-user-item';
+            if(u.equippedBanner && u.equippedBanner.cssClass) divClass += ` ${u.equippedBanner.cssClass}`;
+            div.className = divClass;
+            div.style.cursor = 'pointer';
+            
+            div.onclick = () => window.openUserProfile(u.uid);
+
+            let frameHtml = '';
+            if(u.equippedFrame && u.equippedFrame.img) {
+                const scale = u.equippedFrame.scale || 1.45;
+                frameHtml = `<img src="${u.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%">`;
+            }
+
+            let badgeHtml = getCosmeticBadge(u.equippedBadge);
+            
+            // Visual indicator if they are in chat
+            let locationIcon = (u.currentPage === 'wall') ? '<i class="fas fa-comment-dots" style="font-size:10px; color:var(--primary); margin-left:5px;" title="Pe Wall"></i>' : '';
+
+            div.innerHTML = `
+                <div class="list-avatar-wrapper">
+                    <img src="${u.image}" class="list-avatar-img">
+                    ${frameHtml}
+                </div>
+                <span style="font-size:12px; font-weight:700; margin-left:10px;">${u.username} ${locationIcon}</span>
+                ${badgeHtml}
+                <div class="online-dot-small" style="margin-left:auto;"></div>
+            `;
+            onlineUsersContainer.appendChild(div);
+        });
+    }
     closeOnlineList.onclick = () => onlineListModal.classList.remove('active');
 
     // AUTH STATE
