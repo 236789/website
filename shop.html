@@ -1124,6 +1124,19 @@
         </div>
     </div>
 
+<!-- CUSTOM ALERT/CONFIRM MODAL -->
+<div id="customAlertOverlay" class="account-modal-overlay" style="z-index: 20000;">
+    <div class="account-card" style="max-width: 350px; border-color: var(--primary);">
+        <h3 id="customAlertTitle" style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px; font-size:18px;">NOTIFICARE</h3>
+        <p id="customAlertText" style="color:#fff; font-size:14px; margin-bottom:25px; line-height:1.5;">Mesaj...</p>
+        
+        <div style="display:flex; justify-content:center; gap:15px;">
+            <button id="customAlertCancel" class="btn-logout-pop" style="display:none; padding:10px 25px;">ANULEAZĂ</button>
+            <button id="customAlertOk" class="btn-tasks" style="margin:0; padding:10px 30px; background:var(--primary); color:#000;">OK</button>
+        </div>
+    </div>
+</div>
+
     <!-- INVENTORY MODAL -->
     <div id="inventoryModal" class="modal-overlay">
         <div class="shop-modal-card">
@@ -1176,6 +1189,24 @@
     </div>
 </div>
 
+
+<!-- REWARD MODAL (QUEST) -->
+<div id="rewardModal" class="reward-modal">
+    <div class="reward-card">
+        <h2 style="font-family:'Orbitron'; color:#ffd700;">🎉 QUEST COMPLETAT!</h2>
+        <!-- Make sure these IDs match what the JS looks for -->
+        <p id="rewardText">Ai îndeplinit o misiune!</p> 
+        <div class="reward-coins-box">
+            <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
+            <!-- Make sure this span exists inside -->
+            <span id="rewardAmount">0</span>
+        </div>
+        <p style="color: #ffd700; font-weight: 700; font-family: 'Orbitron';">KSDA COINS</p>
+        <button class="btn" style="background:var(--primary); color:#000; padding:10px 20px; border-radius:10px; font-family:'Orbitron'; cursor:pointer; border:none;" onclick="document.getElementById('rewardModal').classList.remove('active')">Super!</button>
+    </div>
+</div>
+
+
     <!-- EDIT PROFILE MODAL -->
     <div id="editProfileModal" class="account-modal-overlay">
         <div class="account-card">
@@ -1227,6 +1258,52 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- CUSTOM ALERT SYSTEM ---
+    window.showCustomAlert = (msg, title = "INFO") => {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('customAlertOverlay');
+            document.getElementById('customAlertTitle').innerText = title;
+            document.getElementById('customAlertText').innerText = msg;
+            
+            const btnOk = document.getElementById('customAlertOk');
+            const btnCancel = document.getElementById('customAlertCancel');
+            
+            btnCancel.style.display = 'none'; // Hide cancel for simple alerts
+            overlay.classList.add('active');
+
+            // Handle Click
+            btnOk.onclick = () => {
+                overlay.classList.remove('active');
+                resolve(true);
+            };
+        });
+    };
+
+    window.showCustomConfirm = (msg, title = "CONFIRMARE") => {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('customAlertOverlay');
+            document.getElementById('customAlertTitle').innerText = title;
+            document.getElementById('customAlertText').innerText = msg;
+            
+            const btnOk = document.getElementById('customAlertOk');
+            const btnCancel = document.getElementById('customAlertCancel');
+            
+            btnCancel.style.display = 'block'; // Show cancel
+            overlay.classList.add('active');
+
+            btnOk.onclick = () => {
+                overlay.classList.remove('active');
+                resolve(true); // User clicked OK
+            };
+            
+            btnCancel.onclick = () => {
+                overlay.classList.remove('active');
+                resolve(false); // User clicked Cancel
+            };
+        });
+    };
 
     // --- CURRENCY RATES ---
     let selectedCurrency = 'RON';
@@ -1424,6 +1501,61 @@ const FRAMES_DB = [
     { id: 'fr_vintage', name: 'VINTAGE', price: 850, img: 'https://i.ibb.co/0ymk5P5K/060318de-c831-456c-8bd5-48361a2910eb-removalai-preview.png' },
     { id: 'fr_galaxy', name: 'GALAXY', price: 2250, img: 'https://i.ibb.co/qL909PLy/2640f988-a425-4589-ba5a-1f780d24916a-removalai-preview.png' }
 ];
+
+
+
+// --- QUEST CHECKER LOGIC ---
+    async function checkShopQuest(actionType, donationAmount = 0) {
+        if(!auth.currentUser) return;
+        const uid = auth.currentUser.uid;
+        
+        let questId = '';
+        let reward = 0;
+        let field = '';
+
+        // Map actions to Quests
+        if(actionType === 'badge') { questId='buy_badge'; reward=1000; field='shopBadgeBought'; }
+        if(actionType === 'banner') { questId='buy_banner'; reward=1500; field='shopBannerBought'; }
+        if(actionType === 'frame') { questId='buy_frame'; reward=1250; field='shopFrameBought'; }
+        if(actionType === 'donate') { questId='donate_100'; reward=300; field='coinsDonatedToday'; }
+
+        try {
+            // 1. Increment the specific counter in Firebase
+            let incrementValue = (actionType === 'donate') ? donationAmount : 1;
+            await updateDoc(doc(db, "accounts", uid), { [field]: increment(incrementValue) });
+
+            // 2. Check if we should give the Reward
+            const snap = await getDoc(doc(db, "accounts", uid));
+            const data = snap.data();
+            const active = data.activeDailyQuests || [];
+            const completed = data.completedQuests || [];
+            
+            // Check condition (Donate needs >= 100 total, others just >= 1)
+            let isDone = (data[field] >= 1);
+            if(actionType === 'donate') isDone = (data[field] >= 100);
+
+            // IF: Quest is Active AND Not Completed AND Condition Met
+            if(active.includes(questId) && !completed.includes(questId) && isDone) {
+                // Give Reward
+                await updateDoc(doc(db, "accounts", uid), {
+                    coins: increment(reward),
+                    completedQuests: arrayUnion(questId)
+                });
+                
+                // Show Popup
+                const modal = document.getElementById('rewardModal');
+                const title = modal.querySelector('h2'); 
+                const txt = modal.querySelector('p');
+                const amt = modal.querySelector('.reward-coins-box span');
+                
+                if(title) title.innerText = "🛍️ SHOP QUEST!";
+                if(txt) txt.innerText = "Ai completat misiunea de cumpărături!";
+                if(amt) amt.innerText = reward;
+                
+                modal.classList.add('active');
+            }
+        } catch(e) { console.error("Quest Check Error:", e); }
+    }
 
     // --- BAN CHECK (GLOBAL) ---
     async function checkGlobalBan() {
@@ -1628,23 +1760,34 @@ const FRAMES_DB = [
         document.getElementById('donationAmountModal').classList.add('active');
     }
 
-    window.processDonation = async () => {
+window.processDonation = async () => {
         const amount = parseInt(document.getElementById('donateAmount').value);
-        if(!amount || amount < 1) return alert("Suma invalidă!");
+        if(!amount || amount < 1) {
+            await showCustomAlert("Suma invalidă!", "EROARE");
+            return;
+        }
 
         const myRef = doc(db, "accounts", auth.currentUser.uid);
         const mySnap = await getDoc(myRef);
-        if((mySnap.data().coins || 0) < amount) return alert("Nu ai suficienți coins!");
+        if((mySnap.data().coins || 0) < amount) {
+            await showCustomAlert("Nu ai suficienți coins!", "EROARE");
+            return;
+        }
 
-        if(!confirm(`Donezi ${amount} coins către ${donationTarget.name}?`)) return;
+        const confirmed = await showCustomConfirm(`Donezi ${amount} coins către ${donationTarget.name}?`);
+        if(!confirmed) return;
 
         try {
             await updateDoc(myRef, { coins: increment(-amount) });
             await updateDoc(doc(db, "accounts", donationTarget.id), { coins: increment(amount) });
-            alert("Donație trimisă!");
+            
+            await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
+
+            checkShopQuest('donate', amount);
+
             closeModal('donationAmountModal');
             closeModal('alteShopModal');
-        } catch(e) { alert(e.message); }
+        } catch(e) { console.error(e); }
     };
 
     // --- BADGE SHOP LOGIC ---
@@ -1679,17 +1822,28 @@ const FRAMES_DB = [
         });
     };
 
-    window.buyBadge = async (badgeId, price) => {
-        if(!confirm(`Cumperi insigna pentru ${price} coins?`)) return;
+window.buyBadge = async (badgeId, price) => {
+        // REPLACE CONFIRM
+        const confirmed = await showCustomConfirm(`Cumperi insigna pentru ${price} coins?`);
+        if(!confirmed) return;
+
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const userSnap = await getDoc(userRef);
-        const currentCoins = userSnap.data().coins || 0;
-        if(currentCoins < price) return alert("Nu ai destule monede!");
+        if((userSnap.data().coins || 0) < price) {
+            // REPLACE ALERT
+            await showCustomAlert("Nu ai destule monede!", "EROARE"); 
+            return;
+        }
+        
         try {
             await updateDoc(userRef, { coins: increment(-price), ownedBadges: arrayUnion(badgeId) });
-            alert("Insignă cumpărată!");
+            
+            // REPLACE ALERT
+            await showCustomAlert("Insignă cumpărată cu succes!", "SUCCES");
+            
+            checkShopQuest('badge');
             window.openBadgeShop(); 
-        } catch(e) { alert("Eroare: " + e.message); }
+        } catch(e) { console.error(e); }
     };
 
     // --- INVENTORY LOGIC ---
@@ -1770,23 +1924,26 @@ const FRAMES_DB = [
         });
     };
 
-    window.buyFrame = async (id, price) => {
-        if(!confirm(`Cumperi această ramă pentru ${price} coins?`)) return;
+window.buyFrame = async (id, price) => {
+        const confirmed = await showCustomConfirm(`Cumperi această ramă pentru ${price} coins?`);
+        if(!confirmed) return;
+
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const userSnap = await getDoc(userRef);
-        const currentCoins = userSnap.data().coins || 0;
         
-        if(currentCoins < price) return alert("Nu ai destule monede!");
+        if((userSnap.data().coins || 0) < price) {
+            await showCustomAlert("Nu ai destule monede!", "EROARE");
+            return;
+        }
         
         try {
-            await updateDoc(userRef, { 
-                coins: increment(-price), 
-                ownedFrames: arrayUnion(id) 
-            });
-            alert("Ramă cumpărată!");
-            openFrameShop(); // Refresh
-        } catch(e) { alert("Eroare: " + e.message); }
-    };
+            await updateDoc(userRef, { coins: increment(-price), ownedFrames: arrayUnion(id) });
+            await showCustomAlert("Ramă cumpărată!", "SUCCES");
+
+            checkShopQuest('frame');
+            openFrameShop(); 
+        } catch(e) { console.error(e); }
+    };;
 
     window.equipFrame = async (id, imgUrl) => {
         try {
@@ -1834,22 +1991,25 @@ const FRAMES_DB = [
         });
     };
 
-    window.buyBanner = async (id, price) => {
-        if(!confirm(`Cumperi acest banner pentru ${price} coins?`)) return;
+window.buyBanner = async (id, price) => {
+        const confirmed = await showCustomConfirm(`Cumperi acest banner pentru ${price} coins?`);
+        if(!confirmed) return;
+
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const userSnap = await getDoc(userRef);
-        const currentCoins = userSnap.data().coins || 0;
         
-        if(currentCoins < price) return alert("Nu ai destule monede!");
+        if((userSnap.data().coins || 0) < price) {
+            await showCustomAlert("Nu ai destule monede!", "EROARE");
+            return;
+        }
         
         try {
-            await updateDoc(userRef, { 
-                coins: increment(-price), 
-                ownedBanners: arrayUnion(id) 
-            });
-            alert("Banner cumpărat!");
-            window.openBannerShop(); // Refresh
-        } catch(e) { alert("Eroare: " + e.message); }
+            await updateDoc(userRef, { coins: increment(-price), ownedBanners: arrayUnion(id) });
+            await showCustomAlert("Banner cumpărat!", "SUCCES");
+            
+            checkShopQuest('banner');
+            window.openBannerShop();
+        } catch(e) { console.error(e); }
     };
 
     // UPDATE INVENTORY LOGIC TO SUPPORT BANNERS
