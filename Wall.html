@@ -2759,24 +2759,26 @@ async function sendMessage() {
             const currentBadge = userData.equippedBadge || null;
             const currentBanner = userData.equippedBanner || null;
 
-            const payload = {
-                text: text,
-                uid: auth.currentUser.uid,
-                name: displayName,
-                photo: auth.currentUser.photoURL,
-                email: auth.currentUser.email,
-                ip: userIP || "unknown",
-                isAdmin: isAdmin, 
-                isOwner: isOwner, 
-                isMod: isMod,
-                isHelper: isHelper,
-                equippedBadge: currentBadge, 
-                equippedBanner: currentBanner,
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {},
-                seenBy: [auth.currentUser.uid]
-            };
+// Inside sendMessage function, update the payload:
+const payload = {
+    text: text,
+    uid: auth.currentUser.uid,
+    name: displayName,
+    photo: auth.currentUser.photoURL,
+    email: auth.currentUser.email,
+    ip: userIP || "unknown",
+    isAdmin: isAdmin, 
+    isOwner: isOwner, 
+    isMod: isMod,
+    isHelper: isHelper,
+    equippedBadge: currentBadge, 
+    equippedBanner: currentBanner,
+    equippedText: userData.equippedText || null, // <--- ADD THIS LINE
+    createdAt: serverTimestamp(),
+    isDeleted: false,
+    reactions: {},
+    seenBy: [auth.currentUser.uid]
+};
 
             if(selectedImgBase64) payload.image = selectedImgBase64;
 
@@ -2922,7 +2924,7 @@ async function sendMessage() {
     }, { threshold: 0.5 });
 
     let unsubscribe;
- function loadMessages() {
+function loadMessages() {
     if(unsubscribe) unsubscribe();
     const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
     
@@ -2953,14 +2955,15 @@ async function sendMessage() {
             let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
             let bubbleContent = "";
             
-            // ... (keep reply and image content logic the same) ...
             if(data.replyToName) {
                 const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                 bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
             }
+
             if(data.image) {
                 bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
             }
+
             let safeText = data.text.replace(/</g, "&lt;");
             safeText = safeText.replace(/\n/g, "<br>");
             if(safeText) bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
@@ -2976,15 +2979,16 @@ async function sendMessage() {
                 else if(msgIsHelper) bubbleClass += ' helper-msg';
             }
 
-            // --- NEW: COLORED BUBBLE USERNAMES ---
-            let authorName = data.name;
-            if(isBot) authorName = `🤖 ${data.name}`;
+            // --- FIX 1: APPLY COLORED TEXT TO BUBBLE USERNAMES ---
+            let authorNameText = data.name;
+            if(isBot) authorNameText = `🤖 ${data.name}`;
             
-            // Apply text color if exists
+            // Check if this message data has the equipped text class
             if (data.equippedText && data.equippedText.cssClass) {
-                authorName = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
+                authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
             }
             
+            // --- FIX 2: CHANGE ORDER (NAME FIRST, THEN BADGES) ---
             let staffHtml = "";
             if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
             else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
@@ -2992,9 +2996,10 @@ async function sendMessage() {
             else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
 
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-            let finalNameHtml = authorName + staffHtml + cosmeticHtml;
+            
+            // Order: [USERNAME] [STAFF BADGE] [COSMETIC BADGE]
+            let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
-            // ... (keep reactions and seen logic same) ...
             let reactionsHtml = "";
             if(data.reactions) {
                 const counts = {};
@@ -3007,14 +3012,16 @@ async function sendMessage() {
                     reactionsHtml += `</div>`;
                 }
             }
-            const seenCount = (data.seenBy || []).length;
-            const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${seenCount}</button>`;
 
-            // ... (keep menuHtml same) ...
+            const seenCount = (data.seenBy || []).length;
+            const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
+                <i class="fas fa-eye"></i> ${seenCount}
+            </button>`;
+
             let menuHtml = `
                 <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                 <div id="menu-${msgId}" class="options-dropdown">
-                    <button onclick="startReply('${msgId}', '${data.name}', '${data.text.replace(/'/g, "\\'")}')"><i class="fas fa-reply"></i> Răspunde</button>
+                    <button onclick="startReply('${msgId}', '${data.name}', '${data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
                     <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                     <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                     ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
@@ -3027,7 +3034,7 @@ async function sendMessage() {
                 </div>
             `;
 
-            // FIX: ALWAYS SHOW AUTHOR NAME (removed the !isMine check)
+            // --- FIX 3: ALWAYS SHOW AUTHOR NAME (REMOVE !isMine CHECK) ---
             wrapper.innerHTML = `
                 <div class="msg-author">${finalNameHtml}</div>
                 <div class="${bubbleClass}">${bubbleContent}</div>
@@ -3215,9 +3222,10 @@ window.openUserProfile = async (uid) => {
     const modal = document.getElementById('viewProfileModal');
     modal.classList.add('active');
     
+    // 1. CLEAR containers immediately so you don't see the previous person's (or your own) data
     document.getElementById('viewUserName').innerText = "Se încarcă...";
     document.getElementById('viewUserStatus').innerHTML = "";
-    const badgeBox = document.getElementById('viewUserBadges'); // Ensure this ID exists in HTML
+    const badgeBox = document.getElementById('viewUserBadges');
     if(badgeBox) badgeBox.innerHTML = "";
 
     try {
@@ -3225,8 +3233,10 @@ window.openUserProfile = async (uid) => {
         if(snap.exists()) {
             const data = snap.data();
             
+            // Set basic info
             document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
             
+            // Frame logic
             const viewFrame = document.getElementById('viewUserFrame');
             if(viewFrame) {
                 if (data.equippedFrame && data.equippedFrame.img) {
@@ -3238,28 +3248,40 @@ window.openUserProfile = async (uid) => {
                 } else { viewFrame.style.display = 'none'; }
             }
 
+            // Online Status
             let isOnline = (auth.currentUser && auth.currentUser.uid === uid) ? true : checkIsOnline(data);
             document.getElementById('viewUserStatus').innerHTML = isOnline 
                 ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
 
-            // COLORED TEXT LOGIC (For everyone)
+            // --- FIX: COLORED NAME (Only for this specific user) ---
             let profileName = (data.username || "Anonim");
             if(data.equippedText && data.equippedText.cssClass) {
                 profileName = `<span class="${data.equippedText.cssClass}">${profileName}</span>`;
             }
             document.getElementById('viewUserName').innerHTML = profileName;
 
-            // BADGE STACKING LOGIC
+            // --- FIX: STAFF BADGE CALCULATION (Based strictly on THEIR email) ---
             if(badgeBox) {
                 let staffHtml = "";
-                const email = data.email || "";
-                if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
-                else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
+                const userEmail = data.email || ""; // Use the email from the snapshot data
+                
+                if(userEmail === 'nicaemmanuel433qe@gmail.com') {
+                    staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
+                } else if(userEmail === 'kevin.trinity2020@gmail.com') {
+                    staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
+                } else if(userEmail === 'mary.bughi@gmail.com' || userEmail === 'emmanuel.nica83@gmail.com') {
+                    staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
+                } else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(userEmail)) {
+                    staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
+                }
 
-                let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-                badgeBox.innerHTML = staffHtml + (cosmeticHtml ? `<div style="margin-top:5px;">${cosmeticHtml}</div>` : "");
+                // --- FIX: COSMETIC BADGE (Strictly THEIR equipped badge) ---
+                let cosmeticHtml = "";
+                if (data.equippedBadge) {
+                    cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
+                }
+                
+                badgeBox.innerHTML = staffHtml + cosmeticHtml;
             }
             
             document.getElementById('viewUserCoins').innerText = data.coins || 0;
