@@ -781,7 +781,9 @@
     window.addEventListener('mousemove', updateOnlineStatus);
 
     // 2. QUEST LOGIC (5 Follows)
+// 2. QUEST LOGIC (5 Follows) - WITH FIREBASE CHECK
     window.handleFollowClick = async function(url) {
+        // If not logged in, just open link
         if (!auth.currentUser) {
             alert("Trebuie să fii logat pentru a progresa la quest!");
             if (url !== '#') window.open(url, '_blank');
@@ -790,20 +792,28 @@
 
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         try {
+            // 1. Always increment the counter
             await updateDoc(userRef, { tiktoksFollowed: increment(1) });
+            
+            // 2. Check Quest Status
             const snap = await getDoc(userRef);
             const data = snap.data();
+            const active = data.activeDailyQuests || [];
             const completed = data.completedQuests || [];
 
-            if (data.tiktoksFollowed >= 5 && !completed.includes('tiktok5')) {
+            // IF: Quest is Active AND Not Completed AND Count >= 5
+            if (active.includes('tiktok5') && !completed.includes('tiktok5') && data.tiktoksFollowed >= 5) {
+                // Award Prize
                 await updateDoc(userRef, {
                     coins: increment(300),
-                    completedQuests: [...completed, 'tiktok5']
+                    completedQuests: arrayUnion('tiktok5')
                 });
+                // Show Popup
                 rewardModal.classList.add('active');
             }
         } catch (e) { console.error(e); }
 
+        // Open Link
         if (url !== '#') window.open(url, '_blank');
     };
 
