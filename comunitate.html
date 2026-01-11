@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -686,10 +687,11 @@
   </script>
 
   <!-- FIREBASE & QUEST LOGIC -->
+<!-- FIREBASE & QUEST LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, setDoc, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -705,6 +707,7 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+    // UI Elements
     const siteContent = document.getElementById('siteContent');
     const bannedOverlay = document.getElementById('bannedOverlay');
     const globalBanReason = document.getElementById('globalBanReason');
@@ -720,7 +723,7 @@
     const rewardModal = document.getElementById('rewardModal');
     const popLogoutBtn = document.getElementById('popLogoutBtn');
 
-    // --- NEW EDIT MODAL LOGIC ---
+    // Edit Profile UI
     const editProfileModal = document.getElementById('editProfileModal');
     const openEditProfileBtn = document.getElementById('openEditProfileBtn');
     const closeEditProfile = document.getElementById('closeEditProfile');
@@ -729,7 +732,7 @@
     const editBio = document.getElementById('editBio');
     const editTikTok = document.getElementById('editTikTok');
 
-   // 1. GLOBAL BAN CHECK (OPTIMIZED)
+    // --- 1. GLOBAL BAN CHECK ---
     async function checkGlobalBan() {
         if (sessionStorage.getItem('isBanned') === 'false') return; 
 
@@ -758,33 +761,9 @@
     }
     checkGlobalBan();
 
-    // --- SMART ONLINE TRACKER ---
-    let lastStatusUpdate = 0;
-    const UPDATE_INTERVAL = 3 * 60 * 1000;
-
-    async function updateOnlineStatus() {
-        if (!auth.currentUser) return;
-        const now = Date.now();
-        if (now - lastStatusUpdate > UPDATE_INTERVAL) {
-            lastStatusUpdate = now;
-            try {
-                await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                    isOnline: true,
-                    lastActive: serverTimestamp()
-                });
-            } catch(e) { console.error(e); }
-        }
-    }
-
-    window.addEventListener('scroll', updateOnlineStatus);
-    window.addEventListener('click', updateOnlineStatus);
-    window.addEventListener('mousemove', updateOnlineStatus);
-
-    // 2. QUEST LOGIC (5 Follows)
-// 2. QUEST LOGIC (5 Follows) - WITH FIREBASE CHECK
-// 2. QUEST LOGIC (5 Follows) - WITH FIREBASE CHECK & POPUP
+    // --- 2. QUEST LOGIC (5 Follows) ---
     window.handleFollowClick = async function(url) {
-        // A. If not logged in, just open link
+        // A. Not Logged In
         if (!auth.currentUser) {
             alert("Trebuie să fii logat pentru a progresa la quest!");
             if (url !== '#') window.open(url, '_blank');
@@ -794,70 +773,72 @@
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         
         try {
-            // B. Always increment the counter
+            // B. Increment Counter
             await updateDoc(userRef, { tiktoksFollowed: increment(1) });
             
-            // C. Check Quest Status
+            // C. Check Requirements
             const snap = await getDoc(userRef);
             const data = snap.data();
             const active = data.activeDailyQuests || [];
             const completed = data.completedQuests || [];
+            const currentCount = data.tiktoksFollowed || 0;
 
-            // D. LOGIC: Quest Active? + Count >= 5? + Not Completed?
-            if (active.includes('tiktok5') && !completed.includes('tiktok5') && data.tiktoksFollowed >= 5) {
-                
+            // D. Reward Condition: Active Quest + Not Done + Count >= 5
+            if (active.includes('tiktok5') && !completed.includes('tiktok5') && currentCount >= 5) {
                 // Award Prize
                 await updateDoc(userRef, {
                     coins: increment(300),
                     completedQuests: arrayUnion('tiktok5')
                 });
                 
-                // SHOW POPUP
-                const modal = document.getElementById('rewardModal');
-                if(modal) {
-                    modal.classList.add('active');
-                } else {
-                    console.error("Modal not found in HTML");
-                }
+                // Show Popup
+                if(rewardModal) rewardModal.classList.add('active');
             }
         } catch (e) { console.error("Quest Error:", e); }
 
         // E. Open Link
         if (url !== '#') window.open(url, '_blank');
     };
-    // 3. AUTH Flow
-    function handleLoginFlow() {
-        if (!auth.currentUser) { signInWithPopup(auth, provider).then(() => updateOnlineStatus()); } 
-        else { accountModal.classList.add('active'); }
+
+    // --- 3. AUTH & PROFILE LOGIC ---
+    let userIP = null;
+    fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => userIP = d.ip);
+
+    async function handleLogin() {
+        try {
+            const result = await signInWithPopup(auth, provider);
+            const userRef = doc(db, "accounts", result.user.uid);
+            const snap = await getDoc(userRef);
+            if(!snap.exists()) {
+                await setDoc(userRef, { uid: result.user.uid, username: result.user.displayName, email: result.user.email, image: result.user.photoURL, coins: 250, streak: 0, ip: userIP || "unknown", joinedAt: new Date() });
+            }
+        } catch(e) { console.error(e); }
     }
 
-    if(headerLoginBtn) headerLoginBtn.onclick = handleLoginFlow;
-    if(mobileLoginBtn) mobileLoginBtn.onclick = handleLoginFlow;
-    closeAccountPop.onclick = () => accountModal.classList.remove('active');
+    if(headerLoginBtn) headerLoginBtn.onclick = () => !auth.currentUser ? handleLogin() : accountModal.classList.add('active');
+    if(mobileLoginBtn) mobileLoginBtn.onclick = () => !auth.currentUser ? handleLogin() : accountModal.classList.add('active');
     
-    if(popLogoutBtn) popLogoutBtn.onclick = () => {
-        signOut(auth).then(() => {
-            accountModal.classList.remove('active');
-            location.reload();
-        });
-    };
+    if(closeAccountPop) closeAccountPop.onclick = () => accountModal.classList.remove('active');
+    if(popLogoutBtn) popLogoutBtn.onclick = () => signOut(auth).then(() => location.reload());
 
-    // --- EDIT PROFILE HANDLERS ---
-    openEditProfileBtn.onclick = async () => {
-        accountModal.classList.remove('active'); 
-        editProfileModal.classList.add('active'); 
-        if(auth.currentUser) {
-            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                editBirth.value = data.birthDate || "";
-                editBio.value = data.bio || "";
-                editTikTok.value = data.tiktokLink || "";
+    // Profile Edit Handlers
+    if(openEditProfileBtn) {
+        openEditProfileBtn.onclick = async () => {
+            accountModal.classList.remove('active'); 
+            editProfileModal.classList.add('active'); 
+            if(auth.currentUser) {
+                const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+                if(snap.exists()) {
+                    const data = snap.data();
+                    editBirth.value = data.birthDate || "";
+                    editBio.value = data.bio || "";
+                    editTikTok.value = data.tiktokLink || "";
+                }
             }
-        }
-    };
-    closeEditProfile.onclick = () => { editProfileModal.classList.remove('active'); accountModal.classList.add('active'); };
-    saveProfileBtn.onclick = async () => {
+        };
+    }
+    if(closeEditProfile) closeEditProfile.onclick = () => { editProfileModal.classList.remove('active'); accountModal.classList.add('active'); };
+    if(saveProfileBtn) saveProfileBtn.onclick = async () => {
         if(!auth.currentUser) return;
         try {
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
@@ -871,17 +852,18 @@
         } catch(e) { alert("Eroare: " + e.message); }
     };
 
-    // 4. AUTH Sync
-    onAuthStateChanged(auth, user => {
+    // Auth State Listener
+    onAuthStateChanged(auth, (user) => {
         if (user) {
-            headerLoginText.innerText = "ACCOUNT";
-            headerUserImg.src = user.photoURL;
-            headerUserImg.style.display = "block";
+            document.getElementById('headerLoginText').innerText = "ACCOUNT";
+            document.getElementById('headerUserImg').src = user.photoURL;
+            document.getElementById('headerUserImg').style.display = "block";
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             
-            // Sync Data
-            onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
-                if(docSnap.exists()) {
-                    const data = docSnap.data();
+            // Sync User Data
+            onSnapshot(doc(db, "accounts", user.uid), (snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
                     document.getElementById('popUserName').innerText = data.username || user.displayName;
                     document.getElementById('popUserEmail').innerText = data.email || user.email;
@@ -889,11 +871,17 @@
                     document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 }
             });
-            updateOnlineStatus(); // START TRACKING
+            
+            // Online Status Tracker
+            const onlineRef = doc(db, "accounts", user.uid);
+            const updateStatus = () => updateDoc(onlineRef, { isOnline: true, lastActive: serverTimestamp() }).catch(e=>{});
+            updateStatus();
+            setInterval(updateStatus, 180000); // 3 mins
 
         } else {
-            headerLoginText.innerText = "LOGIN";
-            headerUserImg.style.display = "none";
+            document.getElementById('headerLoginText').innerText = "LOGIN";
+            document.getElementById('headerUserImg').style.display = "none";
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
     });
   </script>
