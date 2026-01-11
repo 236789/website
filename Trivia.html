@@ -1251,7 +1251,7 @@
     
     <div class="trivia-wrapper">
         <h1 class="trivia-title">TRIVIA KSDA</h1>
-        <p class="trivia-desc">Demonstrează că ești cel mai deștept din comunitate! Răspunde la 15 întrebări, ai 10 secunde pentru fiecare. Fiecare răspuns corect îți aduce 25 Coins.</p>
+        <p class="trivia-desc">Demonstrează că ești cel mai deștept din comunitate! Răspunde la 15 întrebări, ai 10 secunde pentru fiecare. Fiecare răspuns corect îți aduce 10 KSDA Coins.</p>
 
         <div class="trivia-box">
             
@@ -2859,14 +2859,15 @@ async function handleMultiAnswer(selectedIndex, btn, correctIndex) {
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         
         try {
-            await updateDoc(lobbyRef, {
-                roundVotes: arrayUnion({
-                    uid: user.uid,
-                    name: user.displayName,
-                    pic: user.photoURL,
-                    correct: isCorrect,
-                    time: timeTaken
-                })
+    await updateDoc(lobbyRef, {
+        roundVotes: arrayUnion({
+            uid: user.uid,
+            name: user.displayName,
+            pic: user.photoURL,
+            correct: isCorrect,
+            time: timeTaken,
+            picked: btn.innerText // <--- ADD THIS LINE
+        })
             });
         } catch(e) { console.error("Error sending answer:", e); }
     }
@@ -2882,7 +2883,7 @@ async function handleMultiAnswer(selectedIndex, btn, correctIndex) {
             if(vote.correct) {
                 const playerIndex = players.findIndex(p => p.uid === vote.uid);
                 if(playerIndex !== -1) {
-                    players[playerIndex].score += 25;
+                    players[playerIndex].score += 10;
                 }
             }
         });
@@ -2907,17 +2908,27 @@ async function handleMultiAnswer(selectedIndex, btn, correctIndex) {
 
         if(votes.length === 0) container.innerHTML = "<div style='text-align:center; color:#888;'>Nimeni nu a răspuns.</div>";
 
-        votes.forEach((v, idx) => {
+votes.forEach((v, idx) => {
             const color = v.correct ? '#2ecc71' : '#ff4757';
             const row = document.createElement('div');
             row.className = `lb-row top-${idx+1}`;
             row.innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <img src="${v.pic}" style="width:30px; height:30px; border-radius:50%; border:1px solid ${color};">
-                    <span style="color:#fff; font-size:13px;">${v.name}</span>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <!-- Imagine Profil cu border colorat conform rezultatului -->
+                    <img src="${v.pic}" style="width:35px; height:35px; border-radius:50%; border:2px solid ${color}; object-fit: cover;">
+                    
+                    <!-- Container Nume + Răspuns Ales -->
+                    <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                        <span style="color:#fff; font-size:13px; font-weight: 700;">${v.name}</span>
+                        <span style="color:${color}; font-size:10px; font-family: 'Poppins', sans-serif; opacity: 0.9;">
+                            A ales: ${v.picked || 'Fără răspuns'}
+                        </span>
+                    </div>
                 </div>
-                <div class="lb-time" style="color:${color};">
-                    ${v.correct ? '+' + 25 : '0'} pts (${v.time}s)
+
+                <!-- Secțiune Puncte (10) și Timp -->
+                <div class="lb-time" style="color:${color}; text-align: right; font-weight: 800;">
+                    ${v.correct ? '+10' : '0'} pts (${v.time}s)
                 </div>
             `;
             container.appendChild(row);
