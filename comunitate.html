@@ -782,8 +782,9 @@
 
     // 2. QUEST LOGIC (5 Follows)
 // 2. QUEST LOGIC (5 Follows) - WITH FIREBASE CHECK
+// 2. QUEST LOGIC (5 Follows) - WITH FIREBASE CHECK & POPUP
     window.handleFollowClick = async function(url) {
-        // If not logged in, just open link
+        // A. If not logged in, just open link
         if (!auth.currentUser) {
             alert("Trebuie să fii logat pentru a progresa la quest!");
             if (url !== '#') window.open(url, '_blank');
@@ -791,32 +792,39 @@
         }
 
         const userRef = doc(db, "accounts", auth.currentUser.uid);
+        
         try {
-            // 1. Always increment the counter
+            // B. Always increment the counter
             await updateDoc(userRef, { tiktoksFollowed: increment(1) });
             
-            // 2. Check Quest Status
+            // C. Check Quest Status
             const snap = await getDoc(userRef);
             const data = snap.data();
             const active = data.activeDailyQuests || [];
             const completed = data.completedQuests || [];
 
-            // IF: Quest is Active AND Not Completed AND Count >= 5
+            // D. LOGIC: Quest Active? + Count >= 5? + Not Completed?
             if (active.includes('tiktok5') && !completed.includes('tiktok5') && data.tiktoksFollowed >= 5) {
+                
                 // Award Prize
                 await updateDoc(userRef, {
                     coins: increment(300),
                     completedQuests: arrayUnion('tiktok5')
                 });
-                // Show Popup
-                rewardModal.classList.add('active');
+                
+                // SHOW POPUP
+                const modal = document.getElementById('rewardModal');
+                if(modal) {
+                    modal.classList.add('active');
+                } else {
+                    console.error("Modal not found in HTML");
+                }
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error("Quest Error:", e); }
 
-        // Open Link
+        // E. Open Link
         if (url !== '#') window.open(url, '_blank');
     };
-
     // 3. AUTH Flow
     function handleLoginFlow() {
         if (!auth.currentUser) { signInWithPopup(auth, provider).then(() => updateOnlineStatus()); } 
