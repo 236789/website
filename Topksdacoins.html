@@ -1408,6 +1408,22 @@ transition: 0.3s;
 @keyframes neonPulse { from { text-shadow: 0 0 5px #ff00ff; } to { text-shadow: 0 0 15px #ff00ff, 0 0 20px #ff00ff; } }
 .text-glitch { color: #fff; position: relative; font-weight: 800; animation: glitchAnim 0.3s infinite; }
 @keyframes glitchAnim { 0% { transform: translate(0); text-shadow: -2px 0 red, 2px 0 blue; } 25% { transform: translate(-2px, 2px); text-shadow: -2px 0 blue, 2px 0 red; } 50% { transform: translate(2px, -2px); text-shadow: -2px 0 red, 2px 0 blue; } 75% { transform: translate(-2px, -2px); text-shadow: -2px 0 blue, 2px 0 red; } 100% { transform: translate(2px, 2px); text-shadow: -2px 0 red, 2px 0 blue; } }
+
+
+/* Ensure the badge container in modals stacks vertically */
+#viewUserBadges {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px; /* Space between the staff badge and cosmetic badge */
+    margin-top: 10px;
+}
+
+/* Ensure staff badges don't look weird when stacked */
+.role-badge {
+    margin-left: 0 !important;
+    display: block; /* Makes it take full width of the flex container */
+}
   </style>
 </head>
 <body>
@@ -2507,63 +2523,72 @@ function renderAllUsersList(data) {
 
     // --- VIEW PROFILE FUNCTION ---
 window.openUserProfile = async (uid) => {
-        const modal = document.getElementById('viewProfileModal');
-        modal.classList.add('active');
-        document.getElementById('viewUserName').innerText = "Se încarcă...";
-        document.getElementById('viewUserStatus').innerHTML = "";
-        
-        try {
-            const snap = await getDoc(doc(db, "accounts", uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                
-                // --- AVATAR & FRAME LOGIC ---
-                document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-                
-                const viewFrame = document.getElementById('viewUserFrame');
-                if(viewFrame) {
-                    if (data.equippedFrame && data.equippedFrame.img) {
-                        viewFrame.src = data.equippedFrame.img;
-                        viewFrame.style.display = "block";
-                        
-                        // Apply Scale (Size)
-                        const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = scale * 100;
-                        viewFrame.style.width = `${sizePct}%`;
-                        viewFrame.style.height = `${sizePct}%`;
-                    } else {
-                        viewFrame.style.display = "none";
-                        viewFrame.src = "";
-                    }
+    const modal = document.getElementById('viewProfileModal');
+    modal.classList.add('active');
+    document.getElementById('viewUserName').innerText = "Se încarcă...";
+    document.getElementById('viewUserStatus').innerHTML = "";
+    
+    // Clear badges container immediately
+    const badgeBox = document.getElementById('viewUserBadges');
+    if(badgeBox) badgeBox.innerHTML = "";
+
+    try {
+        const snap = await getDoc(doc(db, "accounts", uid));
+        if(snap.exists()) {
+            const data = snap.data();
+            
+            // --- AVATAR & FRAME LOGIC ---
+            document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+            const viewFrame = document.getElementById('viewUserFrame');
+            if(viewFrame) {
+                if (data.equippedFrame && data.equippedFrame.img) {
+                    viewFrame.src = data.equippedFrame.img;
+                    viewFrame.style.display = "block";
+                    const scale = data.equippedFrame.scale || 1.45;
+                    viewFrame.style.width = `${scale * 100}%`;
+                    viewFrame.style.height = `${scale * 100}%`;
+                } else {
+                    viewFrame.style.display = "none";
                 }
-                // -----------------------------
-
-                let isOnline = false;
-                if(auth.currentUser && auth.currentUser.uid === uid) isOnline = true; 
-                else isOnline = checkIsOnline(data);
-                
-                const statusEl = document.getElementById('viewUserStatus');
-                statusEl.innerHTML = isOnline 
-                    ? '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>'
-                    : '<span style="color:#555;">● OFFLINE</span>';
-
-                let badge = getRoleBadge(data.email);
-                let cosmetic = getCosmeticBadge(data.equippedBadge);
-                
-                document.getElementById('viewUserName').innerHTML = (data.username || "Anonim") + badge + cosmetic;
-                document.getElementById('viewUserCoins').innerText = data.coins || 0;
-                document.getElementById('viewUserStreak').innerText = data.streak || 0;
-                document.getElementById('viewUserBio').innerText = data.bio ? data.bio : "Nu există descriere.";
-                document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
-
-                const tiktokBtn = document.getElementById('viewUserTikTok');
-                if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
-                    tiktokBtn.href = data.tiktokLink;
-                    tiktokBtn.style.display = 'inline-flex';
-                } else { tiktokBtn.style.display = 'none'; }
             }
-        } catch(e) { console.error(e); }
-    };
+
+            // Online status logic...
+            let isOnline = (auth.currentUser && auth.currentUser.uid === uid) ? true : checkIsOnline(data);
+            const statusEl = document.getElementById('viewUserStatus');
+            statusEl.innerHTML = isOnline 
+                ? '<span style="color:#00ff88; text-shadow:0 0 5px #00ff88;">● ONLINE</span>'
+                : '<span style="color:#555;">● OFFLINE</span>';
+
+            // BUG FIX: COLORED TEXT FOR EVERYONE
+            let finalName = data.username || "Anonim";
+            if (data.equippedText && data.equippedText.cssClass) {
+                document.getElementById('viewUserName').innerHTML = `<span class="${data.equippedText.cssClass}">${finalName}</span>`;
+            } else {
+                document.getElementById('viewUserName').innerText = finalName;
+            }
+
+            // BUG FIX: STACKED BADGES (Vertical column)
+            if(badgeBox) {
+                let role = getRoleBadge(data.email);
+                let cosmetic = getCosmeticBadge(data.equippedBadge);
+                // Wrapping in <div> forces them to take their own line
+                if(role) badgeBox.innerHTML += `<div style="margin-bottom:5px;">${role}</div>`;
+                if(cosmetic) badgeBox.innerHTML += `<div>${cosmetic}</div>`;
+            }
+
+            document.getElementById('viewUserCoins').innerText = data.coins || 0;
+            document.getElementById('viewUserStreak').innerText = data.streak || 0;
+            document.getElementById('viewUserBio').innerText = data.bio ? data.bio : "Nu există descriere.";
+            document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
+
+            const tiktokBtn = document.getElementById('viewUserTikTok');
+            if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
+                tiktokBtn.href = data.tiktokLink;
+                tiktokBtn.style.display = 'inline-flex';
+            } else { tiktokBtn.style.display = 'none'; }
+        }
+    } catch(e) { console.error(e); }
+};
 
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
@@ -2611,66 +2636,59 @@ window.openUserProfile = async (uid) => {
     };
 
 onAuthStateChanged(auth, user => {
-        if (user) {
-            document.getElementById('headerUserImg').src = user.photoURL;
-            document.getElementById('headerUserImg').style.display = "block";
-            document.getElementById('headerLoginText').innerText = "ACCOUNT";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+    if (user) {
+        document.getElementById('headerUserImg').src = user.photoURL;
+        document.getElementById('headerUserImg').style.display = "block";
+        
+        // BUG 1 FIX: Header text is static and we reset the class to prevent "bubble" logic
+        const headerText = document.getElementById('headerLoginText');
+        const headerBtn = document.getElementById('headerLoginBtn');
+        headerText.innerText = "ACCOUNT";
+        headerBtn.className = 'login-btn-header'; // Resets any banner classes
 
-            onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
-                if(uSnap.exists()) {
-                    const data = uSnap.data();
-                    
-                    // --- AVATAR & FRAME LOGIC ---
-                    document.getElementById('popUserImg').src = data.image;
-                    
-                    const popFrame = document.getElementById('popUserFrame');
-                    if(popFrame) {
-                        if (data.equippedFrame && data.equippedFrame.img) {
-                            popFrame.src = data.equippedFrame.img;
-                            popFrame.style.display = "block";
-                            
-                            // Apply Scale (Size)
-                            const scale = data.equippedFrame.scale || 1.45;
-                            const sizePct = scale * 100;
-                            popFrame.style.width = `${sizePct}%`;
-                            popFrame.style.height = `${sizePct}%`;
-                        } else {
-                            popFrame.style.display = "none";
-                            popFrame.src = "";
-                        }
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+
+        onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
+            if(uSnap.exists()) {
+                const data = uSnap.data();
+                
+                // --- AVATAR & FRAME LOGIC ---
+                document.getElementById('popUserImg').src = data.image;
+                const popFrame = document.getElementById('popUserFrame');
+                if(popFrame) {
+                    if (data.equippedFrame && data.equippedFrame.img) {
+                        popFrame.src = data.equippedFrame.img;
+                        popFrame.style.display = "block";
+                        const scale = data.equippedFrame.scale || 1.45;
+                        popFrame.style.width = `${scale * 100}%`;
+                        popFrame.style.height = `${scale * 100}%`;
+                    } else {
+                        popFrame.style.display = "none";
+                        popFrame.src = "";
                     }
-                    // -----------------------------
-
-                    // --- TEXT COLOR LOGIC (ACCOUNT POPUP) ---
-                    const popName = document.getElementById('popUserName');
-                    popName.innerText = data.username;
-                    popName.className = 'pop-user'; // Reset
-                    if (data.equippedText && data.equippedText.cssClass) {
-                        popName.classList.add(data.equippedText.cssClass);
-                    }
-
-                    // --- TEXT COLOR LOGIC (HEADER) ---
-                    const headerText = document.getElementById('headerLoginText');
-                    headerText.innerText = data.username.toUpperCase();
-                    // Optional: Reset header class if needed, but usually login-btn-header is base
-                    headerText.className = 'login-btn-header'; 
-                    if (data.equippedText && data.equippedText.cssClass) {
-                        headerText.classList.add(data.equippedText.cssClass);
-                    }
-
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    document.getElementById('popUserCoins').innerText = data.coins || 0;
-                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 }
-            });
-            setStatusOnline();
-        } else {
-            document.getElementById('headerLoginText').innerText = "LOGIN";
-            document.getElementById('headerUserImg').style.display = "none";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        }
-    });
+
+                // --- TEXT COLOR LOGIC (ACCOUNT POPUP) ---
+                const popName = document.getElementById('popUserName');
+                let myName = data.username || "Anonim";
+                if (data.equippedText && data.equippedText.cssClass) {
+                    popName.innerHTML = `<span class="${data.equippedText.cssClass}">${myName}</span>`;
+                } else {
+                    popName.innerText = myName;
+                }
+
+                document.getElementById('popUserEmail').innerText = data.email;
+                document.getElementById('popUserCoins').innerText = data.coins || 0;
+                document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+            }
+        });
+        setStatusOnline();
+    } else {
+        document.getElementById('headerLoginText').innerText = "LOGIN";
+        document.getElementById('headerUserImg').style.display = "none";
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+    }
+});
 
     document.getElementById('closeAccountPop').onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => {
