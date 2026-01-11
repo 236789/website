@@ -2110,21 +2110,22 @@ window.openInventory = async (type = 'badges') => {
 // --- 1. ADVANCED PRESENCE SYSTEM (Online/Offline) ---
     let idleTimer;
     let lastStatusUpdate = 0;
-    // FIX: Faster updates for real-time feel
     const UPDATE_INTERVAL = 60 * 1000; // 1 minute
     const IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
 
-    async function setStatusOnline() {
+    // CHANGED: Added 'force' parameter to ignore the timer on page load
+    async function setStatusOnline(force = false) {
         if (!auth.currentUser) return;
         const now = Date.now();
-        // Update if enough time passed OR if we are forcing a status change
-        if (now - lastStatusUpdate > UPDATE_INTERVAL) {
+        
+        // Update if enough time passed OR if we are forcing it (Page Load)
+        if (force || now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
                 await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
                     isOnline: true, 
                     lastActive: serverTimestamp(),
-                    currentPage: 'wall' 
+                    currentPage: 'wall' // This tags them as "In Chat"
                 });
             } catch(e) {}
         }
@@ -2133,73 +2134,45 @@ window.openInventory = async (type = 'badges') => {
     async function setStatusOffline() {
         if (!auth.currentUser) return;
         try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { isOnline: false, lastActive: serverTimestamp() });
+            // We do NOT clear currentPage here to avoid flickering if they just refreshed
+            // The idle timer will handle true offline status
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
+                isOnline: false, 
+                lastActive: serverTimestamp() 
+            });
         } catch(e) {}
     }
 
     function resetIdleTimer() {
         clearTimeout(idleTimer);
-        setStatusOnline(); // This keeps them "green"
+        // Regular activity updates (respects the 1-minute timer)
+        setStatusOnline(false); 
         idleTimer = setTimeout(setStatusOffline, IDLE_TIMEOUT);
     }
 
-    window.onload = resetIdleTimer;
+    // CHANGED: Force immediate update when the script loads
+    // This ensures "currentPage: wall" is set INSTANTLY when they enter the page
+    setStatusOnline(true);
+
+    window.onload = () => {
+        resetIdleTimer();
+        setStatusOnline(true); // Force it again on full load just to be safe
+    };
+
     document.onmousemove = resetIdleTimer;
     document.onkeypress = resetIdleTimer;
     document.ontouchstart = resetIdleTimer;
     document.onclick = resetIdleTimer;
     document.onscroll = resetIdleTimer;
 
-    // Remove "In Chat" status when closing/refreshing
+    // Remove "In Chat" status ONLY when closing/leaving the domain
     window.addEventListener('beforeunload', () => {
         if(auth.currentUser) {
-            // Attempt to set offline immediately
             updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
-                currentPage: null,
-                isOnline: false 
+                currentPage: null 
             });
         }
     });
-
-    // --- 2. ONLINE USERS LIST (Listener) ---
-    function checkIsOnline(user) {
-        if (user.isOnline === true && user.lastActive) {
-            const diff = Date.now() - user.lastActive.toDate().getTime();
-            // FIX: Reduce buffer to 2min 10sec (130000ms) to remove ghosts faster
-            return diff < 130000; 
-        }
-        return false;
-    }
-
-    let onlineUsersCache = [];
-    function listenOnlineUsers() {
-        // Query users marked as online
-        const q = query(collection(db, "accounts"), where("isOnline", "==", true));
-        
-        onSnapshot(q, (snapshot) => {
-            onlineUsersCache = [];
-            let count = 0;
-            
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                // Double check timestamp to ensure they aren't ghosts
-                if(checkIsOnline(data)) {
-                    onlineUsersCache.push(data);
-                    count++;
-                }
-            });
-            
-            // Update the green button count
-            if(onlineCountVal) onlineCountVal.innerText = count;
-
-            // FIX: Real-time update inside the popup
-            // If the modal is open, re-render the list immediately
-            const modal = document.getElementById('onlineListModal');
-            if (modal && modal.classList.contains('active')) {
-                renderOnlineList();
-            }
-        });
-    }
 // --- 3. SHOW ONLINE LIST POPUP (UPDATED) ---
     let currentOnlineFilter = 'global'; // Default
 
