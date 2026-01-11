@@ -372,6 +372,7 @@
   </script>
 
   <!-- FIREBASE LOGIC -->
+  <!-- FIREBASE LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -398,7 +399,7 @@
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
 
-    // LOGICA QUEST: CUNOASTE ECHIPA
+    // --- QUEST LOGIC: CUNOASTE ECHIPA ---
     const kevinLink = document.getElementById('kevinVisit');
     const lostSoulLink = document.getElementById('lostSoulVisit');
 
@@ -409,41 +410,69 @@
         }
         
         const userRef = doc(db, "accounts", auth.currentUser.uid);
+        let questCompletedNow = false;
+
         try {
-            // Pas 1: Setam vizita pentru membrul respectiv
+            // 1. Mark this specific member as visited
             await updateDoc(userRef, { [memberField]: true });
 
-            // Pas 2: Verificam starea curenta pentru a acorda recompensa
+            // 2. Check Quest Status
             const snap = await getDoc(userRef);
             const data = snap.data();
-            const alreadyDone = data.completedQuests || [];
+            
+            const activeQuests = data.activeDailyQuests || [];
+            const completed = data.completedQuests || [];
+            
+            // Check if BOTH flags are true now
+            const bothVisited = data.visited_lost_soul_today && data.visited_kevin_trinity_today;
 
-            // Verificam daca AMBELE sunt vizitate si quest-ul NU este deja in lista de completate
-            if (data.visited_lost_soul_today && data.visited_kevin_trinity_today && !alreadyDone.includes('meet_team_hunt')) {
+            // 3. CHECK: Is Quest Active? + Are BOTH visited? + Is it NOT done yet?
+            if (activeQuests.includes('meet_team_hunt') && 
+                bothVisited && 
+                !completed.includes('meet_team_hunt')) {
+                
+                // Award 400 Coins
                 await updateDoc(userRef, {
                     coins: increment(400),
                     completedQuests: arrayUnion('meet_team_hunt')
                 });
-                console.log("Quest completat: +400 Coins!");
+                
+                questCompletedNow = true;
+                
+                // Show Popup
+                const modal = document.getElementById('rewardModal');
+                if(modal) modal.classList.add('active');
             }
         } catch (err) {
             console.error("Quest error:", err);
-        } finally {
+        }
+
+        // 4. Handle Redirect with Delay if won
+        if (questCompletedNow) {
+            setTimeout(() => {
+                window.location.href = targetUrl;
+            }, 2500);
+        } else {
             window.location.href = targetUrl;
         }
     }
 
-    kevinLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        trackTeamVisit('visited_kevin_trinity_today', 'despre_kevin_trinity.html');
-    });
+    // Attach Listeners
+    if(kevinLink) {
+        kevinLink.addEventListener('click', (e) => {
+            e.preventDefault(); 
+            trackTeamVisit('visited_kevin_trinity_today', 'despre_kevin_trinity.html');
+        });
+    }
 
-    lostSoulLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        trackTeamVisit('visited_lost_soul_today', 'despre_lost_soul.html');
-    });
+    if(lostSoulLink) {
+        lostSoulLink.addEventListener('click', (e) => {
+            e.preventDefault(); 
+            trackTeamVisit('visited_lost_soul_today', 'despre_lost_soul.html');
+        });
+    }
 
-
+    // --- BAN SYSTEM ---
     let userIP = null;
     fetch('https://api.ipify.org?format=json').then(r => r.json()).then(d => {
         userIP = d.ip;
@@ -460,6 +489,7 @@
         }
     }
 
+    // --- AUTH ---
     async function handleLogin() {
         try {
             const result = await signInWithPopup(auth, provider);
@@ -475,6 +505,45 @@
     mobileLoginBtn.onclick = () => !auth.currentUser ? handleLogin() : accountModal.classList.add('active');
     closeAccountPop.onclick = () => accountModal.classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
+
+    // --- EDIT PROFILE (From Previous Steps) ---
+    const editProfileModal = document.getElementById('editProfileModal');
+    const openEditProfileBtn = document.getElementById('openEditProfileBtn');
+    const closeEditProfile = document.getElementById('closeEditProfile');
+    const saveProfileBtn = document.getElementById('saveProfileBtn');
+    const editBirth = document.getElementById('editBirth');
+    const editBio = document.getElementById('editBio');
+    const editTikTok = document.getElementById('editTikTok');
+
+    if(openEditProfileBtn) {
+        openEditProfileBtn.onclick = async () => {
+            accountModal.classList.remove('active'); 
+            editProfileModal.classList.add('active'); 
+            if(auth.currentUser) {
+                const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+                if(snap.exists()) {
+                    const data = snap.data();
+                    editBirth.value = data.birthDate || "";
+                    editBio.value = data.bio || "";
+                    editTikTok.value = data.tiktokLink || "";
+                }
+            }
+        };
+    }
+    if(closeEditProfile) closeEditProfile.onclick = () => { editProfileModal.classList.remove('active'); accountModal.classList.add('active'); };
+    if(saveProfileBtn) saveProfileBtn.onclick = async () => {
+        if(!auth.currentUser) return;
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                birthDate: editBirth.value,
+                bio: editBio.value.trim(),
+                tiktokLink: editTikTok.value.trim()
+            });
+            alert("Profil salvat!");
+            editProfileModal.classList.remove('active');
+            accountModal.classList.add('active');
+        } catch(e) { alert("Eroare: " + e.message); }
+    };
 
     onAuthStateChanged(auth, (user) => {
         if (user) {
@@ -498,8 +567,7 @@
             document.getElementById('headerUserImg').display = "none";
             mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
-    });
+    }); 
   </script>
-
 </body>
 </html>
