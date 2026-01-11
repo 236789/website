@@ -1176,14 +1176,19 @@
                     </div>
                 </div>
                 <!-- Option 2: Donate -->
-                <div class="shop-badge-item" style="flex-direction: row; justify-content: space-between; padding: 20px;">
-                    <div style="text-align: left;">
-                        <div style="font-family: Orbitron; font-weight: 800; font-size: 14px;">DONEAZĂ COINS</div>
-                        <div style="font-size: 10px; color: #aaa;">Trimite cuiva drag</div>
-                    </div>
-                    <button class="buy-badge-btn" style="width: auto; padding: 10px 20px;" onclick="openDonationList()">SELECTEAZĂ OM</button>
-                </div>
-
+<!-- Opțiunea 2: Donate -->
+<div class="shop-badge-item" style="flex-direction: row; justify-content: space-between; padding: 20px;">
+    <div style="text-align: left;">
+        <div style="font-family: Orbitron; font-weight: 800; font-size: 14px;">DONEAZĂ COINS</div>
+        <div style="font-size: 10px; color: #aaa;">Trimite cuiva drag</div>
+        <!-- CRONOMETRU NOU -->
+        <div id="donateCooldownTimer" style="font-size: 11px; color: var(--error); margin-top: 5px; display: none; font-weight: 700;">
+            <i class="fas fa-clock"></i> COOLDOWN: <span id="donateTimeLeft">00:00</span>
+        </div>
+    </div>
+    <!-- AM ADĂUGAT id="donateStartBtn" -->
+    <button class="buy-badge-btn" id="donateStartBtn" style="width: auto; padding: 10px 20px;" onclick="openDonationList()">SELECTEAZĂ OM</button>
+</div>
 
 <!-- OPTION: TEXT COLORS -->
 <div class="shop-badge-item" style="flex-direction: row; justify-content: space-between; padding: 20px;">
@@ -1925,10 +1930,54 @@ const TEXTS_DB = [
     window.closeModal = (id) => document.getElementById(id).classList.remove('active');
 
     // --- ALTE SERVICES LOGIC ---
-    window.openAlteShop = () => {
-        if(!auth.currentUser) return alert("Loghează-te!");
-        document.getElementById('alteShopModal').classList.add('active');
-    };
+window.openAlteShop = async () => {
+    if(!auth.currentUser) return alert("Loghează-te!");
+    document.getElementById('alteShopModal').classList.add('active');
+
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
+    
+    const timerEl = document.getElementById('donateCooldownTimer');
+    const timeLeftSpan = document.getElementById('donateTimeLeft');
+    const btnEl = document.getElementById('donateStartBtn');
+
+    if (data.lastDonationTime) {
+        const lastTime = data.lastDonationTime.toMillis();
+        const cooldownMs = 3600000; // 60 minute
+        
+        const updateTimer = () => {
+            const now = Date.now();
+            const diff = now - lastTime;
+            const remaining = cooldownMs - diff;
+
+            if (remaining > 0) {
+                // BLOCARE BUTON
+                btnEl.disabled = true;
+                btnEl.style.opacity = "0.4";
+                btnEl.style.cursor = "not-allowed";
+                btnEl.innerText = "COOLDOWN ACTIVE";
+                
+                // AFIȘARE TIMP
+                timerEl.style.display = "block";
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                timeLeftSpan.innerText = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+            } else {
+                // DEBLOCARE AUTOMATĂ
+                btnEl.disabled = false;
+                btnEl.style.opacity = "1";
+                btnEl.style.cursor = "pointer";
+                btnEl.innerText = "SELECTEAZĂ OM";
+                timerEl.style.display = "none";
+                clearInterval(donationInterval);
+            }
+        };
+
+        clearInterval(donationInterval);
+        donationInterval = setInterval(updateTimer, 1000);
+        updateTimer();
+    }
+};
 
     window.openNameChangeModal = async () => {
         const modal = document.getElementById('nameChangeModal');
@@ -1980,6 +2029,7 @@ const TEXTS_DB = [
     // DONATION LOGIC
     let allUsersCache = [];
     let donationTarget = null;
+let donationInterval = null; // Pune asta sus de tot în <script type="module">
 
     window.openDonationList = async () => {
         document.getElementById('donationListModal').classList.add('active');
@@ -2103,13 +2153,13 @@ window.processDonation = async () => {
     const amountInput = document.getElementById('donateAmount');
     const amount = parseInt(amountInput.value);
 
-    // 1. Check for valid amount and MAX CAP (5,000)
+    // 1. Verificare sumă și LIMITĂ MAXIMĂ (5.000 conform cerinței)
     if (!amount || amount < 1) {
         await showCustomAlert("Suma invalidă!", "EROARE");
         return;
     }
-    if (amount > 15000) {
-        await showCustomAlert("Suma maximă permisă pentru o donație este de 15,000 coins!", "LIMITĂ ATINSĂ");
+    if (amount > 5000) {
+        await showCustomAlert("Suma maximă permisă pentru o donație este de 5,000 coins!", "LIMITĂ ATINSĂ");
         return;
     }
 
@@ -2117,21 +2167,21 @@ window.processDonation = async () => {
     const mySnap = await getDoc(myRef);
     const myData = mySnap.data();
 
-    // 2. CHECK COOLDOWN (1 Hour)
+    // 2. Verificare Cooldown (1 Oră) - Securitate server-side logică
     if (myData.lastDonationTime) {
         const lastTime = myData.lastDonationTime.toMillis();
         const now = Date.now();
-        const cooldownTime = 3600000; // 1 hour in milliseconds
+        const cooldownTime = 3600000; 
 
         if (now - lastTime < cooldownTime) {
             const remainingMs = cooldownTime - (now - lastTime);
             const remainingMins = Math.ceil(remainingMs / 60000);
-            await showCustomAlert(`Ești în cooldown! Mai ai de așteptat ${remainingMins} minute înainte de a dona din nou.`, "COOLDOWN");
+            await showCustomAlert(`Mai ai de așteptat ${remainingMins} minute.`, "COOLDOWN");
             return;
         }
     }
 
-    // 3. Check for sufficient balance
+    // 3. Verificare Balanță
     if ((myData.coins || 0) < amount) {
         await showCustomAlert("Nu ai suficienți coins!", "EROARE");
         return;
@@ -2141,10 +2191,10 @@ window.processDonation = async () => {
     if (!confirmed) return;
 
     try {
-        // 4. Update both accounts and set the NEW cooldown timestamp
+        // 4. Update Conturi + Salvare timp donație pentru Cooldown
         await updateDoc(myRef, { 
             coins: increment(-amount),
-            lastDonationTime: serverTimestamp() // Sets the cooldown start
+            lastDonationTime: serverTimestamp() 
         });
         
         await updateDoc(doc(db, "accounts", donationTarget.id), { 
@@ -2156,11 +2206,14 @@ window.processDonation = async () => {
         checkShopQuest('donate', amount);
 
         closeModal('donationAmountModal');
-        closeModal('alteShopModal');
-        amountInput.value = ''; // Reset input
+        amountInput.value = ''; 
+
+        // 5. REÎNCARCĂ MODALUL "ALTE" pentru a activa cronometrul și a bloca butonul imediat
+        window.openAlteShop(); 
+        
     } catch (e) { 
         console.error(e); 
-        await showCustomAlert("A apărut o eroare la procesarea donației.", "EROARE");
+        await showCustomAlert("Eroare la procesare.", "EROARE");
     }
 };
 
