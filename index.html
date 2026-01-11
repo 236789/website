@@ -1337,15 +1337,17 @@ function startBotConversation() {
        setTimeout(() => addBotMsg(response, 'bot'), 700);
    }
 
-   botSendBtn.onclick = () => {
+botSendBtn.onclick = () => {
        const val = botUserInput.value;
        if(!val.trim()) return;
        addBotMsg(val, 'user');
        processUserMessage(val);
        botUserInput.value = '';
        
-       // Trigger the global quest tracking (check 15 messages)
-       if (window.trackKevinQuest) window.trackKevinQuest();
+       // Trigger Firebase Quest Tracking
+       if (typeof window.trackKevinQuest === 'function') {
+           window.trackKevinQuest();
+       }
    };
 
    botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
@@ -1643,33 +1645,45 @@ const BANNERS_DB = [
     checkGlobalBan();
 
     // LOGICA QUEST KEVIN BOT (15 MESAJE)
+// LOGICA QUEST KEVIN BOT (15 MESAJE) - WITH FIREBASE CHECK
     window.trackKevinQuest = async () => {
         if (!auth.currentUser) return;
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         
         try {
-            // Pas 1: Incrementează numărul de mesaje în baza de date
+            // 1. Increment Message Count
             await updateDoc(userRef, { kevinMessagesToday: increment(1) });
             
-            // Pas 2: Verifică dacă a ajuns la 15 și dacă quest-ul nu a fost deja completat azi
+            // 2. Check Requirements
             const snap = await getDoc(userRef);
-            if (snap.exists()) {
-                const data = snap.data();
-                const count = data.kevinMessagesToday || 0;
-                const completed = data.completedQuests || [];
+            const data = snap.data();
+            const active = data.activeDailyQuests || [];
+            const completed = data.completedQuests || [];
+            const count = data.kevinMessagesToday || 0;
+
+            // 3. Logic: Active Quest + Count >= 15 + Not Done
+            if (active.includes('kevin_talk_15') && !completed.includes('kevin_talk_15') && count >= 15) {
                 
-                if (count === 15 && !completed.includes('kevin_talk_15')) {
-                    // Pas 3: Oferă recompensa (350 monede)
-                    await updateDoc(userRef, {
-                        coins: increment(350),
-                        completedQuests: arrayUnion('kevin_talk_15')
-                    });
-                    
-                    // Pas 4: Afișează Pop-up-ul cu noul stil (Yellow border + Cyan btn)
-                    questRewardModal.classList.add('active');
+                // Award 350 Coins
+                await updateDoc(userRef, {
+                    coins: increment(350),
+                    completedQuests: arrayUnion('kevin_talk_15')
+                });
+                
+                // Show Popup
+                const modal = document.getElementById('questRewardModal');
+                if(modal) {
+                    // Update text dynamically
+                    const card = modal.querySelector('.reward-card');
+                    if(card) {
+                        card.querySelector('h2').innerText = "🎯 QUEST COMPLET!";
+                        card.querySelector('p').innerText = "Ai vorbit 15 mesaje cu Kevin Bot! Bravo!";
+                        card.querySelector('.reward-coins-box span').innerText = "350";
+                    }
+                    modal.classList.add('active');
                 }
             }
-        } catch(e) { console.error("Eroare tracking quest:", e); }
+        } catch(e) { console.error("Quest Error:", e); }
     };
 
     // --- 2. ONLINE STATUS TRACKING (THROTTLED) ---
@@ -2010,6 +2024,7 @@ onAuthStateChanged(auth, user => {
   </script>
 </body>
 </html>```
+
 
 
 
