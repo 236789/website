@@ -2921,14 +2921,21 @@ function renderLobby(players) {
         const cosm = p.cosmetics || {};
         const bannerClass = cosm.banner ? cosm.banner.cssClass : '';
         const textClass = cosm.text ? cosm.text.cssClass : '';
-        
+        const frameImg = cosm.frame ? cosm.frame.img : '';
+        const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 130;
+
         list.innerHTML += `
-            <div class="lobby-player ${bannerClass}">
-                <img src="${p.pic}" class="lobby-pfp">
-                <span class="lobby-name ${textClass}">${p.name}</span>
-            </div>`;
+            <div class="lobby-player ${bannerClass}" style="margin-bottom:12px;">
+                <div class="profile-frame-wrapper" style="width:40px; height:40px; margin:0;">
+                    <img src="${p.pic}" class="pop-img-inner">
+                    ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale}%; height:${frameScale}%;">` : ''}
+                </div>
+                <span class="lobby-name ${textClass}" style="margin-left:10px;">${p.name}</span>
+            </div>
+        `;
     });
 
+    // Start timer if we have enough players
     if(players.length >= MIN_PLAYERS && !lobbyTimerInterval && currentGameState === 'waiting') {
         timerEl.style.display = 'block';
         let seconds = 30;
@@ -2937,35 +2944,44 @@ function renderLobby(players) {
             timerEl.innerText = `Jocul începe în ${seconds}...`;
             if (seconds <= 0) {
                 clearInterval(lobbyTimerInterval);
-                if (auth.currentUser.uid === players[0].uid) {
+                // Whoever is currently index 0 handles the start
+                const currentLobbySnap = await getDoc(doc(db, "lobbies", currentLobbyId));
+                const currentPlayers = currentLobbySnap.data().players || [];
+                if (auth.currentUser.uid === currentPlayers[0].uid) {
                     await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'voting', votes: [], lastUpdate: serverTimestamp() });
                 }
             }
         }, 1000);
     } 
-    else if (players.length < MIN_PLAYERS) {
+    // ONLY cancel the timer if the game is still in 'waiting' state
+    else if (players.length < MIN_PLAYERS && currentGameState === 'waiting') {
         if(lobbyTimerInterval) { clearInterval(lobbyTimerInterval); lobbyTimerInterval = null; }
         timerEl.style.display = 'none';
     }
 }
 
-    function startVotingPhase(players) {
-        if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
-        window.showScreen('screenMultiVote');
-        const voteTimerEl = document.getElementById('voteTimer');
-        let seconds = 15;
-        
-        votingTimerInterval = setInterval(async () => {
-            seconds--;
-            voteTimerEl.innerText = `${seconds}s`;
-            if (seconds <= 0) {
-                clearInterval(votingTimerInterval);
-                if (auth.currentUser.uid === players[0].uid) {
-                    decideCategoryAndStart();
-                }
+function startVotingPhase(players) {
+    if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
+    window.showScreen('screenMultiVote');
+    const voteTimerEl = document.getElementById('voteTimer');
+    let seconds = 15;
+    
+    if(votingTimerInterval) clearInterval(votingTimerInterval);
+
+    votingTimerInterval = setInterval(async () => {
+        seconds--;
+        voteTimerEl.innerText = `${seconds}s`;
+        if (seconds <= 0) {
+            clearInterval(votingTimerInterval);
+            // Re-fetch players to see who is the current host
+            const lobbySnap = await getDoc(doc(db, "lobbies", currentLobbyId));
+            const latestPlayers = lobbySnap.data().players || [];
+            if (latestPlayers.length > 0 && auth.currentUser.uid === latestPlayers[0].uid) {
+                decideCategoryAndStart();
             }
-        }, 1000);
-    }
+        }
+    }, 1000);
+}
 
     window.castVote = async (cat) => {
         document.querySelectorAll('.vote-card').forEach(c => c.classList.remove('selected'));
@@ -3004,35 +3020,40 @@ function renderVotes(votes) {
 
 async function decideCategoryAndStart() {
     const lobbyRef = doc(db, "lobbies", currentLobbyId);
-    const snap = await getDoc(lobbyRef);
-    const rawVotes = snap.data().votes || [];
-    
-    // Fix: Only count the last vote from each user (allows changing votes)
-    const uniqueVotesMap = {};
-    rawVotes.forEach(v => { uniqueVotesMap[v.uid] = v; });
-    const votes = Object.values(uniqueVotesMap);
+    try {
+        const snap = await getDoc(lobbyRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const rawVotes = data.votes || [];
+        
+        // Fix: Numărăm doar ultimul vot al fiecărui jucător
+        const uniqueVotesMap = {};
+        rawVotes.forEach(v => { uniqueVotesMap[v.uid] = v; });
+        const votes = Object.values(uniqueVotesMap);
 
-    // Track all 8 categories
-    let counts = { ksda:0, geo:0, history:0, random:0, music:0, sports:0, art:0, games:0 };
-    votes.forEach(v => { 
-        if(counts[v.cat] !== undefined) counts[v.cat]++;
-    });
+        // Track toate cele 8 categorii
+        let counts = { ksda:0, geo:0, history:0, random:0, music:0, sports:0, art:0, games:0 };
+        votes.forEach(v => { 
+            if(counts[v.cat] !== undefined) counts[v.cat]++;
+        });
 
-    // Find the category with most votes
-    let winner = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b);
+        // Alegem câștigătorul
+        let winner = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b) || 'random';
 
-    const questions = generateQuestionSet(winner);
-    
-    await updateDoc(lobbyRef, {
-        state: 'playing',
-        selectedCategory: winner,
-        gameQuestions: questions,
-        currentQIndex: 0,
-        roundVotes: [],
-        lastUpdate: serverTimestamp()
-    });
+        const questions = generateQuestionSet(winner);
+        
+        await updateDoc(lobbyRef, {
+            state: 'playing',
+            selectedCategory: winner,
+            gameQuestions: questions,
+            currentQIndex: 0,
+            roundVotes: [],
+            lastUpdate: serverTimestamp()
+        });
+    } catch(e) {
+        console.error("Error in decideCategoryAndStart:", e);
+    } 
 }
-
     function renderMultiplayerQuestion(data) {
         window.showScreen('screenGame');
         if(gameTimerInterval) clearInterval(gameTimerInterval);
@@ -3087,13 +3108,10 @@ async function decideCategoryAndStart() {
     }
 
 async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnElement) {
-    // Dezactivăm click-urile imediat
     const allBtns = document.querySelectorAll('.option-btn');
     allBtns.forEach(b => b.style.pointerEvents = 'none');
 
     const isCorrect = (selectedIndex === correctIndex);
-    
-    // Calculăm timpul
     const bar = document.getElementById('timerBar');
     const parent = bar.parentElement;
     const timeTaken = (10 - ((bar.offsetWidth / parent.offsetWidth) * 10)).toFixed(2);
@@ -3108,19 +3126,28 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
         allBtns[correctIndex].classList.add('correct');
     }
 
-    // Trimitem rezultatul la Firebase
     const user = auth.currentUser;
     const lobbyRef = doc(db, "lobbies", currentLobbyId);
-      
+    
     try {
+        // --- FIX: Fetch current Custom Name and Cosmetics from DB ---
+        const userSnap = await getDoc(doc(db, "accounts", user.uid));
+        const userData = userSnap.data() || {};
+        const finalName = userData.username || user.displayName; 
+
         await updateDoc(lobbyRef, {
             roundVotes: arrayUnion({
                 uid: user.uid,
-                name: user.displayName,
+                name: finalName, // Uses custom name
                 pic: user.photoURL,
                 correct: isCorrect,
                 time: timeTaken,
-                picked: pickedText // Salvăm textul primit direct
+                picked: pickedText,
+                cosmetics: { // Sends cosmetics so Leaderboard can see them
+                    banner: userData.equippedBanner || null,
+                    text: userData.equippedText || null,
+                    frame: userData.equippedFrame || null
+                }
             })
         });
     } catch(e) { console.error("Error sending answer:", e); }
@@ -3149,7 +3176,7 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
         });
     }
 
-function showRoundLeaderboard(data) {
+function showRoundLeaderboard(data) { 
     window.showScreen('screenMultiRoundRes');
     const container = document.getElementById('roundLeaderboard');
     container.innerHTML = '';
@@ -3163,41 +3190,66 @@ function showRoundLeaderboard(data) {
     if(votes.length === 0) container.innerHTML = "<div style='text-align:center; color:#888;'>Nimeni nu a răspuns.</div>";
 
     votes.forEach((v, idx) => {
-        // Fetch cosmetics from the voter (assuming they were saved during handleMultiAnswer)
         const cosm = v.cosmetics || {};
+        const color = v.correct ? '#2ecc71' : '#ff4757';
+        
         const bannerClass = cosm.banner ? cosm.banner.cssClass : '';
         const textClass = cosm.text ? cosm.text.cssClass : '';
-        const color = v.correct ? '#2ecc71' : '#ff4757';
+        const frameImg = cosm.frame ? cosm.frame.img : '';
+        const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 130;
 
         const row = document.createElement('div');
         row.className = `lb-row top-${idx+1} ${bannerClass}`;
-        row.style.minHeight = "65px"; 
+
         row.innerHTML = `
-            <div style="display:flex; align-items:center; gap:12px;">
-                <img src="${v.pic}" style="width:38px; height:38px; border-radius:50%; border:2px solid ${color}; object-fit: cover;">
-                <div style="display: flex; flex-direction: column; align-items: flex-start;">
-                    <span class="display-name ${textClass}" style="color:#fff; font-size:14px; font-weight: 700;">${v.name}</span>
-                    <span style="color:${color}; font-size:10px; font-weight: 500;">A ales: ${v.picked || 'Nimic'}</span>
+            <div>
+                <div class="profile-frame-wrapper" style="width:45px; height:45px;">
+                    <img src="${v.pic}" class="pop-img-inner" style="border: 1px solid ${color};">
+                    ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale}%; height:${frameScale}%;">` : ''}
+                </div>
+                
+                <div class="user-name-container">
+                    <span class="display-name ${textClass}" style="color:#fff;">${v.name}</span>
+                    <span style="color:${color}; font-size:11px; font-weight: 600;">A ales: ${v.picked}</span>
                 </div>
             </div>
-            <div class="lb-time" style="color:${color}; text-align: right; font-weight: 800;">
-                ${v.correct ? '+10' : '0'} pts <br>
-                <span style="font-size: 9px; opacity: 0.7;">(${v.time}s)</span>
+
+            <div class="lb-time">
+                <div style="color:${color}; font-weight: 900; font-size: 20px; font-family:'Orbitron';">${v.correct ? '+10' : '0'} pts</div>
+                <div style="font-size: 10px; opacity: 0.8; color:#fff;">(${v.time}s)</div>
             </div>
         `;
         container.appendChild(row);
     });
 
-    if (auth.currentUser.uid === data.players[0].uid) {
-        setTimeout(async () => {
-            let nextIndex = data.currentQIndex + 1;
+    // FIX: Curățăm orice timer existent pentru a evita duplicarea rundelor
+    if(intermissionTimerInterval) clearTimeout(intermissionTimerInterval);
+
+    // FIX: Host Handover Logic - Verificăm host-ul la finalul celor 5 secunde
+    intermissionTimerInterval = setTimeout(async () => {
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        const freshSnap = await getDoc(lobbyRef);
+        const freshData = freshSnap.data();
+        const latestPlayers = freshData.players || [];
+
+        // Dacă host-ul a plecat, jucătorul care a devenit acum index 0 preia comanda
+        if (latestPlayers.length > 0 && auth.currentUser.uid === latestPlayers[0].uid) {
+            let nextIndex = (freshData.currentQIndex || 0) + 1;
             if (nextIndex < 15) {
-                await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'playing', roundVotes: [], currentQIndex: nextIndex, lastUpdate: serverTimestamp() });
+                await updateDoc(lobbyRef, { 
+                    state: 'playing', 
+                    roundVotes: [], 
+                    currentQIndex: nextIndex, 
+                    lastUpdate: serverTimestamp() 
+                });
             } else {
-                await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'finished' });
+                await updateDoc(lobbyRef, { 
+                    state: 'finished',
+                    lastUpdate: serverTimestamp()
+                });
             }
-        }, 5000);
-    }
+        }
+    }, 5000);
 }
 
     async function endMultiplayerGame(data) {
