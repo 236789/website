@@ -1116,11 +1116,10 @@
 
 
 
-
 /* --- FIX GLOBAL RAME & AVATARE --- */
 .profile-frame-wrapper {
     position: relative;
-    width: 60px !important; /* Mărime fixă PC */
+    width: 60px !important;
     height: 60px !important;
     min-width: 60px !important;
     display: flex;
@@ -1130,7 +1129,7 @@
 }
 
 .pop-img-inner {
-    width: 85%; height: 85%; /* Lasă loc pentru ramă */
+    width: 85%; height: 85%;
     border-radius: 50%;
     object-fit: cover;
     z-index: 1;
@@ -1140,29 +1139,29 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    width: 130%; height: 130%; /* Rama e mai mare decât poza */
+    width: 130%; height: 130%;
     z-index: 2;
     pointer-events: none;
 }
 
 /* --- LEADERBOARD (TOP RĂSPUNSURI) FIX --- */
-.lb-row {
+/* --- LEADERBOARD & LOBBY NAME FIX --- */
+.lb-row, .lobby-player {
     display: flex !important;
-    flex-direction: row !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    padding: 12px 20px !important;
-    margin-bottom: 15px !important;
-    border-radius: 100px !important; /* Stil pastilă modern */
+    justify-content: space-between !important; /* Forces Name to left, Score to right */
+    padding: 10px 25px !important;
     gap: 15px;
-    min-height: 80px;
+    border-radius: 100px !important;
+    min-height: 70px;
+    overflow: visible !important; /* Crucial for frames */
 }
 
-.lb-row > div:first-child {
+.lb-row > div:first-child, .lobby-player > div:first-child {
     display: flex;
     align-items: center;
-    gap: 20px;
-    flex: 1;
+    gap: 15px;
+    flex: 1; /* Name container takes all available space */
     min-width: 0;
 }
 
@@ -1170,65 +1169,34 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    flex: 1;
 }
 
-.display-name {
-    font-size: 16px;
+.display-name, .lobby-name {
+    font-size: 18px !important; /* Larger on PC */
     font-weight: 800;
     font-family: 'Orbitron';
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; /* Only cuts if name is insanely long */
+    max-width: 90%; /* Allows long names like nicaemmanuel victor */
+    display: block;
 }
 
-.lb-time {
-    text-align: right;
-    flex-shrink: 0;
-    min-width: 90px;
-}
-
-/* --- FIX CATEGORII (ICONS & VOTING) --- */
-.cat-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    width: 100%;
-}
-
-.cat-grid .game-btn {
-    width: 100% !important;
-    height: 100px !important;
-    padding: 10px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 8px !important;
-}
-
-.cat-grid .game-btn i {
-    font-size: 24px !important;
-    margin: 0 !important;
-}
-
-.cat-grid .game-btn span {
-    font-size: 10px !important;
-    font-weight: 700;
-}
-
-/* --- AJUSTĂRI MOBIL --- */
-@media (max-width: 768px) {
-    .cat-grid { grid-template-columns: repeat(2, 1fr); } /* 2 pe rând pe mobil */
-    
-    .profile-frame-wrapper {
-        width: 45px !important;
-        height: 45px !important;
-        min-width: 45px !important;
+/* On PC, we can afford even more space */
+@media (min-width: 1024px) {
+    .display-name, .lobby-name {
+        font-size: 20px !important;
+        max-width: 400px; /* Plenty of room for long names */
     }
-    
-    .display-name { font-size: 12px !important; max-width: 100px; }
-    .lb-row { padding: 8px 15px !important; border-radius: 20px !important; }
-    .lb-time div:first-child { font-size: 14px !important; }
+}
+
+@media (max-width: 768px) {
+    .display-name, .lobby-name {
+        font-size: 14px !important;
+        max-width: 180px; /* Better limit for mobile */
+    }
+    .lb-row { padding: 8px 15px !important; }
 }
   </style>
 </head>
@@ -3162,28 +3130,26 @@ function renderLobby(players) {
     list.innerHTML = '';
     status.innerText = `Jucători: ${players.length}/${MIN_PLAYERS} necesari`;
     
-    players.forEach(p => {
+players.forEach(p => {
         const cosm = p.cosmetics || {};
         const bannerClass = cosm.banner ? cosm.banner.cssClass : '';
         const textClass = cosm.text ? cosm.text.cssClass : '';
         const frameImg = cosm.frame ? cosm.frame.img : '';
-        const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 145;
+        const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 130; // Scale default 130%
 
         list.innerHTML += `
-            <div class="lobby-player ${bannerClass}" style="margin-bottom:10px; min-height:65px; border-radius:15px;">
-                <div class="profile-frame-wrapper" style="width:45px; height:45px; margin:0;">
-                    <img src="${p.pic}" class="pop-img-inner" style="box-shadow:none;">
+            <div class="lobby-player ${bannerClass}" style="margin-bottom:12px; min-height:65px; border-radius:100px; padding: 5px 20px; display: flex; align-items: center; border: 1px solid rgba(255,255,255,0.1);">
+                <!-- AVATAR + FRAME -->
+                <div class="profile-frame-wrapper" style="width:45px; height:45px; margin:0; flex-shrink:0;">
+                    <img src="${p.pic}" class="pop-img-inner" style="box-shadow:none; border: 1px solid rgba(255,255,255,0.2);">
                     ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale}%; height:${frameScale}%;">` : ''}
                 </div>
-                <div style="display:flex; flex-direction:column; align-items:flex-start; margin-left:15px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <span class="lobby-name ${textClass}" style="font-size:14px;">${p.name}</span>
-                        ${cosm.badge ? `
-                            <span class="cosmetic-badge" style="background:${cosm.badge.color}; color:#000; padding:2px 6px; font-size:9px; border-radius:4px; font-weight:800; font-family:'Orbitron';">
-                                <i class="fas ${cosm.badge.icon}"></i> ${cosm.badge.text}
-                            </span>
-                        ` : ''}
-                    </div>
+                
+                <!-- NUME (FĂRĂ BADGE) -->
+                <div style="display:flex; align-items:center; margin-left:15px; overflow: hidden;">
+                    <span class="lobby-name ${textClass}" style="font-size:16px; font-weight:800; font-family:'Orbitron'; white-space: nowrap; text-overflow: ellipsis;">
+                        ${p.name}
+                    </span>
                 </div>
             </div>
         `;
@@ -3242,13 +3208,25 @@ function renderLobby(players) {
         } catch(e) {}
     };
 
-    function renderVotes(votes) {
-        ['ksda', 'geo', 'history', 'random'].forEach(c => document.getElementById(`votes-${c}`).innerHTML = '');
-        votes.forEach(v => {
-            const el = document.getElementById(`votes-${v.cat}`);
-            if(el) el.innerHTML += `<img src="${v.pic}" class="mini-vote-pfp">`;
-        });
-    }
+function renderVotes(votes) {
+    // Ștergem pozele vechi
+    ['ksda', 'geo', 'history', 'random', 'music', 'sports', 'art', 'games'].forEach(c => {
+        const el = document.getElementById(`votes-${c}`);
+        if(el) el.innerHTML = '';
+    });
+
+    // Map pentru a păstra doar un vot unic per utilizator
+    const uniqueVotes = {};
+    votes.forEach(v => { uniqueVotes[v.uid] = v; });
+
+    // Afișăm voturile unice
+    Object.values(uniqueVotes).forEach(v => {
+        const el = document.getElementById(`votes-${v.cat}`);
+        if(el) {
+            el.innerHTML += `<img src="${v.pic}" class="mini-vote-pfp" title="${v.uid}">`;
+        }
+    });
+}
 
 async function decideCategoryAndStart() {
     const lobbyRef = doc(db, "lobbies", currentLobbyId);
@@ -3337,6 +3315,7 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
     if(isCorrect) {
         btnElement.classList.add('correct');
         sfxCorrect.play();
+        checkTriviaQuest('multi'); 
     } else {
         btnElement.classList.add('wrong');
         sfxWrong.play();
@@ -3347,21 +3326,20 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
     const lobbyRef = doc(db, "lobbies", currentLobbyId);
     
     try {
-        // --- FIX: LUĂM NUMELE SCHIMBAT DIN DB ÎNAINTE SĂ TRIMITEM RĂSPUNSUL ---
+        // --- FIX: LUĂM DATELE DIN COLECȚIA ACCOUNTS PENTRU NUMELE DIN SHOP ---
         const userSnap = await getDoc(doc(db, "accounts", user.uid));
         const userData = userSnap.data() || {};
-        const finalName = userData.username || user.displayName;
+        const finalName = userData.username || user.displayName; // Aici e cheia!
 
         await updateDoc(lobbyRef, {
             roundVotes: arrayUnion({
                 uid: user.uid,
-                name: finalName, // TRMITEM NUMELE DIN SHOP
+                name: finalName, // Trimitem numele personalizat
                 pic: user.photoURL,
                 correct: isCorrect,
                 time: timeTaken,
                 picked: pickedText,
                 cosmetics: {
-                    badge: userData.equippedBadge || null,
                     frame: userData.equippedFrame || null,
                     banner: userData.equippedBanner || null,
                     text: userData.equippedText || null
@@ -3423,23 +3401,19 @@ function showRoundLeaderboard(data) {
                 </div>
                 
                 <div class="user-name-container">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="display-name ${textClass}">${v.name}</span>
-                        ${cosm.badge ? `<span style="background:${cosm.badge.color}; color:#000; padding:1px 5px; font-size:8px; border-radius:3px; font-weight:900;">${cosm.badge.text}</span>` : ''}
-                    </div>
-                    <span style="color:${color}; font-size:10px; font-weight: 600;">A ales: ${v.picked}</span>
+                    <span class="display-name ${textClass}">${v.name}</span>
+                    <span style="color:${color}; font-size:11px; font-weight: 600;">A ales: ${v.picked}</span>
                 </div>
             </div>
 
             <div class="lb-time">
-                <div style="color:${color}; font-weight: 900; font-size: 18px; font-family:'Orbitron';">${v.correct ? '+10' : '0'} pts</div>
-                <div style="font-size: 9px; opacity: 0.8; color:#fff;">(${v.time}s)</div>
+                <div style="color:${color}; font-weight: 900; font-size: 20px; font-family:'Orbitron';">${v.correct ? '+10' : '0'} pts</div>
+                <div style="font-size: 10px; opacity: 0.8; color:#fff;">(${v.time}s)</div>
             </div>
         `;
         container.appendChild(row);
     });
-    
-    // Logică Host pentru următoarea întrebare...
+
     if (auth.currentUser.uid === data.players[0].uid) {
         setTimeout(async () => {
             let nextIndex = (data.currentQIndex || 0) + 1;
