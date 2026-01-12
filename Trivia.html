@@ -1115,85 +1115,120 @@
 .t-ghost { color: rgba(255,255,255,0.5); text-shadow: 0 0 10px #fff; animation: liquid-flow 10s infinite; font-style: italic; }
 
 
-/* --- FIX LEADERBOARD & LOBBY (PC + MOBILE) --- */
+
+
+/* --- FIX GLOBAL RAME & AVATARE --- */
 .profile-frame-wrapper {
-    flex-shrink: 0 !important;
     position: relative;
-    width: 55px; /* Mărime standard pe PC */
-    height: 55px;
+    width: 60px !important; /* Mărime fixă PC */
+    height: 60px !important;
+    min-width: 60px !important;
     display: flex;
     justify-content: center;
     align-items: center;
+    flex-shrink: 0;
 }
 
+.pop-img-inner {
+    width: 85%; height: 85%; /* Lasă loc pentru ramă */
+    border-radius: 50%;
+    object-fit: cover;
+    z-index: 1;
+}
+
+.pop-frame-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 130%; height: 130%; /* Rama e mai mare decât poza */
+    z-index: 2;
+    pointer-events: none;
+}
+
+/* --- LEADERBOARD (TOP RĂSPUNSURI) FIX --- */
 .lb-row {
     display: flex !important;
-    justify-content: space-between !important;
+    flex-direction: row !important;
     align-items: center !important;
-    padding: 15px 25px !important;
+    justify-content: space-between !important;
+    padding: 12px 20px !important;
+    margin-bottom: 15px !important;
+    border-radius: 100px !important; /* Stil pastilă modern */
     gap: 15px;
-    border-radius: 18px !important;
-    margin-bottom: 12px;
-    overflow: visible !important;
-    min-height: 85px;
+    min-height: 80px;
 }
 
-/* Containerul stânga (Avatar + Info) */
 .lb-row > div:first-child {
     display: flex;
     align-items: center;
     gap: 20px;
     flex: 1;
-    min-width: 0; /* Permite containerului să se micșoreze fără să rupă layout-ul */
+    min-width: 0;
 }
 
-/* Stil pentru Nume pe PC */
-.lb-row .user-name-container {
+.user-name-container {
     display: flex;
     flex-direction: column;
     min-width: 0;
 }
 
-.lb-row .display-name {
-    font-size: 18px;
+.display-name {
+    font-size: 16px;
     font-weight: 800;
     font-family: 'Orbitron';
     white-space: nowrap;
-    overflow: visible; /* Pe PC lăsăm numele întreg */
-    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Containerul dreapta (Scor) */
 .lb-time {
     text-align: right;
     flex-shrink: 0;
-    min-width: 80px;
-    line-height: 1.2;
+    min-width: 90px;
 }
 
-/* --- AJUSTĂRI SPECIFICE PENTRU MOBIL (Ecran sub 600px) --- */
-@media (max-width: 600px) {
-    .lb-row {
-        padding: 10px 12px !important;
-        min-height: 70px;
-    }
+/* --- FIX CATEGORII (ICONS & VOTING) --- */
+.cat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    width: 100%;
+}
+
+.cat-grid .game-btn {
+    width: 100% !important;
+    height: 100px !important;
+    padding: 10px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+}
+
+.cat-grid .game-btn i {
+    font-size: 24px !important;
+    margin: 0 !important;
+}
+
+.cat-grid .game-btn span {
+    font-size: 10px !important;
+    font-weight: 700;
+}
+
+/* --- AJUSTĂRI MOBIL --- */
+@media (max-width: 768px) {
+    .cat-grid { grid-template-columns: repeat(2, 1fr); } /* 2 pe rând pe mobil */
     
     .profile-frame-wrapper {
-        width: 42px !important;
-        height: 42px !important;
+        width: 45px !important;
+        height: 45px !important;
+        min-width: 45px !important;
     }
-
-    .lb-row > div:first-child { gap: 10px; }
-
-    .lb-row .display-name {
-        font-size: 13px !important;
-        max-width: 130px; /* Limităm doar pe mobil */
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .lb-time { min-width: 60px; }
-    .lb-time div:first-child { font-size: 15px !important; }
+    
+    .display-name { font-size: 12px !important; max-width: 100px; }
+    .lb-row { padding: 8px 15px !important; border-radius: 20px !important; }
+    .lb-time div:first-child { font-size: 14px !important; }
 }
   </style>
 </head>
@@ -3302,7 +3337,6 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
     if(isCorrect) {
         btnElement.classList.add('correct');
         sfxCorrect.play();
-        checkTriviaQuest('multi'); 
     } else {
         btnElement.classList.add('wrong');
         sfxWrong.play();
@@ -3313,14 +3347,15 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
     const lobbyRef = doc(db, "lobbies", currentLobbyId);
     
     try {
-        // Luăm cosmeticele actuale pentru a le trimite cu votul
+        // --- FIX: LUĂM NUMELE SCHIMBAT DIN DB ÎNAINTE SĂ TRIMITEM RĂSPUNSUL ---
         const userSnap = await getDoc(doc(db, "accounts", user.uid));
         const userData = userSnap.data() || {};
+        const finalName = userData.username || user.displayName;
 
         await updateDoc(lobbyRef, {
             roundVotes: arrayUnion({
                 uid: user.uid,
-                name: user.displayName,
+                name: finalName, // TRMITEM NUMELE DIN SHOP
                 pic: user.photoURL,
                 correct: isCorrect,
                 time: timeTaken,
@@ -3335,7 +3370,6 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
         });
     } catch(e) { console.error("Error sending answer:", e); }
 }
-
     async function processRoundResults(data) {
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         const snap = await getDoc(lobbyRef);
@@ -3367,10 +3401,8 @@ function showRoundLeaderboard(data) {
     const votes = data.roundVotes || [];
     votes.sort((a, b) => {
         if (a.correct === b.correct) return a.time - b.time;
-        return b.correct - a.correct;
+        return b.correct ? -1 : 1;
     });
-
-    if(votes.length === 0) container.innerHTML = "<div style='text-align:center; color:#888;'>Nimeni nu a răspuns.</div>";
 
     votes.forEach((v, idx) => {
         const cosm = v.cosmetics || {};
@@ -3378,51 +3410,41 @@ function showRoundLeaderboard(data) {
         const bannerClass = cosm.banner ? cosm.banner.cssClass : '';
         const textClass = cosm.text ? cosm.text.cssClass : '';
         const frameImg = cosm.frame ? cosm.frame.img : '';
-        const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 145;
+        const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 130;
 
         const row = document.createElement('div');
         row.className = `lb-row top-${idx+1} ${bannerClass}`;
-        row.style.marginBottom = "12px";
 
         row.innerHTML = `
             <div>
                 <div class="profile-frame-wrapper">
-                    <img src="${v.pic}" class="pop-img-inner" style="border:2px solid ${color}; width:100%; height:100%;">
+                    <img src="${v.pic}" class="pop-img-inner" style="border: 1px solid ${color};">
                     ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale}%; height:${frameScale}%;">` : ''}
                 </div>
                 
-                <div style="display: flex; flex-direction: column;">
+                <div class="user-name-container">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="${textClass}" style="font-size:16px; font-weight: 800; font-family:'Orbitron'; color:#fff;">${v.name}</span>
-                        ${cosm.badge ? `
-                            <span class="cosmetic-badge" style="background:${cosm.badge.color}; color:#000; padding:2px 8px; font-size:10px; border-radius:4px; font-weight:900;">
-                                ${cosm.badge.text}
-                            </span>
-                        ` : ''}
+                        <span class="display-name ${textClass}">${v.name}</span>
+                        ${cosm.badge ? `<span style="background:${cosm.badge.color}; color:#000; padding:1px 5px; font-size:8px; border-radius:3px; font-weight:900;">${cosm.badge.text}</span>` : ''}
                     </div>
-                    <span style="color:${color}; font-size:11px; font-weight: 600; margin-top: 2px;">A ales: ${v.picked || 'Nimic'}</span>
+                    <span style="color:${color}; font-size:10px; font-weight: 600;">A ales: ${v.picked}</span>
                 </div>
             </div>
 
             <div class="lb-time">
                 <div style="color:${color}; font-weight: 900; font-size: 18px; font-family:'Orbitron';">${v.correct ? '+10' : '0'} pts</div>
-                <div style="font-size: 10px; opacity: 0.7; color:#fff;">(${v.time}s)</div>
+                <div style="font-size: 9px; opacity: 0.8; color:#fff;">(${v.time}s)</div>
             </div>
         `;
         container.appendChild(row);
     });
-
-    // ... restul logicii de timeout ...
+    
+    // Logică Host pentru următoarea întrebare...
     if (auth.currentUser.uid === data.players[0].uid) {
         setTimeout(async () => {
-            let nextIndex = data.currentQIndex + 1;
+            let nextIndex = (data.currentQIndex || 0) + 1;
             if (nextIndex < 15) {
-                await updateDoc(doc(db, "lobbies", currentLobbyId), {
-                    state: 'playing',
-                    roundVotes: [], 
-                    currentQIndex: nextIndex,
-                    lastUpdate: serverTimestamp()
-                });
+                await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'playing', roundVotes: [], currentQIndex: nextIndex, lastUpdate: serverTimestamp() });
             } else {
                 await updateDoc(doc(db, "lobbies", currentLobbyId), { state: 'finished' });
             }
