@@ -1033,30 +1033,51 @@
         cursor: pointer; transition: 0.3s; position: relative;
     }
     .vote-card:hover, .vote-card.selected { border-color: var(--primary); background: rgba(41, 243, 255, 0.1); }
-    .vote-avatars { 
-        display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; margin-top: 10px; min-height: 25px; 
-    }
-    .mini-vote-pfp { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #fff; }
+.vote-avatars {
+    position: static !important; /* Scoatem poziționarea absolută care cauza suprapunerea */
+    margin-top: 8px;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap; /* Permite trecerea pe rândul următor dacă sunt mulți votanți */
+    gap: 2px;
+    width: 100%;
+    min-height: 20px;
+}
+.mini-vote-pfp {
+    width: 18px !important;
+    height: 18px !important;
+    border: 1px solid #fff;
+    margin: 0 !important; /* Resetăm marginile care pot strica alinierea */
+}
 
     /* 3. Leaderboard (Intermediate) */
-    .lb-row {
-        display: flex; justify-content: space-between; align-items: center;
-        background: rgba(0,0,0,0.3); width: 100%; padding: 10px 15px;
-        border-radius: 10px; margin-bottom: 5px; border-left: 3px solid transparent;
-    }
+.lb-row {
+    padding: 8px 12px !important; /* Mai compact pe verticală */
+    margin-bottom: 8px !important;
+    min-height: 60px !important; /* Mai mic decât înainte */
+    border-radius: 15px !important; /* Colțuri mai puțin rotunjite pentru a economisi spațiu */
+    background: rgba(13, 25, 41, 0.9) !important;
+}
     .lb-row.top-1 { border-color: #ffd700; background: rgba(255, 215, 0, 0.1); }
     .lb-row.top-2 { border-color: #c0c0c0; }
     .lb-row.top-3 { border-color: #cd7f32; }
     .lb-time { color: var(--primary); font-family: 'Orbitron'; font-size: 12px; }
 
+.lb-row > div:first-child {
+    gap: 10px !important; /* Spațiu mai mic între avatar și text */
+}
 
 
 /* --- CATEGORII MICI (4 pe rând) --- */
-.cat-grid { 
-    display: grid; 
-    grid-template-columns: repeat(4, 1fr); /* Forțează 4 coloane */
-    gap: 10px; 
-    width: 100%; 
+.cat-grid .game-btn {
+    height: auto !important; /* Permite butonului să crească dacă sunt multe voturi */
+    min-height: 90px !important;
+    padding: 10px 5px !important;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start; /* Aliniaza iconița sus */
 }
 .cat-grid .game-btn { 
     width: 100%; 
@@ -1114,6 +1135,51 @@
 .t-blood { color: #f00; text-shadow: 3px 3px 5px #000; animation: flicker-light 3s infinite; }
 .t-ghost { color: rgba(255,255,255,0.5); text-shadow: 0 0 10px #fff; animation: liquid-flow 10s infinite; font-style: italic; }
 /* --- COSMETICS GRID REVAMP --- */
+
+
+.user-name-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.display-name {
+    font-size: 14px !important; /* Text mai mic pe mobil */
+    line-height: 1.2;
+}
+
+.picked-answer-text {
+    font-size: 10px !important;
+    opacity: 0.9;
+    margin-top: 2px;
+}
+
+.lb-time {
+    min-width: 70px !important; /* Mai îngust pe mobil */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+}
+
+.lb-time div:first-child {
+    font-size: 16px !important; /* Punctele (+10) mai mici */
+}
+
+.lb-time div:last-child {
+    font-size: 9px !important; /* Timpul (1.2s) mai mic */
+}
+
+/* Ajustare specială pentru ecrane foarte mici */
+@media (max-width: 400px) {
+    .profile-frame-wrapper {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+    }
+    .display-name { font-size: 12px !important; }
+}
+
   </style>
 </head>
 <body>
@@ -3199,24 +3265,40 @@ function showRoundLeaderboard(data) {
         const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 130;
 
         const row = document.createElement('div');
+        // Adăugăm flex direct pe rând pentru a controla stânga/dreapta
         row.className = `lb-row top-${idx+1} ${bannerClass}`;
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.justifyContent = "space-between";
+        row.style.padding = "10px 15px";
 
         row.innerHTML = `
-            <div>
-                <div class="profile-frame-wrapper" style="width:45px; height:45px;">
+            <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
+                <!-- 1. AVATAR STÂNGA -->
+                <div class="profile-frame-wrapper" style="width:45px; height:45px; flex-shrink: 0;">
                     <img src="${v.pic}" class="pop-img-inner" style="border: 1px solid ${color};">
                     ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale}%; height:${frameScale}%;">` : ''}
                 </div>
                 
-                <div class="user-name-container">
-                    <span class="display-name ${textClass}" style="color:#fff;">${v.name}</span>
-                    <span style="color:${color}; font-size:11px; font-weight: 600;">A ales: ${v.picked}</span>
+                <!-- 2. NUME (SUS) ȘI RĂSPUNS (JOS) -->
+                <div class="user-name-container" style="margin-left: 12px; display: flex; flex-direction: column; align-items: flex-start; overflow: hidden;">
+                    <span class="display-name ${textClass}" style="color:#fff; font-size: 14px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%; text-align: left;">
+                        ${v.name}
+                    </span>
+                    <span style="color:${color}; font-size: 10px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%; text-align: left;">
+                        A ales: ${v.picked}
+                    </span>
                 </div>
             </div>
 
-            <div class="lb-time">
-                <div style="color:${color}; font-weight: 900; font-size: 20px; font-family:'Orbitron';">${v.correct ? '+10' : '0'} pts</div>
-                <div style="font-size: 10px; opacity: 0.8; color:#fff;">(${v.time}s)</div>
+            <!-- 3. SCOR ȘI TIMP DREAPTA -->
+            <div class="lb-time" style="text-align: right; flex-shrink: 0; margin-left: 10px;">
+                <div style="color:${color}; font-weight: 900; font-size: 18px; font-family:'Orbitron'; line-height: 1;">
+                    ${v.correct ? '+10' : '0'} pts
+                </div>
+                <div style="font-size: 9px; opacity: 0.8; color:#fff; margin-top: 3px;">
+                    (${v.time}s)
+                </div>
             </div>
         `;
         container.appendChild(row);
