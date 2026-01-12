@@ -2819,6 +2819,8 @@ onAuthStateChanged(auth, user => {
     // RULES
     const MIN_PLAYERS = 3; 
 
+
+ 
 function renderLobby(players) {
     const list = document.getElementById('lobbyList');
     const status = document.getElementById('lobbyStatus');
@@ -2826,76 +2828,66 @@ function renderLobby(players) {
     if(!list) return;
     
     list.innerHTML = '';
-    status.innerText = `Jucători: ${players.length}/${MIN_PLAYERS} necesari`;
-    
+    status.innerText = `Jucători: ${players.length}/${MIN_PLAYERS} necesari`; 
+
+    // REDARE JUCĂTORI CU COSMETICE
     players.forEach(p => {
-        // Date cosmetice
-        const banner = p.cosmetics?.bannerClass ? ` ${p.cosmetics.bannerClass}` : "";
-        const nameHtml = p.cosmetics?.textClass ? `<span class="${p.cosmetics.textClass}">${p.name}</span>` : p.name;
-        const frameHtml = p.cosmetics?.frameImg ? `<img src="${p.cosmetics.frameImg}" class="trivia-frame-overlay">` : "";
+        // 1. Pregătim Banner-ul (dacă există)
+        const bannerClass = p.cosmetics?.bannerClass ? ` ${p.cosmetics.bannerClass}` : "";
+        
+        // 2. Pregătim Numele Colorat (dacă există)
+        const nameHtml = p.cosmetics?.textClass 
+            ? `<span class="${p.cosmetics.textClass}">${p.name}</span>` 
+            : p.name;
+            
+        // 3. Pregătim Rama (dacă există)
+        const frameHtml = p.cosmetics?.frameImg 
+            ? `<img src="${p.cosmetics.frameImg}" class="trivia-frame-overlay">` 
+            : "";
 
         list.innerHTML += `
-            <div class="lobby-player${banner}" style="margin-bottom:8px;">
-                <div class="lobby-avatar-box">
-                    <img src="${p.pic}" class="lobby-pfp">
+            <div class="lobby-player${bannerClass}" style="margin-bottom:10px; position:relative; overflow:visible;">
+                <div class="lobby-avatar-box" style="position:relative; width:40px; height:40px; display:flex; align-items:center; justify-content:center; margin-right:15px; flex-shrink:0;">
+                    <img src="${p.pic}" class="lobby-pfp" style="width:100%; height:100%; border-radius:50%; object-fit:cover; z-index:1;">
                     ${frameHtml}
                 </div>
-                <span class="lobby-name">${nameHtml}</span>
+                <span class="lobby-name" style="font-family:'Orbitron'; font-size:14px; z-index:1;">${nameHtml}</span>
             </div>`;
     });
 
-    // Logica de timer rămâne la fel...
+    // LOGICĂ CRONOMETRU (Păstrată 100%)
+    // Pornim doar dacă sunt 3+ jucători
     if(players.length >= MIN_PLAYERS && !lobbyTimerInterval && currentGameState === 'waiting') {
-        // ... (codul tău de timer)
+        timerEl.style.display = 'block';
+        let seconds = 30;
+        
+        lobbyTimerInterval = setInterval(async () => {
+            seconds--;
+            timerEl.innerText = `Jocul începe în ${seconds}...`;
+
+            if (seconds <= 0) {
+                clearInterval(lobbyTimerInterval);
+                // DOAR HOST-UL (primul din listă) schimbă starea în baza de date
+                if (auth.currentUser.uid === players[0].uid) {
+                    await updateDoc(doc(db, "lobbies", currentLobbyId), { 
+                        state: 'voting', 
+                        votes: [], 
+                        lastUpdate: serverTimestamp() 
+                    });
+                }
+            }
+        }, 1000);
+    } 
+    // ANULARE CRONOMETRU dacă scade sub 3 jucători
+    else if (players.length < MIN_PLAYERS) {
+        if(lobbyTimerInterval) {
+            clearInterval(lobbyTimerInterval);
+            lobbyTimerInterval = null;
+        }
+        timerEl.style.display = 'none';
+        timerEl.innerText = "Jocul începe în 30...";
     }
 }
-
-    function renderLobby(players) {
-        const list = document.getElementById('lobbyList');
-        const status = document.getElementById('lobbyStatus');
-        const timerEl = document.getElementById('lobbyTimer');
-        if(!list) return;
-        
-        list.innerHTML = '';
-        status.innerText = `Jucători: ${players.length}/${MIN_PLAYERS} necesari`; // Show 3 required
-        players.forEach(p => {
-            list.innerHTML += `<div class="lobby-player"><img src="${p.pic}" class="lobby-pfp"><span class="lobby-name">${p.name}</span></div>`;
-        });
-
-        // COUNTDOWN LOGIC
-        // Only starts if 3+ players exist
-        if(players.length >= MIN_PLAYERS && !lobbyTimerInterval && currentGameState === 'waiting') {
-            timerEl.style.display = 'block';
-            let seconds = 30;
-            
-            lobbyTimerInterval = setInterval(async () => {
-                seconds--;
-                timerEl.innerText = `Jocul începe în ${seconds}...`;
-
-                if (seconds <= 0) {
-                    clearInterval(lobbyTimerInterval);
-                    // LOCK THE GAME: Host changes state to 'voting'
-                    // This is the point of no return for new players
-                    if (auth.currentUser.uid === players[0].uid) {
-                        await updateDoc(doc(db, "lobbies", currentLobbyId), { 
-                            state: 'voting', 
-                            votes: [], 
-                            lastUpdate: serverTimestamp() 
-                        });
-                    }
-                }
-            }, 1000);
-        } 
-        // CANCEL TIMER if someone leaves and drops below 3
-        else if (players.length < MIN_PLAYERS) {
-            if(lobbyTimerInterval) {
-                clearInterval(lobbyTimerInterval);
-                lobbyTimerInterval = null;
-            }
-            timerEl.style.display = 'none';
-            timerEl.innerText = "Jocul începe în 10...";
-        }
-    }
 
     function startVotingPhase(players) {
         if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
