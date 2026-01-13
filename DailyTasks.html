@@ -935,8 +935,10 @@
         </div>
     </div>
     <!-- NEW OWNER BUTTON -->
-    <button id="ownerResetBtn" class="btn-owner-reset">👑 FORCE RESET (OWNER)</button>
-</main>
+<!-- BUTON DOAR PENTRU OWNER -->
+<button id="ownerResetBtn" style="display:none; background: #ff0000; color: white; border: 2px solid #fff; padding: 10px 20px; border-radius: 50px; font-weight: 900; font-family: 'Orbitron'; cursor: pointer; margin-top: 15px; box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); transition: 0.3s;">
+    👑 FORCE RESET (OWNER)
+</button></main>
 
 <div id="questGrid" class="quests-container"></div>
 
@@ -1847,77 +1849,115 @@ async function resetUserQuests(userRef, snapData) {
 
     // --- 5. AUTH & LOGIC ---
 // --- 5. AUTH & LOGIC (REPARAT) ---
+// --- 5. AUTH & LOGIC (ACTUALIZAT CU OWNER RESET) ---
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // Definim userRef AICI, imediat ce știm cine este user-ul
             const userRef = doc(db, "accounts", user.uid);
 
-            // Actualizăm Header-ul
+            // 1. Logica specială pentru OWNER (nicaemmanuel433qe@gmail.com)
+            if (user.email === 'nicaemmanuel433qe@gmail.com') {
+                const adminBtn = document.getElementById('ownerResetBtn');
+                if (adminBtn) {
+                    adminBtn.style.display = 'inline-block';
+                    adminBtn.onclick = async () => {
+                        if (confirm("👑 Majestatea Ta, dorești să forțezi resetarea quest-urilor?")) {
+                            try {
+                                // Forțăm resetarea prin modificarea block-ului în Firebase
+                                await updateDoc(userRef, { lastResetBlock: "FORCE_RESET" });
+                                alert("Resetare declanșată! Pagina se va reîncărca.");
+                                location.reload();
+                            } catch (e) { alert("Eroare: " + e.message); }
+                        }
+                    };
+                }
+            }
+
+            // 2. Actualizăm interfața de Header
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
 
-            // Pornim ascultarea datelor în timp real
+            // 3. Ascultăm datele în timp real
             onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
-                // Verificăm resetarea/pierderea streak-ului
+                // Verificăm dacă blocul de 12 ore s-a schimbat sau s-a ratat streak-ul
                 await resetUserQuests(userRef, data);
                 
-                // --- LOGICĂ AWARD: TOATE CELE 6 QUESTURI ---
+                // --- LOGICĂ PREMIU SUPREM: 6/6 QUESTURI ---
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
+                // Dacă a terminat tot și nu a primit deja premiul pe acest block
                 if (activeIds.length > 0 && finishedCount >= activeIds.length) {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         const oldStr = data.streak || 0;
+                        const newStr = oldStr + 1;
+
+                        // Salvăm în Firebase: +1 Streak, +1 Diamond
                         await updateDoc(userRef, {
                             streak: increment(1),
                             diamonds: increment(1),
                             lastStreakAwardedBlock: data.lastResetBlock
                         });
+
+                        // Afișăm Modalul de foc (Fire Reward)
                         document.getElementById('streakOld').innerText = oldStr;
-                        document.getElementById('streakNew').innerText = oldStr + 1;
+                        document.getElementById('streakNew').innerText = newStr;
                         document.getElementById('streakRewardModal').classList.add('active');
                     }
                 }
 
-                // Populare Modal Account
+                // --- POPULARE MODAL ACCOUNT ---
+                // Imagine & Ramă
                 document.getElementById('popUserImg').src = data.image || user.photoURL;
                 const popFrame = document.getElementById('popUserFrame');
-                if(popFrame) {
+                if (popFrame) {
                     if (data.equippedFrame && data.equippedFrame.img) {
                         popFrame.src = data.equippedFrame.img;
                         popFrame.style.display = "block";
                         const scale = data.equippedFrame.scale || 1.45;
                         popFrame.style.width = `${scale * 100}%`;
                         popFrame.style.height = `${scale * 100}%`;
-                    } else { popFrame.style.display = "none"; }
+                    } else {
+                        popFrame.style.display = "none";
+                    }
                 }
 
+                // Nume (Lost Soul Protection & Colored Text)
                 const nameEl = document.getElementById('popUserName');
                 let rawName = data.username || user.displayName;
+                if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+
                 if (data.equippedText && data.equippedText.cssClass) {
                     nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                } else { nameEl.innerText = rawName; }
+                } else {
+                    nameEl.innerText = rawName;
+                }
 
+                // Valută dublă & Email
                 document.getElementById('popUserEmail').innerText = data.email || user.email;
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
-                document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
                 
+                // Streak Text
+                const streakTxtEl = document.querySelector('.streak-txt');
+                if (streakTxtEl) streakTxtEl.innerText = `Daily Streak: ${data.streak || 0}`;
+                
+                // Randăm cardurile de quest-uri
                 renderQuests(data);
             });
 
         } else {
-            // Reset interfață dacă nu e logat
+            // Reset interfață dacă utilizatorul se deloghează
             document.getElementById('headerLoginText').innerText = "LOGIN";
             document.getElementById('headerUserImg').style.display = "none";
-            questGrid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5;">Loghează-te pentru a vedea task-urile.</p>';
+            const grid = document.getElementById('questGrid');
+            if (grid) grid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5; color:#fff; font-family:Orbitron; padding-top:50px;">Loghează-te pentru a vedea task-urile.</p>';
         }
-    }); 
+    });
 
     // Handle Login/Modals
     const handleLogin = async () => {
