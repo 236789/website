@@ -1260,7 +1260,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, getCountFromServer, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, getCountFromServer, deleteDoc, onSnapshot  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -1999,57 +1999,112 @@ window.openUserProfile = async (uid) => {
 
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
-onAuthStateChanged(auth, async (user) => {
+// --- 5. AUTH & LOGIC (ACTUALIZAT PENTRU FEEDBACK.HTML) ---
+    onAuthStateChanged(auth, async (user) => {
         if(user) {
             const userRef = doc(db, "accounts", user.uid);
             
-            // UI Header
+            // 1. Actualizăm interfața de bază (Header)
             document.getElementById('headerLoginText').innerText = "ACCOUNT";
             document.getElementById('headerUserImg').src = user.photoURL;
             document.getElementById('headerUserImg').style.display = "block";
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+            
+            // Verificare IP Ban
+            if(userIP) {
+                const banSnap = await getDoc(doc(db, "banned_ips", userIP));
+                if(banSnap.exists()) { 
+                    document.getElementById('lockedView').style.display = 'none'; 
+                    document.getElementById('bannedView').style.display = 'flex'; 
+                    return; 
+                }
+            }
+            
+            document.getElementById('lockedView').style.display = 'none';
+            document.getElementById('chatView').style.display = 'flex';
 
+            // 2. ASCULTĂM LIVE DATELE UTILIZATORULUI (onSnapshot)
             onSnapshot(userRef, async (snap) => {
                 if(!snap.exists()) return;
                 const data = snap.data();
+
+                // Verificăm dacă timpul a expirat (Resetare/Pierdere Streak la 12h)
                 await resetUserQuests(userRef, data);
 
-                // --- LOGICĂ 6/6 REWARD ---
+                // --- LOGICĂ PREMIU SUPREM: 6/6 QUESTURI ---
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
+                // Dacă a terminat tot și nu a primit deja premiul pe acest block
                 if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         const oldStr = data.streak || 0;
-                        await updateDoc(userRef, { streak: increment(1), diamonds: increment(1), lastStreakAwardedBlock: data.lastResetBlock });
+                        const newStr = oldStr + 1;
+
+                        // Salvăm în Firebase: +1 Streak, +1 Diamond
+                        await updateDoc(userRef, {
+                            streak: increment(1),
+                            diamonds: increment(1),
+                            lastStreakAwardedBlock: data.lastResetBlock
+                        });
+
+                        // Afișăm Modalul Premium FIRE (Orange/Red)
                         document.getElementById('streakOld').innerText = oldStr;
-                        document.getElementById('streakNew').innerText = oldStr + 1;
+                        document.getElementById('streakNew').innerText = newStr;
                         document.getElementById('streakRewardModal').classList.add('active');
                     }
                 }
 
-                // Populare Modal
-                document.getElementById('popUserName').innerText = data.username;
-                document.getElementById('popUserEmail').innerText = data.email;
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins);
-                document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
-                document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-                document.getElementById('popUserImg').src = data.image;
-
-                // Frame Logic
+                // --- POPULARE MODAL ACCOUNT ---
+                // Imagine & Ramă
+                document.getElementById('popUserImg').src = data.image || user.photoURL;
                 const popFrame = document.getElementById('popUserFrame');
-                if(data.equippedFrame?.img) {
-                    popFrame.src = data.equippedFrame.img; popFrame.style.display = 'block';
-                    const s = data.equippedFrame.scale || 1.45;
-                    popFrame.style.width = (s*100)+'%'; popFrame.style.height = (s*100)+'%';
-                } else popFrame.style.display = 'none';
+                if (popFrame) {
+                    if (data.equippedFrame && data.equippedFrame.img) {
+                        popFrame.src = data.equippedFrame.img;
+                        popFrame.style.display = "block";
+                        const scale = data.equippedFrame.scale || 1.45;
+                        popFrame.style.width = `${scale * 100}%`;
+                        popFrame.style.height = `${scale * 100}%`;
+                    } else {
+                        popFrame.style.display = "none";
+                    }
+                }
+
+                // Nume (Lost Soul Protection & Colored Text)
+                const popName = document.getElementById('popUserName');
+                let rawName = data.username || user.displayName;
+                if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+
+                if (data.equippedText && data.equippedText.cssClass) {
+                    popName.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                } else {
+                    popName.innerText = rawName;
+                }
+
+                // Valută dublă (FORMATATĂ 1k, 10k) & Email
+                document.getElementById('popUserEmail').innerText = data.email || user.email;
+                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+                
+                // Streak Text
+                const streakTxtEl = document.querySelector('.streak-txt');
+                if (streakTxtEl) streakTxtEl.innerText = `Daily Streak: ${data.streak || 0}`;
             });
 
-            // Initial load of feedbacks
-            if(reviewsListContainer.innerHTML === "") loadNextBatch();
+            // Încărcăm feed-ul de feedback-uri (dacă e prima dată)
+            if(reviewsListContainer.innerHTML === "") {
+                loadNextBatch();
+                fetchTotalCount();
+            }
+            
+            updateOnlineStatus(); // Pornim status tracker
         } else {
-            document.getElementById('headerLoginText').innerText = "LOGIN";
-            document.getElementById('chatView').style.display = 'none';
+            // Reset interfață la Logout
+            document.getElementById('headerLoginText').innerText = "LOGIN"; 
+            document.getElementById('headerUserImg').style.display = "none";
+            document.getElementById('chatView').style.display = 'none'; 
             document.getElementById('lockedView').style.display = 'flex';
         }
     });
