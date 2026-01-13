@@ -1190,6 +1190,9 @@
     </div>
 </div>
 
+<!-- Pune asta chiar la finalul paginii, inainte de </body> -->
+<img src="https://iili.io/fv5bmtj.png" id="flyingDiamond" style="position: fixed; width: 50px; z-index: 99999; display: none; pointer-events: none;">
+
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -1946,39 +1949,49 @@ async function resetUserQuests(userRef, snapData) {
     const block = hours < 12 ? 'AM' : 'PM';
     const resetKey = `${dateStr}-${block}`;
 
+    // Detectăm dacă s-a schimbat intervalul de 12 ore
     if (snapData.lastResetBlock && snapData.lastResetBlock !== resetKey) {
-        let currentStreak = snapData.streak || 0;
+        console.log("Timpul a expirat. Verificăm progresul...");
+        
+        let finalStreak = snapData.streak || 0;
+        let showMissed = false;
 
-        // If they DIDN'T get the reward in the last 12h block
+        // VERIFICARE: Dacă NU ai terminat misiunile (AwardedBlock nu e egal cu ResetBlock-ul care tocmai s-a încheiat)
         if (snapData.lastStreakAwardedBlock !== snapData.lastResetBlock) {
-            
-            // SHOW MISSED MODAL WITH COUNTDOWN
-            document.getElementById('streakOldMissed').innerText = currentStreak;
-            document.getElementById('streakMissedModal').classList.add('active');
-            
-            let tempStreak = currentStreak;
-            const interval = setInterval(() => {
-                if(tempStreak > 0) {
-                    tempStreak--;
-                    document.getElementById('streakOldMissed').innerText = tempStreak;
-                    // Add a tiny shake effect if you want
-                    document.getElementById('streakOldMissed').style.transform = `translateX(${Math.random() * 5}px)`;
-                } else {
-                    clearInterval(interval);
-                    document.getElementById('streakOldMissed').style.transform = 'none';
-                }
-            }, 300);
-
-            currentStreak = 0;
+            showMissed = true;
+            // Animație vizuală
+            const missedModal = document.getElementById('streakMissedModal');
+            const missedTxt = document.getElementById('streakOldMissed');
+            if (missedModal && missedTxt) {
+                let temp = finalStreak;
+                missedTxt.innerText = temp;
+                missedModal.classList.add('active');
+                const interval = setInterval(() => {
+                    if (temp > 0) { temp--; missedTxt.innerText = temp; }
+                    else clearInterval(interval);
+                }, 300);
+            }
+            finalStreak = 0; // RESET TOTAL LA 0
         }
 
+        // Resetăm tot în Firebase: Streak la 0, counters la 0, quest-uri noi
         const persistentCompleted = (snapData.completedQuests || []).filter(id => quests.find(x => x.id === id)?.oneTime);
+        const newDailyIds = quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id);
+
         await updateDoc(userRef, {
+            streak: finalStreak,
             messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
+            kevinMessagesToday: 0, newsVisitedToday: 0, feedbackGivenToday: 0,
             lastResetBlock: resetKey,
-            activeDailyQuests: generateDailyIds(),
-            completedQuests: persistentCompleted,
-            streak: currentStreak
+            activeDailyQuests: newDailyIds,
+            completedQuests: persistentCompleted
+            // NU dăm diamant aici!
+        });
+    } else if (!snapData.lastResetBlock) {
+        // Prima logare
+        await updateDoc(userRef, { 
+            lastResetBlock: resetKey, 
+            activeDailyQuests: quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id) 
         });
     }
 }
@@ -1995,16 +2008,49 @@ async function resetUserQuests(userRef, snapData) {
                 const adminBtn = document.getElementById('ownerResetBtn');
                 if (adminBtn) {
                     adminBtn.style.display = 'inline-block';
-                    adminBtn.onclick = async () => {
-                        if (confirm("👑 Majestatea Ta, dorești să forțezi resetarea quest-urilor?")) {
-                            try {
-                                // Forțăm resetarea prin modificarea block-ului în Firebase
-                                await updateDoc(userRef, { lastResetBlock: "FORCE_RESET" });
-                                alert("Resetare declanșată! Pagina se va reîncărca.");
-                                location.reload();
-                            } catch (e) { alert("Eroare: " + e.message); }
-                        }
-                    };
+adminBtn.onclick = async () => {
+    if (confirm("👑 Majestatea Ta, dorești să forțezi resetarea celor 13 misiuni zilnice?")) {
+        try {
+            // 1. Luăm datele actuale ca să vedem ce quest-uri permanente ai terminat
+            const snap = await getDoc(userRef);
+            const currentCompleted = snap.data().completedQuests || [];
+            
+            // 2. Filtrăm lista: păstrăm DOAR cele care sunt "One Time Only"
+            const persistentQuests = currentCompleted.filter(id => id === 'social3' || id === 'review');
+
+            // 3. Update masiv în Firebase pentru a reseta TOT
+            await updateDoc(userRef, { 
+                lastResetBlock: "FORCE_RESET",
+                completedQuests: persistentQuests, // Resetăm restul, păstrăm 1-time-only
+                
+                // Resetează toate contoarele de progres pentru misiunile zilnice:
+                messagesSentToday: 0,           // Misiune: msg3
+                wallRepliesToday: 0,            // Misiune: wall_reply_5
+                wallReactionsToday: 0,          // Misiune: wall_react_10
+                kevinMessagesToday: 0,          // Misiune: kevin_talk_15
+                tiktoksFollowed: 0,             // Misiune: tiktok5
+                newsVisitedToday: 0,            // Misiune: visit_news
+                feedbackGivenToday: 0,          // Misiune: give_feedback
+                visited_lost_soul_today: false, // Misiune: meet_team_hunt (Lost Soul)
+                visited_kevin_trinity_today: false, // Misiune: meet_team_hunt (Kevin)
+                wallLongMsgSent: false,         // Misiune: wall_long_msg
+                shopBadgeBought: 0,             // Misiune: buy_badge
+                shopBannerBought: 0,            // Misiune: buy_banner
+                shopFrameBought: 0,             // Misiune: buy_frame
+                coinsDonatedToday: 0,           // Misiune: donate_100
+                triviaSingleCorrectToday: 0,    // Misiune: trivia_single_5
+                triviaMultiCorrectToday: 0,     // Misiune: trivia_multi_5
+                galleryLikesToday: 0,           // Misiune: gallery_task
+                galleryCommentsToday: 0         // Misiune: gallery_task
+            });
+
+            alert("👑 Resetare completă! Quest-urile permanente au fost păstrate.");
+            // Nu punem reload() pentru a lăsa onSnapshot să facă magia live
+        } catch (e) { 
+            alert("Eroare la reset: " + e.message); 
+        }
+    }
+};
                 }
             }
 
@@ -2014,35 +2060,51 @@ async function resetUserQuests(userRef, snapData) {
             document.getElementById('headerUserImg').style.display = "block";
 
             // 3. Ascultăm datele în timp real
+// Variabilă globală în script pentru a preveni declanșarea dublă a ferestrei
+            window.isAwardingPremiu = false;
+
             onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
-                // Verificăm dacă blocul de 12 ore s-a schimbat sau s-a ratat streak-ul
+                // 1. Verificăm/Resetăm quest-urile (Logica de streak pierdut)
                 await resetUserQuests(userRef, data);
                 
-                // --- LOGICĂ PREMIU SUPREM: 6/6 QUESTURI ---
+                // --- LOGICĂ PREMIU SUPREM (6/6) REPARATĂ ---
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
+                // Numărăm doar dacă misiunile terminate se află în lista de misiuni active
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // Dacă a terminat tot și nu a primit deja premiul pe acest block
-                if (activeIds.length > 0 && finishedCount >= activeIds.length) {
+                // CONDIȚII SIGURANȚĂ:
+                // - Să aibă 6 quest-uri active
+                // - Să fie toate 6 gata
+                // - Să nu fi primit deja premiul pe acest bloc
+                // - Să NU fie în modul "FORCE_RESET" (repară bug-ul cu diamantul primit la reset)
+                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        const oldStr = data.streak || 0;
-                        const newStr = oldStr + 1;
+                        
+                        if (!window.isAwardingPremiu) {
+                            window.isAwardingPremiu = true;
 
-                        // Salvăm în Firebase: +1 Streak, +1 Diamond
-                        await updateDoc(userRef, {
-                            streak: increment(1),
-                            diamonds: increment(1),
-                            lastStreakAwardedBlock: data.lastResetBlock
-                        });
+                            const oldStr = data.streak || 0;
+                            const newStr = oldStr + 1;
 
-                        // Afișăm Modalul de foc (Fire Reward)
-                        document.getElementById('streakOld').innerText = oldStr;
-                        document.getElementById('streakNew').innerText = newStr;
-                        document.getElementById('streakRewardModal').classList.add('active');
+                            // Update REAL în Firebase
+                            await updateDoc(userRef, {
+                                streak: increment(1),
+                                diamonds: increment(1),
+                                lastStreakAwardedBlock: data.lastResetBlock
+                            });
+
+                            // Afișăm Pop-up-ul Premium
+                            document.getElementById('streakOld').innerText = oldStr;
+                            document.getElementById('streakNew').innerText = newStr;
+                            document.getElementById('streakRewardModal').classList.add('active');
+                            
+                            // Deblocăm după 2 secunde pentru siguranță
+                            setTimeout(() => { window.isAwardingPremiu = false; }, 2000);
+                        }
                     }
                 }
 
@@ -2073,16 +2135,16 @@ async function resetUserQuests(userRef, snapData) {
                     nameEl.innerText = rawName;
                 }
 
-                // Valută dublă & Email
+                // Valută dublă (FORMATATĂ 1k, 10k)
                 document.getElementById('popUserEmail').innerText = data.email || user.email;
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
                 
-                // Streak Text
+                // Update Streak Text în Modal
                 const streakTxtEl = document.querySelector('.streak-txt');
                 if (streakTxtEl) streakTxtEl.innerText = `Daily Streak: ${data.streak || 0}`;
                 
-                // Randăm cardurile de quest-uri
+                // Randăm cardurile de misiuni pe ecran
                 renderQuests(data);
             });
 
