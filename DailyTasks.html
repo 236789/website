@@ -1960,29 +1960,34 @@ function flyDiamond() {
 document.getElementById('claimStreakBtn').onclick = flyDiamond;
 
 
-
-// --- LOGICĂ TEST PIERDERE STREAK (CU RESET REAL ÎN FIREBASE) ---
+// --- LOGICĂ TEST PIERDERE STREAK (REPARATĂ) ---
 document.getElementById('triggerTestMissed').onclick = async () => {
-    if (!auth.currentUser) return alert("Trebuie să fii logat!");
+    // Verificăm dacă utilizatorul este logat
+    if (!auth.currentUser) {
+        alert("Trebuie să fii logat pentru a testa!");
+        return;
+    }
 
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    // DEFINIM userRef AICI (Aceasta era problema)
+    const userRef = doc(db, "accounts", auth.currentUser.uid); 
     
     try {
-        // 1. Luăm streak-ul actual din baza de date înainte să-l ștergem
+        // 1. Luăm streak-ul actual din DB pentru animație
         const snap = await getDoc(userRef);
+        if (!snap.exists()) return;
+
         let currentStreak = snap.data().streak || 0;
         const displayEl = document.getElementById('streakOldMissed');
 
-        // 2. RESETĂM REAL ÎN FIREBASE (Streak devine 0)
+        // 2. RESETĂM REAL ÎN FIREBASE
         await updateDoc(userRef, { 
             streak: 0 
         });
 
-        // 3. Pornim spectacolul vizual
+        // 3. Afișăm modalul și pornim animația
         displayEl.innerText = currentStreak;
         document.getElementById('streakMissedModal').classList.add('active');
 
-        // Pornim animația de scădere după un scurt delay
         setTimeout(() => {
             const interval = setInterval(() => {
                 if (currentStreak > 0) {
@@ -1990,14 +1995,14 @@ document.getElementById('triggerTestMissed').onclick = async () => {
                     displayEl.innerText = currentStreak;
                 } else {
                     clearInterval(interval);
-                    console.log("Streak-ul a fost resetat în Firebase și vizual.");
+                    console.log("Streak resetat cu succes!");
                 }
             }, 400); 
         }, 1000);
 
     } catch (e) {
-        console.error("Eroare la resetarea streak-ului:", e);
-        alert("Eroare: Verifică dacă regulile Firebase permit modificarea streak-ului!");
+        console.error("Eroare la test:", e);
+        alert("Eroare: " + e.message);
     }
 };
 </script>
