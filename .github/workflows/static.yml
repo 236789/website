@@ -3,6 +3,7 @@ name: Deploy Pages
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,33 +11,35 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages-deploy"
+  group: "pages"
   cancel-in-progress: true
 
 jobs:
   deploy:
+    # We changed the name to "production" to bypass the "stuck" environment
     environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-
+      name: production 
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # Skips your 801 old commits entirely
 
-      # THE FIX: Removes 801 commits and disables the slow Jekyll engine
-      - name: Cleanup and Optimize
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Clean and Disable Jekyll
         run: |
           rm -rf .git
-          rm -rf node_modules
           touch .nojekyll
 
-      - name: Upload site
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: '.'
 
-      - id: deploy
-        name: Deploy
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
-        timeout-minutes: 20
