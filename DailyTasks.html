@@ -1951,47 +1951,91 @@ async function resetUserQuests(userRef, snapData) {
 
     // Detectăm dacă s-a schimbat intervalul de 12 ore
     if (snapData.lastResetBlock && snapData.lastResetBlock !== resetKey) {
-        console.log("Timpul a expirat. Verificăm progresul...");
+        console.log("Interval nou detectat (" + resetKey + "). Verificăm streak-ul...");
         
         let finalStreak = snapData.streak || 0;
-        let showMissed = false;
 
-        // VERIFICARE: Dacă NU ai terminat misiunile (AwardedBlock nu e egal cu ResetBlock-ul care tocmai s-a încheiat)
+        // VERIFICARE: Dacă NU ai terminat misiunile în blocul care tocmai s-a încheiat
         if (snapData.lastStreakAwardedBlock !== snapData.lastResetBlock) {
-            showMissed = true;
-            // Animație vizuală
+            
+            // --- LOGICĂ ANIMAȚIE ADAPTIVĂ ---
             const missedModal = document.getElementById('streakMissedModal');
             const missedTxt = document.getElementById('streakOldMissed');
+            
             if (missedModal && missedTxt) {
                 let temp = finalStreak;
                 missedTxt.innerText = temp;
                 missedModal.classList.add('active');
-                const interval = setInterval(() => {
-                    if (temp > 0) { temp--; missedTxt.innerText = temp; }
-                    else clearInterval(interval);
-                }, 300);
+
+                // Funcție recursivă pentru viteză variabilă
+                const runCountdown = () => {
+                    if (temp > 0) {
+                        temp--;
+                        missedTxt.innerText = temp;
+
+                        // Calculăm viteza:
+                        let delay = 400; // Viteza de final (lentă)
+                        if (temp > 20) delay = 40;      // Foarte rapid
+                        else if (temp > 10) delay = 100; // Mediu
+                        else if (temp > 5) delay = 200;  // Începe să încetinească
+
+                        setTimeout(runCountdown, delay);
+                    }
+                };
+                
+                // Pornim animația după 800ms (să apuce să vadă numărul mare)
+                setTimeout(runCountdown, 800);
             }
-            finalStreak = 0; // RESET TOTAL LA 0
+
+            finalStreak = 0; // Resetăm streak-ul în variabila ce va fi salvată
         }
 
-        // Resetăm tot în Firebase: Streak la 0, counters la 0, quest-uri noi
-        const persistentCompleted = (snapData.completedQuests || []).filter(id => quests.find(x => x.id === id)?.oneTime);
-        const newDailyIds = quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id);
+        // Păstrăm quest-urile permanente (One Time)
+        const persistentCompleted = (snapData.completedQuests || []).filter(id => 
+            quests.find(x => x.id === id)?.oneTime
+        );
 
+        // Generăm 6 quest-uri noi random (fără cele one-time)
+        const newDailyIds = quests
+            .filter(q => !q.oneTime)
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 6)
+            .map(q => q.id);
+
+        // --- UPDATE MASIV FIREBASE: RESETĂM TOATE CELE 13+ CONTOARE ---
         await updateDoc(userRef, {
             streak: finalStreak,
-            messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
-            kevinMessagesToday: 0, newsVisitedToday: 0, feedbackGivenToday: 0,
             lastResetBlock: resetKey,
             activeDailyQuests: newDailyIds,
-            completedQuests: persistentCompleted
-            // NU dăm diamant aici!
+            completedQuests: persistentCompleted,
+
+            // RESETARE PROGRES ZILNIC:
+            messagesSentToday: 0,           // msg3
+            wallRepliesToday: 0,            // wall_reply_5
+            wallReactionsToday: 0,          // wall_react_10
+            kevinMessagesToday: 0,          // kevin_talk_15
+            tiktoksFollowed: 0,             // tiktok5
+            newsVisitedToday: 0,            // visit_news
+            feedbackGivenToday: 0,          // give_feedback
+            visited_lost_soul_today: false, // meet_team_hunt
+            visited_kevin_trinity_today: false, // meet_team_hunt
+            wallLongMsgSent: false,         // wall_long_msg
+            shopBadgeBought: 0,             // buy_badge
+            shopBannerBought: 0,            // buy_banner
+            shopFrameBought: 0,             // buy_frame
+            coinsDonatedToday: 0,           // donate_100
+            triviaSingleCorrectToday: 0,    // trivia_single_5
+            triviaMultiCorrectToday: 0,     // trivia_multi_5
+            galleryLikesToday: 0,           // gallery_task
+            galleryCommentsToday: 0          // gallery_task
         });
+
     } else if (!snapData.lastResetBlock) {
-        // Prima logare
+        // Inițializare pentru utilizatori noi
+        const firstDailyIds = quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id);
         await updateDoc(userRef, { 
             lastResetBlock: resetKey, 
-            activeDailyQuests: quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id) 
+            activeDailyQuests: firstDailyIds 
         });
     }
 }
@@ -2009,38 +2053,30 @@ async function resetUserQuests(userRef, snapData) {
                 if (adminBtn) {
                     adminBtn.style.display = 'inline-block';
 adminBtn.onclick = async () => {
-    if (confirm("👑 Majestatea Ta, vrei să simulezi trecerea celor 12 ore și să vezi animația de pierdere streak?")) {
+    if (confirm("👑 Majestatea Ta, vrei să resetezi REAL streak-ul la 0 și să vezi animația?")) {
         try {
-            // 1. Luăm quest-urile permanente (One Time) ca să nu le pierzi
             const snap = await getDoc(userRef);
-            const currentCompleted = snap.data().completedQuests || [];
+            const currentData = snap.data();
+            const oldStreak = currentData.streak || 0;
+            const currentCompleted = currentData.completedQuests || [];
+            
+            // Păstrăm quest-urile permanente
             const persistentQuests = currentCompleted.filter(id => id === 'social3' || id === 'review');
 
-            // 2. Resetăm Firebase
+            // 1. UPDATE REAL ÎN FIREBASE (Forțăm streak 0 și block fals)
             await updateDoc(userRef, { 
-                // Punem un block care NU există. 
-                // Asta va forța funcția resetUserQuests să creadă că e un interval nou.
+                streak: 0,
                 lastResetBlock: "SIMULARE_RESET", 
-                
-                // Golim quest-urile terminate (păstrăm doar pe cele 1-time)
                 completedQuests: persistentQuests,
-
-                // Resetează TOATE cele 13 contoare:
+                // Resetăm counters
                 messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
-                kevinMessagesToday: 0, tiktoksFollowed: 0, newsVisitedToday: 0,
-                feedbackGivenToday: 0, visited_lost_soul_today: false,
-                visited_kevin_trinity_today: false, wallLongMsgSent: false,
-                shopBadgeBought: 0, shopBannerBought: 0, shopFrameBought: 0,
-                coinsDonatedToday: 0, triviaSingleCorrectToday: 0,
-                triviaMultiCorrectToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0
+                kevinMessagesToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0
             });
 
-            // NU PUNEM RELOAD. 
-            // onSnapshot va detecta "SIMULARE_RESET", va vedea că e diferit de block-ul real (AM/PM)
-            // și va porni automat animația de Missed Streak și va genera 6 quest-uri noi.
-        } catch (e) { 
-            alert("Eroare: " + e.message); 
-        }
+            // 2. PORNEȘTE ANIMAȚIA VIZUALĂ (Folosind valoarea veche pe care am salvat-o)
+            runAdaptiveStreakAnimation(oldStreak);
+
+        } catch (e) { alert("Eroare Firebase: " + e.message); }
     }
 };
                 }
