@@ -174,11 +174,64 @@
     .streak-txt { font-weight: 800; color: #ff4500; font-size: 13px; }
 
     /* KSDA PUNCTE STYLE */
-    .coins-section {
-        display: flex; flex-direction: column; align-items: center; gap: 5px;
-        margin-bottom: 25px; background: rgba(255, 255, 255, 0.03);
-        padding: 12px; border-radius: 20px; border: 1px solid var(--glass-border);
-    }
+/* --- NEW DUAL CURRENCY BOXES --- */
+.currency-wrapper {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 25px;
+    padding: 0 5px;
+}
+
+.currency-card {
+    flex: 1;
+    background: rgba(5, 11, 20, 0.6);
+    border-radius: 18px;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid transparent; /* Base for animation */
+}
+
+/* Gold Animation for KSDA Coins */
+.card-ksda {
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.1);
+    animation: goldGlow 3s infinite alternate;
+}
+
+/* Emerald Animation for Diamonds */
+.card-diamonds {
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
+    animation: emeraldGlow 3s infinite alternate-reverse;
+}
+
+@keyframes goldGlow {
+    0% { border-color: rgba(255, 215, 0, 0.2); box-shadow: 0 0 5px rgba(255, 215, 0, 0.2); }
+    100% { border-color: rgba(255, 215, 0, 0.8); box-shadow: 0 0 15px rgba(255, 215, 0, 0.5); }
+}
+
+@keyframes emeraldGlow {
+    0% { border-color: rgba(0, 255, 136, 0.2); box-shadow: 0 0 5px rgba(0, 255, 136, 0.2); }
+    100% { border-color: rgba(0, 255, 136, 0.8); box-shadow: 0 0 15px rgba(0, 255, 136, 0.5); }
+}
+
+.currency-icon {
+    width: 32px !important;
+    height: 32px !important;
+    object-fit: contain;
+    margin-bottom: 5px;
+}
+
+.currency-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 900;
+    color: #fff;
+}
     .coins-label { font-family: 'Orbitron'; font-size: 10px; color: var(--primary); text-transform: uppercase; }
     .coins-display { display: flex; align-items: center; gap: 10px; }
     /* FIXED COIN ICON SIZE */
@@ -1068,14 +1121,20 @@
             <span class="streak-txt">Daily Streak: 0</span>
         </div>
 
-        <!-- PUNCTE KSDA SECTION -->
-        <div class="coins-section">
-            <span class="coins-label">Puncte KSDA</span>
-            <div class="coins-display">
-                <img src="https://iili.io/fhc1SKQ.png" class="coins-icon-img" alt="Coins" style="width:25px; height:25px;">
-                <span id="popUserCoins" class="coins-count">0</span>
-            </div>
-        </div>
+<!-- DUAL CURRENCY SECTION -->
+<div class="currency-wrapper">
+    <!-- KSDA COINS CARD -->
+    <div class="currency-card card-ksda">
+        <img src="https://iili.io/fhc1SKQ.png" class="currency-icon" alt="Coins">
+        <span id="popUserCoins" class="currency-value">0</span>
+    </div>
+
+    <!-- DIAMONDS CARD -->
+    <div class="currency-card card-diamonds">
+        <img src="https://iili.io/fv5bmtj.png" class="currency-icon" alt="Diamonds">
+        <span id="popUserDiamonds" class="currency-value">0</span>
+    </div>
+</div>
 
         <div class="pop-btns">
             <a href="DailyTasks.html" class="btn-tasks">
@@ -1874,6 +1933,13 @@ window.equipText = async (id, cssClass) => {
         }
     }
 
+
+function formatCurrency(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return num || 0;
+}
+
     // Attach listeners
     window.addEventListener('scroll', updateOnlineStatus);
     window.addEventListener('click', updateOnlineStatus);
@@ -1895,6 +1961,7 @@ window.equipText = async (id, cssClass) => {
                     email: user.email,
                     image: user.photoURL,
                     coins: 250,
+                    diamonds: 0, 
                     streak: 0,
                     ip: ip,
                     joinedAt: new Date(),
@@ -2157,75 +2224,91 @@ onAuthStateChanged(auth, user => {
             const totalGlobal = metaSnap.data()?.totalNews || 0;
 
             // 2. Ascultăm datele utilizatorului
-            onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
-                if(uSnap.exists()) {
-                    const data = uSnap.data();
-                    
-                    // --- AVATAR & FRAME LOGIC ---
-                    document.getElementById('popUserImg').src = data.image;
-                    const popFrame = document.getElementById('popUserFrame');
-                    if(popFrame) {
-                        if (data.equippedFrame && data.equippedFrame.img) {
-                            popFrame.src = data.equippedFrame.img;
-                            popFrame.style.display = "block";
-                            const scale = data.equippedFrame.scale || 1.45;
-                            popFrame.style.width = `${scale * 100}%`;
-                            popFrame.style.height = `${scale * 100}%`;
-                        } else {
-                            popFrame.style.display = "none";
-                        }
-                    }
+onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
+    if(uSnap.exists()) {
+        const data = uSnap.data();
+        
+        // Funcție internă pentru formatare (1000 -> 1k)
+        const formatCurrency = (num) => {
+            if (!num) return "0";
+            if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            return num;
+        };
 
-                    // --- NUME COLORAT (equippedText) ---
-                    let rawName = data.username || "Anonim";
-                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+        // --- AVATAR & FRAME LOGIC ---
+        document.getElementById('popUserImg').src = data.image;
+        const popFrame = document.getElementById('popUserFrame');
+        if(popFrame) {
+            if (data.equippedFrame && data.equippedFrame.img) {
+                popFrame.src = data.equippedFrame.img;
+                popFrame.style.display = "block";
+                const scale = data.equippedFrame.scale || 1.45;
+                popFrame.style.width = `${scale * 100}%`;
+                popFrame.style.height = `${scale * 100}%`;
+            } else {
+                popFrame.style.display = "none";
+            }
+        }
 
-                    if (data.equippedText && data.equippedText.cssClass) {
-                        document.getElementById('popUserName').innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else {
-                        document.getElementById('popUserName').innerText = rawName;
-                    }
+        // --- NUME COLORAT (equippedText) ---
+        let rawName = data.username || "Anonim";
+        if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
 
-                    // --- STACKED BADGES LOGIC (Staff + Cosmetic) ---
-                    const popBadgeBox = document.getElementById('popUserBadges');
-                    if(popBadgeBox) {
-                        let staffHtml = "";
-                        const email = data.email || "";
-                        
-                        if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                        else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                        else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                        else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                        
-                        let cosmeticHtml = "";
-                        if(data.equippedBadge) {
-                            cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                        }
-                        popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
-                    }
+        if (data.equippedText && data.equippedText.cssClass) {
+            document.getElementById('popUserName').innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+        } else {
+            document.getElementById('popUserName').innerText = rawName;
+        }
 
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    document.getElementById('popUserCoins').innerText = data.coins || 0;
-                    document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+        // --- STACKED BADGES LOGIC (Staff + Cosmetic) ---
+        const popBadgeBox = document.getElementById('popUserBadges');
+        if(popBadgeBox) {
+            let staffHtml = "";
+            const email = data.email || "";
+            
+            if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
+            else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
+            else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
+            else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
+            
+            let cosmeticHtml = "";
+            if(data.equippedBadge) {
+                cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
+            }
+            popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
+        }
 
-                    // --- LOGICA PENTRU CERCULEȚUL ROȘU (NOTIFICĂRI) ---
-                    const userVazute = data.lastSeenNewsCount || 0;
-                    const noutatiNoi = totalGlobal - userVazute;
-                    const heroBadge = document.getElementById('heroNotifBadge');
-                    const headerBadge = document.getElementById('headerNotifBadge');
+        document.getElementById('popUserEmail').innerText = data.email;
 
-                    [heroBadge, headerBadge].forEach(badge => {
-                        if (badge) {
-                            if (noutatiNoi > 0) {
-                                badge.innerText = `+${noutatiNoi}`;
-                                badge.style.display = 'flex';
-                            } else {
-                                badge.style.display = 'none';
-                            }
-                        }
-                    });
+        // --- NOUA LOGICĂ VALUTE (COINS & DIAMONDS) ---
+        document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+        
+        const diamondEl = document.getElementById('popUserDiamonds');
+        if(diamondEl) {
+            diamondEl.innerText = formatCurrency(data.diamonds || 0);
+        }
+
+        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
+
+        // --- LOGICA PENTRU CERCULEȚUL ROȘU (NOTIFICĂRI) ---
+        const userVazute = data.lastSeenNewsCount || 0;
+        const noutatiNoi = totalGlobal - userVazute;
+        const heroBadge = document.getElementById('heroNotifBadge');
+        const headerBadge = document.getElementById('headerNotifBadge');
+
+        [heroBadge, headerBadge].forEach(badge => {
+            if (badge) {
+                if (noutatiNoi > 0) {
+                    badge.innerText = `+${noutatiNoi}`;
+                    badge.style.display = 'flex';
+                } else {
+                    badge.style.display = 'none';
                 }
-            });
+            }
+        });
+    }
+}); 
         });
 
         updateOnlineStatus(); 
@@ -2237,13 +2320,9 @@ onAuthStateChanged(auth, user => {
         }
     }
 });
+
+
+
   </script>
 </body>
-</html>```
-
-
-
-
-
-
-
+</html>
