@@ -1033,10 +1033,7 @@
     </div>
 </div>
 
-<!-- BUTON TEMPORAR PENTRU TEST (ȘTERGE-L DUPĂ) -->
-<button id="triggerTestMissed" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; background: #ff4757; color: white; border: none; padding: 15px; border-radius: 10px; font-family: 'Orbitron'; cursor: pointer; box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);">
-    🔥 TEST MISSED STREAK
-</button>
+
 
 <!-- MODAL INVENTORY -->
 <div id="inventoryModal" class="account-modal-overlay">
@@ -1754,7 +1751,7 @@ window.equipText = async (id, cssClass) => {
                 
                 progressHTML = generateBar(current, q.target);
                 if (current >= q.target) canAward = true;
-            }
+            } 
 
             let actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
             if (isCompleted) actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
@@ -1793,60 +1790,79 @@ window.equipText = async (id, cssClass) => {
     }
 
 async function resetUserQuests(userRef, snapData) {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
-    const hours = parseInt(now.toLocaleTimeString("en-GB", { timeZone: "Europe/Bucharest", hour: '2-digit' }));
-    const block = hours < 12 ? 'AM' : 'PM';
-    const resetKey = `${dateStr}-${block}`;
+        const now = new Date();
+        const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+        const hours = parseInt(now.toLocaleTimeString("en-GB", { timeZone: "Europe/Bucharest", hour: '2-digit' }));
+        const block = hours < 12 ? 'AM' : 'PM';
+        const resetKey = `${dateStr}-${block}`;
 
-    // Dacă blocul de timp s-a schimbat
-    if (snapData.lastResetBlock && snapData.lastResetBlock !== resetKey) {
-        console.log("Bloc nou detectat. Verificăm activitatea trecută...");
-        
-        let finalStreak = snapData.streak || 0;
-
-        // VERIFICARE: Dacă în blocul trecut NU a luat premiul (deci n-a terminat 6/6)
-        if (snapData.lastStreakAwardedBlock !== snapData.lastResetBlock) {
-            const oldStr = finalStreak;
+        if (snapData.lastResetBlock && snapData.lastResetBlock !== resetKey) {
+            console.log("New block detected. Checking for rewards/misses...");
             
-            // Afișăm Modalul de "Missed"
-            document.getElementById('streakOldMissed').innerText = oldStr;
-            document.getElementById('streakMissedModal').classList.add('active');
-            
-            // Animație vizuală de scădere
-            let temp = oldStr;
-            const interval = setInterval(() => {
-                if(temp > 0) {
-                    temp--;
-                    document.getElementById('streakOldMissed').innerText = temp;
-                } else { clearInterval(interval); }
-            }, 400);
+            let newStreak = snapData.streak || 0;
 
-            finalStreak = 0; // Streak-ul real devine 0
+            // VERIFICARE DACĂ A RATAT STREAK-UL
+            // Dacă nu a terminat quest-urile în blocul trecut
+            if (snapData.lastStreakAwardedBlock !== snapData.lastResetBlock) {
+                // Afișăm Pop-up de Missed
+                const missedModal = document.getElementById('streakMissedModal');
+                const missedTxt = document.getElementById('streakOldMissed');
+                
+                // Animație de scădere vizuală (4..3..2..1..0)
+                let tempStreak = newStreak;
+                missedModal.classList.add('active');
+                const interval = setInterval(() => {
+                    if(tempStreak > 0) {
+                        tempStreak--;
+                        missedTxt.innerText = tempStreak;
+                    } else {
+                        clearInterval(interval);
+                    }
+                }, 400);
+
+                newStreak = 0; // Resetăm streak-ul în DB
+            }
+
+            const persistentCompleted = (snapData.completedQuests || []).filter(id => quests.find(x => x.id === id)?.oneTime);
+            const newIds = generateDailyIds();
+
+            await updateDoc(userRef, {
+                messagesSentToday: 0, tiktoksFollowed: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
+                newsVisitedToday: 0, feedbackGivenToday: 0, kevinMessagesToday: 0,
+                visited_lost_soul_today: false, visited_kevin_trinity_today: false,
+                wallRepliesToday: 0, wallReactionsToday: 0, wallLongMsgSent: false,
+                shopBadgeBought: 0, shopBannerBought: 0, shopFrameBought: 0,
+                coinsDonatedToday: 0, triviaSingleCorrectToday: 0, triviaMultiCorrectToday: 0,
+                completedQuests: persistentCompleted, 
+                activeDailyQuests: newIds, 
+                lastResetBlock: resetKey,
+                streak: newStreak
+            });
+            claimedInSession.clear();
+        } else if (!snapData.lastResetBlock) {
+            // Prima logare a utilizatorului
+            await updateDoc(userRef, { lastResetBlock: resetKey, activeDailyQuests: generateDailyIds() });
         }
-
-        const persistentCompleted = (snapData.completedQuests || []).filter(id => quests.find(x => x.id === id)?.oneTime);
-        const newIds = generateDailyIds();
-
-        // Salvăm în baza de date: resetăm counters, dar punem noul streak (0 sau cel păstrat)
-        await updateDoc(userRef, {
-            messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
-            kevinMessagesToday: 0, newsVisitedToday: 0, feedbackGivenToday: 0,
-            completedQuests: persistentCompleted, 
-            activeDailyQuests: newIds, 
-            lastResetBlock: resetKey,
-            streak: finalStreak 
-        });
-    } else if (!snapData.lastResetBlock) {
-        await updateDoc(userRef, { lastResetBlock: resetKey, activeDailyQuests: generateDailyIds() });
     }
-}
 
     // --- 5. AUTH & LOGIC ---
-onSnapshot(userRef, async (snap) => {
+// --- 5. AUTH & LOGIC (REPARAT) ---
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            // Definim userRef AICI, imediat ce știm cine este user-ul
+            const userRef = doc(db, "accounts", user.uid);
+
+            // Actualizăm Header-ul
+            document.getElementById('headerLoginText').innerText = "ACCOUNT";
+            document.getElementById('headerUserImg').src = user.photoURL;
+            document.getElementById('headerUserImg').style.display = "block";
+
+            // Pornim ascultarea datelor în timp real
+            onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
+                // Verificăm resetarea/pierderea streak-ului
                 await resetUserQuests(userRef, data);
                 
                 // --- LOGICĂ AWARD: TOATE CELE 6 QUESTURI ---
@@ -1856,31 +1872,19 @@ onSnapshot(userRef, async (snap) => {
 
                 if (activeIds.length > 0 && finishedCount >= activeIds.length) {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        // Prevenim execuția multiplă în sesiune
-                        if (!window.awardInProgress) {
-                            window.awardInProgress = true;
-                            
-                            const oldStr = data.streak || 0;
-                            const newStr = oldStr + 1;
-
-                            // Actualizăm Firebase
-                            await updateDoc(userRef, {
-                                streak: increment(1),
-                                diamonds: increment(1),
-                                lastStreakAwardedBlock: data.lastResetBlock
-                            });
-
-                            // Afișăm Pop-up Animat
-                            document.getElementById('streakOld').innerText = oldStr;
-                            document.getElementById('streakNew').innerText = newStr;
-                            document.getElementById('streakRewardModal').classList.add('active');
-                            
-                            window.awardInProgress = false;
-                        }
+                        const oldStr = data.streak || 0;
+                        await updateDoc(userRef, {
+                            streak: increment(1),
+                            diamonds: increment(1),
+                            lastStreakAwardedBlock: data.lastResetBlock
+                        });
+                        document.getElementById('streakOld').innerText = oldStr;
+                        document.getElementById('streakNew').innerText = oldStr + 1;
+                        document.getElementById('streakRewardModal').classList.add('active');
                     }
                 }
 
-                // --- POPULARE MODAL ACCOUNT ---
+                // Populare Modal Account
                 document.getElementById('popUserImg').src = data.image || user.photoURL;
                 const popFrame = document.getElementById('popUserFrame');
                 if(popFrame) {
@@ -1895,8 +1899,6 @@ onSnapshot(userRef, async (snap) => {
 
                 const nameEl = document.getElementById('popUserName');
                 let rawName = data.username || user.displayName;
-                if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
                 if (data.equippedText && data.equippedText.cssClass) {
                     nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
                 } else { nameEl.innerText = rawName; }
@@ -1908,6 +1910,14 @@ onSnapshot(userRef, async (snap) => {
                 
                 renderQuests(data);
             });
+
+        } else {
+            // Reset interfață dacă nu e logat
+            document.getElementById('headerLoginText').innerText = "LOGIN";
+            document.getElementById('headerUserImg').style.display = "none";
+            questGrid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5;">Loghează-te pentru a vedea task-urile.</p>';
+        }
+    }); 
 
     // Handle Login/Modals
     const handleLogin = async () => {
@@ -1958,53 +1968,6 @@ function flyDiamond() {
     }, 900);
 }
 document.getElementById('claimStreakBtn').onclick = flyDiamond;
-
-
-// --- LOGICĂ TEST PIERDERE STREAK (REPARATĂ) ---
-document.getElementById('triggerTestMissed').onclick = async () => {
-    // Verificăm dacă utilizatorul este logat
-    if (!auth.currentUser) {
-        alert("Trebuie să fii logat pentru a testa!");
-        return;
-    }
-
-    // DEFINIM userRef AICI (Aceasta era problema)
-    const userRef = doc(db, "accounts", auth.currentUser.uid); 
-    
-    try {
-        // 1. Luăm streak-ul actual din DB pentru animație
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) return;
-
-        let currentStreak = snap.data().streak || 0;
-        const displayEl = document.getElementById('streakOldMissed');
-
-        // 2. RESETĂM REAL ÎN FIREBASE
-        await updateDoc(userRef, { 
-            streak: 0 
-        });
-
-        // 3. Afișăm modalul și pornim animația
-        displayEl.innerText = currentStreak;
-        document.getElementById('streakMissedModal').classList.add('active');
-
-        setTimeout(() => {
-            const interval = setInterval(() => {
-                if (currentStreak > 0) {
-                    currentStreak--;
-                    displayEl.innerText = currentStreak;
-                } else {
-                    clearInterval(interval);
-                    console.log("Streak resetat cu succes!");
-                }
-            }, 400); 
-        }, 1000);
-
-    } catch (e) {
-        console.error("Eroare la test:", e);
-        alert("Eroare: " + e.message);
-    }
-};
 </script>
 </body>
 </html>
