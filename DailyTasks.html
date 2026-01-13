@@ -2009,45 +2009,37 @@ async function resetUserQuests(userRef, snapData) {
                 if (adminBtn) {
                     adminBtn.style.display = 'inline-block';
 adminBtn.onclick = async () => {
-    if (confirm("👑 Majestatea Ta, dorești să forțezi resetarea celor 13 misiuni zilnice?")) {
+    if (confirm("👑 Majestatea Ta, vrei să simulezi trecerea celor 12 ore și să vezi animația de pierdere streak?")) {
         try {
-            // 1. Luăm datele actuale ca să vedem ce quest-uri permanente ai terminat
+            // 1. Luăm quest-urile permanente (One Time) ca să nu le pierzi
             const snap = await getDoc(userRef);
             const currentCompleted = snap.data().completedQuests || [];
-            
-            // 2. Filtrăm lista: păstrăm DOAR cele care sunt "One Time Only"
             const persistentQuests = currentCompleted.filter(id => id === 'social3' || id === 'review');
 
-            // 3. Update masiv în Firebase pentru a reseta TOT
+            // 2. Resetăm Firebase
             await updateDoc(userRef, { 
-                lastResetBlock: "FORCE_RESET",
-                completedQuests: persistentQuests, // Resetăm restul, păstrăm 1-time-only
+                // Punem un block care NU există. 
+                // Asta va forța funcția resetUserQuests să creadă că e un interval nou.
+                lastResetBlock: "SIMULARE_RESET", 
                 
-                // Resetează toate contoarele de progres pentru misiunile zilnice:
-                messagesSentToday: 0,           // Misiune: msg3
-                wallRepliesToday: 0,            // Misiune: wall_reply_5
-                wallReactionsToday: 0,          // Misiune: wall_react_10
-                kevinMessagesToday: 0,          // Misiune: kevin_talk_15
-                tiktoksFollowed: 0,             // Misiune: tiktok5
-                newsVisitedToday: 0,            // Misiune: visit_news
-                feedbackGivenToday: 0,          // Misiune: give_feedback
-                visited_lost_soul_today: false, // Misiune: meet_team_hunt (Lost Soul)
-                visited_kevin_trinity_today: false, // Misiune: meet_team_hunt (Kevin)
-                wallLongMsgSent: false,         // Misiune: wall_long_msg
-                shopBadgeBought: 0,             // Misiune: buy_badge
-                shopBannerBought: 0,            // Misiune: buy_banner
-                shopFrameBought: 0,             // Misiune: buy_frame
-                coinsDonatedToday: 0,           // Misiune: donate_100
-                triviaSingleCorrectToday: 0,    // Misiune: trivia_single_5
-                triviaMultiCorrectToday: 0,     // Misiune: trivia_multi_5
-                galleryLikesToday: 0,           // Misiune: gallery_task
-                galleryCommentsToday: 0         // Misiune: gallery_task
+                // Golim quest-urile terminate (păstrăm doar pe cele 1-time)
+                completedQuests: persistentQuests,
+
+                // Resetează TOATE cele 13 contoare:
+                messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
+                kevinMessagesToday: 0, tiktoksFollowed: 0, newsVisitedToday: 0,
+                feedbackGivenToday: 0, visited_lost_soul_today: false,
+                visited_kevin_trinity_today: false, wallLongMsgSent: false,
+                shopBadgeBought: 0, shopBannerBought: 0, shopFrameBought: 0,
+                coinsDonatedToday: 0, triviaSingleCorrectToday: 0,
+                triviaMultiCorrectToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0
             });
 
-            alert("👑 Resetare completă! Quest-urile permanente au fost păstrate.");
-            // Nu punem reload() pentru a lăsa onSnapshot să facă magia live
+            // NU PUNEM RELOAD. 
+            // onSnapshot va detecta "SIMULARE_RESET", va vedea că e diferit de block-ul real (AM/PM)
+            // și va porni automat animația de Missed Streak și va genera 6 quest-uri noi.
         } catch (e) { 
-            alert("Eroare la reset: " + e.message); 
+            alert("Eroare: " + e.message); 
         }
     }
 };
