@@ -481,7 +481,7 @@
     .emoji-picker-menu { 
         padding: 8px; 
         display: none; 
-        grid-template-columns: repeat(5, 1fr); 
+        grid-template-columns: repeat(4, 1fr); 
         gap: 5px; 
         background: rgba(255,255,255,0.02);
     }
@@ -2954,128 +2954,188 @@ function listenForTypers() {
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
 async function sendMessage() {
-        if(isSending) return;
+    if (isSending) return;
 
-        const text = msgInput.value.trim();
-        if((!text && !selectedImgBase64) || !auth.currentUser) return;
-        
-        // 1. Admin Commands
-        if(text === '/reset chat') {
-            msgInput.value = '';
-            if(isAdmin || isOwner) {
-                showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
-                initiateWipeSequence(true); 
-            } else {
-                showToast("Nu ai permisiuni de administrator!", "error");
-            }
+    const text = msgInput.value.trim();
+    if ((!text && !selectedImgBase64) || !auth.currentUser) return;
+
+    // --- 1. COMMAND PROCESSING ---
+
+    // A. RESET CHAT COMMAND
+    if (text === '/reset chat') {
+        msgInput.value = '';
+        if (isAdmin || isOwner) {
+            showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
+            initiateWipeSequence(true);
+        } else {
+            showToast("Nu ai permisiuni de administrator!", "error");
+        }
+        return;
+    }
+
+    // B. MUTE COMMAND (Format: /mute Nume Minute Motiv)
+    if (text.startsWith('/mute ')) {
+        msgInput.value = '';
+        // Check if user is Staff
+        if (!(isOwner || isAdmin || isMod || isHelper)) {
+            showToast("Nu ai permisiuni pentru această comandă!", "error");
             return;
         }
 
-        // 2. Validation
-        if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
-
-        const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 2000; 
-        if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
-            showToast(`Te rog nu fă spam!`);
+        const parts = text.split(' ');
+        if (parts.length < 4) {
+            showToast("Format incorect! Folosește: /mute Nume Minute Motiv");
             return;
         }
 
-        isSending = true;
+        const targetName = parts[1];
+        const durationMin = parseInt(parts[2]);
+        const reason = parts.slice(3).join(' ');
 
-        // 3. Animation
-        const btn = document.getElementById('sendBtn');
-        if(typeof window.flyCoins === "function" && btn) {
-            window.flyCoins(btn);
+        if (isNaN(durationMin)) {
+            showToast("Durata trebuie să fie un număr de minute!", "error");
+            return;
         }
 
         try {
-            const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            const userData = userSnapshot.data();
-
-            let displayName = userData.username || auth.currentUser.displayName;
-            if(isOwner) displayName = "Lost Soul";
-
-            const currentBadge = userData.equippedBadge || null;
-            const currentBanner = userData.equippedBanner || null;
-
-// Inside sendMessage function, update the payload:
-const payload = {
-    text: text,
-    uid: auth.currentUser.uid,
-    name: displayName,
-    photo: auth.currentUser.photoURL,
-    email: auth.currentUser.email,
-    ip: userIP || "unknown",
-    isAdmin: isAdmin, 
-    isOwner: isOwner, 
-    isMod: isMod,
-    isHelper: isHelper,
-    equippedBadge: currentBadge, 
-    equippedBanner: currentBanner,
-    equippedText: userData.equippedText || null, // <--- ADD THIS LINE
-    createdAt: serverTimestamp(),
-    isDeleted: false,
-    reactions: {},
-    seenBy: [auth.currentUser.uid]
-};
-
-            if(selectedImgBase64) payload.image = selectedImgBase64;
-
-            if(replyData) {
-                payload.replyToId = replyData.id;
-                payload.replyToName = replyData.name;
-                payload.replyToText = replyData.text;
+            if (!pendingMuteUid) {
+                showToast("Eroare: UID-ul țintei nu a fost găsit. Reîncearcă din meniul mesajului.", "error");
+                return;
             }
 
-            // 4. Send Message
-            await addDoc(collection(db, "wall_messages"), payload);
-
-            // 5. Update Stats
-            const userRef = doc(db, "accounts", auth.currentUser.uid);
-            const updates = {
-                messagesSentToday: increment(1),
-                coins: increment(10)
-            };
+            const unmuteTime = Date.now() + (durationMin * 60 * 1000);
             
-            // Flags for Quest Checks
-            let isLongMsg = false;
-            let isReply = false;
+            await setDoc(doc(db, "muted_users", pendingMuteUid), {
+                uid: pendingMuteUid,
+                name: targetName,
+                mutedBy: isOwner ? "Lost Soul" : auth.currentUser.displayName,
+                reason: reason,
+                unmuteAt: unmuteTime,
+                createdAt: serverTimestamp()
+            });
 
-            if(text.length >= 100) {
-                updates.wallLongMsgSent = true;
-                isLongMsg = true;
-            }
-            if(replyData) {
-                updates.wallRepliesToday = increment(1);
-                isReply = true;
-            }
-
-            await updateDoc(userRef, updates);
-
-            // 6. CHECK QUESTS (Using new Helper)
-            checkWallQuest('msg3'); // Standard messages
-            if (isLongMsg) checkWallQuest('wall_long_msg');
-            if (isReply) checkWallQuest('wall_reply_5');
+            await sendBotMessage(`🔇 **${targetName}** a primit Mute de la Staff pentru **${durationMin} minute**. Motiv: ${reason}`);
+            showToast(`L-ai pus pe mute pe ${targetName}!`, "success");
             
-            // 7. Reset UI
-            msgInput.value = '';
-            charCount.textContent = '0 / 1000';
-            localStorage.setItem('lastMsgTime', Date.now()); 
-            if(replyData) { replyData = null; replyBar.style.display = 'none'; }
+            // Reset targeting
+            pendingMuteUid = null;
+            pendingMuteName = null;
+        } catch (e) {
+            console.error("Mute error:", e);
+            showToast("Eroare la procesarea Mute-ului.");
+        }
+        return;
+    }
+
+    // --- 2. VALIDATION & COOLDOWN ---
+    if (text.length > 1000) { 
+        showToast("Mesajul este prea lung (Max 1000 caractere)!", "error"); 
+        return; 
+    }
+
+    const lastSent = localStorage.getItem('lastMsgTime');
+    const COOLDOWN = 2000; 
+    if (lastSent && (Date.now() - lastSent < COOLDOWN) && !isAdmin && !isOwner) {
+        showToast(`Te rog nu fă spam! Așteaptă puțin.`);
+        return;
+    }
+
+    isSending = true;
+
+    // --- 3. ANIMATION ---
+    const btn = document.getElementById('sendBtn');
+    if (typeof window.flyCoins === "function" && btn) {
+        window.flyCoins(btn);
+    }
+
+    try {
+        const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnapshot.data();
+
+        let displayName = userData.username || auth.currentUser.displayName;
+        if (isOwner) displayName = "Lost Soul";
+
+        const currentBadge = userData.equippedBadge || null;
+        const currentBanner = userData.equippedBanner || null;
+        const currentTextEffect = userData.equippedText || null;
+
+        // --- 4. PREPARE PAYLOAD ---
+        const payload = {
+            text: text,
+            uid: auth.currentUser.uid,
+            name: displayName,
+            photo: auth.currentUser.photoURL,
+            email: auth.currentUser.email,
+            ip: userIP || "unknown",
+            isAdmin: isAdmin,
+            isOwner: isOwner,
+            isMod: isMod,
+            isHelper: isHelper,
+            equippedBadge: currentBadge,
+            equippedBanner: currentBanner,
+            equippedText: currentTextEffect,
+            createdAt: serverTimestamp(),
+            isDeleted: false,
+            reactions: {},
+            seenBy: [auth.currentUser.uid]
+        };
+
+        if (selectedImgBase64) payload.image = selectedImgBase64;
+
+        if (replyData) {
+            payload.replyToId = replyData.id;
+            payload.replyToName = replyData.name;
+            payload.replyToText = replyData.text;
+        }
+
+        // --- 5. FIREBASE: SEND MESSAGE ---
+        await addDoc(collection(db, "wall_messages"), payload);
+
+        // --- 6. UPDATE USER STATS ---
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        const updates = {
+            messagesSentToday: increment(1),
+            coins: increment(10)
+        };
+
+        let isLongMsg = (text.length >= 100);
+        let isReply = (replyData !== null);
+
+        if (isLongMsg) updates.wallLongMsgSent = true;
+        if (isReply) updates.wallRepliesToday = increment(1);
+
+        await updateDoc(userRef, updates);
+
+        // --- 7. CHECK QUESTS ---
+        checkWallQuest('msg3'); // Basic message quest
+        if (isLongMsg) checkWallQuest('wall_long_msg');
+        if (isReply) checkWallQuest('wall_reply_5');
+
+        // --- 8. UI RESET ---
+        msgInput.value = '';
+        charCount.textContent = '0 / 1000';
+        charCount.style.color = '#a5b1c2';
+        localStorage.setItem('lastMsgTime', Date.now());
+        
+        if (replyData) {
+            replyData = null;
+            replyBar.style.display = 'none';
+        }
+        
+        if (selectedImgBase64) {
             selectedImgBase64 = null;
             imgPreviewContainer.style.display = 'none';
-
-        } catch(e) { 
-            console.error(e); 
-            showToast("Eroare la trimitere!");
-        } finally {
-            isSending = false;
-            // FIX: Force clear typing status immediately
-            isTyping = false;
-            updateTypingStatus(false);
         }
+
+    } catch (e) {
+        console.error("Send error:", e);
+        showToast("Eroare la trimiterea mesajului!");
+    } finally {
+        isSending = false;
+        isTyping = false;
+        updateTypingStatus(false);
     }
+}
 
     function startWipeCheck() {
         if(wipeCheckInterval) clearInterval(wipeCheckInterval);
