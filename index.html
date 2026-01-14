@@ -990,6 +990,46 @@
     margin-top: 10px;
     width: 100%;
 }
+
+
+/* --- PREMIUM POP-UPS & GLOW --- */
+.reward-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.96);
+    display: none; justify-content: center; align-items: center;
+    z-index: 30000; padding: 20px; backdrop-filter: blur(15px);
+}
+.reward-modal.active { display: flex !important; }
+
+.modern-pop-card {
+    background: #08101b; width: 100%; max-width: 400px;
+    border-radius: 45px; padding: 50px 30px; text-align: center;
+    position: relative; border: 2px solid rgba(255, 255, 255, 0.05);
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+@keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+.pop-fire { border-color: #ff4500; box-shadow: 0 0 40px rgba(255, 69, 0, 0.25); }
+.pop-red { border-color: #ff4757; box-shadow: 0 0 40px rgba(255, 71, 87, 0.2); }
+
+.modern-pop-card h2 { font-family: 'Orbitron'; font-weight: 900; letter-spacing: 2px; margin-bottom: 10px; font-size: 24px; }
+.pop-fire h2 { color: #ff4500; }
+.pop-red h2 { color: #ff4757; }
+
+/* STREAK NUMBERS (FIRE THEME) */
+.pop-streak-display { display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 35px; font-family: 'Orbitron'; }
+.streak-num { font-size: 65px; font-weight: 900; line-height: 1; }
+.streak-num.old { color: #500; opacity: 0.6; font-size: 45px; } 
+.streak-num.new { color: #ff8c00; text-shadow: 0 0 20px #ff4500, 0 0 40px #ff0000; animation: firePulse 1.5s infinite alternate; }
+.streak-num.missed { color: #ff4757; text-shadow: 0 0 20px #ff4757; }
+@keyframes firePulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+
+/* REWARD BOX PILL & CYAN BUTTON */
+.pop-reward-pill { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 30px; padding: 15px 25px; display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
+.pop-btn-cyan { background: #00ffff; color: #000; font-family: 'Orbitron'; font-weight: 900; border: none; padding: 18px 60px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-size: 15px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); margin-top: 20px; transition: 0.3s; position: relative; z-index: 99; }
+.pop-btn-cyan:hover { transform: scale(1.05); box-shadow: 0 0 40px #00ffff; }
+
+/* FLYING DIAMOND */
+#flyingDiamond { position: fixed; width: 55px; z-index: 40000; pointer-events: none; display: none; }
   </style>
 </head>
 <body>
@@ -1097,6 +1137,41 @@
         <div id="inventoryActions" style="width:100%;"></div>
     </div>
 </div>
+
+
+<!-- REWARD STREAK MODAL (FIRE) -->
+<div id="streakRewardModal" class="reward-modal">
+    <div class="modern-pop-card pop-fire">
+        <div style="font-size: 35px; margin-bottom: 10px;">🔥</div>
+        <h2>QUEST MASTER!</h2>
+        <div class="pop-streak-display">
+            <span id="streakOld" class="streak-num old">0</span>
+            <i class="fas fa-chevron-right" style="color: #ff4500; font-size: 24px;"></i>
+            <span id="streakNew" class="streak-num new">1</span>
+        </div>
+        <div class="pop-reward-pill">
+            <img src="https://iili.io/fv5bmtj.png" id="sourceDiamond" style="width: 45px; filter: drop-shadow(0 0 10px #00ff88);">
+            <div style="text-align: left;">
+                <div style="color: #00ff88; font-weight: 900; font-family: 'Orbitron'; font-size: 18px;">+1 DIAMOND</div>
+                <div style="color: #fff; font-size: 10px; opacity: 0.4; font-family: 'Orbitron';">STREAK SCORE UP</div>
+            </div>
+        </div>
+        <button class="pop-btn-cyan" id="claimStreakBtn">Super!</button>
+    </div>
+</div>
+
+<!-- MISSED STREAK MODAL (RED) -->
+<div id="streakMissedModal" class="reward-modal">
+    <div class="modern-pop-card pop-red">
+        <div style="font-size: 35px; margin-bottom: 10px;">🌑</div>
+        <h2 style="color: #ff4757;">STREAK PIERDUT!</h2>
+        <div class="pop-streak-display">
+            <span id="streakOldMissed" class="streak-num missed">0</span>
+        </div>
+        <button class="pop-btn-cyan" style="background: #222; color: #fff; box-shadow: none; border: 1px solid #444;" onclick="document.getElementById('streakMissedModal').classList.remove('active')">Am înțeles</button>
+    </div>
+</div>
+<img src="https://iili.io/fv5bmtj.png" id="flyingDiamond">
 
 <!-- ACCOUNT POP-UP MODAL (THE JUMPING POPUP) -->
 <div id="accountModal" class="account-modal-overlay">
@@ -2210,124 +2285,213 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         }
     };
 
-onAuthStateChanged(auth, user => {
-    if (user) {
-        headerLoginText.innerText = "ACCOUNT";
-        headerUserImg.src = user.photoURL;
-        headerUserImg.style.display = "block";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+
+async function resetUserQuests(userRef, snapData) {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
+    const hours = parseInt(now.toLocaleTimeString("en-GB", { timeZone: "Europe/Bucharest", hour: '2-digit' }));
+    const block = hours < 12 ? 'AM' : 'PM';
+    const resetKey = `${dateStr}-${block}`;
+
+    if (snapData.lastResetBlock && snapData.lastResetBlock !== resetKey) {
+        let finalStreak = snapData.streak || 0;
+        // Penalizare streak pierdut
+        if (snapData.lastStreakAwardedBlock !== snapData.lastResetBlock) {
+            window.runAdaptiveStreakAnimation(finalStreak);
+            finalStreak = 0;
         }
+        // Resetare completă counters
+        await updateDoc(userRef, {
+            streak: finalStreak, lastResetBlock: resetKey,
+            messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
+            kevinMessagesToday: 0, newsVisitedToday: 0, feedbackGivenToday: 0,
+            galleryLikesToday: 0, galleryCommentsToday: 0, completedQuests: (snapData.completedQuests || []).filter(id => id==='social3'||id==='review')
+        });
+    } else if (!snapData.lastResetBlock) {
+        await updateDoc(userRef, { lastResetBlock: resetKey });
+    }
+}
 
-        // 1. Ascultăm numărul TOTAL de postări din metadata
-        onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-            const totalGlobal = metaSnap.data()?.totalNews || 0;
+// --- 5. AUTH & LOGIC (VARIANTA FINALĂ INDEX.HTML) ---
+    let isAwardingInProgress = false; // Previne dublarea ferestrelor
 
-            // 2. Ascultăm datele utilizatorului
-onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
-    if(uSnap.exists()) {
-        const data = uSnap.data();
-        
-        // Funcție internă pentru formatare (1000 -> 1k)
-        const formatCurrency = (num) => {
-            if (!num) return "0";
-            if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-            if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-            return num;
-        };
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            const userRef = doc(db, "accounts", user.uid);
 
-        // --- AVATAR & FRAME LOGIC ---
-        document.getElementById('popUserImg').src = data.image;
-        const popFrame = document.getElementById('popUserFrame');
-        if(popFrame) {
-            if (data.equippedFrame && data.equippedFrame.img) {
-                popFrame.src = data.equippedFrame.img;
-                popFrame.style.display = "block";
-                const scale = data.equippedFrame.scale || 1.45;
-                popFrame.style.width = `${scale * 100}%`;
-                popFrame.style.height = `${scale * 100}%`;
-            } else {
-                popFrame.style.display = "none";
+            headerLoginText.innerText = "ACCOUNT";
+            headerUserImg.src = user.photoURL;
+            headerUserImg.style.display = "block";
+            
+            if(mobileLoginBtn) {
+                mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
-        }
 
-        // --- NUME COLORAT (equippedText) ---
-        let rawName = data.username || "Anonim";
-        if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+            // 1. Verificare OWNER (nicaemmanuel433qe@gmail.com)
+            const adminBtn = document.getElementById('ownerResetBtn');
+            if (user.email === 'nicaemmanuel433qe@gmail.com' && adminBtn) {
+                adminBtn.style.display = 'inline-block';
+            }
 
-        if (data.equippedText && data.equippedText.cssClass) {
-            document.getElementById('popUserName').innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+            // 2. Ascultăm numărul TOTAL de postări (Metadata)
+            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+                const totalGlobal = metaSnap.data()?.totalNews || 0;
+
+                // 3. Ascultăm DATELE UTILIZATORULUI LIVE
+                onSnapshot(userRef, async (uSnap) => {
+                    if(!uSnap.exists()) return;
+                    const data = uSnap.data();
+                    
+                    // --- LOGICĂ RESET / PIERDERE STREAK ---
+                    if (typeof resetUserQuests === "function") {
+                        await resetUserQuests(userRef, data);
+                    }
+
+                    // --- LOGICĂ RECOMPENSĂ FINALĂ: 6/6 QUESTURI ---
+                    const activeIds = data.activeDailyQuests || [];
+                    const completedIds = data.completedQuests || [];
+                    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
+
+                    // Dacă a terminat tot și e un block curat (nu FORCE_RESET)
+                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+                            if (!isAwardingInProgress) {
+                                isAwardingInProgress = true;
+
+                                const oldStr = data.streak || 0;
+                                
+                                // Update REAL Firebase: +1 Streak & +1 Diamond
+                                await updateDoc(userRef, {
+                                    streak: increment(1),
+                                    diamonds: increment(1),
+                                    lastStreakAwardedBlock: data.lastResetBlock
+                                });
+
+                                // Afișăm Modalul Premium FIRE
+                                const rewardModal = document.getElementById('streakRewardModal');
+                                if (rewardModal) {
+                                    document.getElementById('streakOld').innerText = oldStr;
+                                    document.getElementById('streakNew').innerText = oldStr + 1;
+                                    rewardModal.classList.add('active');
+                                }
+                                
+                                setTimeout(() => { isAwardingInProgress = false; }, 3000);
+                            }
+                        }
+                    }
+
+                    // --- POPULARE MODAL ACCOUNT ---
+                    
+                    // 1. Avatar & Frame
+                    document.getElementById('popUserImg').src = data.image || user.photoURL;
+                    const popFrame = document.getElementById('popUserFrame');
+                    if(popFrame) {
+                        if (data.equippedFrame?.img) {
+                            popFrame.src = data.equippedFrame.img;
+                            popFrame.style.display = "block";
+                            const scale = data.equippedFrame.scale || 1.45;
+                            popFrame.style.width = (scale * 100) + "%";
+                            popFrame.style.height = (scale * 100) + "%";
+                        } else { popFrame.style.display = "none"; }
+                    }
+
+                    // 2. Nume Colorat
+                    const nameEl = document.getElementById('popUserName');
+                    let rawName = data.username || user.displayName;
+                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+
+                    if (data.equippedText?.cssClass) {
+                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                    } else { nameEl.innerText = rawName; }
+
+                    // 3. Email & Streak
+                    document.getElementById('popUserEmail').innerText = data.email;
+                    const streakDisplay = document.querySelector('.streak-txt');
+                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
+
+                    // 4. Valute Duble (Formatate 1k, 10k)
+                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                    const diamondEl = document.getElementById('popUserDiamonds');
+                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+
+                    // 5. Badges (Staff + Cosmetic)
+                    const popBadgeBox = document.getElementById('popUserBadges');
+                    if(popBadgeBox) {
+                        let badgesHtml = "";
+                        const email = data.email || "";
+                        if(email === 'nicaemmanuel433qe@gmail.com') badgesHtml += `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
+                        else if(email === 'kevin.trinity2020@gmail.com') badgesHtml += `<div><span class="admin-badge">ADMIN</span></div>`;
+                        else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) badgesHtml += `<div><span class="mod-badge">MODERATOR</span></div>`;
+                        
+                        if(data.equippedBadge) {
+                            badgesHtml += `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
+                        }
+                        popBadgeBox.innerHTML = badgesHtml;
+                    }
+
+                    // 6. Notificări Cerc Roșu (Noutăți)
+                    const userVazute = data.lastSeenNewsCount || 0;
+                    const noutatiNoi = totalGlobal - userVazute;
+                    const heroBadge = document.getElementById('heroNotifBadge');
+                    if (heroBadge) {
+                        if (noutatiNoi > 0) {
+                            heroBadge.innerText = `+${noutatiNoi}`;
+                            heroBadge.style.display = 'flex';
+                        } else { heroBadge.style.display = 'none'; }
+                    }
+                });
+            });
+
+            updateOnlineStatus(); 
         } else {
-            document.getElementById('popUserName').innerText = rawName;
+            headerLoginText.innerText = "LOGIN";
+            headerUserImg.style.display = "none";
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
+    });
 
-        // --- STACKED BADGES LOGIC (Staff + Cosmetic) ---
-        const popBadgeBox = document.getElementById('popUserBadges');
-        if(popBadgeBox) {
-            let staffHtml = "";
-            const email = data.email || "";
-            
-            if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-            else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-            else if(email === 'mary.bughi@gmail.com' || email === 'emmanuel.nica83@gmail.com') staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-            else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-            
-            let cosmeticHtml = "";
-            if(data.equippedBadge) {
-                cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-            }
-            popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
-        }
 
-        document.getElementById('popUserEmail').innerText = data.email;
-
-        // --- NOUA LOGICĂ VALUTE (COINS & DIAMONDS) ---
-        document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-        
-        const diamondEl = document.getElementById('popUserDiamonds');
-        if(diamondEl) {
-            diamondEl.innerText = formatCurrency(data.diamonds || 0);
-        }
-
-        document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
-
-        // --- LOGICA PENTRU CERCULEȚUL ROȘU (NOTIFICĂRI) ---
-        const userVazute = data.lastSeenNewsCount || 0;
-        const noutatiNoi = totalGlobal - userVazute;
-        const heroBadge = document.getElementById('heroNotifBadge');
-        const headerBadge = document.getElementById('headerNotifBadge');
-
-        [heroBadge, headerBadge].forEach(badge => {
-            if (badge) {
-                if (noutatiNoi > 0) {
-                    badge.innerText = `+${noutatiNoi}`;
-                    badge.style.display = 'flex';
-                } else {
-                    badge.style.display = 'none';
-                }
-            }
-        });
-    }
-}); 
-        });
-
-        updateOnlineStatus(); 
-    } else {
-        headerLoginText.innerText = "LOGIN";
-        headerUserImg.style.display = "none";
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+window.runAdaptiveStreakAnimation = (startValue) => {
+    const missedModal = document.getElementById('streakMissedModal');
+    const missedTxt = document.getElementById('streakOldMissed');
+    let temp = startValue;
+    missedTxt.innerText = temp;
+    missedModal.classList.add('active');
+    function step() {
+        if (temp > 0) {
+            temp--; missedTxt.innerText = temp;
+            let delay = (temp > 20) ? 40 : (temp > 10 ? 100 : 400);
+            setTimeout(step, delay);
         }
     }
-});
+    setTimeout(step, 800);
+};
+
+window.flyDiamond = () => {
+    const flyer = document.getElementById('flyingDiamond');
+    const source = document.getElementById('sourceDiamond');
+    const target = document.getElementById('headerLoginBtn') || document.getElementById('menuBtn');
+    const sRect = source.getBoundingClientRect();
+    const tRect = target.getBoundingClientRect();
+    flyer.style.display = 'block'; flyer.style.top = sRect.top + 'px'; flyer.style.left = sRect.left + 'px'; flyer.style.opacity = '1';
+    setTimeout(() => {
+        flyer.style.transition = 'all 1s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        flyer.style.top = (tRect.top + 5) + 'px'; flyer.style.left = (tRect.left + 5) + 'px';
+        flyer.style.transform = 'scale(0) rotate(720deg)'; flyer.style.opacity = '0';
+    }, 100);
+    setTimeout(() => { flyer.style.display = 'none'; document.getElementById('streakRewardModal').classList.remove('active'); }, 1100);
+};
+document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
-
+function generateDailyIds() {
+    // Lista tuturor ID-urilor de quest-uri (fără cele permanente)
+    const pool = ['wall_reply_5', 'kevin_talk_15', 'visit_news', 'msg3', 'give_feedback', 'trivia_single_5', 'wall_react_10', 'wall_long_msg', 'meet_team_hunt', 'tiktok5', 'gallery_task', 'buy_badge', 'buy_banner', 'buy_frame', 'donate_100', 'trivia_multi_5'];
+    return pool.sort(() => 0.5 - Math.random()).slice(0, 6);
+}
   </script>
 </body>
 </html>```
-
 
 
 
