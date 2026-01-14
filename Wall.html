@@ -1486,6 +1486,55 @@
 .btn-add-opt:hover {
     background: rgba(41, 243, 255, 0.1);
 }
+
+
+/* Duration Buttons in Creator */
+.duration-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+.duration-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 10px 0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Orbitron';
+    font-size: 11px;
+    transition: 0.3s;
+}
+.duration-btn:hover { background: rgba(41, 243, 255, 0.1); }
+.duration-btn.active {
+    background: var(--primary);
+    color: #000;
+    border-color: var(--primary);
+    box-shadow: 0 0 10px var(--primary-dim);
+}
+
+/* New Results Modal Layout */
+.voter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.voter-info { display: flex; align-items: center; gap: 10px; }
+.voter-choice {
+    font-family: 'Orbitron';
+    font-size: 11px;
+    color: var(--primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(41, 243, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(41, 243, 255, 0.2);
+}
   </style>
 
 </head>
@@ -1717,29 +1766,38 @@
         <h3 class="alert-title"><i class="fas fa-poll"></i> CREEAZĂ VOT</h3>
         
         <div class="poll-modal-inputs">
-            <!-- Question Input -->
+            <!-- Question -->
             <div>
                 <div class="poll-label">ÎNTREBARE</div>
                 <input type="text" id="pollQuestion" class="alert-input" style="display:block;" placeholder="Ex: Ce joc ne jucăm?">
             </div>
 
-            <!-- Dynamic Options Container -->
+            <!-- Options -->
             <div>
                 <div class="poll-label">OPȚIUNI (Max 5)</div>
                 <div id="pollOptionsContainer" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
                     <!-- Inputs injected by JS -->
                 </div>
-                
-                <!-- Add Button -->
                 <button id="addOptionBtn" class="btn-add-opt" onclick="addPollOption()">
                     <i class="fas fa-plus"></i> ADAUGĂ OPȚIUNE
                 </button>
             </div>
+
+            <!-- Duration Selector -->
+            <div>
+                <div class="poll-label">DURATĂ</div>
+                <div class="duration-row">
+                    <button class="duration-btn active" onclick="setPollDuration(1, this)">1 Min</button>
+                    <button class="duration-btn" onclick="setPollDuration(5, this)">5 Min</button>
+                    <button class="duration-btn" onclick="setPollDuration(10, this)">10 Min</button>
+                    <button class="duration-btn" onclick="setPollDuration(15, this)">15 Min</button>
+                </div>
+            </div>
         </div>
 
-        <div class="alert-btns" style="margin-top:10px;">
+        <div class="alert-btns">
             <button class="alert-btn btn-no" onclick="document.getElementById('pollCreatorModal').style.display='none'">ANULEAZĂ</button>
-            <button class="alert-btn btn-yes" onclick="createPoll()">START VOT (1 Min)</button>
+            <button class="alert-btn btn-yes" onclick="createPoll()">START VOT</button>
         </div>
     </div>
 </div>
@@ -1973,6 +2031,7 @@
   </footer>
 
   <script>
+let selectedPollDuration = 60000; // Default 1 min
     const menuBtn = document.getElementById('menuBtn');
     const sideMenu = document.getElementById('sideMenu');
     const closeMenu = document.getElementById('closeMenu');
@@ -3697,72 +3756,65 @@ async function sendMessage() {
 
 
 
-// --- POLL SYSTEM LOGIC ---
-// --- UPDATED POLL CREATOR LOGIC ---
+// --- UPDATED POLL SYSTEM LOGIC ---
 
     // 1. Open Creator & Reset
     window.openPollCreator = () => {
         const container = document.getElementById('pollOptionsContainer');
         document.getElementById('pollQuestion').value = "";
-        container.innerHTML = ""; // Clear old inputs
+        container.innerHTML = ""; 
         
-        // Start with 2 Default Options
+        // Reset Duration to 1 min visually
+        selectedPollDuration = 60000; 
+        document.querySelectorAll('.duration-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('.duration-btn').classList.add('active'); // First button
+
         addPollOption();
         addPollOption();
         
         document.getElementById('pollCreatorModal').style.display = 'flex';
     };
 
-    // 2. Add New Input Field (Max 5)
-    window.addPollOption = () => {
-        const container = document.getElementById('pollOptionsContainer');
-        const count = container.children.length;
-
-        if(count >= 5) {
-            showToast("Maxim 5 opțiuni!");
-            return;
-        }
-
-        const input = document.createElement('input');
-        input.type = "text";
-        input.className = "alert-input";
-        input.style.display = "block";
-        input.style.marginBottom = "0"; // Override default margin
-        input.placeholder = `Opțiunea ${count + 1}`;
-        
-        container.appendChild(input);
-        
-        // Hide "Add" button if max reached
-        const btn = document.getElementById('addOptionBtn');
-        if(container.children.length >= 5) btn.style.display = 'none';
-        else btn.style.display = 'block';
+    // 2. Set Duration Helper
+    window.setPollDuration = (minutes, btn) => {
+        selectedPollDuration = minutes * 60 * 1000;
+        document.querySelectorAll('.duration-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
     };
 
-    // 3. Create Poll (Gather Data)
+    // 3. Add Option
+    window.addPollOption = () => {
+        const container = document.getElementById('pollOptionsContainer');
+        if(container.children.length >= 5) { showToast("Maxim 5 opțiuni!"); return; }
+        const input = document.createElement('input');
+        input.type = "text"; input.className = "alert-input";
+        input.style.display = "block"; input.style.marginBottom = "0";
+        input.placeholder = `Opțiunea ${container.children.length + 1}`;
+        container.appendChild(input);
+        const btn = document.getElementById('addOptionBtn');
+        btn.style.display = (container.children.length >= 5) ? 'none' : 'block';
+    };
+
+    // 4. Create Poll (Uses Selected Duration)
     window.createPoll = async () => {
         const q = document.getElementById('pollQuestion').value.trim();
         const container = document.getElementById('pollOptionsContainer');
         const inputs = container.querySelectorAll('input');
-        
-        // Filter out empty inputs
         const options = [];
-        inputs.forEach(inp => {
-            if(inp.value.trim()) options.push(inp.value.trim());
-        });
+        inputs.forEach(inp => { if(inp.value.trim()) options.push(inp.value.trim()); });
 
-        // Validation
         if(!q) { showToast("Scrie o întrebare!"); return; }
         if(options.length < 2) { showToast("Minim 2 opțiuni!"); return; }
 
         document.getElementById('pollCreatorModal').style.display = 'none';
 
-        // Custom Payload
         const payload = {
             type: 'poll',
             question: q,
-            options: options, // Array of 2 to 5 strings
+            options: options,
             votes: {},
-            expiresAt: Date.now() + 60000, // 1 Minute
+            expiresAt: Date.now() + selectedPollDuration, // Uses the selected time
+            durationLabel: (selectedPollDuration / 60000) + " Min", // For display
             
             uid: auth.currentUser.uid,
             name: (isOwner ? "Lost Soul" : auth.currentUser.displayName),
@@ -3777,45 +3829,27 @@ async function sendMessage() {
         try {
             await addDoc(collection(db, "wall_messages"), payload);
             showToast("Vot pornit!", "success");
-        } catch(e) { 
-            console.error(e); 
-            showToast("Eroare la creare vot."); 
-        }
+        } catch(e) { console.error(e); showToast("Eroare la creare vot."); }
     };
 
-    // 3. Cast Vote
+    // 5. Vote
     window.votePoll = async (msgId, optionIndex) => {
         if(!auth.currentUser) return;
-        
         const msgRef = doc(db, "wall_messages", msgId);
         const snap = await getDoc(msgRef);
-        
         if(snap.exists()) {
             const data = snap.data();
-            
-            // Check Expiration
-            if(Date.now() > data.expiresAt) {
-                showToast("Votul a expirat!");
-                return;
-            }
-
-            // Check if already voted (Strict: No switching)
-            if(data.votes && data.votes[auth.currentUser.uid] !== undefined) {
-                showToast("Ai votat deja!");
-                return;
-            }
-
-            // Record Vote
+            if(Date.now() > data.expiresAt) { showToast("Votul a expirat!"); return; }
+            if(data.votes && data.votes[auth.currentUser.uid] !== undefined) { showToast("Ai votat deja!"); return; }
             const updateField = {};
             updateField[`votes.${auth.currentUser.uid}`] = optionIndex;
-            
             await updateDoc(msgRef, updateField);
             showToast("Vot înregistrat!", "success");
         }
     };
 
-
-window.openPollVoters = async (msgId) => {
+    // 6. View Voters (NEW LAYOUT: User -> Choice)
+    window.openPollVoters = async (msgId) => {
         const modal = document.getElementById('pollVotersModal');
         const list = document.getElementById('pollVotersList');
         
@@ -3823,22 +3857,12 @@ window.openPollVoters = async (msgId) => {
         modal.classList.add('active');
 
         try {
-            // 1. Get Poll Data
             const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
             if(!msgSnap.exists()) return;
             const data = msgSnap.data();
             const votes = data.votes || {};
-            const options = data.options || ["Opțiunea 1", "Opțiunea 2"];
+            const options = data.options || [];
 
-            // 2. Group UIDs by Option Index
-            // buckets[0] = [uid1, uid2], buckets[1] = [uid3]
-            const buckets = [[], []]; 
-            Object.entries(votes).forEach(([uid, optionIdx]) => {
-                if(buckets[optionIdx]) buckets[optionIdx].push(uid);
-            });
-
-            // 3. Fetch User Profiles
-            // We get all UIDs involved to fetch their names/images
             const allVoters = Object.keys(votes);
             
             if(allVoters.length === 0) {
@@ -3846,39 +3870,25 @@ window.openPollVoters = async (msgId) => {
                 return;
             }
 
-            // Fetch accounts (Promise.all for speed)
             const userSnaps = await Promise.all(allVoters.map(uid => getDoc(doc(db, "accounts", uid))));
-            const userMap = {}; // Map UID -> { name, image }
-            
-            userSnaps.forEach(snap => {
-                if(snap.exists()) userMap[snap.id] = snap.data();
-            });
-
-            // 4. Render the List
             list.innerHTML = '';
 
-            options.forEach((optName, idx) => {
-                const uidsInThisOption = buckets[idx];
-                
-                // Option Header
-                const count = uidsInThisOption.length;
-                const headerColor = idx === 0 ? '#29f3ff' : '#ff4757'; // Cyan for Opt 1, Red for Opt 2
-                
-                const header = document.createElement('div');
-                header.style.cssText = `font-family:'Orbitron'; font-weight:700; color:${headerColor}; margin-top:15px; margin-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px; font-size:12px;`;
-                header.innerHTML = `${optName} <span style="float:right; opacity:0.7;">${count}</span>`;
-                list.appendChild(header);
+            userSnaps.forEach(snap => {
+                if(snap.exists()) {
+                    const u = snap.data();
+                    const votedIndex = votes[u.uid];
+                    const votedOption = options[votedIndex] || "Necunoscut";
 
-                if(count === 0) {
-                    list.innerHTML += `<div style="font-size:10px; color:#555; font-style:italic; margin-bottom:10px;">0 voturi</div>`;
-                } else {
-                    uidsInThisOption.forEach(uid => {
-                        const u = userMap[uid] || { username: 'Necunoscut', image: 'https://iili.io/fhc1SKQ.png' };
-                        const row = document.createElement('div');
-                        row.className = 'react-user-item'; // Reuse existing style
-                        row.innerHTML = `<img src="${u.image}" class="react-user-img"><span class="react-user-name">${u.username}</span>`;
-                        list.appendChild(row);
-                    });
+                    // Render Row: [Img] [Name] ... [Choice]
+                    list.innerHTML += `
+                        <div class="voter-row">
+                            <div class="voter-info">
+                                <img src="${u.image}" class="react-user-img">
+                                <span class="react-user-name">${u.username}</span>
+                            </div>
+                            <div class="voter-choice">${votedOption}</div>
+                        </div>
+                    `;
                 }
             });
 
@@ -3887,7 +3897,6 @@ window.openPollVoters = async (msgId) => {
             list.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>';
         }
     };
-
 function loadMessages() {
         if(unsubscribe) unsubscribe();
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
@@ -3930,48 +3939,54 @@ function loadMessages() {
                     const myVote = data.votes ? data.votes[currentUid] : undefined;
                     const hasVoted = myVote !== undefined;
                     
-                    // Count Votes
-                    const results = [0, 0];
+                    // --- FIX 1: Initialize results array based on actual option count ---
+                    const optionCount = data.options ? data.options.length : 2;
+                    const results = new Array(optionCount).fill(0);
+                    
                     let totalVotes = 0;
                     if(data.votes) {
                         Object.values(data.votes).forEach(val => {
-                            if(results[val] !== undefined) results[val]++;
-                            totalVotes++;
+                            // Ensure the vote index is valid
+                            if(val >= 0 && val < optionCount) {
+                                results[val]++;
+                                totalVotes++;
+                            }
                         });
                     }
 
-                    // Build Options HTML
                     let optionsHtml = '<div class="poll-options">';
-                    data.options.forEach((opt, idx) => {
-                        // Show RESULTS if: Time Expired OR User Voted
-                        if (isExpired || hasVoted) {
-                            const count = results[idx];
-                            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                            
-                            // Style the user's choice
-                            const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
-                            
-                            optionsHtml += `
-                                <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
-                                    <div class="poll-result-bar" style="width:${percent}%"></div>
-                                    <div class="poll-text">
-                                        <span>${opt} ${myVote === idx ? '(Tu)' : ''}</span>
-                                        <span class="poll-percent">${percent}%</span>
-                                    </div>
-                                </div>`;
-                        } else {
-                            // ACTIVE VOTE BUTTONS
-                            optionsHtml += `
-                                <button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">
-                                    ${opt}
-                                </button>`;
-                        }
-                    });
+                    
+                    if(data.options) {
+                        data.options.forEach((opt, idx) => {
+                            if (isExpired || hasVoted) {
+                                const count = results[idx];
+                                // --- FIX 2: Prevent NaN by checking totalVotes ---
+                                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                
+                                const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
+                                
+                                optionsHtml += `
+                                    <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
+                                        <div class="poll-result-bar" style="width:${percent}%"></div>
+                                        <div class="poll-text">
+                                            <span>${opt} ${myVote === idx ? '(Tu)' : ''}</span>
+                                            <span class="poll-percent">${percent}%</span>
+                                        </div>
+                                    </div>`;
+                            } else {
+                                optionsHtml += `
+                                    <button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">
+                                        ${opt}
+                                    </button>`;
+                            }
+                        });
+                    }
                     optionsHtml += '</div>';
 
-                    let statusText = isExpired ? "Vot Încheiat" : "Votează Acum (1 min)";
+                    // Use saved duration label if available, else calc it
+                    let durationTxt = data.durationLabel || "1 Min";
+                    let statusText = isExpired ? "Vot Încheiat" : `Votează (${durationTxt})`;
                     
-                    // --- NEW: Add "View Results" link logic ---
                     let viewResultsLink = "";
                     if (isExpired || hasVoted) {
                         viewResultsLink = ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>`;
@@ -3986,8 +4001,6 @@ function loadMessages() {
                             </div>
                         </div>
                     `;
-                    
-                    // Polls don't use banners
                     bubbleClass = 'msg-bubble'; 
                 } 
                 
@@ -3995,24 +4008,18 @@ function loadMessages() {
                 // --- STANDARD MESSAGE LOGIC ---
                 // ============================================
                 else {
-                    // 1. Reply
                     if(data.replyToName) {
                         const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                         bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                     }
-
-                    // 2. Image / GIF
                     if(data.image) {
                         bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
                     }
-
-                    // 3. Text
                     let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
                     if(safeText) {
                         bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
                     }
 
-                    // 4. Banners & Roles
                     if(data.equippedBanner && data.equippedBanner.cssClass) {
                         bubbleClass += ` ${data.equippedBanner.cssClass}`;
                     } else {
@@ -4024,10 +4031,9 @@ function loadMessages() {
                     }
                 }
 
-                // --- BUILD NAME & BADGES ---
+                // --- BUILD NAMES & BADGES ---
                 let authorNameText = data.name;
                 if(isBot) authorNameText = `🤖 ${data.name}`;
-                
                 if (data.equippedText && data.equippedText.cssClass) {
                     authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
                 }
@@ -4039,10 +4045,9 @@ function loadMessages() {
                 else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
 
                 let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-                
                 let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
-                // --- REACTIONS ---
+                // --- REACTIONS & SEEN ---
                 let reactionsHtml = "";
                 if(data.reactions) {
                     const counts = {};
@@ -4056,26 +4061,20 @@ function loadMessages() {
                     }
                 }
 
-                // --- SEEN BUTTON ---
                 const seenCount = (data.seenBy || []).length;
                 const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
                     <i class="fas fa-eye"></i> ${seenCount}
                 </button>`;
 
-                // --- MENU ---
                 let menuHtml = `
                     <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                     <div id="menu-${msgId}" class="options-dropdown">
                         <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Poll").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
                         <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                         <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                        
                         ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                        
                         ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
-                        
                         ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
-
                         <div id="emojis-${msgId}" class="emoji-picker-menu">
                             <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
                             <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
