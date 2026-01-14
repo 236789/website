@@ -1314,17 +1314,27 @@
 }
 .picker-drawer.open { max-height: 220px; }
 
-/* Emoji Grid */
 .emoji-grid-container {
-    padding: 10px;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
-    gap: 5px;
+    padding: 15px;
+    display: flex;       /* Changed from grid to flex */
+    flex-wrap: wrap;     /* Wraps to next line */
+    gap: 10px;           /* Space between emojis */
     overflow-y: auto;
-    height: 220px;
+    height: auto;
+    max-height: 200px;   
+    justify-content: flex-start; /* Aligns them to the left */
 }
-.emoji-item { font-size: 22px; cursor: pointer; text-align: center; padding: 5px; border-radius: 5px; }
-.emoji-item:hover { background: rgba(255,255,255,0.1); }
+
+.emoji-item {
+    font-size: 24px;
+    cursor: pointer;
+    text-align: center;
+    padding: 5px;
+    border-radius: 5px;
+    transition: 0.2s;
+    width: 40px;         /* Fixed width so they are uniform */
+}
+.emoji-item:hover { background: rgba(255,255,255,0.1); transform: scale(1.2); }
 
 /* GIF Grid */
 .gif-container { padding: 10px; height: 220px; display: flex; flex-direction: column; }
@@ -1697,7 +1707,6 @@
 
 
 <div class="input-area-wrapper">
-    <div id="typingIndicator" class="typing-indicator"></div>
 
     <!-- MUTE BANNER -->
     <div id="muteBanner" style="display:none;">
@@ -1706,22 +1715,25 @@
     </div>
 
     <!-- 1. TOOLBAR (Blue Line) -->
-    <div class="chat-tools-bar">
-        <!-- Emoji Button -->
+<div class="chat-tools-bar">
+        <!-- 1. Emoji -->
         <button id="emojiBtn" class="tool-btn" onclick="togglePicker('emoji')">
             <i class="fas fa-smile"></i>
         </button>
         
-        <!-- GIF Button -->
+        <!-- 2. GIF -->
         <button id="gifBtn" class="tool-btn" onclick="togglePicker('gif')">
             <span class="gif-text-icon">GIF</span>
         </button>
 
-        <!-- Hidden Image Input -->
+        <!-- 3. Image (Next to them) -->
         <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
-        <!-- Staff Image Button (Auto-hidden by JS) -->
-        <button id="imgBtn" class="tool-btn" style="display:none; margin-left:auto;"><i class="fas fa-image"></i></button>
+        <!-- Removed 'margin-left:auto' so it sits next to GIF -->
+        <button id="imgBtn" class="tool-btn" style="display:none;"><i class="fas fa-image"></i></button>
     </div>
+
+
+    <div id="typingIndicator" class="typing-indicator"></div>
 
     <!-- 2. PICKER DRAWER -->
     <div id="pickerDrawer" class="picker-drawer">
@@ -1891,34 +1903,73 @@
         emojiSection.appendChild(s);
     });
 
-    window.togglePicker = async (type) => {
+window.togglePicker = async (type) => {
         const isEmoji = type === 'emoji';
         
-        // CHECK GIF PERMISSION
+        // --- CHECK GIF PERMISSION ---
         if (!isEmoji) {
             const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            
+            // If user does NOT have gif access
             if (!userSnap.data().hasGifAccess) {
-                pickerDrawer.classList.remove('open'); gifBtn.classList.remove('active');
-                // Use the existing Reward Modal to show the error
-                showRewardModal("❌ ACCES INTERZIS", "Nu ai acces la GIF-uri! Cumpără permisul din Shop > Alte.");
-                document.querySelector('.reward-title').innerHTML = "<span>🔒</span> LOCKED";
-                return;
+                // Close the picker UI
+                pickerDrawer.classList.remove('open'); 
+                gifBtn.classList.remove('active');
+                
+                // --- CUSTOM POPUP LOGIC (FIX HUGE TEXT) ---
+                const modal = document.getElementById('rewardModal');
+                const amountEl = document.getElementById('rewardAmount');
+                const iconEl = modal.querySelector('.reward-coin-icon');
+                const labelEl = modal.querySelector('.reward-label');
+
+                // 1. Set Title & Description
+                modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> LOCKED";
+                document.getElementById('rewardText').innerText = "Nu ai acces la GIF-uri!";
+                
+                // 2. Set Instructions & Fix Font Size
+                amountEl.innerText = "Cumpără permisul din Shop > Alte.";
+                amountEl.style.fontSize = "16px"; // Make text small and readable
+                amountEl.style.color = "#fff";    // White text
+                amountEl.style.lineHeight = "1.5";
+                amountEl.style.fontWeight = "500";
+
+                // 3. Hide Coin Icon & Label (Not needed for error)
+                if(iconEl) iconEl.style.display = 'none';
+                if(labelEl) labelEl.style.display = 'none';
+                
+                // 4. Show Modal
+                modal.classList.add('active');
+                return; // Stop here
             }
         }
 
+        // --- NORMAL PICKER TOGGLE LOGIC ---
         const sectionToShow = isEmoji ? emojiSection : gifSection;
-        emojiSection.style.display = 'none'; gifSection.style.display = 'none';
-        emojiBtn.classList.remove('active'); gifBtn.classList.remove('active');
+        
+        // Reset both first
+        emojiSection.style.display = 'none'; 
+        gifSection.style.display = 'none';
+        emojiBtn.classList.remove('active'); 
+        gifBtn.classList.remove('active');
 
-        if (pickerDrawer.classList.contains('open') && ((isEmoji && emojiBtn.dataset.active === 'true') || (!isEmoji && gifBtn.dataset.active === 'true'))) {
+        // Check if we are closing the current active one
+        const btnActive = isEmoji ? emojiBtn : gifBtn;
+        
+        if (pickerDrawer.classList.contains('open') && btnActive.dataset.active === 'true') {
+            // Close Drawer
             pickerDrawer.classList.remove('open');
-            emojiBtn.dataset.active = 'false'; gifBtn.dataset.active = 'false';
+            btnActive.dataset.active = 'false';
         } else {
+            // Open Drawer & Switch Tab
             sectionToShow.style.display = isEmoji ? 'grid' : 'flex';
             pickerDrawer.classList.add('open');
+            
+            // Set Active States
             (isEmoji ? emojiBtn : gifBtn).classList.add('active');
             (isEmoji ? emojiBtn : gifBtn).dataset.active = 'true';
             (isEmoji ? gifBtn : emojiBtn).dataset.active = 'false';
+            
+            // Load GIFs if opening GIF tab
             if(!isEmoji) loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
         }
     };
@@ -3411,156 +3462,151 @@ const payload = {
 
     let unsubscribe;
 function loadMessages() {
-    if(unsubscribe) unsubscribe();
-    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
-    
-    unsubscribe = onSnapshot(q, snapshot => {
-        const feed = messagesFeed;
-        const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
-
-        const docs = [];
-        snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-        docs.reverse();
-
-        feed.innerHTML = '';
-        docs.forEach(data => {
-            if(data.isDeleted) return; 
-
-            const msgId = data.id;
-            const isMine = data.uid === currentUid;
-            const isBot = data.isBot === true;
-            const msgIsAdmin = data.isAdmin === true;
-            const msgIsOwner = data.isOwner === true;
-            const msgIsMod = data.isMod === true;
-            const msgIsHelper = data.isHelper === true;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
-            wrapper.dataset.id = msgId;
-
-            let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
-            let bubbleContent = "";
-            
-            if(data.replyToName) {
-                const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
-                bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
-            }
-
-            if(data.image) {
-                bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
-            }
-
-            let safeText = data.text.replace(/</g, "&lt;");
-            safeText = safeText.replace(/\n/g, "<br>");
-            if(safeText) bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
-            
-            let bubbleClass = 'msg-bubble';
-            if(data.equippedBanner && data.equippedBanner.cssClass) {
-                bubbleClass += ` ${data.equippedBanner.cssClass}`;
-            } else {
-                if(isBot) bubbleClass += ' bot-msg';
-                else if(msgIsOwner) bubbleClass += ' owner-msg';
-                else if(msgIsAdmin) bubbleClass += ' admin-msg';
-                else if(msgIsMod) bubbleClass += ' mod-msg';
-                else if(msgIsHelper) bubbleClass += ' helper-msg';
-            }
-
-            // --- FIX 1: APPLY COLORED TEXT TO BUBBLE USERNAMES ---
-            let authorNameText = data.name;
-            if(isBot) authorNameText = `🤖 ${data.name}`;
-            
-            // Check if this message data has the equipped text class
-            if (data.equippedText && data.equippedText.cssClass) {
-                authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
-            }
-            
-            // --- FIX 2: CHANGE ORDER (NAME FIRST, THEN BADGES) ---
-            let staffHtml = "";
-            if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
-            else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
-            else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
-            else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
-
-            let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-            
-            // Order: [USERNAME] [STAFF BADGE] [COSMETIC BADGE]
-            let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
-
-            let reactionsHtml = "";
-            if(data.reactions) {
-                const counts = {};
-                Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
-                if(Object.keys(counts).length > 0) {
-                    reactionsHtml = `<div class="msg-reactions">`;
-                    for(let [emoji, count] of Object.entries(counts)) { 
-                        reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
-                    }
-                    reactionsHtml += `</div>`;
-                }
-            }
-
-            const seenCount = (data.seenBy || []).length;
-            const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
-                <i class="fas fa-eye"></i> ${seenCount}
-            </button>`;
-
-let menuHtml = `
-                <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
-                <div id="menu-${msgId}" class="options-dropdown">
-                    <button onclick="startReply('${msgId}', '${data.name}', '${data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
-                    <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                    <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                    
-                    <!-- DELETE OPTION -->
-                    ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                    
-                    <!-- MUTE OPTION (Staff Only) -->
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
-                    
-                    <!-- BAN OPTION (Owner Only) -->
-                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
-
-                    <div id="emojis-${msgId}" class="emoji-picker-menu">
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '💋')">💋</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥰')">🥰</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😢')">😢</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙏')">🙏</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👀')">👀</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '💀')">💀</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🎉')">🎉</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥹')">🥹</div>
-                    </div>
-                </div>
-            `;
-
-            // --- FIX 3: ALWAYS SHOW AUTHOR NAME (REMOVE !isMine CHECK) ---
-            wrapper.innerHTML = `
-                <div class="msg-author">${finalNameHtml}</div>
-                <div class="${bubbleClass}">${bubbleContent}</div>
-                ${reactionsHtml}
-                <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
-                ${menuHtml}
-            `;
-            feed.appendChild(wrapper);
-            seenObserver.observe(wrapper);
-        });
+        if(unsubscribe) unsubscribe();
+        const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
         
-        if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
-    });
-}
+        unsubscribe = onSnapshot(q, snapshot => {
+            const feed = messagesFeed;
+            // Check if user is near bottom to auto-scroll
+            const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
+
+            const docs = [];
+            snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+            docs.reverse(); // Show newest at bottom
+
+            feed.innerHTML = '';
+            docs.forEach(data => {
+                if(data.isDeleted) return; 
+
+                const msgId = data.id;
+                const isMine = data.uid === currentUid;
+                const isBot = data.isBot === true;
+                
+                // Staff Checks
+                const msgIsAdmin = data.isAdmin === true;
+                const msgIsOwner = data.isOwner === true;
+                const msgIsMod = data.isMod === true;
+                const msgIsHelper = data.isHelper === true;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
+                wrapper.dataset.id = msgId;
+
+                let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+                let bubbleContent = "";
+                
+                // 1. Handle Reply
+                if(data.replyToName) {
+                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
+                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                }
+
+                // 2. Handle GIF / Image (THE FIX IS HERE)
+                if(data.image) {
+                    bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
+                }
+
+                // 3. Handle Text
+                let safeText = data.text.replace(/</g, "&lt;");
+                safeText = safeText.replace(/\n/g, "<br>");
+                
+                // Only add text div if there is actual text
+                if(safeText) {
+                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
+                }
+                
+                // 4. Determine Bubble Style (Banner vs Default)
+                let bubbleClass = 'msg-bubble';
+                if(data.equippedBanner && data.equippedBanner.cssClass) {
+                    bubbleClass += ` ${data.equippedBanner.cssClass}`;
+                } else {
+                    if(isBot) bubbleClass += ' bot-msg';
+                    else if(msgIsOwner) bubbleClass += ' owner-msg';
+                    else if(msgIsAdmin) bubbleClass += ' admin-msg';
+                    else if(msgIsMod) bubbleClass += ' mod-msg';
+                    else if(msgIsHelper) bubbleClass += ' helper-msg';
+                }
+
+                // 5. Build Name HTML (Colored Text logic)
+                let authorNameText = data.name;
+                if(isBot) authorNameText = `🤖 ${data.name}`;
+                
+                if (data.equippedText && data.equippedText.cssClass) {
+                    authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
+                }
+                
+                // 6. Build Badges HTML
+                let staffHtml = "";
+                if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+                else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
+                else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
+                else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
+
+                let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
+                
+                // Final Name String
+                let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
+
+                // 7. Handle Reactions
+                let reactionsHtml = "";
+                if(data.reactions) {
+                    const counts = {};
+                    Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
+                    if(Object.keys(counts).length > 0) {
+                        reactionsHtml = `<div class="msg-reactions">`;
+                        for(let [emoji, count] of Object.entries(counts)) { 
+                            reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
+                        }
+                        reactionsHtml += `</div>`;
+                    }
+                }
+
+                // 8. Seen Button
+                const seenCount = (data.seenBy || []).length;
+                const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
+                    <i class="fas fa-eye"></i> ${seenCount}
+                </button>`;
+
+                // 9. Dropdown Menu HTML
+                let menuHtml = `
+                    <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                    <div id="menu-${msgId}" class="options-dropdown">
+                        <button onclick="startReply('${msgId}', '${data.name}', '${data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                        
+                        ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        
+                        ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                        
+                        ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+
+                        <div id="emojis-${msgId}" class="emoji-picker-menu">
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
+                        </div>
+                    </div>
+                `;
+
+                wrapper.innerHTML = `
+                    <div class="msg-author">${finalNameHtml}</div>
+                    <div class="${bubbleClass}">${bubbleContent}</div>
+                    ${reactionsHtml}
+                    <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
+                    ${menuHtml}
+                `;
+                
+                feed.appendChild(wrapper);
+                seenObserver.observe(wrapper);
+            });
+            
+            if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
+        });
+    }
 
     window.openSeenByList = async (msgId) => {
         const modal = document.getElementById('seenByModal');
