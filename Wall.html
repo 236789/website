@@ -1467,6 +1467,25 @@
     text-align: left;
 }
 .poll-label { font-size: 11px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 2px; }
+
+
+/* Add Option Button */
+.btn-add-opt {
+    background: transparent;
+    border: 1px dashed var(--primary);
+    color: var(--primary);
+    padding: 8px;
+    width: 100%;
+    border-radius: 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: 'Orbitron';
+    transition: 0.3s;
+    margin-bottom: 10px;
+}
+.btn-add-opt:hover {
+    background: rgba(41, 243, 255, 0.1);
+}
   </style>
 
 </head>
@@ -1529,6 +1548,20 @@
         <div id="viewUserBio" class="view-bio">Nu există descriere.</div>
         <div id="viewUserBirth" style="font-size:11px; color:#aaa; margin-bottom:10px;"></div>
         <a id="viewUserTikTok" href="#" target="_blank" class="tiktok-btn" style="display:none;"><i class="fab fa-tiktok"></i> Follow on TikTok</a>
+    </div>
+</div>
+
+
+<!-- POLL VOTERS MODAL -->
+<div id="pollVotersModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 350px; height: auto; max-height: 600px; padding: 25px;">
+        <button onclick="document.getElementById('pollVotersModal').classList.remove('active')" class="close-pop">✕</button>
+        <h3 style="font-family:'Orbitron'; margin-bottom: 15px; border-bottom:1px solid var(--glass-border); padding-bottom:10px;">
+            REZULTATE
+        </h3>
+        <div id="pollVotersList" style="text-align: left; overflow-y: auto; max-height: 450px;">
+            <!-- Content injected by JS -->
+        </div>
     </div>
 </div>
 
@@ -1678,26 +1711,33 @@
 
 
 <!-- POLL CREATOR MODAL -->
+<!-- POLL CREATOR MODAL -->
 <div id="pollCreatorModal" class="custom-alert-overlay">
     <div class="custom-alert-card">
         <h3 class="alert-title"><i class="fas fa-poll"></i> CREEAZĂ VOT</h3>
         
         <div class="poll-modal-inputs">
+            <!-- Question Input -->
             <div>
                 <div class="poll-label">ÎNTREBARE</div>
                 <input type="text" id="pollQuestion" class="alert-input" style="display:block;" placeholder="Ex: Ce joc ne jucăm?">
             </div>
+
+            <!-- Dynamic Options Container -->
             <div>
-                <div class="poll-label">OPȚIUNEA 1</div>
-                <input type="text" id="pollOpt1" class="alert-input" style="display:block;" placeholder="Ex: Minecraft">
-            </div>
-            <div>
-                <div class="poll-label">OPȚIUNEA 2</div>
-                <input type="text" id="pollOpt2" class="alert-input" style="display:block;" placeholder="Ex: CS:GO">
+                <div class="poll-label">OPȚIUNI (Max 5)</div>
+                <div id="pollOptionsContainer" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+                    <!-- Inputs injected by JS -->
+                </div>
+                
+                <!-- Add Button -->
+                <button id="addOptionBtn" class="btn-add-opt" onclick="addPollOption()">
+                    <i class="fas fa-plus"></i> ADAUGĂ OPȚIUNE
+                </button>
             </div>
         </div>
 
-        <div class="alert-btns" style="margin-top:20px;">
+        <div class="alert-btns" style="margin-top:10px;">
             <button class="alert-btn btn-no" onclick="document.getElementById('pollCreatorModal').style.display='none'">ANULEAZĂ</button>
             <button class="alert-btn btn-yes" onclick="createPoll()">START VOT (1 Min)</button>
         </div>
@@ -3658,39 +3698,77 @@ async function sendMessage() {
 
 
 // --- POLL SYSTEM LOGIC ---
+// --- UPDATED POLL CREATOR LOGIC ---
 
-    // 1. Open Creator
+    // 1. Open Creator & Reset
     window.openPollCreator = () => {
+        const container = document.getElementById('pollOptionsContainer');
         document.getElementById('pollQuestion').value = "";
-        document.getElementById('pollOpt1').value = "";
-        document.getElementById('pollOpt2').value = "";
+        container.innerHTML = ""; // Clear old inputs
+        
+        // Start with 2 Default Options
+        addPollOption();
+        addPollOption();
+        
         document.getElementById('pollCreatorModal').style.display = 'flex';
     };
 
-    // 2. Create Poll (Send to DB)
+    // 2. Add New Input Field (Max 5)
+    window.addPollOption = () => {
+        const container = document.getElementById('pollOptionsContainer');
+        const count = container.children.length;
+
+        if(count >= 5) {
+            showToast("Maxim 5 opțiuni!");
+            return;
+        }
+
+        const input = document.createElement('input');
+        input.type = "text";
+        input.className = "alert-input";
+        input.style.display = "block";
+        input.style.marginBottom = "0"; // Override default margin
+        input.placeholder = `Opțiunea ${count + 1}`;
+        
+        container.appendChild(input);
+        
+        // Hide "Add" button if max reached
+        const btn = document.getElementById('addOptionBtn');
+        if(container.children.length >= 5) btn.style.display = 'none';
+        else btn.style.display = 'block';
+    };
+
+    // 3. Create Poll (Gather Data)
     window.createPoll = async () => {
         const q = document.getElementById('pollQuestion').value.trim();
-        const o1 = document.getElementById('pollOpt1').value.trim();
-        const o2 = document.getElementById('pollOpt2').value.trim();
+        const container = document.getElementById('pollOptionsContainer');
+        const inputs = container.querySelectorAll('input');
+        
+        // Filter out empty inputs
+        const options = [];
+        inputs.forEach(inp => {
+            if(inp.value.trim()) options.push(inp.value.trim());
+        });
 
-        if(!q || !o1 || !o2) { showToast("Completează toate câmpurile!"); return; }
+        // Validation
+        if(!q) { showToast("Scrie o întrebare!"); return; }
+        if(options.length < 2) { showToast("Minim 2 opțiuni!"); return; }
 
         document.getElementById('pollCreatorModal').style.display = 'none';
 
-        // Custom Payload for Poll
+        // Custom Payload
         const payload = {
-            type: 'poll', // Special type
+            type: 'poll',
             question: q,
-            options: [o1, o2],
-            votes: {}, // Map: { "uid": optionIndex }
-            expiresAt: Date.now() + 60000, // 1 Minute from now
+            options: options, // Array of 2 to 5 strings
+            votes: {},
+            expiresAt: Date.now() + 60000, // 1 Minute
             
-            // Standard User Data
             uid: auth.currentUser.uid,
             name: (isOwner ? "Lost Soul" : auth.currentUser.displayName),
             photo: auth.currentUser.photoURL,
             isAdmin: isAdmin, isOwner: isOwner, isMod: isMod, isHelper: isHelper,
-            equippedBadge: null, equippedBanner: null, // Polls don't need banners
+            equippedBadge: null, equippedBanner: null,
             createdAt: serverTimestamp(),
             isDeleted: false,
             reactions: {}, seenBy: []
@@ -3699,7 +3777,10 @@ async function sendMessage() {
         try {
             await addDoc(collection(db, "wall_messages"), payload);
             showToast("Vot pornit!", "success");
-        } catch(e) { console.error(e); showToast("Eroare la creare vot."); }
+        } catch(e) { 
+            console.error(e); 
+            showToast("Eroare la creare vot."); 
+        }
     };
 
     // 3. Cast Vote
@@ -3730,6 +3811,80 @@ async function sendMessage() {
             
             await updateDoc(msgRef, updateField);
             showToast("Vot înregistrat!", "success");
+        }
+    };
+
+
+window.openPollVoters = async (msgId) => {
+        const modal = document.getElementById('pollVotersModal');
+        const list = document.getElementById('pollVotersList');
+        
+        list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Se încarcă voturile...</div>';
+        modal.classList.add('active');
+
+        try {
+            // 1. Get Poll Data
+            const msgSnap = await getDoc(doc(db, "wall_messages", msgId));
+            if(!msgSnap.exists()) return;
+            const data = msgSnap.data();
+            const votes = data.votes || {};
+            const options = data.options || ["Opțiunea 1", "Opțiunea 2"];
+
+            // 2. Group UIDs by Option Index
+            // buckets[0] = [uid1, uid2], buckets[1] = [uid3]
+            const buckets = [[], []]; 
+            Object.entries(votes).forEach(([uid, optionIdx]) => {
+                if(buckets[optionIdx]) buckets[optionIdx].push(uid);
+            });
+
+            // 3. Fetch User Profiles
+            // We get all UIDs involved to fetch their names/images
+            const allVoters = Object.keys(votes);
+            
+            if(allVoters.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Nu a votat nimeni.</div>';
+                return;
+            }
+
+            // Fetch accounts (Promise.all for speed)
+            const userSnaps = await Promise.all(allVoters.map(uid => getDoc(doc(db, "accounts", uid))));
+            const userMap = {}; // Map UID -> { name, image }
+            
+            userSnaps.forEach(snap => {
+                if(snap.exists()) userMap[snap.id] = snap.data();
+            });
+
+            // 4. Render the List
+            list.innerHTML = '';
+
+            options.forEach((optName, idx) => {
+                const uidsInThisOption = buckets[idx];
+                
+                // Option Header
+                const count = uidsInThisOption.length;
+                const headerColor = idx === 0 ? '#29f3ff' : '#ff4757'; // Cyan for Opt 1, Red for Opt 2
+                
+                const header = document.createElement('div');
+                header.style.cssText = `font-family:'Orbitron'; font-weight:700; color:${headerColor}; margin-top:15px; margin-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px; font-size:12px;`;
+                header.innerHTML = `${optName} <span style="float:right; opacity:0.7;">${count}</span>`;
+                list.appendChild(header);
+
+                if(count === 0) {
+                    list.innerHTML += `<div style="font-size:10px; color:#555; font-style:italic; margin-bottom:10px;">0 voturi</div>`;
+                } else {
+                    uidsInThisOption.forEach(uid => {
+                        const u = userMap[uid] || { username: 'Necunoscut', image: 'https://iili.io/fhc1SKQ.png' };
+                        const row = document.createElement('div');
+                        row.className = 'react-user-item'; // Reuse existing style
+                        row.innerHTML = `<img src="${u.image}" class="react-user-img"><span class="react-user-name">${u.username}</span>`;
+                        list.appendChild(row);
+                    });
+                }
+            });
+
+        } catch(e) {
+            console.error(e);
+            list.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>';
         }
     };
 
@@ -3816,17 +3971,24 @@ function loadMessages() {
 
                     let statusText = isExpired ? "Vot Încheiat" : "Votează Acum (1 min)";
                     
+                    // --- NEW: Add "View Results" link logic ---
+                    let viewResultsLink = "";
+                    if (isExpired || hasVoted) {
+                        viewResultsLink = ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>`;
+                    }
+                    
                     bubbleContent = `
                         <div class="poll-card">
                             <div class="poll-question">${data.question}</div>
                             ${optionsHtml}
-                            <div class="poll-meta">${totalVotes} Voturi • ${statusText}</div>
+                            <div class="poll-meta">
+                                ${totalVotes} Voturi • ${statusText}${viewResultsLink}
+                            </div>
                         </div>
                     `;
                     
-                    // Polls don't use banners, just basic bubble reset
+                    // Polls don't use banners
                     bubbleClass = 'msg-bubble'; 
-                    // Remove padding for clean card look if needed, or keep standard
                 } 
                 
                 // ============================================
