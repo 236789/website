@@ -1314,28 +1314,34 @@
 }
 .picker-drawer.open { max-height: 220px; }
 
+/* FIXED EMOJI GRID */
 .emoji-grid-container {
     padding: 15px;
-    display: flex;       /* Changed from grid to flex */
-    flex-wrap: wrap;     /* Wraps to next line */
-    gap: 10px;           /* Space between emojis */
+    display: grid;
+    /* This forces items to be exactly 35px wide. They won't stretch. */
+    grid-template-columns: repeat(auto-fill, 35px);
+    gap: 8px;
     overflow-y: auto;
-    height: auto;
-    max-height: 200px;   
-    justify-content: flex-start; /* Aligns them to the left */
+    height: 200px;
+    /* Aligns them to the left */
+    justify-content: start; 
 }
 
 .emoji-item {
-    font-size: 24px;
+    font-size: 22px;
     cursor: pointer;
     text-align: center;
-    padding: 5px;
-    border-radius: 5px;
+    line-height: 35px; /* Vertically centers the emoji */
+    border-radius: 8px;
     transition: 0.2s;
-    width: 40px;         /* Fixed width so they are uniform */
+    /* Fixed square size */
+    width: 35px;
+    height: 35px;
 }
-.emoji-item:hover { background: rgba(255,255,255,0.1); transform: scale(1.2); }
-
+.emoji-item:hover { 
+    background: rgba(255,255,255,0.1); 
+    transform: scale(1.1); 
+}
 /* GIF Grid */
 .gif-container { padding: 10px; height: 220px; display: flex; flex-direction: column; }
 .gif-search-bar {
@@ -1346,10 +1352,18 @@
 .gif-item { width: 100%; height: 80px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .gif-item:hover { border-color: var(--primary); }
 
-/* Fix Image Sizing in Chat */
+/* FIXED IMAGE/GIF DISPLAY */
 .msg-img-content {
-    max-width: 100%; width: 250px; height: auto;
-    border-radius: 10px; margin-top: 5px; border: 1px solid rgba(255,255,255,0.1);
+    display: block;           /* Forces it to take up space */
+    max-width: 100%;          /* Fits inside the bubble */
+    width: auto;              /* Allows natural width */
+    height: auto;             /* Allows natural height */
+    min-height: 50px;         /* Prevents it from being 0px high */
+    border-radius: 12px;
+    margin-top: 5px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.2); /* Dark background while loading */
 }
 
 /* --- CUSTOM CONFIRM MODAL --- */
@@ -1985,23 +1999,41 @@ window.togglePicker = async (type) => {
         }, 800);
     });
 
-    async function loadGifs(url) {
+async function loadGifs(url) {
         gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
         try {
-            const res = await fetch(url); const data = await res.json();
+            const res = await fetch(url); 
+            const data = await res.json();
             gifResults.innerHTML = '';
+            
             data.data.forEach(gif => {
-                const img = document.createElement('img'); img.className = 'gif-item';
-                img.src = gif.images.fixed_height_small.url;
+                const img = document.createElement('img'); 
+                img.className = 'gif-item';
+                // Show small preview in picker
+                img.src = gif.images.fixed_height_small.url; 
+                
                 img.onclick = () => {
-                    pickerDrawer.classList.remove('open'); gifBtn.classList.remove('active');
+                    // 1. Close the menu
+                    pickerDrawer.classList.remove('open'); 
+                    gifBtn.classList.remove('active');
+                    if(emojiBtn) emojiBtn.classList.remove('active');
+
+                    // 2. Set the global variable to the GIF URL
                     selectedImgBase64 = gif.images.original.url; 
-                    sendMessage(); // Auto send
-                    selectedImgBase64 = null;
+                    
+                    // 3. Send the message
+                    sendMessage(); 
+                    
+                    // --- IMPORTANT FIX ---
+                    // I removed "selectedImgBase64 = null" from here.
+                    // The sendMessage() function will clean it up AFTER it finishes sending.
                 };
                 gifResults.appendChild(img);
             });
-        } catch(e) { gifResults.innerHTML = '<div style="color:red; grid-column:span 3; text-align:center;">Eroare Giphy.</div>'; }
+        } catch(e) { 
+            console.error(e);
+            gifResults.innerHTML = '<div style="color:#ff4757; grid-column:span 3; text-align:center;">Eroare Giphy.</div>'; 
+        }
     }
     // --- COSMETICS & BADGES DB ---
     const BADGES_DB = [
