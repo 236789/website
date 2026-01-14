@@ -1391,6 +1391,82 @@
 .btn-yes { background: var(--primary); color: #000; }
 .btn-no { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .btn-danger { background: #ff4757; color: #fff; }
+
+
+/* --- POLL / VOTE STYLES --- */
+/* The Chat Bubble for Polls */
+.poll-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--primary);
+    border-radius: 12px;
+    padding: 15px;
+    width: 100%;
+    min-width: 250px;
+    max-width: 350px;
+    margin-top: 5px;
+}
+
+.poll-question {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: #fff;
+    margin-bottom: 15px;
+    font-weight: 700;
+}
+
+.poll-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Vote Buttons */
+.poll-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+    text-align: left;
+    font-family: 'Poppins';
+    font-size: 13px;
+    position: relative;
+    overflow: hidden;
+}
+.poll-btn:hover {
+    border-color: var(--primary);
+    background: rgba(41, 243, 255, 0.1);
+}
+
+/* Result Bars */
+.poll-result-bar {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: rgba(41, 243, 255, 0.2);
+    z-index: 0;
+    transition: width 0.5s ease;
+}
+.poll-text { position: relative; z-index: 1; display: flex; justify-content: space-between; }
+.poll-percent { font-weight: 700; color: var(--primary); }
+
+.poll-meta {
+    font-size: 10px;
+    color: #a5b1c2;
+    margin-top: 10px;
+    text-align: right;
+    font-style: italic;
+}
+
+/* POLL CREATOR MODAL */
+.poll-modal-inputs {
+    display: flex; 
+    flex-direction: column; 
+    gap: 10px; 
+    text-align: left;
+}
+.poll-label { font-size: 11px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 2px; }
   </style>
 
 </head>
@@ -1600,6 +1676,34 @@
     </div>
 </div>
 
+
+<!-- POLL CREATOR MODAL -->
+<div id="pollCreatorModal" class="custom-alert-overlay">
+    <div class="custom-alert-card">
+        <h3 class="alert-title"><i class="fas fa-poll"></i> CREEAZĂ VOT</h3>
+        
+        <div class="poll-modal-inputs">
+            <div>
+                <div class="poll-label">ÎNTREBARE</div>
+                <input type="text" id="pollQuestion" class="alert-input" style="display:block;" placeholder="Ex: Ce joc ne jucăm?">
+            </div>
+            <div>
+                <div class="poll-label">OPȚIUNEA 1</div>
+                <input type="text" id="pollOpt1" class="alert-input" style="display:block;" placeholder="Ex: Minecraft">
+            </div>
+            <div>
+                <div class="poll-label">OPȚIUNEA 2</div>
+                <input type="text" id="pollOpt2" class="alert-input" style="display:block;" placeholder="Ex: CS:GO">
+            </div>
+        </div>
+
+        <div class="alert-btns" style="margin-top:20px;">
+            <button class="alert-btn btn-no" onclick="document.getElementById('pollCreatorModal').style.display='none'">ANULEAZĂ</button>
+            <button class="alert-btn btn-yes" onclick="createPoll()">START VOT (1 Min)</button>
+        </div>
+    </div>
+</div>
+
 <!-- INVENTORY MODAL -->
 <div id="inventoryModal" class="account-modal-overlay">
     <div class="shop-modal-card">
@@ -1745,24 +1849,20 @@
 
     <!-- 1. TOOLBAR (Blue Line) -->
 <!-- 1. TOOLBAR (Blue Line) -->
-    <div class="chat-tools-bar">
+<div class="chat-tools-bar">
         <!-- Emoji -->
-        <button id="emojiBtn" class="tool-btn" onclick="togglePicker('emoji')">
-            <i class="fas fa-smile"></i>
-        </button>
+        <button id="emojiBtn" class="tool-btn" onclick="togglePicker('emoji')"><i class="fas fa-smile"></i></button>
         
         <!-- GIF -->
-        <button id="gifBtn" class="tool-btn" onclick="togglePicker('gif')">
-            <span class="gif-text-icon">GIF</span>
-        </button>
+        <button id="gifBtn" class="tool-btn" onclick="togglePicker('gif')"><span class="gif-text-icon">GIF</span></button>
 
         <!-- Image -->
         <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
         <button id="imgBtn" class="tool-btn" style="display:none;"><i class="fas fa-image"></i></button>
 
-        <!-- NEW: Reset Chat Button (Pushed to the right) -->
-        <button id="resetChatBtn" class="tool-btn" style="display:none; margin-left:auto; color:#ff4757;">
-            <i class="fas fa-trash"></i>
+        <!-- NEW: VOTE BUTTON (Staff Only - Hidden by default) -->
+        <button id="pollBtn" class="tool-btn" style="display:none;" onclick="openPollCreator()">
+            <i class="fas fa-poll"></i>
         </button>
     </div>
 
@@ -3002,19 +3102,23 @@ onAuthStateChanged(auth, async (user) => {
         isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
         isHelper = ['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(user.email);
 
-        // Staff Image Permissions
+        // --- STAFF BUTTONS VISIBILITY (Image & Poll) ---
+        const imgBtn = document.getElementById('imgBtn');
+        const pollBtn = document.getElementById('pollBtn');
+
         if (isOwner || isAdmin || isMod || isHelper) {
-            document.getElementById('imgBtn').style.display = 'flex';
+            if(imgBtn) imgBtn.style.display = 'flex';
+            if(pollBtn) pollBtn.style.display = 'flex';
         } else {
-            document.getElementById('imgBtn').style.display = 'none';
+            if(imgBtn) imgBtn.style.display = 'none';
+            if(pollBtn) pollBtn.style.display = 'none';
         }
 
-        // --- NEW: RESET CHAT BUTTON VISIBILITY (Owner & Admin Only) ---
+        // --- RESET CHAT BUTTON VISIBILITY (Owner & Admin Only) ---
         const resetBtn = document.getElementById('resetChatBtn');
         if (resetBtn) {
             if (isOwner || isAdmin) {
                 resetBtn.style.display = 'flex';
-                // Add Click Handler Here to ensure it works
                 resetBtn.onclick = async () => {
                     const confirmed = await showCustomConfirm(
                         "RESET CHAT", 
@@ -3069,14 +3173,12 @@ onAuthStateChanged(auth, async (user) => {
                             isAwardingInProgress = true;
                             const oldStr = data.streak || 0;
 
-                            // Update Real DB
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
 
-                            // Show Fire Modal
                             const streakRewardModal = document.getElementById('streakRewardModal');
                             if (streakRewardModal) {
                                 document.getElementById('streakOld').innerText = oldStr;
@@ -3088,7 +3190,7 @@ onAuthStateChanged(auth, async (user) => {
                     }
                 }
 
-                // 3. ACCOUNT MODAL UI (Image, Frame, Text)
+                // 3. ACCOUNT MODAL UI
                 document.getElementById('popUserImg').src = data.image;
                 const popFrame = document.getElementById('popUserFrame');
                 if (popFrame) {
@@ -3111,7 +3213,6 @@ onAuthStateChanged(auth, async (user) => {
                 document.getElementById('popUserName').innerHTML = coloredNameHtml;
                 document.getElementById('popUserEmail').innerText = data.email;
                 
-                // Formatted Currencies
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 const diamondEl = document.getElementById('popUserDiamonds');
                 if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
@@ -3119,7 +3220,7 @@ onAuthStateChanged(auth, async (user) => {
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                // 4. STACKED BADGES (Account Modal)
+                // 4. STACKED BADGES
                 const popBadgeBox = document.getElementById('popUserBadges');
                 if (popBadgeBox) {
                     let staffHtml = "";
@@ -3162,7 +3263,6 @@ onAuthStateChanged(auth, async (user) => {
             }
         });
 
-        // Start Chat Services
         loadMessages();
         listenForTypers();
         startWipeCheck();
@@ -3171,7 +3271,6 @@ onAuthStateChanged(auth, async (user) => {
         listenOnlineUsers();
 
     } else {
-        // Logged Out
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
         currentUid = null; isOwner = false; isAdmin = false; isMod = false; isHelper = false;
@@ -3545,18 +3644,96 @@ async function sendMessage() {
     }, { threshold: 0.5 });
 
     let unsubscribe;
+
+
+
+// --- POLL SYSTEM LOGIC ---
+
+    // 1. Open Creator
+    window.openPollCreator = () => {
+        document.getElementById('pollQuestion').value = "";
+        document.getElementById('pollOpt1').value = "";
+        document.getElementById('pollOpt2').value = "";
+        document.getElementById('pollCreatorModal').style.display = 'flex';
+    };
+
+    // 2. Create Poll (Send to DB)
+    window.createPoll = async () => {
+        const q = document.getElementById('pollQuestion').value.trim();
+        const o1 = document.getElementById('pollOpt1').value.trim();
+        const o2 = document.getElementById('pollOpt2').value.trim();
+
+        if(!q || !o1 || !o2) { showToast("Completează toate câmpurile!"); return; }
+
+        document.getElementById('pollCreatorModal').style.display = 'none';
+
+        // Custom Payload for Poll
+        const payload = {
+            type: 'poll', // Special type
+            question: q,
+            options: [o1, o2],
+            votes: {}, // Map: { "uid": optionIndex }
+            expiresAt: Date.now() + 60000, // 1 Minute from now
+            
+            // Standard User Data
+            uid: auth.currentUser.uid,
+            name: (isOwner ? "Lost Soul" : auth.currentUser.displayName),
+            photo: auth.currentUser.photoURL,
+            isAdmin: isAdmin, isOwner: isOwner, isMod: isMod, isHelper: isHelper,
+            equippedBadge: null, equippedBanner: null, // Polls don't need banners
+            createdAt: serverTimestamp(),
+            isDeleted: false,
+            reactions: {}, seenBy: []
+        };
+
+        try {
+            await addDoc(collection(db, "wall_messages"), payload);
+            showToast("Vot pornit!", "success");
+        } catch(e) { console.error(e); showToast("Eroare la creare vot."); }
+    };
+
+    // 3. Cast Vote
+    window.votePoll = async (msgId, optionIndex) => {
+        if(!auth.currentUser) return;
+        
+        const msgRef = doc(db, "wall_messages", msgId);
+        const snap = await getDoc(msgRef);
+        
+        if(snap.exists()) {
+            const data = snap.data();
+            
+            // Check Expiration
+            if(Date.now() > data.expiresAt) {
+                showToast("Votul a expirat!");
+                return;
+            }
+
+            // Check if already voted (Strict: No switching)
+            if(data.votes && data.votes[auth.currentUser.uid] !== undefined) {
+                showToast("Ai votat deja!");
+                return;
+            }
+
+            // Record Vote
+            const updateField = {};
+            updateField[`votes.${auth.currentUser.uid}`] = optionIndex;
+            
+            await updateDoc(msgRef, updateField);
+            showToast("Vot înregistrat!", "success");
+        }
+    };
+
 function loadMessages() {
         if(unsubscribe) unsubscribe();
         const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
         
         unsubscribe = onSnapshot(q, snapshot => {
             const feed = messagesFeed;
-            // Check if user is near bottom to auto-scroll
             const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
 
             const docs = [];
             snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-            docs.reverse(); // Show newest at bottom
+            docs.reverse();
 
             feed.innerHTML = '';
             docs.forEach(data => {
@@ -3566,7 +3743,6 @@ function loadMessages() {
                 const isMine = data.uid === currentUid;
                 const isBot = data.isBot === true;
                 
-                // Staff Checks
                 const msgIsAdmin = data.isAdmin === true;
                 const msgIsOwner = data.isOwner === true;
                 const msgIsMod = data.isMod === true;
@@ -3578,40 +3754,105 @@ function loadMessages() {
 
                 let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
                 let bubbleContent = "";
-                
-                // 1. Handle Reply
-                if(data.replyToName) {
-                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
-                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
-                }
-
-                // 2. Handle GIF / Image (THE FIX IS HERE)
-                if(data.image) {
-                    bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
-                }
-
-                // 3. Handle Text
-                let safeText = data.text.replace(/</g, "&lt;");
-                safeText = safeText.replace(/\n/g, "<br>");
-                
-                // Only add text div if there is actual text
-                if(safeText) {
-                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
-                }
-                
-                // 4. Determine Bubble Style (Banner vs Default)
                 let bubbleClass = 'msg-bubble';
-                if(data.equippedBanner && data.equippedBanner.cssClass) {
-                    bubbleClass += ` ${data.equippedBanner.cssClass}`;
-                } else {
-                    if(isBot) bubbleClass += ' bot-msg';
-                    else if(msgIsOwner) bubbleClass += ' owner-msg';
-                    else if(msgIsAdmin) bubbleClass += ' admin-msg';
-                    else if(msgIsMod) bubbleClass += ' mod-msg';
-                    else if(msgIsHelper) bubbleClass += ' helper-msg';
+
+                // ============================================
+                // --- SPECIAL: POLL MESSAGE LOGIC ---
+                // ============================================
+                if (data.type === 'poll') {
+                    const now = Date.now();
+                    const isExpired = now > data.expiresAt;
+                    const myVote = data.votes ? data.votes[currentUid] : undefined;
+                    const hasVoted = myVote !== undefined;
+                    
+                    // Count Votes
+                    const results = [0, 0];
+                    let totalVotes = 0;
+                    if(data.votes) {
+                        Object.values(data.votes).forEach(val => {
+                            if(results[val] !== undefined) results[val]++;
+                            totalVotes++;
+                        });
+                    }
+
+                    // Build Options HTML
+                    let optionsHtml = '<div class="poll-options">';
+                    data.options.forEach((opt, idx) => {
+                        // Show RESULTS if: Time Expired OR User Voted
+                        if (isExpired || hasVoted) {
+                            const count = results[idx];
+                            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                            
+                            // Style the user's choice
+                            const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
+                            
+                            optionsHtml += `
+                                <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
+                                    <div class="poll-result-bar" style="width:${percent}%"></div>
+                                    <div class="poll-text">
+                                        <span>${opt} ${myVote === idx ? '(Tu)' : ''}</span>
+                                        <span class="poll-percent">${percent}%</span>
+                                    </div>
+                                </div>`;
+                        } else {
+                            // ACTIVE VOTE BUTTONS
+                            optionsHtml += `
+                                <button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">
+                                    ${opt}
+                                </button>`;
+                        }
+                    });
+                    optionsHtml += '</div>';
+
+                    let statusText = isExpired ? "Vot Încheiat" : "Votează Acum (1 min)";
+                    
+                    bubbleContent = `
+                        <div class="poll-card">
+                            <div class="poll-question">${data.question}</div>
+                            ${optionsHtml}
+                            <div class="poll-meta">${totalVotes} Voturi • ${statusText}</div>
+                        </div>
+                    `;
+                    
+                    // Polls don't use banners, just basic bubble reset
+                    bubbleClass = 'msg-bubble'; 
+                    // Remove padding for clean card look if needed, or keep standard
+                } 
+                
+                // ============================================
+                // --- STANDARD MESSAGE LOGIC ---
+                // ============================================
+                else {
+                    // 1. Reply
+                    if(data.replyToName) {
+                        const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
+                        bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                    }
+
+                    // 2. Image / GIF
+                    if(data.image) {
+                        bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
+                    }
+
+                    // 3. Text
+                    let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
+                    if(safeText) {
+                        bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
+                    }
+
+                    // 4. Banners & Roles
+                    if(data.equippedBanner && data.equippedBanner.cssClass) {
+                        bubbleClass += ` ${data.equippedBanner.cssClass}`;
+                    } else {
+                        if(isBot) bubbleClass += ' bot-msg';
+                        else if(msgIsOwner) bubbleClass += ' owner-msg';
+                        else if(msgIsAdmin) bubbleClass += ' admin-msg';
+                        else if(msgIsMod) bubbleClass += ' mod-msg';
+                        else if(msgIsHelper) bubbleClass += ' helper-msg';
+                    }
                 }
 
-                // 5. Build Name HTML (Colored Text logic)
+                // --- BUILD NAME & BADGES ---
                 let authorNameText = data.name;
                 if(isBot) authorNameText = `🤖 ${data.name}`;
                 
@@ -3619,7 +3860,6 @@ function loadMessages() {
                     authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
                 }
                 
-                // 6. Build Badges HTML
                 let staffHtml = "";
                 if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
                 else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
@@ -3628,10 +3868,9 @@ function loadMessages() {
 
                 let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
                 
-                // Final Name String
                 let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
-                // 7. Handle Reactions
+                // --- REACTIONS ---
                 let reactionsHtml = "";
                 if(data.reactions) {
                     const counts = {};
@@ -3645,17 +3884,17 @@ function loadMessages() {
                     }
                 }
 
-                // 8. Seen Button
+                // --- SEEN BUTTON ---
                 const seenCount = (data.seenBy || []).length;
                 const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
                     <i class="fas fa-eye"></i> ${seenCount}
                 </button>`;
 
-                // 9. Dropdown Menu HTML
+                // --- MENU ---
                 let menuHtml = `
                     <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                     <div id="menu-${msgId}" class="options-dropdown">
-                        <button onclick="startReply('${msgId}', '${data.name}', '${data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Poll").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
                         <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                         <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                         
