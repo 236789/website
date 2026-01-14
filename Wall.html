@@ -568,7 +568,20 @@
     .seen-btn { background: none; border: none; color: #a5b1c2; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: 0.3s; }
     .seen-btn:hover { color: var(--primary); }
     .seen-btn.active { color: var(--primary); }
-    .msg-img-content { width: 100%; max-width: 300px; border-radius: 12px; margin-top: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); }
+/* FIXED IMAGE/GIF SIZING */
+.msg-img-content {
+    display: block;
+    max-width: 280px;       /* Limits the width so it's not huge */
+    max-height: 280px;      /* Limits the height for tall images */
+    width: auto;            /* Keeps aspect ratio */
+    height: auto;           /* Keeps aspect ratio */
+    border-radius: 12px;
+    margin-top: 8px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.2);
+}​
+
     .img-upload-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); width: 45px; height: 45px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; }
     .img-upload-btn:hover { background: var(--primary-dim); color: var(--primary); border-color: var(--primary); }
     .preview-container { display: none; position: relative; padding: 10px; background: rgba(0,0,0,0.4); border-radius: 15px; margin-bottom: 10px; width: fit-content; border: 1px dashed var(--primary); }
@@ -3286,6 +3299,8 @@ async function sendMessage() {
         if(isSending) return;
 
         const text = msgInput.value.trim();
+        
+        // Validation: Allow send if there is Text OR an Image/GIF
         if((!text && !selectedImgBase64) || !auth.currentUser) return;
         
         // 1. Admin Commands
@@ -3328,28 +3343,31 @@ async function sendMessage() {
             const currentBadge = userData.equippedBadge || null;
             const currentBanner = userData.equippedBanner || null;
 
-// Inside sendMessage function, update the payload:
-const payload = {
-    text: text,
-    uid: auth.currentUser.uid,
-    name: displayName,
-    photo: auth.currentUser.photoURL,
-    email: auth.currentUser.email,
-    ip: userIP || "unknown",
-    isAdmin: isAdmin, 
-    isOwner: isOwner, 
-    isMod: isMod,
-    isHelper: isHelper,
-    equippedBadge: currentBadge, 
-    equippedBanner: currentBanner,
-    equippedText: userData.equippedText || null, // <--- ADD THIS LINE
-    createdAt: serverTimestamp(),
-    isDeleted: false,
-    reactions: {},
-    seenBy: [auth.currentUser.uid]
-};
+            // 4. Construct Payload
+            const payload = {
+                text: text,
+                uid: auth.currentUser.uid,
+                name: displayName,
+                photo: auth.currentUser.photoURL,
+                email: auth.currentUser.email,
+                ip: userIP || "unknown",
+                isAdmin: isAdmin, 
+                isOwner: isOwner, 
+                isMod: isMod,
+                isHelper: isHelper,
+                equippedBadge: currentBadge, 
+                equippedBanner: currentBanner,
+                equippedText: userData.equippedText || null, 
+                createdAt: serverTimestamp(),
+                isDeleted: false,
+                reactions: {},
+                seenBy: [auth.currentUser.uid]
+            };
 
-            if(selectedImgBase64) payload.image = selectedImgBase64;
+            // Attach GIF/Image if exists
+            if(selectedImgBase64) {
+                payload.image = selectedImgBase64;
+            }
 
             if(replyData) {
                 payload.replyToId = replyData.id;
@@ -3357,17 +3375,16 @@ const payload = {
                 payload.replyToText = replyData.text;
             }
 
-            // 4. Send Message
+            // 5. Send Message to Firebase
             await addDoc(collection(db, "wall_messages"), payload);
 
-            // 5. Update Stats
+            // 6. Update Stats
             const userRef = doc(db, "accounts", auth.currentUser.uid);
             const updates = {
                 messagesSentToday: increment(1),
                 coins: increment(10)
             };
             
-            // Flags for Quest Checks
             let isLongMsg = false;
             let isReply = false;
 
@@ -3382,17 +3399,24 @@ const payload = {
 
             await updateDoc(userRef, updates);
 
-            // 6. CHECK QUESTS (Using new Helper)
-            checkWallQuest('msg3'); // Standard messages
+            // 7. Check Quests
+            checkWallQuest('msg3'); 
             if (isLongMsg) checkWallQuest('wall_long_msg');
             if (isReply) checkWallQuest('wall_reply_5');
             
-            // 7. Reset UI
+            // 8. Reset UI & Cleanup Variables
             msgInput.value = '';
             charCount.textContent = '0 / 1000';
             localStorage.setItem('lastMsgTime', Date.now()); 
-            if(replyData) { replyData = null; replyBar.style.display = 'none'; }
+            
+            if(replyData) { 
+                replyData = null; 
+                replyBar.style.display = 'none'; 
+            }
+            
+            // CRITICAL CLEANUP FOR GIFS
             selectedImgBase64 = null;
+            imgPreview.src = "";
             imgPreviewContainer.style.display = 'none';
 
         } catch(e) { 
@@ -3400,7 +3424,6 @@ const payload = {
             showToast("Eroare la trimitere!");
         } finally {
             isSending = false;
-            // FIX: Force clear typing status immediately
             isTyping = false;
             updateTypingStatus(false);
         }
