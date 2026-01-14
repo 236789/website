@@ -992,6 +992,25 @@
     filter: drop-shadow(0 0 15px #00ff88);
     display: none;
 }
+
+
+.skip-btn {
+    margin-top: 8px;
+    background: rgba(255, 71, 87, 0.1);
+    color: #ff4757;
+    border: 1px solid rgba(255, 71, 87, 0.3);
+    padding: 8px;
+    border-radius: 12px;
+    font-family: 'Orbitron';
+    font-size: 10px;
+    cursor: pointer;
+    transition: 0.3s;
+    text-transform: uppercase;
+}
+.skip-btn:hover {
+    background: #ff4757;
+    color: #fff;
+}
   </style>
 </head>
 <body>
@@ -1059,6 +1078,19 @@
             <div><label class="edit-label">Despre Tine (Bio)</label><textarea id="editBio" class="edit-input" rows="3" placeholder="Scrie ceva despre tine..."></textarea></div>
             <div><label class="edit-label">Link TikTok</label><input type="text" id="editTikTok" class="edit-input" placeholder="https://tiktok.com/@user"></div>
             <button id="saveProfileBtn" class="btn-save-profile">SALVEAZĂ</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- SKIP CONFIRMATION MODAL -->
+<div id="skipConfirmModal" class="account-modal-overlay">
+    <div class="account-card" style="border-color: #ff4757;">
+        <h3 style="font-family:'Orbitron'; color:#ff4757;">SKIP QUEST?</h3>
+        <p id="skipDetailsText" style="font-size: 13px; color: #fff; margin: 20px 0;"></p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button id="confirmSkipBtn" class="pop-btn-cyan" style="padding: 12px 30px; font-size: 12px;">YES, SKIP</button>
+            <button onclick="document.getElementById('skipConfirmModal').classList.remove('active')" class="btn-logout-pop" style="padding: 12px 30px; font-size: 12px;">NO</button>
         </div>
     </div>
 </div>
@@ -2073,6 +2105,50 @@ window.runAdaptiveStreakAnimation = (startValue) => {
     setTimeout(step, 800);
 };
 
+
+
+// 1. Open the confirmation popup
+window.confirmSkip = (questId, questTitle, cost, reward) => {
+    const modal = document.getElementById('skipConfirmModal');
+    const text = document.getElementById('skipDetailsText');
+    const confirmBtn = document.getElementById('confirmSkipBtn');
+
+    text.innerHTML = `Vrei să sari peste misiunea: <br><b>${questTitle}</b><br><br>Cost: <span style="color:#ffd700;">${cost} KSDA</span>`;
+    modal.classList.add('active');
+
+    confirmBtn.onclick = () => executeSkip(questId, cost, reward);
+};
+
+// 2. Execute the actual skip in Firebase
+async function executeSkip(questId, cost, reward) {
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const snap = await getDoc(userRef);
+    const userData = snap.data();
+
+    if ((userData.coins || 0) < cost) {
+        alert("Nu ai destule monede KSDA!");
+        return;
+    }
+
+    try {
+        document.getElementById('skipConfirmModal').classList.remove('active');
+
+        await updateDoc(userRef, {
+            coins: increment(reward - cost), // Subtract cost, add reward
+            completedQuests: arrayUnion(questId),
+            skipsUsedInBlock: increment(1)
+        });
+
+        // Show a custom reward message using your existing modal logic
+        // You can use the streakRewardModal or a simple alert for now
+        alert(`Leneșule! 😉 Misiune sărită. Ai plătit ${cost} și ai primit recompensa de ${reward}!`);
+        
+    } catch (e) {
+        console.error(e);
+        alert("Eroare la skip!");
+    }
+}
+
     // --- 5. AUTH & LOGIC ---
 // --- 5. AUTH & LOGIC (REPARAT) ---
 // --- 5. AUTH & LOGIC (ACTUALIZAT CU OWNER RESET) ---
@@ -2098,6 +2174,7 @@ adminBtn.onclick = async () => {
 
             // 1. UPDATE REAL ÎN FIREBASE (Forțăm streak 0 și block fals)
             await updateDoc(userRef, { 
+                skipsUsedInBlock: 0,
                 streak: 0,
                 lastResetBlock: "SIMULARE_RESET", 
                 completedQuests: persistentQuests,
