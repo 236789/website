@@ -1299,6 +1299,35 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
         DEȚINUT <i class="fas fa-check"></i>
     </div>
 </div>
+
+
+<!-- --- NEW OPTION: UNLOCK STICKERS --- -->
+<div class="shop-badge-item" style="flex-direction: row; justify-content: space-between; padding: 20px; align-items: center;">
+    <div style="text-align: left;">
+        <div style="font-family: Orbitron; font-weight: 800; font-size: 14px; color: #ff9900;">UNLOCK STICKERS</div>
+        <div style="font-size: 10px; color: #aaa;">Stickere exclusive KSDA</div>
+    </div>
+    
+    <!-- Buttons Container -->
+    <div id="stickerBuyContainer" style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+        
+        <!-- Buy with 5000 Coins -->
+        <button class="buy-badge-btn" onclick="buyStickers('coins')" style="background: var(--gold); color: #000; width: 110px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+            5.000 <img src="https://iili.io/fhc1SKQ.png" width="16" style="vertical-align: middle;">
+        </button>
+
+        <!-- Buy with 10 Diamonds -->
+        <button class="buy-badge-btn" onclick="buyStickers('diamonds')" style="background: #00e5ff; color: #000; width: 110px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+            10 <img src="https://iili.io/fv5bmtj.png" width="16" style="vertical-align: middle;">
+        </button>
+
+    </div>
+
+    <!-- Owned Label -->
+    <div id="stickerOwnedLabel" style="display:none; color: #00ff88; font-weight: 800; font-size: 12px; font-family: 'Orbitron';">
+        DEȚINUT <i class="fas fa-check"></i>
+    </div>
+</div>
 <!-- --- END NEW OPTION --- -->
         </div>
     </div>
@@ -2078,14 +2107,14 @@ window.openAlteShop = async () => {
     const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const data = userSnap.data();
     
-    // --- START DONATION TIMER LOGIC (Existing) ---
+    // --- 1. DONATION TIMER LOGIC ---
     const timerEl = document.getElementById('donateCooldownTimer');
     const timeLeftSpan = document.getElementById('donateTimeLeft');
     const btnEl = document.getElementById('donateStartBtn');
 
     if (data.lastDonationTime) {
         const lastTime = data.lastDonationTime.toMillis();
-        const cooldownMs = 3600000; // 60 minutes
+        const cooldownMs = 3600000; 
         
         const updateTimer = () => {
             const now = Date.now();
@@ -2114,20 +2143,27 @@ window.openAlteShop = async () => {
         donationInterval = setInterval(updateTimer, 1000);
         updateTimer();
     }
-    // --- END DONATION TIMER LOGIC ---
 
-
-    // --- NEW: CHECK GIF OWNERSHIP ---
+    // --- 2. GIF OWNERSHIP CHECK ---
     const gifContainer = document.getElementById('gifBuyContainer');
     const gifLabel = document.getElementById('gifOwnedLabel');
-
-    // Check if the user has the 'hasGifAccess' flag in Firebase
     if (data.hasGifAccess === true) {
         gifContainer.style.display = 'none';
         gifLabel.style.display = 'block';
     } else {
         gifContainer.style.display = 'flex';
         gifLabel.style.display = 'none';
+    }
+
+    // --- 3. STICKER OWNERSHIP CHECK (NEW) ---
+    const stickContainer = document.getElementById('stickerBuyContainer');
+    const stickLabel = document.getElementById('stickerOwnedLabel');
+    if (data.hasStickerAccess === true) {
+        stickContainer.style.display = 'none';
+        stickLabel.style.display = 'block';
+    } else {
+        stickContainer.style.display = 'flex';
+        stickLabel.style.display = 'none';
     }
 };
 
@@ -2239,6 +2275,63 @@ window.openTextShop = async () => {
     };
 
 
+window.buyStickers = async (currency) => {
+    if (!auth.currentUser) return;
+
+    let cost = 0;
+    let currencyName = "";
+    let fieldToDeduct = "";
+
+    // Determine cost
+    if (currency === 'coins') {
+        cost = 5000;
+        currencyName = "KSDA Coins";
+        fieldToDeduct = "coins";
+    } else if (currency === 'diamonds') {
+        cost = 10; // 10 Diamonds
+        currencyName = "Diamonds";
+        fieldToDeduct = "diamonds";
+    }
+
+    // Confirmation
+    const confirmed = await showCustomConfirm(`Cumperi acces la Stickere pentru ${cost} ${currencyName}?`, "CONFIRMĂ");
+    if (!confirmed) return;
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
+
+    // Check ownership
+    if (userData.hasStickerAccess) {
+        await showCustomAlert("Ai deblocat deja Stickerele!", "INFO");
+        window.openAlteShop(); 
+        return;
+    }
+
+    // Check Balance
+    const currentBalance = userData[fieldToDeduct] || 0;
+    if (currentBalance < cost) {
+        await showCustomAlert(`Nu ai destui ${currencyName}!`, "EROARE");
+        return;
+    }
+
+    try {
+        // Transaction
+        await updateDoc(userRef, {
+            [fieldToDeduct]: increment(-cost),
+            hasStickerAccess: true // The flag for Firebase
+        });
+
+        await showCustomAlert("Felicitări! Ai deblocat Stickerele KSDA!", "SUCCES");
+        window.openAlteShop(); // Refresh UI
+
+    } catch (e) {
+        console.error(e);
+        await showCustomAlert("A apărut o eroare.", "EROARE");
+    }
+};
+
+
 
 window.buyGifs = async (currency) => {
     if (!auth.currentUser) return;
@@ -2253,7 +2346,7 @@ window.buyGifs = async (currency) => {
         currencyName = "KSDA Coins";
         fieldToDeduct = "coins";
     } else if (currency === 'diamonds') {
-        cost = 3;
+        cost = 10;
         currencyName = "Diamonds";
         fieldToDeduct = "diamonds";
     }
