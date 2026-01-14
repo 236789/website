@@ -1084,13 +1084,15 @@
 
 
 <!-- SKIP CONFIRMATION MODAL -->
+<!-- SKIP CONFIRMATION MODAL -->
 <div id="skipConfirmModal" class="account-modal-overlay">
-    <div class="account-card" style="border-color: #ff4757;">
-        <h3 style="font-family:'Orbitron'; color:#ff4757;">SKIP QUEST?</h3>
-        <p id="skipDetailsText" style="font-size: 13px; color: #fff; margin: 20px 0;"></p>
-        <div style="display: flex; gap: 10px; justify-content: center;">
-            <button id="confirmSkipBtn" class="pop-btn-cyan" style="padding: 12px 30px; font-size: 12px;">YES, SKIP</button>
-            <button onclick="document.getElementById('skipConfirmModal').classList.remove('active')" class="btn-logout-pop" style="padding: 12px 30px; font-size: 12px;">NO</button>
+    <div class="account-card" style="border-color: #ff4757; box-shadow: 0 0 30px rgba(255, 71, 87, 0.3);">
+        <button class="close-pop" onclick="document.getElementById('skipConfirmModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:#ff4757;">SKIP QUEST</h3>
+        <p id="skipDetailsText" style="font-size: 14px; color: #fff; margin: 20px 0; line-height:1.6;"></p>
+        <div style="display: flex; gap: 15px; justify-content: center; margin-top: 10px;">
+            <button id="confirmSkipBtn" class="pop-btn-cyan" style="padding: 12px 25px; font-size: 11px; margin:0;">DA, PLĂTEȘTE</button>
+            <button onclick="document.getElementById('skipConfirmModal').classList.remove('active')" class="btn-logout-pop" style="padding: 12px 25px; font-size: 11px;">RENUNȚĂ</button>
         </div>
     </div>
 </div>
@@ -1831,10 +1833,14 @@ window.equipText = async (id, cssClass) => {
     setInterval(updateResetTimer, 1000);
 
     // --- 3. RENDERING ENGINE ---
-    function renderQuests(userData) {
+function renderQuests(userData) {
         questGrid.innerHTML = '';
         const completed = userData.completedQuests || [];
         const activeIds = userData.activeDailyQuests || [];
+
+        // Calculate current skip cost for this user (doubling each time, max 4000)
+        const skipsUsed = userData.skipsUsedInBlock || 0;
+        const skipCost = Math.min(250 * Math.pow(2, skipsUsed), 4000);
 
         quests.forEach(q => {
             // Logic 1: If One-Time and completed, NEVER show again
@@ -1869,22 +1875,18 @@ window.equipText = async (id, cssClass) => {
             // --- STANDARD QUESTS ---
             else {
                 let current = 0;
-                // Mapping DB fields to Quest IDs
                 const mapping = {
                     msg3: 'messagesSentToday', wall_reply_5: 'wallRepliesToday', wall_react_10: 'wallReactionsToday',
                     wall_long_msg: 'wallLongMsgSent', kevin_talk_15: 'kevinMessagesToday', review: 'hasWrittenReview',
                     tiktok5: 'tiktoksFollowed', social3: 'socialFollowed', visit_news: 'newsVisitedToday', give_feedback: 'feedbackGivenToday',
                     meet_team_hunt: 'teamHuntCount', 
-                    // New Mappings
                     buy_badge: 'shopBadgeBought', buy_banner: 'shopBannerBought', buy_frame: 'shopFrameBought',
                     donate_100: 'coinsDonatedToday', trivia_single_5: 'triviaSingleCorrectToday', trivia_multi_5: 'triviaMultiCorrectToday'
                 };
 
-                // Special calc for team hunt
                 if(q.id === 'meet_team_hunt') {
                     current = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
                 } else if (q.id === 'donate_100') {
-                    // Check if donated amount > 0 (Tracking > 100 usually done by setting flag to 1)
                     current = userData.coinsDonatedToday >= 100 ? 1 : 0; 
                 } else {
                     current = userData[mapping[q.id]] || 0;
@@ -1895,8 +1897,24 @@ window.equipText = async (id, cssClass) => {
                 if (current >= q.target) canAward = true;
             } 
 
-            let actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
-            if (isCompleted) actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
+            // --- UPDATED ACTION AREA ---
+            let actionArea = "";
+
+            if (isCompleted) {
+                // If completed, show status and NO skip button
+                actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
+            } else {
+                // Main Action Button
+                actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
+                
+                // NEW: Skip Button (only shows if not completed)
+                // We escape the title with .replace to prevent quotes from breaking the JS
+                actionArea += `
+                    <button class="skip-btn" onclick="window.confirmSkip('${q.id}', '${q.title.replace(/'/g, "\\'")}', ${skipCost}, ${q.reward})">
+                        Sari peste (${formatCurrency(skipCost)})
+                    </button>
+                `;
+            }
 
             card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
             questGrid.appendChild(card);
