@@ -1160,6 +1160,40 @@
     </div>
 </div>
 
+<!-- SHARE LINK MODAL -->
+<!-- SHARE LINK MODAL (CORRECTED) -->
+<div id="shareModal" class="account-modal-overlay">
+    <div class="account-card" style="border-color: #00ff88; box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);">
+        <button class="close-pop" onclick="document.getElementById('shareModal').classList.remove('active')">✕</button>
+        <h2 style="color: #00ff88; font-family:'Orbitron'; font-size: 20px; margin-top: 10px;">INVITĂ UN PRIETEN</h2>
+        <p style="color: #fff; margin-bottom: 20px; font-size: 13px;">
+            Trimite acest link prietenului tău. Când își face cont, amândoi primiți <span style="color:#ffd700; font-weight:bold;">1000 Coins</span>!
+        </p>
+        
+        <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; margin-bottom: 20px; word-break: break-all; font-family: monospace; border: 1px dashed #00ff88; color: #00ff88; font-size: 12px;" id="refLinkDisplay">
+            ...loading...
+        </div>
+
+        <button class="super-btn" style="background: #00ff88; color: #000; font-size: 14px; padding: 12px 40px; box-shadow: 0 0 20px rgba(0,255,136,0.4);" onclick="copyRefLink()">
+            <i class="fas fa-copy"></i> COPIAZĂ LINK
+        </button>
+    </div>
+</div>
+
+<!-- REFERRAL SUCCESS POPUP (For the person getting the reward) -->
+<div id="referralRewardModal" class="reward-modal">
+    <div class="reward-card" style="border-color: #00ff88; box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);">
+        <h2><span style="font-size: 24px;">🤝</span> REFERRAL BONUS!</h2>
+        <p id="referralText">Ai primit bonusul de recomandare!</p>
+        <div class="reward-coins-box">
+            <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
+            <span>1000</span>
+        </div>
+        <p style="color: #ffd700; font-weight: 800; font-family: 'Orbitron';">KSDA COINS</p>
+        <button class="super-btn" style="background:#00ff88;" onclick="document.getElementById('referralRewardModal').classList.remove('active')">SUPER!</button>
+    </div>
+</div>
+
 <!-- MISSED STREAK MODAL (RED) -->
 <div id="streakMissedModal" class="reward-modal">
     <div class="modern-pop-card pop-red">
@@ -1217,6 +1251,12 @@
                 <span class="tasks-title"><i class="fas fa-tasks"></i> Daily Tasks</span>
                 <span class="tasks-desc">Completează task-uri, câștigă puncte și schimbă-le pe servicii</span>
             </a>
+
+<!-- INVITE FRIEND BUTTON -->
+<button id="inviteFriendBtn" class="btn-tasks" style="border-color: #00ff88; color: #00ff88;">
+    <span class="tasks-title"><i class="fas fa-user-plus"></i> INVITE FRIENDS</span>
+    <span class="tasks-desc">Invită un prieten și primiți amândoi 1000 Coins!</span>
+</button>
             <button id="popLogoutBtn" class="btn-logout-pop">Log Out</button>
         </div>
     </div>
@@ -1600,6 +1640,40 @@ botSendBtn.onclick = () => {
     // --- NEW COSMETICS MODAL ---
     const cosmeticsSelectModal = document.getElementById('cosmeticsSelectModal');
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
+
+
+// 1. CHECK URL FOR REFERRAL ID
+const urlParams = new URLSearchParams(window.location.search);
+const refId = urlParams.get('ref');
+
+if (refId) {
+    // Save it to session storage (temporary memory)
+    sessionStorage.setItem('referrerUid', refId);
+    console.log("Referral detected:", refId);
+}
+
+
+// OPEN SHARE MODAL
+document.getElementById('inviteFriendBtn').onclick = () => {
+    if(!auth.currentUser) return alert("Loghează-te mai întâi!");
+    
+    // Generate the link
+    const myId = auth.currentUser.uid;
+    // IMPORTANT: Change 'yoursite.com' to your actual domain name!
+    const link = `${window.location.origin}${window.location.pathname}?ref=${myId}`;
+    
+    document.getElementById('refLinkDisplay').innerText = link;
+    document.getElementById('accountModal').classList.remove('active');
+    document.getElementById('shareModal').classList.add('active');
+};
+
+// COPY FUNCTION GLOBAL
+window.copyRefLink = () => {
+    const text = document.getElementById('refLinkDisplay').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Link copiat! Trimite-l prietenului tău.");
+    });
+};
 
     // --- BADGE DATABASE (Reused for Inventory Display) ---
 // --- BADGE DATABASE (54 Items) ---
@@ -2022,7 +2096,7 @@ function formatCurrency(num) {
     window.addEventListener('mousemove', updateOnlineStatus);
 
     // --- LOGIN LOGIC ---
-    async function handleLoginFlow() {
+async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
@@ -2031,12 +2105,24 @@ function formatCurrency(num) {
             const snap = await getDoc(userRef);
 
             if(!snap.exists()) {
+                // --- REFERRAL LOGIC START ---
+                let startingCoins = 250; 
+                let referrerId = sessionStorage.getItem('referrerUid'); 
+                let hasReferred = false;
+
+                // Check if valid referral exists (and user didn't refer themselves)
+                if (referrerId && referrerId !== user.uid) {
+                    startingCoins += 1000; // Bonus applied
+                    hasReferred = true;
+                }
+                // --- REFERRAL LOGIC END ---
+
                 await setDoc(userRef, {
                     uid: user.uid,
                     username: user.displayName,
                     email: user.email,
                     image: user.photoURL,
-                    coins: 250,
+                    coins: startingCoins, // Updated amount
                     diamonds: 0, 
                     streak: 0,
                     ip: ip,
@@ -2044,7 +2130,33 @@ function formatCurrency(num) {
                     kevinMessagesToday: 0,
                     completedQuests: []
                 });
-                rewardModal.classList.add('active');
+
+                // --- REWARD DISTRIBUTION ---
+                if (hasReferred) {
+                    // 1. Reward the Inviter (Old User)
+                    try {
+                        const inviterRef = doc(db, "accounts", referrerId);
+                        // Give coins and set flag to show popup later
+                        await updateDoc(inviterRef, { 
+                            coins: increment(1000),
+                            pendingReferralPopup: true 
+                        });
+                    } catch(e) { console.error("Referral error:", e); }
+
+                    // 2. Show Referral Modal to New User
+                    const refModal = document.getElementById('referralRewardModal');
+                    const refText = document.getElementById('referralText');
+                    if(refModal && refText) {
+                        refText.innerText = "Ai fost invitat! Ai primit 1000 Coins bonus.";
+                        refModal.classList.add('active');
+                    }
+                } else {
+                    // Standard Welcome Modal
+                    if(document.getElementById('rewardModal')) {
+                        document.getElementById('rewardModal').classList.add('active');
+                    }
+                }
+
             } else {
                 await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
             }
@@ -2315,7 +2427,7 @@ async function resetUserQuests(userRef, snapData) {
 // --- 5. AUTH & LOGIC (VARIANTA FINALĂ INDEX.HTML) ---
     let isAwardingInProgress = false; // Previne dublarea ferestrelor
 
-    onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
         if (user) {
             const userRef = doc(db, "accounts", user.uid);
 
@@ -2341,6 +2453,19 @@ async function resetUserQuests(userRef, snapData) {
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
+
+                    // --- CHECK FOR REFERRAL REWARD (INVITER SIDE) ---
+                    if (data.pendingReferralPopup === true) {
+                        const refModal = document.getElementById('referralRewardModal');
+                        const refText = document.getElementById('referralText');
+                        if (refModal && refText) {
+                            refText.innerText = "Un prieten s-a înregistrat cu link-ul tău! Ai primit 1000 Coins.";
+                            refModal.classList.add('active');
+                            
+                            // Remove the flag so it doesn't show again on refresh
+                            await updateDoc(userRef, { pendingReferralPopup: false });
+                        }
+                    }
                     
                     // --- LOGICĂ RESET / PIERDERE STREAK ---
                     if (typeof resetUserQuests === "function") {
@@ -2492,7 +2617,6 @@ function generateDailyIds() {
   </script>
 </body>
 </html>```
-
 
 
 
