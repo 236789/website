@@ -2174,52 +2174,65 @@ async function handleLoginFlow() {
             const snap = await getDoc(userRef);
 
             if(!snap.exists()) {
-                // --- REFERRAL LOGIC START ---
+                // --- NEW USER DETECTED ---
+                
+                // 1. Check for Referral
                 let startingCoins = 250; 
                 let referrerId = sessionStorage.getItem('referrerUid'); 
                 let hasReferred = false;
 
-                // Check if valid referral exists (and user didn't refer themselves)
+                // Validate Referral (Cannot refer self)
                 if (referrerId && referrerId !== user.uid) {
-                    startingCoins += 1000; // Bonus applied
+                    startingCoins += 1000; // Bonus for new user
                     hasReferred = true;
                 }
-                // --- REFERRAL LOGIC END ---
 
+                // 2. Create Account
                 await setDoc(userRef, {
                     uid: user.uid,
                     username: user.displayName,
                     email: user.email,
                     image: user.photoURL,
-                    coins: startingCoins, // Updated amount
+                    coins: startingCoins,
                     diamonds: 0, 
                     streak: 0,
+                    totalReferrals: 0, // Init counter
                     ip: ip,
                     joinedAt: new Date(),
                     kevinMessagesToday: 0,
                     completedQuests: []
                 });
 
-                // --- REWARD DISTRIBUTION ---
-if (hasReferred) {
-    // 1. Reward the Inviter
-    try {
-        const inviterRef = doc(db, "accounts", referrerId);
-        await updateDoc(inviterRef, { 
-            coins: increment(1000),
-            pendingReferrals: increment(1) // <--- CHANGE THIS (Count them instead of true/false)
-        });
-    } catch(e) { console.error("Referral error:", e); }
-                    // Standard Welcome Modal
+                // 3. Handle Referral Rewards
+                if (hasReferred) {
+                    try {
+                        const inviterRef = doc(db, "accounts", referrerId);
+                        await updateDoc(inviterRef, { 
+                            coins: increment(1000),          // Give money
+                            pendingReferrals: increment(1),  // Add to popup queue
+                            totalReferrals: increment(1)     // UPDATE PROFILE COUNTER (Fix for Issue 2)
+                        });
+                    } catch(e) { console.error("Referral error:", e); }
+
+                    // Show Popup to NEW USER (Fix for Issue 1)
+                    // We manually trigger the modal since they are online right now
+                    const refModal = document.getElementById('referralRewardModal');
+                    if(refModal) {
+                        document.getElementById('referralText').innerText = "Ai fost invitat! Ai primit 1000 Coins bonus.";
+                        refModal.classList.add('active');
+                    }
+                } else {
+                    // Normal Welcome
                     if(document.getElementById('rewardModal')) {
                         document.getElementById('rewardModal').classList.add('active');
                     }
                 }
 
             } else {
+                // Existing User - Just update IP/Photo
                 await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
             }
-            updateOnlineStatus(); // Force update on login
+            updateOnlineStatus(); 
         } catch(e) { console.error(e); }
     }
 
@@ -2690,7 +2703,6 @@ function generateDailyIds() {
   </script>
 </body>
 </html>```
-
 
 
 
