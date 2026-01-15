@@ -1555,6 +1555,60 @@
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.2);
 }
+
+
+
+/* Container for images in chat to hold the star */
+.img-msg-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+/* The Star Icon */
+.fav-star-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ccc; /* Gray by default */
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.3s;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+}
+
+.fav-star-btn:hover {
+    transform: scale(1.1);
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.fav-star-btn.is-favorited {
+    color: #ffd700; /* Yellow Gold */
+    border-color: #ffd700;
+    text-shadow: 0 0 10px #ffd700;
+}
+
+/* Section styling for favorites in the picker */
+.fav-header {
+    grid-column: 1 / -1;
+    font-family: 'Orbitron';
+    font-size: 10px;
+    color: #ffd700;
+    margin-top: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
   </style>
 
 </head>
@@ -2109,7 +2163,7 @@ let selectedPollDuration = 60000; // Default 1 min
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion, arrayRemove, } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -2245,6 +2299,35 @@ let selectedPollDuration = 60000; // Default 1 min
         });
     }
 
+
+// Function to determine if a URL is a GIF or a Sticker based on Giphy URL structure or known stickers
+function getMediaType(url) {
+    if (url.includes('stickers') || url.includes('iili.io')) return 'sticker';
+    return 'gif';
+}
+
+// Global toggle for favorites
+window.toggleFavorite = async (url) => {
+    if (!auth.currentUser) return;
+    const type = getMediaType(url);
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const data = userSnap.data();
+
+    const field = (type === 'gif') ? 'favGifs' : 'favStickers';
+    const currentFavs = data[field] || [];
+
+    if (currentFavs.includes(url)) {
+        // Remove
+        await updateDoc(userRef, { [field]: arrayRemove(url) });
+        showToast("Eliminat de la favorite", "success");
+    } else {
+        // Add
+        await updateDoc(userRef, { [field]: arrayUnion(url) });
+        showToast("Adăugat la favorite! ⭐", "success");
+    }
+};
+
     async function searchStickers(query) {
         if (!stickerResults) return;
         stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Căutare...</div>';
@@ -2262,41 +2345,31 @@ let selectedPollDuration = 60000; // Default 1 min
         } catch (e) { stickerResults.innerHTML = 'Eroare.'; }
     }
 
-    async function loadStickers() {
-        if (!stickerResults) return;
-        stickerResults.innerHTML = '';
+async function loadStickers() {
+    const stickerResults = document.getElementById('stickerResults');
+    if (!stickerResults) return;
+    stickerResults.innerHTML = '';
 
-        // Exclusive KSDA
+    // --- ADD FAVORITE STICKERS ---
+    const myFavs = window.currentUserData?.favStickers || [];
+    if (myFavs.length > 0) {
         const h = document.createElement('div');
-        h.className = 'sticker-section-title'; h.innerText = "KSDA EXCLUSIVE";
+        h.className = 'fav-header'; h.innerHTML = `<i class="fas fa-star"></i> STICKERE FAVORITE`;
         stickerResults.appendChild(h);
-
-        if (typeof CUSTOM_STICKERS !== 'undefined') {
-            CUSTOM_STICKERS.forEach(url => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item'; img.src = url;
-                img.onclick = () => window.sendSticker(url);
-                stickerResults.appendChild(img);
-            });
-        }
-
-        // Giphy Trending
-        const gh = document.createElement('div');
-        gh.className = 'sticker-section-title'; gh.innerText = "GIPHY TRENDING";
-        stickerResults.appendChild(gh);
-
-        try {
-            const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=20&rating=g`);
-            const data = await res.json();
-            data.data.forEach(s => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item';
-                img.src = s.images.fixed_height_small.url;
-                img.onclick = () => window.sendSticker(s.images.original.url);
-                stickerResults.appendChild(img);
-            });
-        } catch (e) {}
+        myFavs.forEach(favUrl => {
+            const img = document.createElement('img');
+            img.className = 'sticker-item'; img.src = favUrl;
+            img.onclick = () => window.sendSticker(favUrl);
+            stickerResults.appendChild(img);
+        });
     }
+
+    // ... (keep the rest of your original loadStickers code below)
+    const h = document.createElement('div');
+    h.className = 'sticker-section-title'; h.innerText = "KSDA EXCLUSIVE";
+    stickerResults.appendChild(h);
+    // ...
+}
 
     // --- 4. GIF LOGIC ---
     if(gifSearchInput) {
@@ -2311,28 +2384,39 @@ let selectedPollDuration = 60000; // Default 1 min
         });
     }
 
-    async function loadGifs(url) {
-        const gifResults = document.getElementById('gifResults');
-        if(!gifResults) return;
-        gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
-        try {
-            const res = await fetch(url); 
-            const data = await res.json();
-            gifResults.innerHTML = '';
-            data.data.forEach(gif => {
-                const img = document.createElement('img'); 
+async function loadGifs(url) {
+    const gifResults = document.getElementById('gifResults');
+    if(!gifResults) return;
+    gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
+    
+    try {
+        const res = await fetch(url); 
+        const data = await res.json();
+        gifResults.innerHTML = '';
+
+        // --- ADD FAVORITES FIRST ---
+        const myFavs = window.currentUserData?.favGifs || [];
+        if (myFavs.length > 0) {
+            gifResults.innerHTML += `<div class="fav-header"><i class="fas fa-star"></i> FAVORITELE TALE</div>`;
+            myFavs.forEach(favUrl => {
+                const img = document.createElement('img');
                 img.className = 'gif-item';
-                img.src = gif.images.fixed_height_small.url; 
-                img.onclick = () => {
-                    document.getElementById('pickerDrawer').classList.remove('open'); 
-                    document.getElementById('gifBtn').classList.remove('active');
-                    selectedImgBase64 = gif.images.original.url; 
-                    sendMessage(); 
-                };
+                img.src = favUrl;
+                img.onclick = () => { selectedImgBase64 = favUrl; sendMessage(); };
                 gifResults.appendChild(img);
             });
-        } catch(e) { gifResults.innerHTML = 'Eroare.'; }
-    }
+            gifResults.innerHTML += `<div class="fav-header"><i class="fas fa-search"></i> REZULTATE GIPHY</div>`;
+        }
+
+        data.data.forEach(gif => {
+            const img = document.createElement('img'); 
+            img.className = 'gif-item';
+            img.src = gif.images.fixed_height_small.url; 
+            img.onclick = () => { selectedImgBase64 = gif.images.original.url; sendMessage(); };
+            gifResults.appendChild(img);
+        });
+    } catch(e) { gifResults.innerHTML = 'Eroare.'; }
+}
     // --- COSMETICS & BADGES DB ---
     const BADGES_DB = [
     { id: 'b_boss', text: 'BOSS DE BOSS', color: 'linear-gradient(45deg, #ffd700, #ffaa00)', price: 2000, icon: 'fa-crown' },
@@ -3986,6 +4070,189 @@ async function sendMessage() {
         }
     };
 function loadMessages() {
+    if(unsubscribe) unsubscribe();
+    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
+    
+    unsubscribe = onSnapshot(q, snapshot => {
+        const feed = messagesFeed;
+        const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
+
+        const docs = [];
+        snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+        docs.reverse();
+
+        feed.innerHTML = '';
+        docs.forEach(data => {
+            if(data.isDeleted) return; 
+
+            const msgId = data.id;
+            const isMine = data.uid === currentUid;
+            const isBot = data.isBot === true;
+            
+            const msgIsAdmin = data.isAdmin === true;
+            const msgIsOwner = data.isOwner === true;
+            const msgIsMod = data.isMod === true;
+            const msgIsHelper = data.isHelper === true;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
+            wrapper.dataset.id = msgId;
+
+            let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+            let bubbleContent = "";
+            let bubbleClass = 'msg-bubble';
+
+            // --- A. POLL MESSAGE ---
+            if (data.type === 'poll') {
+                const now = Date.now();
+                const isExpired = now > data.expiresAt;
+                const myVote = data.votes ? data.votes[currentUid] : undefined;
+                const hasVoted = myVote !== undefined;
+                const optionCount = data.options ? data.options.length : 2;
+                const results = new Array(optionCount).fill(0);
+                let totalVotes = 0;
+                if(data.votes) {
+                    Object.values(data.votes).forEach(val => {
+                        if(val >= 0 && val < optionCount) { results[val]++; totalVotes++; }
+                    });
+                }
+                let optionsHtml = '<div class="poll-options">';
+                if(data.options) {
+                    data.options.forEach((opt, idx) => {
+                        if (isExpired || hasVoted) {
+                            const count = results[idx];
+                            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                            const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
+                            optionsHtml += `
+                                <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
+                                    <div class="poll-result-bar" style="width:${percent}%"></div>
+                                    <div class="poll-text"><span>${opt} ${myVote === idx ? '(Tu)' : ''}</span><span class="poll-percent">${percent}%</span></div>
+                                </div>`;
+                        } else {
+                            optionsHtml += `<button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">${opt}</button>`;
+                        }
+                    });
+                }
+                optionsHtml += '</div>';
+                let durationTxt = data.durationLabel || "1 Min";
+                let statusText = isExpired ? "Vot Încheiat" : `Votează (${durationTxt})`;
+                let viewResultsLink = (isExpired || hasVoted) ? ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>` : "";
+                bubbleContent = `<div class="poll-card"><div class="poll-question">${data.question}</div>${optionsHtml}<div class="poll-meta">${totalVotes} Voturi • ${statusText}${viewResultsLink}</div></div>`;
+            } 
+            // --- B. STANDARD MESSAGE ---
+            else {
+                if(data.replyToName) {
+                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
+                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                }
+
+                // --- IMAGE / STICKER / GIF BLOCK WITH FAVORITE STAR ---
+                if(data.image) {
+                    // Check if the image is in user's favorites
+                    const favGifs = window.currentUserData?.favGifs || [];
+                    const favStickers = window.currentUserData?.favStickers || [];
+                    const isFavorited = favGifs.includes(data.image) || favStickers.includes(data.image);
+
+                    bubbleContent += `
+                        <div class="img-msg-wrapper" style="position:relative; display:inline-block;">
+                            <button class="fav-star-btn ${isFavorited ? 'is-favorited' : ''}" 
+                                    style="position:absolute; top:10px; right:10px; z-index:10;"
+                                    onclick="event.stopPropagation(); window.toggleFavorite('${data.image}')">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">
+                        </div>`;
+                }
+
+                let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
+                if(safeText) {
+                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
+                }
+                if(data.equippedBanner && data.equippedBanner.cssClass) {
+                    bubbleClass += ` ${data.equippedBanner.cssClass}`;
+                } else {
+                    if(isBot) bubbleClass += ' bot-msg';
+                    else if(msgIsOwner) bubbleClass += ' owner-msg';
+                    else if(msgIsAdmin) bubbleClass += ' admin-msg';
+                    else if(msgIsMod) bubbleClass += ' mod-msg';
+                    else if(msgIsHelper) bubbleClass += ' helper-msg';
+                }
+            }
+
+            // --- BUILD NAMES & BADGES ---
+            let authorNameText = data.name;
+            if(isBot) authorNameText = `🤖 ${data.name}`;
+            if (data.equippedText && data.equippedText.cssClass) {
+                authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
+            }
+            let staffHtml = "";
+            if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+            else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
+            else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
+            else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
+
+            let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
+            let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
+
+            // --- REACTIONS ---
+            let reactionsHtml = "";
+            if(data.reactions) {
+                const counts = {};
+                Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
+                if(Object.keys(counts).length > 0) {
+                    reactionsHtml = `<div class="msg-reactions">`;
+                    for(let [emoji, count] of Object.entries(counts)) { 
+                        reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
+                    }
+                    reactionsHtml += `</div>`;
+                }
+            }
+
+            // --- SEEN COUNT ---
+            const seenCount = (data.seenBy || []).length;
+            const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
+                <i class="fas fa-eye"></i> ${seenCount}
+            </button>`;
+
+            // --- MESSAGE MENU ---
+            let menuHtml = `
+                <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                <div id="menu-${msgId}" class="options-dropdown">
+                    <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                    <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                    <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                    ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+                    
+                    <div id="emojis-${msgId}" class="emoji-picker-menu">
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
+                    </div>
+                </div>
+            `;
+
+            wrapper.innerHTML = `
+                <div class="msg-author">${finalNameHtml}</div>
+                <div class="${bubbleClass}">${bubbleContent}</div>
+                ${reactionsHtml}
+                <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
+                ${menuHtml}
+            `;
+            
+            feed.appendChild(wrapper);
+            seenObserver.observe(wrapper);
+        });
+        
+        if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
+    });
+}
     if(unsubscribe) unsubscribe();
     const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
     
