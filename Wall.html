@@ -1328,31 +1328,28 @@
 .picker-drawer.open { max-height: 220px; }
 
 /* FIXED EMOJI GRID */
-/* FIXED MOBILE EMOJI GRID */
+/* FIXED EMOJI GRID */
 .emoji-grid-container {
-    padding: 10px;
+    padding: 15px;
     display: grid;
-    /* 'minmax' ensures they are at least 40px, but '1fr' lets them stretch to fill the gap */
-    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-    gap: 5px;
+    /* Forces items to be exactly 35px wide. They won't stretch. */
+    grid-template-columns: repeat(auto-fill, 35px);
+    gap: 8px;
     overflow-y: auto;
     height: 200px;
-    width: 100%;
+    justify-content: start; /* Aligns them to the left */
 }
 
 .emoji-item {
-    font-size: 24px;
+    font-size: 22px;
     cursor: pointer;
-    /* Center the emoji inside the box */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* Makes sure the button stays square */
-    aspect-ratio: 1; 
+    text-align: center;
+    line-height: 35px; /* Vertically centers the emoji */
     border-radius: 8px;
     transition: 0.2s;
+    width: 35px;
+    height: 35px;
 }
-
 .emoji-item:hover { 
     background: rgba(255,255,255,0.1); 
     transform: scale(1.1); 
@@ -2022,7 +2019,16 @@
         </div>
 
         <!-- NEW: STICKER SECTION -->
+<!-- STICKER SECTION -->
         <div id="stickerSection" class="sticker-grid-container" style="display:none;">
+            <!-- Sticker Search Bar (New) -->
+            <input type="text" id="stickerSearchInput" class="gif-search-bar" style="grid-column: 1 / -1; width: 100%; margin-bottom: 10px;" placeholder="Caută Stickere...">
+            
+            <!-- Results Container (Stickers load here) -->
+            <div id="stickerResults" style="display: contents;">
+                <!-- Stickers injected by JS -->
+            </div>
+        </div>
             <!-- Stickers will load here -->
         </div>
     </div>
@@ -2356,31 +2362,87 @@ window.togglePicker = async (type) => {
     };
 
     // --- 2. LOAD STICKERS (Custom + GIPHY) ---
+// --- STICKER SEARCH & LOAD LOGIC ---
+    const stickerSearchInput = document.getElementById('stickerSearchInput');
+    const stickerResults = document.getElementById('stickerResults');
+
+    // 1. Search Listener (Debounced)
+    let stickerDebounce;
+    if (stickerSearchInput) {
+        stickerSearchInput.addEventListener('input', (e) => {
+            clearTimeout(stickerDebounce);
+            const q = e.target.value;
+            stickerDebounce = setTimeout(() => {
+                if (q.length > 2) searchStickers(q);
+                else loadStickers(); // Reset to default if input is cleared
+            }, 800);
+        });
+    }
+
+    // 2. Send Helper (Avoids code repetition)
+    function sendSticker(url) {
+        pickerDrawer.classList.remove('open');
+        if (typeof stickerBtn !== 'undefined') stickerBtn.classList.remove('active');
+
+        // Treat sticker as an image
+        selectedImgBase64 = url; 
+        sendMessage();
+        
+        // Cleanup happens in sendMessage, but we clear reference here too just in case
+        selectedImgBase64 = null;
+    }
+
+    // 3. Search GIPHY
+    async function searchStickers(query) {
+        if (!stickerResults) return;
+        stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center; padding:20px;">Căutare...</div>';
+        
+        try {
+            const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=20&rating=g`);
+            const data = await res.json();
+            
+            stickerResults.innerHTML = ''; // Clear loading text
+            
+            if (data.data.length === 0) {
+                stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Nu am găsit nimic.</div>';
+                return;
+            }
+
+            data.data.forEach(sticker => {
+                const img = document.createElement('img');
+                img.className = 'sticker-item';
+                img.src = sticker.images.fixed_height_small.url;
+                img.onclick = () => sendSticker(sticker.images.original.url);
+                stickerResults.appendChild(img);
+            });
+        } catch (e) {
+            console.error(e);
+            stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#ff4757; text-align:center;">Eroare căutare.</div>';
+        }
+    }
+
+    // 4. Load Default (Custom + Trending)
     async function loadStickers() {
-        stickerSection.innerHTML = '';
+        // Target the results container so we don't delete the search bar
+        const container = document.getElementById('stickerResults'); 
+        if (!container) return; // Safety check
+        
+        container.innerHTML = '';
 
         // A. Load CUSTOM KSDA Stickers
         const customHeader = document.createElement('div');
         customHeader.className = 'sticker-section-title';
         customHeader.innerText = "KSDA EXCLUSIVE";
         customHeader.style.cssText = "grid-column: 1 / -1; font-family:'Orbitron'; font-size:10px; color:var(--primary); margin:10px 0 5px 0; border-bottom:1px solid rgba(255,255,255,0.1);";
-        stickerSection.appendChild(customHeader);
+        container.appendChild(customHeader);
 
-        // Ensure CUSTOM_STICKERS array exists in your code
-        if(typeof CUSTOM_STICKERS !== 'undefined') {
+        if (typeof CUSTOM_STICKERS !== 'undefined') {
             CUSTOM_STICKERS.forEach(url => {
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
                 img.src = url;
-                img.onclick = () => {
-                    pickerDrawer.classList.remove('open');
-                    stickerBtn.classList.remove('active');
-                    
-                    selectedImgBase64 = url; // Set image variable
-                    sendMessage(); // Auto send
-                    // Cleanup handled in sendMessage
-                };
-                stickerSection.appendChild(img);
+                img.onclick = () => sendSticker(url);
+                container.appendChild(img);
             });
         }
 
@@ -2389,30 +2451,22 @@ window.togglePicker = async (type) => {
         giphyHeader.className = 'sticker-section-title';
         giphyHeader.innerText = "GIPHY TRENDING";
         giphyHeader.style.cssText = "grid-column: 1 / -1; font-family:'Orbitron'; font-size:10px; color:var(--primary); margin:15px 0 5px 0; border-bottom:1px solid rgba(255,255,255,0.1);";
-        stickerSection.appendChild(giphyHeader);
+        container.appendChild(giphyHeader);
 
         try {
-            // Using 'stickers/trending' endpoint
-            const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=16&rating=g`);
+            const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=20&rating=g`);
             const data = await res.json();
-            
+
             data.data.forEach(sticker => {
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
                 img.src = sticker.images.fixed_height_small.url;
-                img.onclick = () => {
-                    pickerDrawer.classList.remove('open');
-                    stickerBtn.classList.remove('active');
-                    
-                    selectedImgBase64 = sticker.images.original.url;
-                    sendMessage();
-                    // Cleanup handled in sendMessage
-                };
-                stickerSection.appendChild(img);
+                img.onclick = () => sendSticker(sticker.images.original.url);
+                container.appendChild(img);
             });
-        } catch(e) { 
-            console.error("Sticker error", e); 
-            stickerSection.innerHTML += '<div style="grid-column:1/-1; color:red; text-align:center;">Eroare Giphy Stickers</div>';
+        } catch (e) {
+            console.error("Sticker error", e);
+            container.innerHTML += '<div style="grid-column:1/-1; color:red; text-align:center; padding:10px;">Eroare Giphy Stickers</div>';
         }
     }
 
