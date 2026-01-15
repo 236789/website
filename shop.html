@@ -2099,7 +2099,11 @@ window.openAlteShop = async () => {
     const timeLeftSpan = document.getElementById('donateTimeLeft');
     const btnEl = document.getElementById('donateStartBtn');
 
-    if (data.lastDonationTime) {
+    // OWNER EMAIL CHECK
+    const isOwner = auth.currentUser.email === "nicaemmanuel433qe@gmail.com";
+
+    // Only apply cooldown logic if user is NOT the owner
+    if (!isOwner && data.lastDonationTime) {
         const lastTime = data.lastDonationTime.toMillis();
         const cooldownMs = 3600000; 
         
@@ -2129,6 +2133,14 @@ window.openAlteShop = async () => {
         clearInterval(donationInterval);
         donationInterval = setInterval(updateTimer, 1000);
         updateTimer();
+    } else {
+        // If it is the owner OR no previous donation, ensure button is active
+        clearInterval(donationInterval);
+        btnEl.disabled = false;
+        btnEl.style.opacity = "1";
+        btnEl.style.cursor = "pointer";
+        btnEl.innerText = "SELECTEAZĂ OM";
+        timerEl.style.display = "none";
     }
 
     // --- 2. GIF OWNERSHIP CHECK ---
@@ -2450,8 +2462,8 @@ window.processDonation = async () => {
         await showCustomAlert("Suma invalidă!", "EROARE");
         return;
     }
-    if (amount > 5000) {
-        await showCustomAlert("Suma maximă permisă pentru o donație este de 5,000 coins!", "LIMITĂ ATINSĂ");
+    if (amount > 15000) {
+        await showCustomAlert("Suma maximă permisă pentru o donație este de 15,000 coins!", "LIMITĂ ATINSĂ");
         return;
     }
 
@@ -2459,8 +2471,11 @@ window.processDonation = async () => {
     const mySnap = await getDoc(myRef);
     const myData = mySnap.data();
 
-    // 2. Verificare Cooldown (1 Oră) - Securitate server-side logică
-    if (myData.lastDonationTime) {
+    // OWNER CHECK
+    const isOwner = auth.currentUser.email === "nicaemmanuel433qe@gmail.com";
+
+    // 2. Verificare Cooldown (1 Oră) - ONLY IF NOT OWNER
+    if (!isOwner && myData.lastDonationTime) {
         const lastTime = myData.lastDonationTime.toMillis();
         const now = Date.now();
         const cooldownTime = 3600000; 
@@ -2500,7 +2515,7 @@ window.processDonation = async () => {
         closeModal('donationAmountModal');
         amountInput.value = ''; 
 
-        // 5. REÎNCARCĂ MODALUL "ALTE" pentru a activa cronometrul și a bloca butonul imediat
+        // 5. REÎNCARCĂ MODALUL "ALTE"
         window.openAlteShop(); 
         
     } catch (e) { 
