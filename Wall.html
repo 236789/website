@@ -1331,7 +1331,7 @@
 /* FIXED EMOJI GRID */
 .emoji-grid-container {
     padding: 15px;
-    display: grid !important; /* Forces grid layout */
+    display: grid 
     /* This makes them fill the row then wrap to the next line */
     grid-template-columns: repeat(auto-fill, minmax(35px, 1fr));
     gap: 5px;
@@ -2185,307 +2185,204 @@ let selectedPollDuration = 60000; // Default 1 min
     
     // --- YOUR NEW API KEY ---
     const GIPHY_KEY = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
-
-    // Load Emojis
-    // --- EXPANDED EMOJI LIST ---
+// --- 1. EMOJI LIST & POPULATION ---
     const EMOJI_LIST = [
-        // Faces
         "😀","😃","😄","😁","😆","😅","😂","🤣","🥲","🥹","☺️","😊","😇","🙂","🙃","😉","😌",
         "😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🥸","🤩",
-        "🥳","😏","​​​​​​​😒","😞","​​​​​​​😔","😟","😕","​​​​​​​🙁","☹️","😣","😖","😫","😩","🥺","😢","😭","😤",
-        "😠","😡","🤬","🤯","😳","🥵","🥶","😶‍🌫️","😱","😨","tj","😥","😓","🤗","🤔","🫣","🤭",
-        "🫡","🤫","🫠","🤥","😶","🫥","😐","​​​​​​​😑","😬","🙄","😯","😦","​​​​​​​😧","😮","😲","🥱","😴",
+        "🥳","😏","😒","😞","😔","😟","😕","🙁","☹️","😣","😖","😫","😩","🥺","😢","😭","😤",
+        "😠","😡","🤬","🤯","😳","🥵","🥶","😶‍🌫️","😱","😨","😰","😥","😓","🤗","🤔","🫣","🤭",
+        "🫡","🤫","🫠","🤥","😶","🫥","😐","😑","😬","🙄","😯","😦","😧","😮","😲","🥱","😴",
         "🤤","😪","😵","😵‍💫","🫨","🤐","🥴","🤢","🤮","🤧","😷","🤒","🤕","🤑","🤠","😈","👿",
         "🤡","💩","👻","💀","☠️","👽","👾","🤖",
-        // Hands
-        "👋","🤚","​​​​​​​🖐️","✋","🖖","🫱","🫲","🫳","🫴","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘",
+        "👋","🤚","🖐️","✋","🖖","🫱","🫲","🫳","🫴","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘",
         "🤙","👈","👉","👆","🖕","👇","👍","👎","✊","👊","🤛","🤜","👏","🙌","🫶","👐","🤲",
         "🤝","🙏",
-        // Hearts & Symbols
         "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗",
         "💖","💘","💝","🔥","✨","🌟","💫","💥","💯","💢","💦","💤","🕳️","🎉","🎊","🎈","🎂",
-        // Random
         "👑","💎","💍","😎","🚀","🛸","🌍","🌙","☀️","⚡","❄️","🌹","🥀","💐","🍀","🍄","🍔",
         "🍟","🍕","🌭","🍿","🥓","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾","🧊","🚗","🚔",
         "🚨","✈️","🗿","🚬","⚰️","🔮","🧿","🧸","🪆","🎵","🎶","🔊","📢","📣","🔔","🔕"
     ];
 
-    // Populate Emojis
     const emojiContainer = document.getElementById('emojiSection');
     if(emojiContainer) {
-        emojiContainer.innerHTML = ''; // Clear existing
+        emojiContainer.innerHTML = ''; 
         EMOJI_LIST.forEach(e => {
             const s = document.createElement('div'); 
             s.className = 'emoji-item'; 
             s.textContent = e;
-            s.onclick = () => { msgInput.value += e; msgInput.focus(); };
+            s.onclick = () => { 
+                const msgInput = document.getElementById('msgInput');
+                msgInput.value += e; 
+                msgInput.focus(); 
+            };
             emojiContainer.appendChild(s);
         });
     }
 
-window.togglePicker = async (type) => {
-        // Grab Sticker Elements dynamically to ensure they exist
+    // --- 2. UNIFIED TOGGLE PICKER (FIXED) ---
+    window.togglePicker = async (type) => {
+        const pickerDrawer = document.getElementById('pickerDrawer');
+        const emojiSection = document.getElementById('emojiSection');
+        const gifSection = document.getElementById('gifSection');
         const stickerSection = document.getElementById('stickerSection');
+        
+        const emojiBtn = document.getElementById('emojiBtn');
+        const gifBtn = document.getElementById('gifBtn');
         const stickerBtn = document.getElementById('stickerBtn');
         const allBtns = [emojiBtn, gifBtn, stickerBtn];
 
-        // --- 1. PERMISSION CHECKS (GIF & STICKER) ---
+        // Verificare Permisiuni
         if (type === 'gif' || type === 'sticker') {
             const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             const data = userSnap.data();
-            
-            let hasAccess = false;
-            let errorMsg = "";
-
-            if (type === 'gif') {
-                hasAccess = data.hasGifAccess === true;
-                errorMsg = "Nu ai acces la GIF-uri!";
-            } else if (type === 'sticker') {
-                hasAccess = data.hasStickerAccess === true;
-                errorMsg = "Nu ai acces la Stickere!";
-            }
+            const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
 
             if (!hasAccess) {
-                // Close Menu & Reset Buttons
                 pickerDrawer.classList.remove('open');
-                allBtns.forEach(b => b?.classList.remove('active'));
+                allBtns.forEach(b => b.classList.remove('active'));
                 
-                // Show Locked Popup
                 const modal = document.getElementById('rewardModal');
-                const amountEl = document.getElementById('rewardAmount');
-                const iconEl = modal.querySelector('.reward-coin-icon');
-                const labelEl = modal.querySelector('.reward-label');
-
-                modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> LOCKED";
-                document.getElementById('rewardText').innerText = errorMsg;
-                
-                amountEl.innerText = "Cumpără permisul din Shop > Alte.";
-                amountEl.style.fontSize = "16px";
-                amountEl.style.color = "#fff";
-                amountEl.style.lineHeight = "1.5";
-                amountEl.style.fontWeight = "500";
-
-                if(iconEl) iconEl.style.display = 'none';
-                if(labelEl) labelEl.style.display = 'none';
-                
+                modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> RESTRICȚIONAT";
+                document.getElementById('rewardText').innerText = `Nu ai permisul pentru ${type.toUpperCase()}!`;
+                document.getElementById('rewardAmount').innerText = "Cumpără-l din Shop.";
                 modal.classList.add('active');
-                return; // Stop execution here
+                return;
             }
         }
-
-        // --- 2. UI SWITCHING LOGIC ---
-        
-        // Hide all sections first
-        emojiSection.style.display = 'none';
-        gifSection.style.display = 'none';
-        if(stickerSection) stickerSection.style.display = 'none';
-        
-        // Deactivate all buttons
-        allBtns.forEach(b => {
-            if(b) {
-                b.classList.remove('active');
-                // Only reset dataset if it's NOT the button we just clicked (to allow toggling off)
-                if(b.id !== type + 'Btn') b.dataset.active = 'false';
-            }
-        });
 
         const targetBtn = document.getElementById(type + 'Btn');
 
-        // Toggle Logic (Close if clicking the already active button)
-        if (pickerDrawer.classList.contains('open') && targetBtn.dataset.active === 'true') {
+        // Dacă secțiunea e deja deschisă, o închidem
+        if (pickerDrawer.classList.contains('open') && targetBtn.classList.contains('active')) {
             pickerDrawer.classList.remove('open');
-            targetBtn.dataset.active = 'false';
+            targetBtn.classList.remove('active');
         } else {
-            // Open Specific Section
-            
-            // --- EMOJI FIX: Use 'grid' to make them wrap correctly ---
-            if(type === 'emoji') {
-                emojiSection.style.display = 'grid'; 
-            }
-            
-            if(type === 'gif') {
+            // ASCUNDEM TOT în mod explicit
+            emojiSection.style.display = 'none';
+            gifSection.style.display = 'none';
+            stickerSection.style.display = 'none';
+            allBtns.forEach(b => b.classList.remove('active'));
+
+            // AFIȘĂM doar secțiunea cerută
+            if (type === 'emoji') {
+                emojiSection.style.display = 'grid';
+            } else if (type === 'gif') {
                 gifSection.style.display = 'flex';
                 loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
-            }
-            
-            if(type === 'sticker') {
-                if(stickerSection) {
-                    stickerSection.style.display = 'grid'; // Stickers also use grid
-                    loadStickers();
-                }
+            } else if (type === 'sticker') {
+                stickerSection.style.display = 'grid';
+                loadStickers();
             }
 
-            // Show Drawer
             pickerDrawer.classList.add('open');
             targetBtn.classList.add('active');
-            targetBtn.dataset.active = 'true';
         }
     };
 
-
-// --- 1. TOGGLE PICKER (Handles Emojis, GIFs, and Stickers) ---
-    const stickerSection = document.getElementById('stickerSection');
-    const stickerBtn = document.getElementById('stickerBtn');
-
-
-
-    // --- 2. LOAD STICKERS (Custom + GIPHY) ---
-// --- STICKER SEARCH & LOAD LOGIC ---
+    // --- 3. STICKER LOGIC ---
     const stickerSearchInput = document.getElementById('stickerSearchInput');
     const stickerResults = document.getElementById('stickerResults');
 
-    // 1. Search Listener (Debounced)
-    let stickerDebounce;
     if (stickerSearchInput) {
+        let stickerDebounce;
         stickerSearchInput.addEventListener('input', (e) => {
             clearTimeout(stickerDebounce);
             const q = e.target.value;
             stickerDebounce = setTimeout(() => {
                 if (q.length > 2) searchStickers(q);
-                else loadStickers(); // Reset to default if input is cleared
+                else loadStickers();
             }, 800);
         });
     }
 
-    // 2. Send Helper (Avoids code repetition)
-    function sendSticker(url) {
-        pickerDrawer.classList.remove('open');
-        if (typeof stickerBtn !== 'undefined') stickerBtn.classList.remove('active');
-
-        // Treat sticker as an image
-        selectedImgBase64 = url; 
-        sendMessage();
-        
-        // Cleanup happens in sendMessage, but we clear reference here too just in case
-        selectedImgBase64 = null;
-    }
-
-    // 3. Search GIPHY
     async function searchStickers(query) {
         if (!stickerResults) return;
-        stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center; padding:20px;">Căutare...</div>';
-        
+        stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Căutare...</div>';
         try {
             const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=20&rating=g`);
             const data = await res.json();
-            
-            stickerResults.innerHTML = ''; // Clear loading text
-            
-            if (data.data.length === 0) {
-                stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Nu am găsit nimic.</div>';
-                return;
-            }
-
-            data.data.forEach(sticker => {
+            stickerResults.innerHTML = '';
+            data.data.forEach(s => {
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
-                img.src = sticker.images.fixed_height_small.url;
-                img.onclick = () => sendSticker(sticker.images.original.url);
+                img.src = s.images.fixed_height_small.url;
+                img.onclick = () => window.sendSticker(s.images.original.url);
                 stickerResults.appendChild(img);
             });
-        } catch (e) {
-            console.error(e);
-            stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#ff4757; text-align:center;">Eroare căutare.</div>';
-        }
+        } catch (e) { stickerResults.innerHTML = 'Eroare.'; }
     }
 
-    // 4. Load Default (Custom + Trending)
-async function loadStickers() {
-        // Ensure container exists
-        const container = document.getElementById('stickerResults'); 
-        if (!container) return;
-        
-        container.innerHTML = '';
+    async function loadStickers() {
+        if (!stickerResults) return;
+        stickerResults.innerHTML = '';
 
-        // A. CUSTOM STICKERS
-        const customHeader = document.createElement('div');
-        customHeader.className = 'sticker-section-title';
-        customHeader.innerText = "KSDA EXCLUSIVE";
-        customHeader.style.cssText = "grid-column: 1 / -1; font-family:'Orbitron'; font-size:10px; color:var(--primary); margin:10px 0 5px 0; border-bottom:1px solid rgba(255,255,255,0.1);";
-        container.appendChild(customHeader);
+        // Exclusive KSDA
+        const h = document.createElement('div');
+        h.className = 'sticker-section-title'; h.innerText = "KSDA EXCLUSIVE";
+        stickerResults.appendChild(h);
 
         if (typeof CUSTOM_STICKERS !== 'undefined') {
             CUSTOM_STICKERS.forEach(url => {
                 const img = document.createElement('img');
-                img.className = 'sticker-item';
-                img.src = url;
-                // USE THE NEW GLOBAL FUNCTION
+                img.className = 'sticker-item'; img.src = url;
                 img.onclick = () => window.sendSticker(url);
-                container.appendChild(img);
+                stickerResults.appendChild(img);
             });
         }
 
-        // B. GIPHY STICKERS
-        const giphyHeader = document.createElement('div');
-        giphyHeader.className = 'sticker-section-title';
-        giphyHeader.innerText = "GIPHY TRENDING";
-        giphyHeader.style.cssText = "grid-column: 1 / -1; font-family:'Orbitron'; font-size:10px; color:var(--primary); margin:15px 0 5px 0; border-bottom:1px solid rgba(255,255,255,0.1);";
-        container.appendChild(giphyHeader);
+        // Giphy Trending
+        const gh = document.createElement('div');
+        gh.className = 'sticker-section-title'; gh.innerText = "GIPHY TRENDING";
+        stickerResults.appendChild(gh);
 
         try {
             const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=20&rating=g`);
             const data = await res.json();
-
-            data.data.forEach(sticker => {
+            data.data.forEach(s => {
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
-                img.src = sticker.images.fixed_height_small.url;
-                // USE THE NEW GLOBAL FUNCTION
-                img.onclick = () => window.sendSticker(sticker.images.original.url);
-                container.appendChild(img);
+                img.src = s.images.fixed_height_small.url;
+                img.onclick = () => window.sendSticker(s.images.original.url);
+                stickerResults.appendChild(img);
             });
-        } catch (e) {
-            console.error("Sticker error", e);
-            container.innerHTML += '<div style="grid-column:1/-1; color:red; text-align:center;">Eroare Giphy Stickers</div>';
-        }
+        } catch (e) {}
     }
 
-    // GIF Search
-    let debounce;
-    gifSearchInput.addEventListener('input', (e) => {
-        clearTimeout(debounce);
-        const q = e.target.value;
-        debounce = setTimeout(() => {
-            if(q.length>2) loadGifs(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${q}&limit=12&rating=g`);
-            else loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
-        }, 800);
-    });
+    // --- 4. GIF LOGIC ---
+    if(gifSearchInput) {
+        let gifDebounce;
+        gifSearchInput.addEventListener('input', (e) => {
+            clearTimeout(gifDebounce);
+            const q = e.target.value;
+            gifDebounce = setTimeout(() => {
+                if(q.length>2) loadGifs(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${q}&limit=12&rating=g`);
+                else loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
+            }, 800);
+        });
+    }
 
-async function loadGifs(url) {
+    async function loadGifs(url) {
+        const gifResults = document.getElementById('gifResults');
+        if(!gifResults) return;
         gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
         try {
             const res = await fetch(url); 
             const data = await res.json();
             gifResults.innerHTML = '';
-            
             data.data.forEach(gif => {
                 const img = document.createElement('img'); 
                 img.className = 'gif-item';
-                // Show small preview in picker
                 img.src = gif.images.fixed_height_small.url; 
-                
                 img.onclick = () => {
-                    // 1. Close the menu
-                    pickerDrawer.classList.remove('open'); 
-                    gifBtn.classList.remove('active');
-                    if(emojiBtn) emojiBtn.classList.remove('active');
-
-                    // 2. Set the global variable to the GIF URL
+                    document.getElementById('pickerDrawer').classList.remove('open'); 
+                    document.getElementById('gifBtn').classList.remove('active');
                     selectedImgBase64 = gif.images.original.url; 
-                    
-                    // 3. Send the message
                     sendMessage(); 
-                    
-                    // --- IMPORTANT FIX ---
-                    // I removed "selectedImgBase64 = null" from here.
-                    // The sendMessage() function will clean it up AFTER it finishes sending.
                 };
                 gifResults.appendChild(img);
             });
-        } catch(e) { 
-            console.error(e);
-            gifResults.innerHTML = '<div style="color:#ff4757; grid-column:span 3; text-align:center;">Eroare Giphy.</div>'; 
-        }
+        } catch(e) { gifResults.innerHTML = 'Eroare.'; }
     }
     // --- COSMETICS & BADGES DB ---
     const BADGES_DB = [
