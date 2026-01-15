@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -1555,60 +1556,6 @@
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.2);
 }
-
-
-
-/* Container for images in chat to hold the star */
-.img-msg-wrapper {
-    position: relative;
-    display: inline-block;
-    max-width: 100%;
-}
-
-/* The Star Icon */
-.fav-star-btn {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #ccc; /* Gray by default */
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: 0.3s;
-    z-index: 5;
-    backdrop-filter: blur(4px);
-}
-
-.fav-star-btn:hover {
-    transform: scale(1.1);
-    background: rgba(0, 0, 0, 0.8);
-}
-
-.fav-star-btn.is-favorited {
-    color: #ffd700; /* Yellow Gold */
-    border-color: #ffd700;
-    text-shadow: 0 0 10px #ffd700;
-}
-
-/* Section styling for favorites in the picker */
-.fav-header {
-    grid-column: 1 / -1;
-    font-family: 'Orbitron';
-    font-size: 10px;
-    color: #ffd700;
-    margin-top: 10px;
-    padding-bottom: 5px;
-    border-bottom: 1px solid rgba(255, 215, 0, 0.2);
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
   </style>
 
 </head>
@@ -2163,7 +2110,7 @@ let selectedPollDuration = 60000; // Default 1 min
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion, arrayRemove, } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // CONFIGURARE
     const firebaseConfig = {
@@ -2299,35 +2246,6 @@ let selectedPollDuration = 60000; // Default 1 min
         });
     }
 
-
-// Function to determine if a URL is a GIF or a Sticker based on Giphy URL structure or known stickers
-function getMediaType(url) {
-    if (url.includes('stickers') || url.includes('iili.io')) return 'sticker';
-    return 'gif';
-}
-
-// Global toggle for favorites
-window.toggleFavorite = async (url) => {
-    if (!auth.currentUser) return;
-    const type = getMediaType(url);
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    const data = userSnap.data();
-
-    const field = (type === 'gif') ? 'favGifs' : 'favStickers';
-    const currentFavs = data[field] || [];
-
-    if (currentFavs.includes(url)) {
-        // Remove
-        await updateDoc(userRef, { [field]: arrayRemove(url) });
-        showToast("Eliminat de la favorite", "success");
-    } else {
-        // Add
-        await updateDoc(userRef, { [field]: arrayUnion(url) });
-        showToast("Adăugat la favorite! ⭐", "success");
-    }
-};
-
     async function searchStickers(query) {
         if (!stickerResults) return;
         stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Căutare...</div>';
@@ -2345,31 +2263,41 @@ window.toggleFavorite = async (url) => {
         } catch (e) { stickerResults.innerHTML = 'Eroare.'; }
     }
 
-async function loadStickers() {
-    const stickerResults = document.getElementById('stickerResults');
-    if (!stickerResults) return;
-    stickerResults.innerHTML = '';
+    async function loadStickers() {
+        if (!stickerResults) return;
+        stickerResults.innerHTML = '';
 
-    // --- ADD FAVORITE STICKERS ---
-    const myFavs = window.currentUserData?.favStickers || [];
-    if (myFavs.length > 0) {
+        // Exclusive KSDA
         const h = document.createElement('div');
-        h.className = 'fav-header'; h.innerHTML = `<i class="fas fa-star"></i> STICKERE FAVORITE`;
+        h.className = 'sticker-section-title'; h.innerText = "KSDA EXCLUSIVE";
         stickerResults.appendChild(h);
-        myFavs.forEach(favUrl => {
-            const img = document.createElement('img');
-            img.className = 'sticker-item'; img.src = favUrl;
-            img.onclick = () => window.sendSticker(favUrl);
-            stickerResults.appendChild(img);
-        });
-    }
 
-    // ... (keep the rest of your original loadStickers code below)
-    const h = document.createElement('div');
-    h.className = 'sticker-section-title'; h.innerText = "KSDA EXCLUSIVE";
-    stickerResults.appendChild(h);
-    // ...
-}
+        if (typeof CUSTOM_STICKERS !== 'undefined') {
+            CUSTOM_STICKERS.forEach(url => {
+                const img = document.createElement('img');
+                img.className = 'sticker-item'; img.src = url;
+                img.onclick = () => window.sendSticker(url);
+                stickerResults.appendChild(img);
+            });
+        }
+
+        // Giphy Trending
+        const gh = document.createElement('div');
+        gh.className = 'sticker-section-title'; gh.innerText = "GIPHY TRENDING";
+        stickerResults.appendChild(gh);
+
+        try {
+            const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=20&rating=g`);
+            const data = await res.json();
+            data.data.forEach(s => {
+                const img = document.createElement('img');
+                img.className = 'sticker-item';
+                img.src = s.images.fixed_height_small.url;
+                img.onclick = () => window.sendSticker(s.images.original.url);
+                stickerResults.appendChild(img);
+            });
+        } catch (e) {}
+    }
 
     // --- 4. GIF LOGIC ---
     if(gifSearchInput) {
@@ -2384,39 +2312,28 @@ async function loadStickers() {
         });
     }
 
-async function loadGifs(url) {
-    const gifResults = document.getElementById('gifResults');
-    if(!gifResults) return;
-    gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
-    
-    try {
-        const res = await fetch(url); 
-        const data = await res.json();
-        gifResults.innerHTML = '';
-
-        // --- ADD FAVORITES FIRST ---
-        const myFavs = window.currentUserData?.favGifs || [];
-        if (myFavs.length > 0) {
-            gifResults.innerHTML += `<div class="fav-header"><i class="fas fa-star"></i> FAVORITELE TALE</div>`;
-            myFavs.forEach(favUrl => {
-                const img = document.createElement('img');
+    async function loadGifs(url) {
+        const gifResults = document.getElementById('gifResults');
+        if(!gifResults) return;
+        gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
+        try {
+            const res = await fetch(url); 
+            const data = await res.json();
+            gifResults.innerHTML = '';
+            data.data.forEach(gif => {
+                const img = document.createElement('img'); 
                 img.className = 'gif-item';
-                img.src = favUrl;
-                img.onclick = () => { selectedImgBase64 = favUrl; sendMessage(); };
+                img.src = gif.images.fixed_height_small.url; 
+                img.onclick = () => {
+                    document.getElementById('pickerDrawer').classList.remove('open'); 
+                    document.getElementById('gifBtn').classList.remove('active');
+                    selectedImgBase64 = gif.images.original.url; 
+                    sendMessage(); 
+                };
                 gifResults.appendChild(img);
             });
-            gifResults.innerHTML += `<div class="fav-header"><i class="fas fa-search"></i> REZULTATE GIPHY</div>`;
-        }
-
-        data.data.forEach(gif => {
-            const img = document.createElement('img'); 
-            img.className = 'gif-item';
-            img.src = gif.images.fixed_height_small.url; 
-            img.onclick = () => { selectedImgBase64 = gif.images.original.url; sendMessage(); };
-            gifResults.appendChild(img);
-        });
-    } catch(e) { gifResults.innerHTML = 'Eroare.'; }
-}
+        } catch(e) { gifResults.innerHTML = 'Eroare.'; }
+    }
     // --- COSMETICS & BADGES DB ---
     const BADGES_DB = [
     { id: 'b_boss', text: 'BOSS DE BOSS', color: 'linear-gradient(45deg, #ffd700, #ffaa00)', price: 2000, icon: 'fa-crown' },
@@ -4145,25 +4062,9 @@ function loadMessages() {
                     const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
                     bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
                 }
-
-                // --- IMAGE / STICKER / GIF BLOCK WITH FAVORITE STAR ---
                 if(data.image) {
-                    // Check if the image is in user's favorites
-                    const favGifs = window.currentUserData?.favGifs || [];
-                    const favStickers = window.currentUserData?.favStickers || [];
-                    const isFavorited = favGifs.includes(data.image) || favStickers.includes(data.image);
-
-                    bubbleContent += `
-                        <div class="img-msg-wrapper" style="position:relative; display:inline-block;">
-                            <button class="fav-star-btn ${isFavorited ? 'is-favorited' : ''}" 
-                                    style="position:absolute; top:10px; right:10px; z-index:10;"
-                                    onclick="event.stopPropagation(); window.toggleFavorite('${data.image}')">
-                                <i class="fas fa-star"></i>
-                            </button>
-                            <img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">
-                        </div>`;
+                    bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
                 }
-
                 let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
                 if(safeText) {
                     bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
@@ -4194,7 +4095,7 @@ function loadMessages() {
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
             let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
-            // --- REACTIONS ---
+            // --- REACTIONS (Visible below bubble) ---
             let reactionsHtml = "";
             if(data.reactions) {
                 const counts = {};
@@ -4214,7 +4115,7 @@ function loadMessages() {
                 <i class="fas fa-eye"></i> ${seenCount}
             </button>`;
 
-            // --- MESSAGE MENU ---
+            // --- MESSAGE MENU (Keeps Localized Emoji Reactions) ---
             let menuHtml = `
                 <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                 <div id="menu-${msgId}" class="options-dropdown">
@@ -4225,15 +4126,36 @@ function loadMessages() {
                     ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
                     ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
                     
+                    <!-- LOCAL REACTION PICKER -->
                     <div id="emojis-${msgId}" class="emoji-picker-menu">
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
+
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
+
                     </div>
                 </div>
             `;
