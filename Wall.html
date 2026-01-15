@@ -1576,34 +1576,60 @@
     box-shadow: 0 0 10px rgba(255, 69, 0, 0.2);
 }
 
-/* Invited Friends Counter */
-.invite-stat {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 11px;
-    color: #00ff88; /* Green for growth */
-    margin-bottom: 5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    background: rgba(0, 255, 136, 0.05);
-    padding: 5px 10px;
-    border-radius: 8px;
-    display: inline-block;
+/* Clickable Stats Buttons */
+.invite-stat, .donate-stat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 90%;
+    max-width: 250px;
+    margin-bottom: 0 !important;
+    gap: 8px;
+    cursor: pointer; /* Makes it look clickable */
+    transition: 0.3s;
+    user-select: none;
 }
 
-/* Coins Donated Counter */
-.donate-stat {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 11px;
-    color: #ffd700; /* Gold for money */
-    margin-bottom: 5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    background: rgba(255, 215, 0, 0.05);
-    border: 1px solid rgba(255, 215, 0, 0.2);
-    padding: 5px 12px;
-    border-radius: 8px;
-    display: inline-block;
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.1);
+.invite-stat:hover {
+    background: rgba(0, 255, 136, 0.2);
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+    transform: scale(1.02);
+}
+
+.donate-stat:hover {
+    background: rgba(255, 215, 0, 0.2);
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+    transform: scale(1.02);
+}
+
+/* History List Styles */
+.history-list {
+    max-height: 400px;
+    overflow-y: auto;
+    text-align: left;
+    padding-right: 5px;
+    margin-top: 10px;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 12px;
+}
+
+.history-arrow {
+    color: var(--text-muted);
+    font-size: 10px;
+    margin: 0 8px;
+}
+
+.history-amount {
+    color: #ffd700;
+    font-weight: 800;
+    font-family: 'Orbitron';
 }
 
 /* Container to stack stats vertically */
@@ -1814,6 +1840,28 @@
     </div>
 </div>
 
+
+<!-- REFERRAL HISTORY MODAL -->
+<div id="referralHistoryModal" class="account-modal-overlay" style="z-index: 13000;">
+    <div class="account-card" style="max-width: 400px;">
+        <button class="close-pop" onclick="document.getElementById('referralHistoryModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:#00ff88; margin-bottom:15px;">ISTORIC INVITAȚII</h3>
+        <div id="referralList" class="history-list">
+            <!-- Content injected by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- DONATION HISTORY MODAL -->
+<div id="donationHistoryModal" class="account-modal-overlay" style="z-index: 13000;">
+    <div class="account-card" style="max-width: 400px;">
+        <button class="close-pop" onclick="document.getElementById('donationHistoryModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:#ffd700; margin-bottom:15px;">ISTORIC DONAȚII</h3>
+        <div id="donationList" class="history-list">
+            <!-- Content injected by JS -->
+        </div>
+    </div>
+</div>
 
 <!-- REWARD STREAK MODAL (FIRE) -->
 <div id="streakRewardModal" class="reward-modal">
@@ -4578,14 +4626,14 @@ window.openUserProfile = async (uid) => {
     const modal = document.getElementById('viewProfileModal');
     modal.classList.add('active');
     
-    // Clear previous data to prevent flickering old info
+    // Clear previous data to prevent flickering
     document.getElementById('viewUserName').innerText = "Se încarcă...";
     document.getElementById('viewUserStatus').innerHTML = "";
     document.getElementById('viewUserBadges').innerHTML = "";
-    // Reset newly added fields to empty/default
     document.getElementById('viewUserCoins').innerText = "0";
     document.getElementById('viewUserDiamonds').innerText = "0"; 
     document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: 0`;
+    document.getElementById('viewUserDonated').innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: 0`;
 
     try {
         const snap = await getDoc(doc(db, "accounts", uid));
@@ -4610,7 +4658,7 @@ window.openUserProfile = async (uid) => {
             document.getElementById('viewUserStatus').innerHTML = isOnline 
                 ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
 
-            // 3. STREAK (Below Status)
+            // 3. STREAK
             const streakVal = data.streak || 0;
             const streakEl = document.getElementById('viewUserStreak');
             if(streakEl) {
@@ -4652,28 +4700,31 @@ window.openUserProfile = async (uid) => {
             // 7. Bio
             document.getElementById('viewUserBio').innerText = data.bio || "Nu există descriere.";
 
-            // 8. FRIENDS INVITED COUNTER (The part you sent)
+            // 8. FRIENDS INVITED BUTTON (Updated to be Clickable)
             const invites = data.totalReferrals || 0;
             const inviteEl = document.getElementById('viewUserInvites');
             if(inviteEl) {
                 inviteEl.innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${invites}`;
+                // Open History Modal on Click
+                inviteEl.onclick = () => openReferralHistory(uid, profileName);
             }
 
-// 9. COINS DONATED COUNTER (NEW)
-const donated = data.totalCoinsDonated || 0;
-const donatedEl = document.getElementById('viewUserDonated');
-if(donatedEl) {
-    // Format large numbers (e.g. 1.5k)
-    let displayDonated = donated;
-    if(donated >= 1000) displayDonated = (donated/1000).toFixed(1) + 'k';
-    
-    donatedEl.innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: ${displayDonated}`;
-}
+            // 9. COINS DONATED BUTTON (Updated to be Clickable)
+            const donated = data.totalCoinsDonated || 0;
+            const donatedEl = document.getElementById('viewUserDonated');
+            if(donatedEl) {
+                let displayDonated = donated;
+                if(donated >= 1000) displayDonated = (donated/1000).toFixed(1) + 'k';
+                
+                donatedEl.innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: ${displayDonated}`;
+                // Open History Modal on Click
+                donatedEl.onclick = () => openDonationHistory(uid, profileName);
+            }
 
-            // 9. Birthdate
+            // 10. Birthdate
             document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
 
-            // 10. TikTok
+            // 11. TikTok
             const tiktokBtn = document.getElementById('viewUserTikTok');
             if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
                 tiktokBtn.href = data.tiktokLink; tiktokBtn.style.display = 'inline-flex';
@@ -4681,10 +4732,73 @@ if(donatedEl) {
         }
     } catch(e) { console.error(e); }
 };
+
     closeViewProfile.onclick = () => viewProfileModal.classList.remove('active');
 
 
+window.openReferralHistory = async (uid, ownerName) => {
+    const modal = document.getElementById('referralHistoryModal');
+    const list = document.getElementById('referralList');
+    list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>';
+    modal.classList.add('active');
 
+    try {
+        const snap = await getDoc(doc(db, "accounts", uid));
+        const history = snap.data().referralHistory || [];
+
+        if (history.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Nicio invitație încă.</div>';
+            return;
+        }
+
+        // Sort newest first
+        history.reverse(); 
+
+        list.innerHTML = '';
+        history.forEach(item => {
+            // Layout: Owner -> Invited
+            list.innerHTML += `
+                <div class="history-item">
+                    <span style="color:var(--primary); font-weight:700;">${ownerName}</span>
+                    <span class="history-arrow"><i class="fas fa-long-arrow-alt-right"></i></span>
+                    <span style="color:#fff;">${item.name}</span>
+                </div>
+            `;
+        });
+    } catch (e) { list.innerHTML = "Eroare."; }
+};
+
+window.openDonationHistory = async (uid, ownerName) => {
+    const modal = document.getElementById('donationHistoryModal');
+    const list = document.getElementById('donationList');
+    list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>';
+    modal.classList.add('active');
+
+    try {
+        const snap = await getDoc(doc(db, "accounts", uid));
+        const history = snap.data().donationHistory || [];
+
+        if (history.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Nicio donație încă.</div>';
+            return;
+        }
+
+        // Sort newest first
+        history.reverse(); 
+
+        list.innerHTML = '';
+        history.forEach(item => {
+            // Layout: Owner --[Amount]--> Receiver
+            list.innerHTML += `
+                <div class="history-item">
+                    <span style="color:var(--primary); font-weight:700;">${ownerName}</span>
+                    <span class="history-arrow">-- <span class="history-amount">${item.amount}</span> --></span>
+                    <span style="color:#fff;">${item.receiverName}</span>
+                </div>
+            `;
+        });
+    } catch (e) { list.innerHTML = "Eroare."; }
+};
 
 function formatCurrency(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
