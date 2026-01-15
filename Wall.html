@@ -2224,73 +2224,101 @@ let selectedPollDuration = 60000; // Default 1 min
     }
 
 window.togglePicker = async (type) => {
-        const isEmoji = type === 'emoji';
-        
-        // --- CHECK GIF PERMISSION ---
-        if (!isEmoji) {
+        // Grab Sticker Elements dynamically to ensure they exist
+        const stickerSection = document.getElementById('stickerSection');
+        const stickerBtn = document.getElementById('stickerBtn');
+        const allBtns = [emojiBtn, gifBtn, stickerBtn];
+
+        // --- 1. PERMISSION CHECKS (GIF & STICKER) ---
+        if (type === 'gif' || type === 'sticker') {
             const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            const data = userSnap.data();
             
-            // If user does NOT have gif access
-            if (!userSnap.data().hasGifAccess) {
-                // Close the picker UI
-                pickerDrawer.classList.remove('open'); 
-                gifBtn.classList.remove('active');
+            let hasAccess = false;
+            let errorMsg = "";
+
+            if (type === 'gif') {
+                hasAccess = data.hasGifAccess === true;
+                errorMsg = "Nu ai acces la GIF-uri!";
+            } else if (type === 'sticker') {
+                hasAccess = data.hasStickerAccess === true;
+                errorMsg = "Nu ai acces la Stickere!";
+            }
+
+            if (!hasAccess) {
+                // Close Menu & Reset Buttons
+                pickerDrawer.classList.remove('open');
+                allBtns.forEach(b => b?.classList.remove('active'));
                 
-                // --- CUSTOM POPUP LOGIC (FIX HUGE TEXT) ---
+                // Show Locked Popup
                 const modal = document.getElementById('rewardModal');
                 const amountEl = document.getElementById('rewardAmount');
                 const iconEl = modal.querySelector('.reward-coin-icon');
                 const labelEl = modal.querySelector('.reward-label');
 
-                // 1. Set Title & Description
                 modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> LOCKED";
-                document.getElementById('rewardText').innerText = "Nu ai acces la GIF-uri!";
+                document.getElementById('rewardText').innerText = errorMsg;
                 
-                // 2. Set Instructions & Fix Font Size
                 amountEl.innerText = "Cumpără permisul din Shop > Alte.";
-                amountEl.style.fontSize = "16px"; // Make text small and readable
-                amountEl.style.color = "#fff";    // White text
+                amountEl.style.fontSize = "16px";
+                amountEl.style.color = "#fff";
                 amountEl.style.lineHeight = "1.5";
                 amountEl.style.fontWeight = "500";
 
-                // 3. Hide Coin Icon & Label (Not needed for error)
                 if(iconEl) iconEl.style.display = 'none';
                 if(labelEl) labelEl.style.display = 'none';
                 
-                // 4. Show Modal
                 modal.classList.add('active');
-                return; // Stop here
+                return; // Stop execution here
             }
         }
 
-        // --- NORMAL PICKER TOGGLE LOGIC ---
-        const sectionToShow = isEmoji ? emojiSection : gifSection;
+        // --- 2. UI SWITCHING LOGIC ---
         
-        // Reset both first
-        emojiSection.style.display = 'none'; 
+        // Hide all sections first
+        emojiSection.style.display = 'none';
         gifSection.style.display = 'none';
-        emojiBtn.classList.remove('active'); 
-        gifBtn.classList.remove('active');
-
-        // Check if we are closing the current active one
-        const btnActive = isEmoji ? emojiBtn : gifBtn;
+        if(stickerSection) stickerSection.style.display = 'none';
         
-        if (pickerDrawer.classList.contains('open') && btnActive.dataset.active === 'true') {
-            // Close Drawer
+        // Deactivate all buttons
+        allBtns.forEach(b => {
+            if(b) {
+                b.classList.remove('active');
+                // Only reset dataset if it's NOT the button we just clicked (to allow toggling off)
+                if(b.id !== type + 'Btn') b.dataset.active = 'false';
+            }
+        });
+
+        const targetBtn = document.getElementById(type + 'Btn');
+
+        // Toggle Logic (Close if clicking the already active button)
+        if (pickerDrawer.classList.contains('open') && targetBtn.dataset.active === 'true') {
             pickerDrawer.classList.remove('open');
-            btnActive.dataset.active = 'false';
+            targetBtn.dataset.active = 'false';
         } else {
-            // Open Drawer & Switch Tab
-            sectionToShow.style.display = isEmoji ? 'grid' : 'flex';
+            // Open Specific Section
+            
+            // --- EMOJI FIX: Use 'grid' to make them wrap correctly ---
+            if(type === 'emoji') {
+                emojiSection.style.display = 'grid'; 
+            }
+            
+            if(type === 'gif') {
+                gifSection.style.display = 'flex';
+                loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
+            }
+            
+            if(type === 'sticker') {
+                if(stickerSection) {
+                    stickerSection.style.display = 'grid'; // Stickers also use grid
+                    loadStickers();
+                }
+            }
+
+            // Show Drawer
             pickerDrawer.classList.add('open');
-            
-            // Set Active States
-            (isEmoji ? emojiBtn : gifBtn).classList.add('active');
-            (isEmoji ? emojiBtn : gifBtn).dataset.active = 'true';
-            (isEmoji ? gifBtn : emojiBtn).dataset.active = 'false';
-            
-            // Load GIFs if opening GIF tab
-            if(!isEmoji) loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
+            targetBtn.classList.add('active');
+            targetBtn.dataset.active = 'true';
         }
     };
 
