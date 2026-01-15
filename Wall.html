@@ -4533,17 +4533,21 @@ window.openUserProfile = async (uid) => {
     const modal = document.getElementById('viewProfileModal');
     modal.classList.add('active');
     
-    // Clear previous data
+    // Clear previous data to prevent flickering old info
     document.getElementById('viewUserName').innerText = "Se încarcă...";
     document.getElementById('viewUserStatus').innerHTML = "";
     document.getElementById('viewUserBadges').innerHTML = "";
+    // Reset newly added fields to empty/default
+    document.getElementById('viewUserCoins').innerText = "0";
+    document.getElementById('viewUserDiamonds').innerText = "0"; 
+    document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: 0`;
 
     try {
         const snap = await getDoc(doc(db, "accounts", uid));
         if(snap.exists()) {
             const data = snap.data();
             
-            // Image & Frame
+            // 1. Image & Frame
             document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
             const viewFrame = document.getElementById('viewUserFrame');
             if(viewFrame) {
@@ -4556,22 +4560,26 @@ window.openUserProfile = async (uid) => {
                 } else { viewFrame.style.display = 'none'; }
             }
 
-            // Online Status
+            // 2. Online Status
             let isOnline = (auth.currentUser && auth.currentUser.uid === uid) ? true : checkIsOnline(data);
             document.getElementById('viewUserStatus').innerHTML = isOnline 
                 ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
 
-            // --- 1. STREAK (Moved & Revamped) ---
-            document.getElementById('viewUserStreak').innerHTML = `<i class="fas fa-fire"></i> ${data.streak || 0} DAYS STREAK`;
+            // 3. STREAK (Below Status)
+            const streakVal = data.streak || 0;
+            const streakEl = document.getElementById('viewUserStreak');
+            if(streakEl) {
+                streakEl.innerHTML = `<i class="fas fa-fire"></i> ${streakVal} DAYS STREAK`;
+            }
 
-            // Name & Color
+            // 4. Name & Color
             let profileName = (data.username || "Anonim");
             if(data.equippedText && data.equippedText.cssClass) {
                 profileName = `<span class="${data.equippedText.cssClass}">${profileName}</span>`;
             }
             document.getElementById('viewUserName').innerHTML = profileName;
 
-            // Badges Logic
+            // 5. Badges Logic
             const badgeBox = document.getElementById('viewUserBadges');
             if(badgeBox) {
                 let staffHtml = "";
@@ -4588,22 +4596,28 @@ window.openUserProfile = async (uid) => {
                 badgeBox.innerHTML = staffHtml + cosmeticHtml;
             }
             
-            // --- 2. COINS & DIAMONDS ---
+            // 6. COINS & DIAMONDS
             document.getElementById('viewUserCoins').innerText = formatCurrency(data.coins || 0);
-            document.getElementById('viewUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+            
+            const diamondEl = document.getElementById('viewUserDiamonds');
+            if(diamondEl) {
+                diamondEl.innerText = formatCurrency(data.diamonds || 0);
+            }
 
-            // Bio
+            // 7. Bio
             document.getElementById('viewUserBio').innerText = data.bio || "Nu există descriere.";
 
-            // --- 3. FRIENDS INVITED ---
-            // If field doesn't exist yet, show 0
+            // 8. FRIENDS INVITED COUNTER (The part you sent)
             const invites = data.totalReferrals || 0;
-            document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${invites}`;
+            const inviteEl = document.getElementById('viewUserInvites');
+            if(inviteEl) {
+                inviteEl.innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${invites}`;
+            }
 
-            // Birthdate
+            // 9. Birthdate
             document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
 
-            // TikTok
+            // 10. TikTok
             const tiktokBtn = document.getElementById('viewUserTikTok');
             if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
                 tiktokBtn.href = data.tiktokLink; tiktokBtn.style.display = 'inline-flex';
