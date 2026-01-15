@@ -1592,21 +1592,27 @@
     display: inline-block;
     max-width: 100%;
 }
+/* FAVORITE SYSTEM (Star on Image) */
+.media-msg-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
 .fav-star-btn {
     position: absolute;
     top: 8px;
     right: 8px;
     background: rgba(0, 0, 0, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #555; /* Default (Not Favorite) */
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
+    color: #fff;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 14px;
     transition: 0.2s;
     opacity: 0; /* Hidden until hover */
     z-index: 10;
@@ -1618,10 +1624,9 @@
 .fav-star-btn.is-fav {
     color: #ffd700; /* Gold for favorites */
     border-color: #ffd700;
+    background: rgba(0, 0, 0, 0.8);
 }
-.fav-star-btn:hover { transform: scale(1.2); background: #000; }
-  </style>
-
+.fav-star-btn:hover { transform: scale(1.1); background: #000; }
 </head>
 <body>
   <!-- TOAST NOTIFICATION -->
@@ -2168,8 +2173,7 @@ let selectedPollDuration = 60000; // Default 1 min
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, getDoc, setDoc, deleteDoc, getDocs, where, writeBatch, increment, limit, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     // CONFIGURARE
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -3372,7 +3376,7 @@ onAuthStateChanged(auth, async (user) => {
         const userRef = doc(db, "accounts", user.uid);
         const ip = userIP || "unknown";
 
-        // Initial check and creation of account if new
+        // 1. Initialize Account if New
         getDoc(userRef).then((snap) => {
             if (!snap.exists()) {
                 setDoc(userRef, {
@@ -3381,7 +3385,7 @@ onAuthStateChanged(auth, async (user) => {
                     email: user.email,
                     image: user.photoURL,
                     coins: 250,
-                    diamonds: 0, 
+                    diamonds: 0,
                     streak: 0,
                     ip: ip,
                     joinedAt: new Date(),
@@ -3391,28 +3395,30 @@ onAuthStateChanged(auth, async (user) => {
                     wallLongMsgSent: false,
                     completedQuests: [],
                     ownedBadges: [],
-                    equippedBadge: null
+                    equippedBadge: null,
+                    savedMedia: [] // For Favorites
                 });
             } else {
                 updateDoc(userRef, { ip: ip, image: user.photoURL });
             }
         });
 
+        // 2. Update Header UI
         headerLoginText.innerText = "ACCOUNT";
         headerUserImg.src = user.photoURL;
         headerUserImg.style.display = "block";
 
-        if (mobileLoginBtn) {
+        if (typeof mobileLoginBtn !== 'undefined' && mobileLoginBtn) {
             mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
         }
 
-        // --- ROLE IDENTIFICATION ---
+        // 3. Define Roles
         isOwner = (user.email === 'nicaemmanuel433qe@gmail.com');
         isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
         isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
         isHelper = ['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(user.email);
 
-        // --- STAFF BUTTONS VISIBILITY (Image & Poll) ---
+        // 4. Staff Button Visibility (Image & Poll)
         const imgBtn = document.getElementById('imgBtn');
         const pollBtn = document.getElementById('pollBtn');
 
@@ -3424,7 +3430,7 @@ onAuthStateChanged(auth, async (user) => {
             if(pollBtn) pollBtn.style.display = 'none';
         }
 
-        // --- RESET CHAT BUTTON VISIBILITY (Owner & Admin Only) ---
+        // 5. Reset Chat Button (Owner/Admin Only)
         const resetBtn = document.getElementById('resetChatBtn');
         if (resetBtn) {
             if (isOwner || isAdmin) {
@@ -3432,7 +3438,7 @@ onAuthStateChanged(auth, async (user) => {
                 resetBtn.onclick = async () => {
                     const confirmed = await showCustomConfirm(
                         "RESET CHAT", 
-                        "⚠️ ATENȚIE! Această acțiune va șterge TOATE mesajele pentru toată lumea. Începe numărătoarea inversă?", 
+                        "⚠️ ATENȚIE! Această acțiune va șterge TOATE mesajele. Continui?", 
                         true
                     );
                     if(confirmed) {
@@ -3445,34 +3451,42 @@ onAuthStateChanged(auth, async (user) => {
             }
         }
 
-        // Global Ban Check
+        // 6. Global Ban Check
         if (userIP) {
             const banRef = doc(db, "banned_ips", userIP);
             const banSnap = await getDoc(banRef);
             if (banSnap.exists()) {
                 const banData = banSnap.data();
-                lockedView.style.display = 'none'; chatView.style.display = 'none'; bannedView.style.display = 'flex';
-                banReasonText.textContent = banData.reason || "Nespecificat";
-                banIpDisplay.textContent = userIP;
+                lockedView.style.display = 'none'; 
+                chatView.style.display = 'none'; 
+                bannedView.style.display = 'flex';
+                document.getElementById('banReasonText').textContent = banData.reason || "Nespecificat";
+                document.getElementById('banIpDisplay').textContent = userIP;
                 return;
             }
         }
 
+        // 7. Show Chat
         currentUid = user.uid;
-        lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
+        lockedView.style.display = 'none'; 
+        bannedView.style.display = 'none'; 
+        chatView.style.display = 'flex';
         if (userAvatar) userAvatar.src = user.photoURL;
 
-        // --- LIVE USER DATA LISTENER ---
+        // 8. LIVE DATA LISTENER (Snapshot)
         onSnapshot(userRef, async (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
 
-                // 1. STREAK RESET & LOSS CHECK
+                // --- IMPORTANT: SYNC FAVORITES FOR STARS ---
+                window.currentUserFavorites = data.savedMedia || [];
+
+                // Streak Logic
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
 
-                // 2. QUEST MASTER (6/6) REWARD LOGIC
+                // Quest Master Logic
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
@@ -3482,25 +3496,23 @@ onAuthStateChanged(auth, async (user) => {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
                             const oldStr = data.streak || 0;
-
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
-
-                            const streakRewardModal = document.getElementById('streakRewardModal');
-                            if (streakRewardModal) {
+                            const streakModal = document.getElementById('streakRewardModal');
+                            if(streakModal) {
                                 document.getElementById('streakOld').innerText = oldStr;
                                 document.getElementById('streakNew').innerText = oldStr + 1;
-                                streakRewardModal.classList.add('active');
+                                streakModal.classList.add('active');
                             }
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
                 }
 
-                // 3. ACCOUNT MODAL UI
+                // UI Updates
                 document.getElementById('popUserImg').src = data.image;
                 const popFrame = document.getElementById('popUserFrame');
                 if (popFrame) {
@@ -3513,37 +3525,24 @@ onAuthStateChanged(auth, async (user) => {
                     } else { popFrame.style.display = 'none'; }
                 }
 
+                // Colored Name Logic
                 let rawName = data.username || "Anonim";
                 if (isOwner) rawName = "Lost Soul";
-
                 let coloredNameHtml = (data.equippedText?.cssClass) 
                     ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` 
                     : rawName;
 
                 document.getElementById('popUserName').innerHTML = coloredNameHtml;
                 document.getElementById('popUserEmail').innerText = data.email;
-                
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                
+                const diaEl = document.getElementById('popUserDiamonds');
+                if(diaEl) diaEl.innerText = formatCurrency(data.diamonds || 0);
                 
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                // 4. STACKED BADGES
-                const popBadgeBox = document.getElementById('popUserBadges');
-                if (popBadgeBox) {
-                    let staffHtml = "";
-                    if (isOwner) staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if (isAdmin) staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if (isMod) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if (isHelper) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                    let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-                    popBadgeBox.innerHTML = staffHtml + (cosmeticHtml ? `<div style="margin-top:5px;">${cosmeticHtml}</div>` : "");
-                }
-
-                // 5. CHAT HEADER UPDATE
-                if (userAvatar) userAvatar.src = data.image;
+                // Chat Header & Frame
                 const headerFrame = document.getElementById('userHeaderFrame');
                 if (headerFrame) {
                     if (data.equippedFrame?.img) {
@@ -3563,16 +3562,18 @@ onAuthStateChanged(auth, async (user) => {
                     }
                 }
 
+                // Staff Badge in Header
                 let headerStaffBadge = "";
                 if (isOwner) headerStaffBadge = ` <span class="owner-badge">OWNER</span>`;
                 else if (isAdmin) headerStaffBadge = ` <span class="admin-badge">ADMIN</span>`;
                 else if (isMod) headerStaffBadge = ` <span class="mod-badge">MOD</span>`;
                 else if (isHelper) headerStaffBadge = ` <span class="helper-badge">HELPER</span>`;
 
-                userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
+                if(userName) userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
             }
         });
 
+        // 9. Start Services
         loadMessages();
         listenForTypers();
         startWipeCheck();
@@ -3581,10 +3582,13 @@ onAuthStateChanged(auth, async (user) => {
         listenOnlineUsers();
 
     } else {
+        // Logged Out State
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
         currentUid = null; isOwner = false; isAdmin = false; isMod = false; isHelper = false;
-        chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
+        chatView.style.display = 'none'; 
+        bannedView.style.display = 'none'; 
+        lockedView.style.display = 'flex';
     }
 });
 
@@ -4099,194 +4103,238 @@ async function sendMessage() {
         }
     };
 function loadMessages() {
-    if(unsubscribe) unsubscribe();
-    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
-    
-    unsubscribe = onSnapshot(q, snapshot => {
-        const feed = messagesFeed;
-        const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
-
-        const docs = [];
-        snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-        docs.reverse();
-
-        feed.innerHTML = '';
-        docs.forEach(data => {
-            if(data.isDeleted) return; 
-
-            const msgId = data.id;
-            const isMine = data.uid === currentUid;
-            const isBot = data.isBot === true;
-            
-            const msgIsAdmin = data.isAdmin === true;
-            const msgIsOwner = data.isOwner === true;
-            const msgIsMod = data.isMod === true;
-            const msgIsHelper = data.isHelper === true;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
-            wrapper.dataset.id = msgId;
-
-            let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
-            let bubbleContent = "";
-            let bubbleClass = 'msg-bubble';
-
-            // --- A. POLL MESSAGE ---
-            if (data.type === 'poll') {
-                const now = Date.now();
-                const isExpired = now > data.expiresAt;
-                const myVote = data.votes ? data.votes[currentUid] : undefined;
-                const hasVoted = myVote !== undefined;
-                const optionCount = data.options ? data.options.length : 2;
-                const results = new Array(optionCount).fill(0);
-                let totalVotes = 0;
-                if(data.votes) {
-                    Object.values(data.votes).forEach(val => {
-                        if(val >= 0 && val < optionCount) { results[val]++; totalVotes++; }
-                    });
-                }
-                let optionsHtml = '<div class="poll-options">';
-                if(data.options) {
-                    data.options.forEach((opt, idx) => {
-                        if (isExpired || hasVoted) {
-                            const count = results[idx];
-                            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                            const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
-                            optionsHtml += `
-                                <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
-                                    <div class="poll-result-bar" style="width:${percent}%"></div>
-                                    <div class="poll-text"><span>${opt} ${myVote === idx ? '(Tu)' : ''}</span><span class="poll-percent">${percent}%</span></div>
-                                </div>`;
-                        } else {
-                            optionsHtml += `<button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">${opt}</button>`;
-                        }
-                    });
-                }
-                optionsHtml += '</div>';
-                let durationTxt = data.durationLabel || "1 Min";
-                let statusText = isExpired ? "Vot Încheiat" : `Votează (${durationTxt})`;
-                let viewResultsLink = (isExpired || hasVoted) ? ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>` : "";
-                bubbleContent = `<div class="poll-card"><div class="poll-question">${data.question}</div>${optionsHtml}<div class="poll-meta">${totalVotes} Voturi • ${statusText}${viewResultsLink}</div></div>`;
-            } 
-            // --- B. STANDARD MESSAGE ---
-            else {
-                if(data.replyToName) {
-                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
-                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
-                }
-                if(data.image) {
-                    bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
-                }
-                let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
-                if(safeText) {
-                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
-                }
-                if(data.equippedBanner && data.equippedBanner.cssClass) {
-                    bubbleClass += ` ${data.equippedBanner.cssClass}`;
-                } else {
-                    if(isBot) bubbleClass += ' bot-msg';
-                    else if(msgIsOwner) bubbleClass += ' owner-msg';
-                    else if(msgIsAdmin) bubbleClass += ' admin-msg';
-                    else if(msgIsMod) bubbleClass += ' mod-msg';
-                    else if(msgIsHelper) bubbleClass += ' helper-msg';
-                }
-            }
-
-            // --- BUILD NAMES & BADGES ---
-            let authorNameText = data.name;
-            if(isBot) authorNameText = `🤖 ${data.name}`;
-            if (data.equippedText && data.equippedText.cssClass) {
-                authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
-            }
-            let staffHtml = "";
-            if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
-            else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
-            else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
-            else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
-
-            let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-            let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
-
-            // --- REACTIONS (Visible below bubble) ---
-            let reactionsHtml = "";
-            if(data.reactions) {
-                const counts = {};
-                Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
-                if(Object.keys(counts).length > 0) {
-                    reactionsHtml = `<div class="msg-reactions">`;
-                    for(let [emoji, count] of Object.entries(counts)) { 
-                        reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
-                    }
-                    reactionsHtml += `</div>`;
-                }
-            }
-
-            // --- SEEN COUNT ---
-            const seenCount = (data.seenBy || []).length;
-            const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
-                <i class="fas fa-eye"></i> ${seenCount}
-            </button>`;
-
-            // --- MESSAGE MENU (Keeps Localized Emoji Reactions) ---
-            let menuHtml = `
-                <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
-                <div id="menu-${msgId}" class="options-dropdown">
-                    <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
-                    <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                    <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                    ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
-                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
-                    
-                    <!-- LOCAL REACTION PICKER -->
-                    <div id="emojis-${msgId}" class="emoji-picker-menu">
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
-
-                    </div>
-                </div>
-            `;
-
-            wrapper.innerHTML = `
-                <div class="msg-author">${finalNameHtml}</div>
-                <div class="${bubbleClass}">${bubbleContent}</div>
-                ${reactionsHtml}
-                <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
-                ${menuHtml}
-            `;
-            
-            feed.appendChild(wrapper);
-            seenObserver.observe(wrapper);
-        });
+        if(unsubscribe) unsubscribe();
+        const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
         
-        if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
-    });
-}
+        unsubscribe = onSnapshot(q, snapshot => {
+            const feed = messagesFeed;
+            const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
+
+            const docs = [];
+            snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+            docs.reverse();
+
+            feed.innerHTML = '';
+            docs.forEach(data => {
+                if(data.isDeleted) return; 
+
+                const msgId = data.id;
+                const isMine = data.uid === currentUid;
+                const isBot = data.isBot === true;
+                
+                const msgIsAdmin = data.isAdmin === true;
+                const msgIsOwner = data.isOwner === true;
+                const msgIsMod = data.isMod === true;
+                const msgIsHelper = data.isHelper === true;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
+                wrapper.dataset.id = msgId;
+
+                let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+                let bubbleContent = "";
+                let bubbleClass = 'msg-bubble';
+
+                // ============================================
+                // A. POLL MESSAGE
+                // ============================================
+                if (data.type === 'poll') {
+                    const now = Date.now();
+                    const isExpired = now > data.expiresAt;
+                    const myVote = data.votes ? data.votes[currentUid] : undefined;
+                    const hasVoted = myVote !== undefined;
+                    
+                    // Initialize results array based on actual option count
+                    const optionCount = data.options ? data.options.length : 2;
+                    const results = new Array(optionCount).fill(0);
+                    
+                    let totalVotes = 0;
+                    if(data.votes) {
+                        Object.values(data.votes).forEach(val => {
+                            if(val >= 0 && val < optionCount) { results[val]++; totalVotes++; }
+                        });
+                    }
+
+                    let optionsHtml = '<div class="poll-options">';
+                    if(data.options) {
+                        data.options.forEach((opt, idx) => {
+                            if (isExpired || hasVoted) {
+                                // SHOW RESULTS BAR
+                                const count = results[idx];
+                                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
+                                
+                                optionsHtml += `
+                                    <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
+                                        <div class="poll-result-bar" style="width:${percent}%"></div>
+                                        <div class="poll-text">
+                                            <span>${opt} ${myVote === idx ? '(Tu)' : ''}</span>
+                                            <span class="poll-percent">${percent}%</span>
+                                        </div>
+                                    </div>`;
+                            } else {
+                                // SHOW VOTE BUTTON
+                                optionsHtml += `<button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">${opt}</button>`;
+                            }
+                        });
+                    }
+                    optionsHtml += '</div>';
+
+                    let durationTxt = data.durationLabel || "1 Min";
+                    let statusText = isExpired ? "Vot Încheiat" : `Votează (${durationTxt})`;
+                    
+                    // Link to see who voted
+                    let viewResultsLink = "";
+                    if (isExpired || hasVoted) {
+                        viewResultsLink = ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>`;
+                    }
+                    
+                    bubbleContent = `
+                        <div class="poll-card">
+                            <div class="poll-question">${data.question}</div>
+                            ${optionsHtml}
+                            <div class="poll-meta">${totalVotes} Voturi • ${statusText}${viewResultsLink}</div>
+                        </div>
+                    `;
+                    // Polls ignore banners
+                    bubbleClass = 'msg-bubble'; 
+                } 
+                
+                // ============================================
+                // B. DICE ROLL
+                // ============================================
+                else if (data.type === 'dice') {
+                    bubbleContent = `<div class="dice-msg"><i class="fas fa-dice"></i> A dat cu zarul: <span style="font-size:16px;">${data.diceValue}</span></div>`;
+                }
+
+                // ============================================
+                // C. STANDARD MESSAGE (Text, Image, Sticker, GIF)
+                // ============================================
+                else {
+                    // 1. Reply
+                    if(data.replyToName) {
+                        const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
+                        bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
+                    }
+
+                    // 2. Image / GIF / Sticker (WITH FAVORITE STAR)
+                    if(data.image) {
+                        // Check if favorite
+                        const isFav = (window.currentUserFavorites || []).includes(data.image);
+                        const starClass = isFav ? "is-fav" : "";
+                        const starIcon = isFav ? "fas fa-star" : "far fa-star";
+
+                        bubbleContent += `
+                        <div class="media-msg-wrapper">
+                            <div class="fav-star-btn ${starClass}" onclick="toggleFavorite('${data.image}')" title="Adaugă la favorite">
+                                <i class="${starIcon}"></i>
+                            </div>
+                            <img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">
+                        </div>`;
+                    }
+
+                    // 3. Text (With Spoilers)
+                    let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
+                    
+                    // Parse Spoilers: ||text||
+                    safeText = safeText.replace(/\|\|(.*?)\|\|/g, '<span class="spoiler-text" onclick="this.classList.add(\'revealed\')">$1</span>');
+
+                    if(safeText) {
+                        bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
+                    }
+
+                    // 4. Banners
+                    if(data.equippedBanner && data.equippedBanner.cssClass) {
+                        bubbleClass += ` ${data.equippedBanner.cssClass}`;
+                    } else {
+                        if(isBot) bubbleClass += ' bot-msg';
+                        else if(msgIsOwner) bubbleClass += ' owner-msg';
+                        else if(msgIsAdmin) bubbleClass += ' admin-msg';
+                        else if(msgIsMod) bubbleClass += ' mod-msg';
+                        else if(msgIsHelper) bubbleClass += ' helper-msg';
+                    }
+                }
+
+                // --- BUILD NAMES & BADGES ---
+                let authorNameText = data.name;
+                if(isBot) authorNameText = `🤖 ${data.name}`;
+                if (data.equippedText && data.equippedText.cssClass) {
+                    authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
+                }
+                
+                let staffHtml = "";
+                if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
+                else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
+                else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
+                else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
+
+                let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
+                let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
+
+                // --- REACTIONS ---
+                let reactionsHtml = "";
+                if(data.reactions) {
+                    const counts = {};
+                    Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
+                    if(Object.keys(counts).length > 0) {
+                        reactionsHtml = `<div class="msg-reactions">`;
+                        for(let [emoji, count] of Object.entries(counts)) { 
+                            reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
+                        }
+                        reactionsHtml += `</div>`;
+                    }
+                }
+
+                // --- SEEN BUTTON ---
+                const seenCount = (data.seenBy || []).length;
+                const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
+                    <i class="fas fa-eye"></i> ${seenCount}
+                </button>`;
+
+                // --- MENU ---
+                let menuHtml = `
+                    <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                    <div id="menu-${msgId}" class="options-dropdown">
+                        <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Poll").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                        ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                        ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+                        
+                        <!-- LOCAL REACTION PICKER -->
+                        <div id="emojis-${msgId}" class="emoji-picker-menu">
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
+                        </div>
+                    </div>
+                `;
+
+                wrapper.innerHTML = `
+                    <div class="msg-author">${finalNameHtml}</div>
+                    <div class="${bubbleClass}">${bubbleContent}</div>
+                    ${reactionsHtml}
+                    <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
+                    ${menuHtml}
+                `;
+                
+                feed.appendChild(wrapper);
+                seenObserver.observe(wrapper);
+            });
+            
+            if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
+        });
+    }
 
     window.openSeenByList = async (msgId) => {
         const modal = document.getElementById('seenByModal');
