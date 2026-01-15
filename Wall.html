@@ -1556,6 +1556,39 @@
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.2);
 }
+
+
+/* --- NEW PROFILE STYLES --- */
+
+/* Revamped Streak Badge */
+.streak-badge-profile {
+    background: rgba(255, 69, 0, 0.15);
+    border: 1px solid #ff4500;
+    color: #ff4500;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 0 10px rgba(255, 69, 0, 0.2);
+}
+
+/* Invited Friends Counter */
+.invite-stat {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    color: #00ff88; /* Green for growth */
+    margin-bottom: 5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(0, 255, 136, 0.05);
+    padding: 5px 10px;
+    border-radius: 8px;
+    display: inline-block;
+}
   </style>
 
 </head>
@@ -1599,24 +1632,53 @@
 <div id="viewProfileModal" class="account-modal-overlay">
     <div class="account-card">
         <button id="closeViewProfile" class="close-pop">✕</button>
+        
+        <!-- Avatar & Frame -->
         <div class="profile-frame-wrapper">
             <img id="viewUserImg" src="" class="pop-img-inner">
             <img id="viewUserFrame" src="" class="pop-frame-overlay" style="display: none;">
         </div>        
+        
         <h3 id="viewUserName" class="pop-user" style="margin-bottom:2px;">User</h3>
 
-        <!-- START OF FIX -->
-        <div id="viewUserBadges" class="badge-stack-container"></div> <!-- Keep this one -->
-        <!-- DELETE THIS LINE: <div id="popUserBadges" class="badge-stack-container"></div> -->
-        <!-- END OF FIX -->
+        <!-- Badges -->
+        <div id="viewUserBadges" class="badge-stack-container"></div> 
 
-        <div id="viewUserStatus" style="font-size:10px; font-weight:bold; margin-bottom:15px; font-family:'Orbitron';"></div>
-        <div class="view-profile-row">
-            <div class="view-stat"><img src="https://iili.io/fhc1SKQ.png" style="width:25px; margin-bottom:5px;"><span id="viewUserCoins" class="view-stat-val">0</span></div>
-            <div class="view-stat"><i class="fas fa-fire" style="color:#ff4500; font-size:20px; margin-bottom:5px;"></i><span id="viewUserStreak" class="view-stat-val">0</span></div>
+        <!-- 1. STATUS & STREAK (Stacked) -->
+        <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:15px; align-items:center;">
+            <div id="viewUserStatus" style="font-size:10px; font-weight:bold; font-family:'Orbitron';"></div>
+            <!-- REVAMPED STREAK -->
+            <div id="viewUserStreak" class="streak-badge-profile">
+                <i class="fas fa-fire"></i> 0 DAYS STREAK
+            </div>
         </div>
+
+        <!-- 2. COINS & DIAMONDS ROW -->
+        <div class="view-profile-row">
+            <!-- Coins -->
+            <div class="view-stat">
+                <img src="https://iili.io/fhc1SKQ.png" style="width:28px; margin-bottom:5px;">
+                <span id="viewUserCoins" class="view-stat-val">0</span>
+            </div>
+            <!-- Diamonds (New) -->
+            <div class="view-stat">
+                <img src="https://iili.io/fv5bmtj.png" style="width:28px; margin-bottom:5px;">
+                <span id="viewUserDiamonds" class="view-stat-val" style="color:#00ff88;">0</span>
+            </div>
+        </div>
+
+        <!-- Bio -->
         <div id="viewUserBio" class="view-bio">Nu există descriere.</div>
+
+        <!-- 3. FRIENDS INVITED COUNTER -->
+        <div id="viewUserInvites" class="invite-stat">
+            <i class="fas fa-user-plus"></i> Friends Invited: 0
+        </div>
+
+        <!-- Birthdate -->
         <div id="viewUserBirth" style="font-size:11px; color:#aaa; margin-bottom:10px;"></div>
+        
+        <!-- TikTok -->
         <a id="viewUserTikTok" href="#" target="_blank" class="tiktok-btn" style="display:none;"><i class="fab fa-tiktok"></i> Follow on TikTok</a>
     </div>
 </div>
@@ -2773,9 +2835,62 @@ const TEXTS_DB = [
     }
 
     // SHARED AUTH
-    async function handleLoginFlow() {
+async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+            const ip = await getIP();
+            const userRef = doc(db, "accounts", user.uid);
+            const snap = await getDoc(userRef);
+
+            if(!snap.exists()) {
+                // --- REFERRAL LOGIC ---
+                let startingCoins = 250; 
+                let referrerId = sessionStorage.getItem('referrerUid'); 
+                let hasReferred = false;
+
+                if (referrerId && referrerId !== user.uid) {
+                    startingCoins += 1000; 
+                    hasReferred = true;
+                }
+
+                await setDoc(userRef, {
+                    uid: user.uid,
+                    username: user.displayName,
+                    email: user.email,
+                    image: user.photoURL,
+                    coins: startingCoins,
+                    diamonds: 0, 
+                    streak: 0,
+                    totalReferrals: 0, // Initialize for new user
+                    ip: ip,
+                    joinedAt: new Date(),
+                    completedQuests: []
+                });
+
+                if (hasReferred) {
+                    try {
+                        const inviterRef = doc(db, "accounts", referrerId);
+                        await updateDoc(inviterRef, { 
+                            coins: increment(1000),
+                            pendingReferrals: increment(1), // Pop-up counter
+                            totalReferrals: increment(1)    // PROFILE COUNTER (This is the new part)
+                        });
+                    } catch(e) { console.error("Referral error:", e); }
+
+                    // Show Modal for New User
+                    if(typeof showRewardModal === 'function') {
+                        showRewardModal("Ai fost invitat! Ai primit 1000 Coins bonus.", 1000);
+                    }
+                } else {
+                    if(document.getElementById('rewardModal')) {
+                        document.getElementById('rewardModal').classList.add('active');
+                    }
+                }
+            } else {
+                await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
+            }
+            updateOnlineStatus(); 
         } catch(e) { console.error(e); }
     }
 
@@ -4418,21 +4533,18 @@ window.openUserProfile = async (uid) => {
     const modal = document.getElementById('viewProfileModal');
     modal.classList.add('active');
     
-    // 1. CLEAR containers immediately so you don't see the previous person's (or your own) data
+    // Clear previous data
     document.getElementById('viewUserName').innerText = "Se încarcă...";
     document.getElementById('viewUserStatus').innerHTML = "";
-    const badgeBox = document.getElementById('viewUserBadges');
-    if(badgeBox) badgeBox.innerHTML = "";
+    document.getElementById('viewUserBadges').innerHTML = "";
 
     try {
         const snap = await getDoc(doc(db, "accounts", uid));
         if(snap.exists()) {
             const data = snap.data();
             
-            // Set basic info
+            // Image & Frame
             document.getElementById('viewUserImg').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-            
-            // Frame logic
             const viewFrame = document.getElementById('viewUserFrame');
             if(viewFrame) {
                 if (data.equippedFrame && data.equippedFrame.img) {
@@ -4449,42 +4561,49 @@ window.openUserProfile = async (uid) => {
             document.getElementById('viewUserStatus').innerHTML = isOnline 
                 ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
 
-            // --- FIX: COLORED NAME (Only for this specific user) ---
+            // --- 1. STREAK (Moved & Revamped) ---
+            document.getElementById('viewUserStreak').innerHTML = `<i class="fas fa-fire"></i> ${data.streak || 0} DAYS STREAK`;
+
+            // Name & Color
             let profileName = (data.username || "Anonim");
             if(data.equippedText && data.equippedText.cssClass) {
                 profileName = `<span class="${data.equippedText.cssClass}">${profileName}</span>`;
             }
             document.getElementById('viewUserName').innerHTML = profileName;
 
-            // --- FIX: STAFF BADGE CALCULATION (Based strictly on THEIR email) ---
+            // Badges Logic
+            const badgeBox = document.getElementById('viewUserBadges');
             if(badgeBox) {
                 let staffHtml = "";
-                const userEmail = data.email || ""; // Use the email from the snapshot data
-                
-                if(userEmail === 'nicaemmanuel433qe@gmail.com') {
-                    staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                } else if(userEmail === 'kevin.trinity2020@gmail.com') {
-                    staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                } else if(userEmail === 'mary.bughi@gmail.com' || userEmail === 'emmanuel.nica83@gmail.com') {
-                    staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                } else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(userEmail)) {
-                    staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                }
+                const userEmail = data.email || "";
+                if(userEmail === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
+                else if(userEmail === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
+                else if(userEmail === 'mary.bughi@gmail.com' || userEmail === 'emmanuel.nica83@gmail.com') staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
+                else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(userEmail)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
 
-                // --- FIX: COSMETIC BADGE (Strictly THEIR equipped badge) ---
                 let cosmeticHtml = "";
                 if (data.equippedBadge) {
                     cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
                 }
-                
                 badgeBox.innerHTML = staffHtml + cosmeticHtml;
             }
             
-            document.getElementById('viewUserCoins').innerText = data.coins || 0;
-            document.getElementById('viewUserStreak').innerText = data.streak || 0;
+            // --- 2. COINS & DIAMONDS ---
+            document.getElementById('viewUserCoins').innerText = formatCurrency(data.coins || 0);
+            document.getElementById('viewUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+
+            // Bio
             document.getElementById('viewUserBio').innerText = data.bio || "Nu există descriere.";
+
+            // --- 3. FRIENDS INVITED ---
+            // If field doesn't exist yet, show 0
+            const invites = data.totalReferrals || 0;
+            document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${invites}`;
+
+            // Birthdate
             document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
 
+            // TikTok
             const tiktokBtn = document.getElementById('viewUserTikTok');
             if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
                 tiktokBtn.href = data.tiktokLink; tiktokBtn.style.display = 'inline-flex';
