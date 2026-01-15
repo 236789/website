@@ -2132,25 +2132,15 @@ async function handleLoginFlow() {
                 });
 
                 // --- REWARD DISTRIBUTION ---
-                if (hasReferred) {
-                    // 1. Reward the Inviter (Old User)
-                    try {
-                        const inviterRef = doc(db, "accounts", referrerId);
-                        // Give coins and set flag to show popup later
-                        await updateDoc(inviterRef, { 
-                            coins: increment(1000),
-                            pendingReferralPopup: true 
-                        });
-                    } catch(e) { console.error("Referral error:", e); }
-
-                    // 2. Show Referral Modal to New User
-                    const refModal = document.getElementById('referralRewardModal');
-                    const refText = document.getElementById('referralText');
-                    if(refModal && refText) {
-                        refText.innerText = "Ai fost invitat! Ai primit 1000 Coins bonus.";
-                        refModal.classList.add('active');
-                    }
-                } else {
+if (hasReferred) {
+    // 1. Reward the Inviter
+    try {
+        const inviterRef = doc(db, "accounts", referrerId);
+        await updateDoc(inviterRef, { 
+            coins: increment(1000),
+            pendingReferrals: increment(1) // <--- CHANGE THIS (Count them instead of true/false)
+        });
+    } catch(e) { console.error("Referral error:", e); }
                     // Standard Welcome Modal
                     if(document.getElementById('rewardModal')) {
                         document.getElementById('rewardModal').classList.add('active');
@@ -2454,16 +2444,30 @@ onAuthStateChanged(auth, async (user) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
 
-                    // --- CHECK FOR REFERRAL REWARD (INVITER SIDE) ---
-                    if (data.pendingReferralPopup === true) {
+                    // --- CHECK FOR REFERRAL REWARD (UPDATED: COUNTER LOGIC) ---
+                    if (data.pendingReferrals && data.pendingReferrals > 0) {
+                        const count = data.pendingReferrals;
+                        const totalBonus = count * 1000;
+
                         const refModal = document.getElementById('referralRewardModal');
                         const refText = document.getElementById('referralText');
-                        if (refModal && refText) {
-                            refText.innerText = "Un prieten s-a înregistrat cu link-ul tău! Ai primit 1000 Coins.";
+                        // Find the number inside the coin box to update it
+                        const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
+
+                        if (refModal && refText && refAmount) {
+                            if (count === 1) {
+                                refText.innerText = "Un prieten s-a înregistrat cu link-ul tău! Ai primit bonus.";
+                            } else {
+                                refText.innerText = `${count} prieteni s-au înregistrat cu link-ul tău! Ai primit bonus.`;
+                            }
+                            
+                            // Update the displayed amount (e.g. 1000, 2000, 3000)
+                            refAmount.innerText = totalBonus; 
+                            
                             refModal.classList.add('active');
                             
-                            // Remove the flag so it doesn't show again on refresh
-                            await updateDoc(userRef, { pendingReferralPopup: false });
+                            // Reset the counter to 0 so it doesn't show again
+                            await updateDoc(userRef, { pendingReferrals: 0 });
                         }
                     }
                     
