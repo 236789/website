@@ -1328,30 +1328,29 @@
 .picker-drawer.open { max-height: 220px; }
 
 /* FIXED EMOJI GRID */
-/* FIXED EMOJI GRID */
 .emoji-grid-container {
     padding: 15px;
     display: grid;
-    /* Forces items to be exactly 35px wide. They won't stretch. */
-    grid-template-columns: repeat(auto-fill, 35px);
+    /* This forces items to wrap into rows */
+    grid-template-columns: repeat(auto-fill, minmax(35px, 1fr));
     gap: 8px;
     overflow-y: auto;
     height: 200px;
-    justify-content: start; /* Aligns them to the left */
+    width: 100%; /* Ensures it takes up the full drawer width */
+    box-sizing: border-box; /* Includes padding in width calculation */
 }
 
 .emoji-item {
     font-size: 22px;
     cursor: pointer;
     text-align: center;
-    line-height: 35px; /* Vertically centers the emoji */
+    line-height: 35px;
     border-radius: 8px;
     transition: 0.2s;
-    width: 35px;
-    height: 35px;
+    background: rgba(255,255,255,0.05); /* Light background to see them better */
 }
 .emoji-item:hover { 
-    background: rgba(255,255,255,0.1); 
+    background: rgba(255,255,255,0.2); 
     transform: scale(1.1); 
 }
 /* GIF Grid */
@@ -2452,14 +2451,14 @@ window.togglePicker = async (type) => {
     }
 
     // 4. Load Default (Custom + Trending)
-    async function loadStickers() {
-        // Target the results container so we don't delete the search bar
+async function loadStickers() {
+        // Ensure container exists
         const container = document.getElementById('stickerResults'); 
-        if (!container) return; // Safety check
+        if (!container) return;
         
         container.innerHTML = '';
 
-        // A. Load CUSTOM KSDA Stickers
+        // A. CUSTOM STICKERS
         const customHeader = document.createElement('div');
         customHeader.className = 'sticker-section-title';
         customHeader.innerText = "KSDA EXCLUSIVE";
@@ -2471,12 +2470,13 @@ window.togglePicker = async (type) => {
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
                 img.src = url;
-                img.onclick = () => sendSticker(url);
+                // USE THE NEW GLOBAL FUNCTION
+                img.onclick = () => window.sendSticker(url);
                 container.appendChild(img);
             });
         }
 
-        // B. Load GIPHY Stickers
+        // B. GIPHY STICKERS
         const giphyHeader = document.createElement('div');
         giphyHeader.className = 'sticker-section-title';
         giphyHeader.innerText = "GIPHY TRENDING";
@@ -2491,12 +2491,13 @@ window.togglePicker = async (type) => {
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
                 img.src = sticker.images.fixed_height_small.url;
-                img.onclick = () => sendSticker(sticker.images.original.url);
+                // USE THE NEW GLOBAL FUNCTION
+                img.onclick = () => window.sendSticker(sticker.images.original.url);
                 container.appendChild(img);
             });
         } catch (e) {
             console.error("Sticker error", e);
-            container.innerHTML += '<div style="grid-column:1/-1; color:red; text-align:center; padding:10px;">Eroare Giphy Stickers</div>';
+            container.innerHTML += '<div style="grid-column:1/-1; color:red; text-align:center;">Eroare Giphy Stickers</div>';
         }
     }
 
@@ -4769,6 +4770,27 @@ window.flyDiamond = () => {
     setTimeout(() => { flyer.style.display = 'none'; document.getElementById('streakRewardModal').classList.remove('active'); }, 1100);
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
+
+
+// Helper to send sticker
+    window.sendSticker = function(url) {
+        // 1. Close UI
+        const drawer = document.getElementById('pickerDrawer');
+        const btn = document.getElementById('stickerBtn');
+        if(drawer) drawer.classList.remove('open');
+        if(btn) btn.classList.remove('active');
+
+        // 2. Set global image variable
+        // IMPORTANT: We use the same variable as Image Uploads/GIFs
+        selectedImgBase64 = url; 
+
+        // 3. Send
+        sendMessage();
+        
+        // 4. Cleanup (Safety)
+        // sendMessage() cleans it up, but we null it here after the call stack clears
+        setTimeout(() => { selectedImgBase64 = null; }, 500); 
+    };
   </script>
 
 </body>
