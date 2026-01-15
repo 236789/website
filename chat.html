@@ -559,18 +559,19 @@
     .seen-btn:hover { color: var(--primary); }
     .seen-btn.active { color: var(--primary); }
 /* FIXED IMAGE/GIF SIZING */
+/* FIXED IMAGE/GIF DISPLAY */
 .msg-img-content {
-    display: block;
-    max-width: 280px;       /* Limits the width so it's not huge */
-    max-height: 280px;      /* Limits the height for tall images */
-    width: auto;            /* Keeps aspect ratio */
-    height: auto;           /* Keeps aspect ratio */
+    display: block !important; /* Force visibility */
+    max-width: 250px;
+    height: auto;
     border-radius: 12px;
-    margin-top: 8px;
+    margin-top: 5px;
     cursor: pointer;
     border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(0,0,0,0.2);
-}​
+    background: rgba(0,0,0,0.2); 
+    min-width: 50px; /* Ensure it has size even while loading */
+    min-height: 50px;
+}
 
     .img-upload-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); width: 45px; height: 45px; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; }
     .img-upload-btn:hover { background: var(--primary-dim); color: var(--primary); border-color: var(--primary); }
@@ -1615,9 +1616,12 @@
 .fav-star-btn.is-fav {
     opacity: 1;
 }
+/* Add this to your style section if missing */
 .fav-star-btn.is-fav {
-    color: #ffd700; /* Gold for favorites */
-    border-color: #ffd700;
+    color: #ffd700 !important; /* Gold */
+    border-color: #ffd700 !important;
+    background: rgba(0, 0, 0, 0.8);
+    opacity: 1; /* Always visible if favorited */
 }
 .fav-star-btn:hover { transform: scale(1.2); background: #000; }
   </style>
@@ -4321,7 +4325,7 @@ function loadMessages() {
                     <div class="${bubbleClass}">${bubbleContent}</div>
                     ${reactionsHtml}
                     <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
-                    ${menuHtml}
+                    ${menuHtml} 
                 `;
                 
                 feed.appendChild(wrapper);
@@ -4727,19 +4731,31 @@ window.toggleFavorite = async (url) => {
             const snap = await getDoc(userRef);
             const favs = snap.data().savedMedia || [];
             
+            // Find the button that was clicked
+            const btn = document.querySelector(`.fav-star-btn[data-url="${url}"]`);
+
             if(favs.includes(url)) {
-                // Remove
+                // REMOVE FAVORITE (Turn Black/Grey)
                 await updateDoc(userRef, { savedMedia: arrayRemove(url) });
                 showToast("Sters de la favorite.");
-                // Update UI instantly if visible
-                const btn = document.querySelector(`.fav-star-btn[data-url="${url}"]`);
-                if(btn) btn.classList.remove('is-fav');
+                
+                if(btn) {
+                    btn.classList.remove('is-fav'); // Remove yellow class
+                    // Force color update immediately for visual feedback
+                    btn.style.color = "#555"; 
+                    btn.style.borderColor = "rgba(255, 255, 255, 0.3)";
+                }
             } else {
-                // Add
+                // ADD FAVORITE (Turn Yellow)
                 await updateDoc(userRef, { savedMedia: arrayUnion(url) });
                 showToast("Adăugat la favorite!", "success");
-                const btn = document.querySelector(`.fav-star-btn[data-url="${url}"]`);
-                if(btn) btn.classList.add('is-fav');
+                
+                if(btn) {
+                    btn.classList.add('is-fav'); // Add yellow class
+                    // Force color update immediately
+                    btn.style.color = "#ffd700"; 
+                    btn.style.borderColor = "#ffd700";
+                }
             }
         } catch(e) { console.error(e); }
     };
