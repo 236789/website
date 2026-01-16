@@ -1655,6 +1655,20 @@ transition: 0.3s;
 .modal-tab.active[data-type="coins"] { border-color: var(--primary); box-shadow: 0 0 10px rgba(41, 243, 255, 0.2); background: rgba(41, 243, 255, 0.1); }
 .modal-tab.active[data-type="diamonds"] { border-color: #00ff88; box-shadow: 0 0 10px rgba(0, 255, 136, 0.2); background: rgba(0, 255, 136, 0.1); }
 .modal-tab.active[data-type="donated"] { border-color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.2); background: rgba(255, 215, 0, 0.1); }
+
+/* Add this under the existing tab styles */
+#tab-referrals.active { 
+    border-color: #00ff88; 
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); 
+    background: rgba(0, 255, 136, 0.05);
+}
+
+/* Add this for the Modal Tab active state */
+.modal-tab.active[data-type="referrals"] { 
+    border-color: #00ff88; 
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.2); 
+    background: rgba(0, 255, 136, 0.1); 
+}
   </style>
 </head>
 <body>
@@ -1715,6 +1729,10 @@ transition: 0.3s;
         <button id="tab-diamonds" class="tab-btn" onclick="switchLeaderboard('diamonds')">
             <img src="https://iili.io/fv5bmtj.png"> TOP DIAMONDS
         </button>
+<button id="tab-referrals" class="tab-btn" onclick="switchLeaderboard('referrals')">
+    <i class="fas fa-user-plus" style="color:#00ff88;"></i> TOP INVITES
+</button>
+
 
         <button id="tab-donated" class="tab-btn" onclick="switchLeaderboard('donated')">
             <i class="fas fa-hand-holding-usd" style="color:#ffd700;"></i> TOP DONATORI
@@ -1948,6 +1966,9 @@ transition: 0.3s;
             <button id="m-btn-donated" class="modal-tab" data-type="donated" onclick="sortModal('donated')">
                 <i class="fas fa-hand-holding-usd" style="color:#ffd700;"></i>
             </button>
+<button id="m-btn-referrals" class="modal-tab" data-type="referrals" onclick="sortModal('referrals')">
+    <i class="fas fa-user-plus" style="color:#00ff88;"></i>
+</button>
         </div>
 
         <input type="text" id="searchAllUsers" placeholder="Caută membru..." style="background:rgba(255,255,255,0.1); border:1px solid #333; color:#fff; padding:12px; width:100%; box-sizing:border-box; border-radius:15px; margin-bottom:15px; font-family:'Poppins';">
@@ -2654,7 +2675,7 @@ window.switchLeaderboard = (mode) => {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById(`tab-${mode}`).classList.add('active');
 
-    // --- NEW: DYNAMIC TITLE & DESCRIPTION CHANGE ---
+    // --- DYNAMIC TITLE & DESCRIPTION CHANGE ---
     const heroTitle = document.getElementById('heroTitle');
     const heroDesc = document.getElementById('heroDesc');
 
@@ -2662,34 +2683,34 @@ window.switchLeaderboard = (mode) => {
         heroTitle.innerText = "TOP MONEDE KSDA";
         heroDesc.innerText = "Cei mai loiali membri ai familiei KSDA care domină clasamentul prin activitate zilnică.";
     } 
-else if (mode === 'diamonds') {
+    else if (mode === 'diamonds') {
         heroTitle.innerText = "TOP DIAMANTE";
         heroDesc.innerText = "Colecționarii de elită care au strâns cele mai multe diamante prețioase prin completarea celor 6 task-uri zilnice.";
     }
-else if (mode === 'donated') {
+    else if (mode === 'donated') {
         heroTitle.innerText = "TOP DONATORI BOGĂTAȘI";
         heroDesc.innerText = "Membrii care au strâns o avere colosală de monede KSDA și își permit să împartă surplusul cu familia.";
     }
-else if (mode === 'sustinatori') {
+    else if (mode === 'referrals') {
+        heroTitle.innerText = "TOP RECOMANDĂRI";
+        heroDesc.innerText = "Cei mai populari membri care au invitat cei mai mulți prieteni în familia KSDA.";
+    }
+    else if (mode === 'sustinatori') {
         heroTitle.innerText = "SUSȚINĂTORII PROIECTELOR KSDA";
         heroDesc.innerText = "Oamenii de bază care au contribuit direct la dezvoltarea proiectului KSDA.";
     }
 
     // Re-fetch Data
-// Auto-refresh UI every 30s
-    setInterval(renderLeaderboard, 30000);
     setupLeaderboardListener(); 
-    
-    // --- ADD THIS LINE HERE ---
     fetchTotalCount();
 };
 
 function setupLeaderboardListener() {
     if(unsubscribeLeaderboard) unsubscribeLeaderboard();
 
-    let q; // Define query variable
+    let q; 
 
-    // 1. STANDARD LEADERBOARDS (Coins, Diamonds, Donated)
+    // 1. STANDARD LEADERBOARDS
     if(currentMode === 'coins') {
         q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(50));
     } 
@@ -2699,13 +2720,16 @@ function setupLeaderboardListener() {
     else if(currentMode === 'donated') {
         q = query(collection(db, "accounts"), orderBy("totalCoinsDonated", "desc"), limit(50));
     }
-    // 2. NEW SUSTINATORI MODE (Filter by flag)
-// 2. NEW SUSTINATORI MODE (Filter by flag + Sort by Manual Order)
+    // 2. REFERRALS MODE (New)
+    else if(currentMode === 'referrals') {
+        q = query(collection(db, "accounts"), orderBy("totalReferrals", "desc"), limit(50));
+    }
+    // 3. SUSTINATORI MODE
     else if(currentMode === 'sustinatori') {
         q = query(
             collection(db, "accounts"), 
             where("isSustinatori", "==", true), 
-            orderBy("sustinatorOrder", "asc"), // Sorts by 1, 2, 3...
+            orderBy("sustinatorOrder", "asc"), 
             limit(100)
         );
     }
@@ -2783,12 +2807,17 @@ function renderLeaderboard() {
     // --- MODE 2: NORMAL LEADERBOARDS (Coins, Diamonds, Donated) ---
     podiumContainer.style.display = 'flex'; 
 
-    const getConfig = (m) => {
-        if(currentMode === 'coins') return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
-        if(currentMode === 'diamonds') return { val: formatNumber(m.diamonds || 0), img: 'https://iili.io/fv5bmtj.png', label: '' };
-        if(currentMode === 'donated') return { val: formatNumber(m.totalCoinsDonated || 0), img: 'https://iili.io/fhc1SKQ.png', label: 'DONATED' };
-        return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
-    };
+const getConfig = (m) => {
+    if(currentMode === 'coins') return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
+    if(currentMode === 'diamonds') return { val: formatNumber(m.diamonds || 0), img: 'https://iili.io/fv5bmtj.png', label: '' };
+    if(currentMode === 'donated') return { val: formatNumber(m.totalCoinsDonated || 0), img: 'https://iili.io/fhc1SKQ.png', label: 'DONATED' };
+    
+    // For Referrals, we return the number and a specific Label. 
+    // The render function will need to check if 'currentMode' is referrals to show the <i class="fa-user-plus"></i> instead of an <img>.
+    if(currentMode === 'referrals') return { val: (m.totalReferrals || 0), img: '', iconClass: 'fas fa-user-plus', label: 'INVITES' };
+
+    return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
+};
 
     // 1. RENDER PODIUM (Rank 1-3)
     for (let i = 1; i <= 3; i++) {
@@ -2923,8 +2952,9 @@ window.sortModal = (type) => {
         allUsersDataCache.sort((a,b) => (b.diamonds || 0) - (a.diamonds || 0));
     } else if(type === 'donated') {
         allUsersDataCache.sort((a,b) => (b.totalCoinsDonated || 0) - (a.totalCoinsDonated || 0));
+    } else if(type === 'referrals') {
+        allUsersDataCache.sort((a,b) => (b.totalReferrals || 0) - (a.totalReferrals || 0));
     } else if(type === 'sustinatori') {
-        // Sort sustinatori first, then by order
         allUsersDataCache.sort((a,b) => {
             if (a.isSustinatori === b.isSustinatori) {
                 return (a.sustinatorOrder || 999) - (b.sustinatorOrder || 999);
@@ -2938,13 +2968,10 @@ window.sortModal = (type) => {
 };
 
 // --- UPDATE THE RENDER FUNCTION ---
-// Find your existing renderAllUsersList function and replace it with this:
 function renderAllUsersList(data) {
     allUsersListEl.innerHTML = '';
     
-    // --- FIX: ALWAYS HIDE TOP 50 ---
-    // Since this modal is "Rest of Family", we always remove the top 50
-    // regardless of whether we are sorting by coins, diamonds, or donated.
+    // Always hide top 50 in this modal
     let listToShow = data.slice(50); 
 
     if(listToShow.length === 0) { 
@@ -2952,8 +2979,9 @@ function renderAllUsersList(data) {
         return; 
     }
 
-    // Determine what Icon/Value to show on the right side
+    // Determine what Icon/Value to show
     let icon = 'https://iili.io/fhc1SKQ.png'; 
+    let iconClass = ''; // For FontAwesome
     let key = 'coins';
     let color = '#29f3ff'; // Cyan
 
@@ -2961,30 +2989,32 @@ function renderAllUsersList(data) {
         icon = 'https://iili.io/fv5bmtj.png'; key = 'diamonds'; color = '#00ff88'; 
     } else if(currentModalSort === 'donated') { 
         icon = 'https://iili.io/fhc1SKQ.png'; key = 'totalCoinsDonated'; color = '#ffd700';
+    } else if(currentModalSort === 'referrals') {
+        icon = ''; iconClass = 'fas fa-user-plus'; key = 'totalReferrals'; color = '#00ff88';
     } else if(currentModalSort === 'sustinatori') {
-        icon = ''; key = ''; color = '#ff69b4'; // Sustinatori just shows the list
+        icon = ''; iconClass = 'fas fa-heart'; key = ''; color = '#ff69b4';
     }
 
     listToShow.forEach((m, idx) => {
-        // --- FIX: RANK CALCULATION ---
-        // Since we sliced off 50, the first person in this list is always Rank 51
         let realRank = idx + 51;
 
-        // Hide non-sustinatori if that tab is active
         if(currentModalSort === 'sustinatori' && !m.isSustinatori) return;
 
         const item = document.createElement('div');
         item.className = 'top-item'; item.style.marginBottom = '10px';
         if(m.equippedBanner?.cssClass) item.className += ` ${m.equippedBanner.cssClass}`;
 
-        // Get Display Value
+        // Get Value
         let valDisplay = (key !== '') ? formatNumber(m[key] || 0) : '';
-        let iconDisplay = (icon !== '') ? `<img src="${icon}" style="width:18px;">` : '<i class="fas fa-heart" style="color:#ff69b4"></i>';
+        
+        // Logic: If icon is empty string, use the Icon Class (Font Awesome)
+        let iconDisplay = (icon !== '') 
+            ? `<img src="${icon}" style="width:18px;">` 
+            : `<i class="${iconClass}" style="color:${color}; font-size:14px;"></i>`;
 
         let nameHtml = formatName(m.username || 'Anonim');
         if (m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
 
-        // Frame
         let frameHtml = '';
         if (m.equippedFrame && m.equippedFrame.img) {
              const scale = m.equippedFrame.scale || 1.45;
