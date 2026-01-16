@@ -2145,40 +2145,41 @@
         </div>
 
         <!-- CHAT STATE -->
-        <div id="chatView" class="chat-view">
-<div id="chatHeaderBar" class="chat-header">
-<div id="headerProfileContainer" class="user-profile">
-    <div class="header-frame-wrapper">
-        <img id="userAvatar" src="" class="user-pfp-inner">
-        <img id="userHeaderFrame" src="" class="header-frame-overlay" style="display: none;">
-    </div>
-    <div>
-        <span style="font-size:10px; color:var(--primary); display:block;">Autentificat ca</span>
-        <div id="userName" class="user-name"></div>
-    </div>
-</div>
-                <div class="header-actions">
-                    <button id="onlineCountBtn" class="online-count-btn">
-                        <div class="online-dot"></div>
-                        <span id="onlineCountVal">0</span> Online
-                    </button>
-                    <button id="logoutBtn" class="logout-btn-icon"><i class="fas fa-sign-out-alt"></i></button>
-                </div>
+<div id="chatView" class="chat-view">
+    <!-- 1. HEADER-UL CHATULUI -->
+    <div id="chatHeaderBar" class="chat-header">
+        <div id="headerProfileContainer" class="user-profile">
+            <div class="header-frame-wrapper">
+                <img id="userAvatar" src="" class="user-pfp-inner">
+                <img id="userHeaderFrame" src="" class="header-frame-overlay" style="display: none;">
             </div>
-
-            <div id="messagesFeed" class="messages-feed">
-                <div style="text-align:center; color:#555; margin-top:50px;">Se încarcă chat-ul...</div>
+            <div>
+                <span style="font-size:10px; color:var(--primary); display:block;">Autentificat ca</span>
+                <div id="userName" class="user-name"></div>
             </div>
-
-<!-- PINNED BAR -->
-<div id="pinnedBar" class="bubble-fire" style="display:none; padding: 10px 20px; font-size: 13px; cursor: pointer; border-radius: 0; border-top: 1px solid rgba(255,255,255,0.1); z-index: 10; align-items: center; gap: 10px; position: sticky; top: 0; animation: firePulse 2s infinite;">
-    <i class="fas fa-thumbtack"></i>
-    <div id="pinnedContent" style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; font-family: 'Orbitron';">
-        Mesaj Fixat - Click pentru a sari
+        </div>
+        <div class="header-actions">
+            <button id="onlineCountBtn" class="online-count-btn">
+                <div class="online-dot"></div>
+                <span id="onlineCountVal">0</span> Online
+            </button>
+            <button id="logoutBtn" class="logout-btn-icon"><i class="fas fa-sign-out-alt"></i></button>
+        </div>
     </div>
-    <i class="fas fa-chevron-right" style="font-size: 10px;"></i>
-</div>
 
+    <!-- 2. PINNED BAR (Poziționat corect sub Header) -->
+    <div id="pinnedBar" class="bubble-fire" style="display:none; padding: 10px 20px; font-size: 11px; cursor: pointer; border-radius: 0; border-bottom: 1px solid rgba(255,255,255,0.1); z-index: 10; align-items: center; gap: 10px; position: sticky; top: 0; animation: firePulse 2s infinite;">
+        <i class="fas fa-thumbtack" style="color: #ffd700;"></i>
+        <div id="pinnedContent" style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; font-family: 'Orbitron'; text-transform: uppercase;">
+            Se încarcă mesajul fixat...
+        </div>
+        <i class="fas fa-chevron-right" style="font-size: 10px;"></i>
+    </div>
+
+    <!-- 3. FEED-UL DE MESAJE -->
+    <div id="messagesFeed" class="messages-feed">
+        <div style="text-align:center; color:#555; margin-top:50px;">Se încarcă chat-ul...</div>
+    </div>
 <div class="input-area-wrapper">
 
     <!-- MUTE BANNER -->
@@ -3560,9 +3561,11 @@ onAuthStateChanged(auth, async (user) => {
             }
         });
 
-        headerLoginText.innerText = "ACCOUNT";
-        headerUserImg.src = user.photoURL;
-        headerUserImg.style.display = "block";
+        if (headerLoginText) headerLoginText.innerText = "ACCOUNT";
+        if (headerUserImg) {
+            headerUserImg.src = user.photoURL;
+            headerUserImg.style.display = "block";
+        }
 
         if (mobileLoginBtn) {
             mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
@@ -3574,9 +3577,10 @@ onAuthStateChanged(auth, async (user) => {
         isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
         isHelper = ['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(user.email);
 
-        // --- STAFF BUTTONS VISIBILITY (Image & Poll) ---
+        // --- STAFF BUTTONS VISIBILITY (Cu Null Checks pentru a repara eroarea) ---
         const imgBtn = document.getElementById('imgBtn');
         const pollBtn = document.getElementById('pollBtn');
+        const resetBtn = document.getElementById('resetChatBtn');
 
         if (isOwner || isAdmin || isMod || isHelper) {
             if(imgBtn) imgBtn.style.display = 'flex';
@@ -3586,8 +3590,6 @@ onAuthStateChanged(auth, async (user) => {
             if(pollBtn) pollBtn.style.display = 'none';
         }
 
-        // --- RESET CHAT BUTTON VISIBILITY (Owner & Admin Only) ---
-        const resetBtn = document.getElementById('resetChatBtn');
         if (resetBtn) {
             if (isOwner || isAdmin) {
                 resetBtn.style.display = 'flex';
@@ -3629,12 +3631,10 @@ onAuthStateChanged(auth, async (user) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
 
-                // 1. STREAK RESET & LOSS CHECK
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
 
-                // 2. QUEST MASTER (6/6) REWARD LOGIC
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
@@ -3644,26 +3644,22 @@ onAuthStateChanged(auth, async (user) => {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
                             const oldStr = data.streak || 0;
-
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
-
-                            const streakRewardModal = document.getElementById('streakRewardModal');
-                            if (streakRewardModal) {
+                            if (document.getElementById('streakRewardModal')) {
                                 document.getElementById('streakOld').innerText = oldStr;
                                 document.getElementById('streakNew').innerText = oldStr + 1;
-                                streakRewardModal.classList.add('active');
+                                document.getElementById('streakRewardModal').classList.add('active');
                             }
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
                 }
 
-                // 3. ACCOUNT MODAL UI
-                document.getElementById('popUserImg').src = data.image;
+                if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = data.image;
                 const popFrame = document.getElementById('popUserFrame');
                 if (popFrame) {
                     if (data.equippedFrame?.img) {
@@ -3677,61 +3673,30 @@ onAuthStateChanged(auth, async (user) => {
 
                 let rawName = data.username || "Anonim";
                 if (isOwner) rawName = "Lost Soul";
+                let coloredNameHtml = (data.equippedText?.cssClass) ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` : rawName;
 
-                let coloredNameHtml = (data.equippedText?.cssClass) 
-                    ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` 
-                    : rawName;
-
-                document.getElementById('popUserName').innerHTML = coloredNameHtml;
-                document.getElementById('popUserEmail').innerText = data.email;
-                
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                if(document.getElementById('popUserName')) document.getElementById('popUserName').innerHTML = coloredNameHtml;
+                if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email;
+                if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
                 
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                // 4. STACKED BADGES
-                const popBadgeBox = document.getElementById('popUserBadges');
-                if (popBadgeBox) {
-                    let staffHtml = "";
-                    if (isOwner) staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if (isAdmin) staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if (isMod) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if (isHelper) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                    let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-                    popBadgeBox.innerHTML = staffHtml + (cosmeticHtml ? `<div style="margin-top:5px;">${cosmeticHtml}</div>` : "");
-                }
-
-                // 5. CHAT HEADER UPDATE
-                if (userAvatar) userAvatar.src = data.image;
-                const headerFrame = document.getElementById('userHeaderFrame');
-                if (headerFrame) {
-                    if (data.equippedFrame?.img) {
-                        headerFrame.src = data.equippedFrame.img;
-                        headerFrame.style.display = 'block';
-                        const scale = data.equippedFrame.scale || 1.45;
-                        headerFrame.style.width = (scale * 100) + '%';
-                        headerFrame.style.height = (scale * 100) + '%';
-                    } else { headerFrame.style.display = 'none'; }
-                }
-
                 const chatHeaderBar = document.getElementById('chatHeaderBar');
                 if (chatHeaderBar) {
                     chatHeaderBar.className = 'chat-header';
-                    if (data.equippedBanner?.cssClass) {
-                        chatHeaderBar.classList.add(data.equippedBanner.cssClass);
-                    }
+                    if (data.equippedBanner?.cssClass) chatHeaderBar.classList.add(data.equippedBanner.cssClass);
                 }
 
-                let headerStaffBadge = "";
-                if (isOwner) headerStaffBadge = ` <span class="owner-badge">OWNER</span>`;
-                else if (isAdmin) headerStaffBadge = ` <span class="admin-badge">ADMIN</span>`;
-                else if (isMod) headerStaffBadge = ` <span class="mod-badge">MOD</span>`;
-                else if (isHelper) headerStaffBadge = ` <span class="helper-badge">HELPER</span>`;
-
-                userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
+                if(userName) {
+                    let headerStaffBadge = "";
+                    if (isOwner) headerStaffBadge = ` <span class="owner-badge">OWNER</span>`;
+                    else if (isAdmin) headerStaffBadge = ` <span class="admin-badge">ADMIN</span>`;
+                    else if (isMod) headerStaffBadge = ` <span class="mod-badge">MOD</span>`;
+                    else if (isHelper) headerStaffBadge = ` <span class="helper-badge">HELPER</span>`;
+                    userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
+                }
             }
         });
 
@@ -3741,10 +3706,11 @@ onAuthStateChanged(auth, async (user) => {
         checkMuteStatus();
         resetIdleTimer();
         listenOnlineUsers();
+        listenForPinned(); // ACTIVARE LISTENER MESAJ FIXAT
 
     } else {
-        headerLoginText.innerText = "LOGIN";
-        headerUserImg.style.display = "none";
+        if(headerLoginText) headerLoginText.innerText = "LOGIN";
+        if(headerUserImg) headerUserImg.style.display = "none";
         currentUid = null; isOwner = false; isAdmin = false; isMod = false; isHelper = false;
         chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
     }
@@ -4408,8 +4374,10 @@ function loadMessages() {
                     <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                     
                     <!-- NEW: PIN OPTION (Only for staff) -->
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>` : ''}
-
+${(isOwner || isAdmin || isMod || isHelper) ? `
+    <button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>
+    ${data.isPinned ? `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-times"></i> Despinge</button>` : ''}
+` : ''}
                     ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
                     ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
                     ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
@@ -4607,6 +4575,15 @@ window.toggleEmojiPicker = function(id) {
     }
 
 
+window.unpinMsg = async (id) => {
+    closeAllMenus();
+    try {
+        await updateDoc(doc(db, "wall_messages", id), { isPinned: false });
+        showToast("Mesaj despingat.", "success");
+    } catch(e) { showToast("Eroare."); }
+};
+
+
 // Function to pin a message
 window.pinMsg = async (id) => {
     closeAllMenus();
@@ -4624,22 +4601,37 @@ window.pinMsg = async (id) => {
     } catch(e) { console.error(e); showToast("Eroare la fixare."); }
 };
 
-// Listener to update the visual Pinned Bar
 function listenForPinned() {
-    const q = query(collection(db, "wall_messages"), where("isPinned", "==", true), limit(1));
+    const q = query(
+        collection(db, "wall_messages"), 
+        where("isPinned", "==", true), 
+        where("isDeleted", "==", false), // Filtrăm mesajele șterse
+        limit(1)
+    );
+
     onSnapshot(q, (snapshot) => {
         const bar = document.getElementById('pinnedBar');
+        const content = document.getElementById('pinnedContent');
+        
+        if (!bar || !content) return; // Siguranță împotriva erorii de tip "null"
+
         if (!snapshot.empty) {
             const data = snapshot.docs[0].data();
             const id = snapshot.docs[0].id;
             bar.style.display = 'flex';
+            
+            let cleanText = (data.text || "Media/Imagine").replace(/<br>/g, " ");
+            content.innerText = `${data.name}: ${cleanText}`;
+
             bar.onclick = () => {
                 const target = document.querySelector(`[data-id="${id}"]`);
                 if (target) {
                     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    target.classList.add('highlight-animation'); // Optional: add a CSS glow
+                    target.style.transition = "0.5s";
+                    target.style.background = "rgba(255, 215, 0, 0.2)";
+                    setTimeout(() => { target.style.background = "transparent"; }, 2000);
                 } else {
-                    showToast("Mesajul e prea vechi în istoric, dar este salvat!");
+                    showToast("Mesajul e prea vechi în istoric!", "error");
                 }
             };
         } else {
@@ -4652,19 +4644,22 @@ function listenForPinned() {
 listenForPinned();
     
 window.deleteMsg = async function(id) { 
-        closeAllMenus(); 
-        try {
-            const msgRef = doc(db, "wall_messages", id);
-            const msgSnap = await getDoc(msgRef);
-            if (!msgSnap.exists()) return;
-            const msgData = msgSnap.data();
-            if (msgData.uid === currentUid || isAdmin || isOwner || isMod) {
-                // NEW CONFIRMATION
-                const yes = await showCustomConfirm("ȘTERGE MESAJ", "Ești sigur?", true);
-                if(yes) await updateDoc(msgRef, { isDeleted: true }); 
-            }
-        } catch(e) {} 
-    }
+    closeAllMenus(); 
+    try {
+        const msgRef = doc(db, "wall_messages", id);
+        const msgSnap = await getDoc(msgRef);
+        if (!msgSnap.exists()) return;
+        
+        const yes = await showCustomConfirm("ȘTERGE MESAJ", "Ești sigur?", true);
+        if(yes) {
+            // Când ștergem, scoatem și Pin-ul pentru a ascunde bara
+            await updateDoc(msgRef, { 
+                isDeleted: true,
+                isPinned: false 
+            }); 
+        }
+    } catch(e) { console.error(e); } 
+}
     
 window.banIpUser = async function(targetUid, targetName, targetIp) {
         closeAllMenus();
