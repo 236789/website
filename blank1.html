@@ -1380,56 +1380,60 @@
     margin-left: 10px;
     animation: pulseBadge 1s infinite;
 }
-
-/* LIQUID GOLD SHIMMER ANIMATION */
-@keyframes goldFlow {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-//* LIGHT SHEEN SWEEP ANIMATION */
-@keyframes sheenSweep {
-    0% { transform: translateX(-150%) skewX(-25deg); }
-    100% { transform: translateX(150%) skewX(-25deg); }
-}
-
-/* THE SICKEST JACKPOT BANNER - MATCHING INVENTORY STYLE */
+/* THE SICKEST JACKPOT BANNER - FIXED FOR INVENTORY */
 .bubble-jackpot {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 160px; /* Adjust to match your grid width exactly */
+    height: 55px !important; /* Matches standard banner height */
+    margin: 0 auto;
+    overflow: hidden !important; /* Clips the shine so it doesn't bleed */
+    border-radius: 12px !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.4) !important;
+    
+    /* Premium Gold Gradient */
     background: linear-gradient(135deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
     background-size: 200% auto !important;
     animation: goldShine 3s linear infinite !important;
     
-    /* Matching your other banners' shape */
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-    border-radius: 12px !important; 
+    /* Glow */
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.4) !important;
     
-    /* Glow effect */
-    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5), inset 0 0 10px rgba(255,255,255,0.2) !important;
+    /* Content Centering */
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
     
     color: #1a1a1a !important;
     font-family: 'Orbitron', sans-serif !important;
     font-weight: 900 !important;
+    font-size: 11px !important;
     text-transform: uppercase;
-    
-    /* Centering the "PREVIEW" text */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 55px; /* Matches standard banner height */
-    text-shadow: 0 1px 0px rgba(255,255,255,0.5);
+    letter-spacing: 1px;
+    z-index: 1;
 }
 
-/* THE MOVING LIGHT REFLECTION */
+/* THE SHINE - NOW CONFINED INSIDE THE BOX */
 .bubble-jackpot::before {
     content: '';
     position: absolute;
-    top: 0; left: 0; width: 50%; height: 100%;
+    top: 0; left: -150%; width: 100%; height: 100%;
     background: linear-gradient(to right, transparent, rgba(255,255,255,0.6), transparent);
-    animation: sheenSweep 2.5s infinite linear;
+    transform: skewX(-25deg);
+    animation: sheenSweep 3s infinite linear;
+    z-index: 2;
+    pointer-events: none;
 }
 
+@keyframes goldShine {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}
+
+@keyframes sheenSweep {
+    0% { left: -150%; }
+    100% { left: 150%; }
+}
 /* GEM ICONS ON BANNER */
 .bubble-jackpot::after {
     position: absolute;
@@ -2684,147 +2688,149 @@ window.equipText = async (id, cssClass) => {
     }
 
     // --- INVENTORY LOGIC (FIXED DUPLICATION) ---
-    window.openInventory = async (type = 'badges') => {
-        const list = document.getElementById('inventoryList');
-        const actionContainer = document.getElementById('inventoryActions');
-        list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
-        actionContainer.innerHTML = ''; 
+window.openInventory = async (type = 'badges') => {
+    const list = document.getElementById('inventoryList');
+    const actionContainer = document.getElementById('inventoryActions');
+    list.innerHTML = '<div style="color:#aaa; width:100%; text-align:center; padding:20px;">Se încarcă...</div>';
+    actionContainer.innerHTML = ''; 
 
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        const data = userSnap.data();
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
 
-        list.innerHTML = '';
+    list.innerHTML = '';
 
-        if(type === 'badges') {
-            const ownedIds = data.ownedBadges || [];
-            const equipped = data.equippedBadge?.id || null;
+    if(type === 'badges') {
+        const ownedIds = data.ownedBadges || [];
+        const equipped = data.equippedBadge?.id || null;
 
-            if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
 
-            ownedIds.forEach(id => {
-                const badge = BADGES_DB.find(b => b.id === id);
-                if(!badge) return;
+        ownedIds.forEach(id => {
+            const badge = BADGES_DB.find(b => b.id === id);
+            if(!badge) return;
+            const isEquipped = (id === equipped);
+            const item = document.createElement('div');
+            item.className = 'shop-badge-item';
+            item.innerHTML = `
+                <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 10px ${badge.color};">
+                    <i class="fas ${badge.icon}"></i> ${badge.text}
+                </span>
+                ${isEquipped 
+                    ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
+                    : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
+                }
+            `;
+            list.appendChild(item);
+        });
+        
+        if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'unequip-all-btn';
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
+             actionContainer.appendChild(unequipBtn);
+        }
+    } 
+    else if (type === 'banners') {
+        const ownedIds = data.ownedBanners || [];
+        const equipped = data.equippedBanner?.id || null;
+        
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
+        
+        ownedIds.forEach(id => {
+            const item = BANNERS_DB.find(b => b.id === id);
+            if(item) {
                 const isEquipped = (id === equipped);
-                const item = document.createElement('div');
-                item.className = 'shop-badge-item';
-                item.innerHTML = `
-                    <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 10px ${badge.color};">
-                        <i class="fas ${badge.icon}"></i> ${badge.text}
-                    </span>
+                const card = document.createElement('div');
+                card.className = 'shop-badge-item';
+                // FIXED: Wrapped the banner in a container with overflow hidden and centered the PREVIEW text
+                card.innerHTML = `
+                    <div class="${item.cssClass}" style="width:100%; height:55px; border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;">
+                        <span style="opacity:0.5; font-size:10px; font-weight:800; letter-spacing:2px; pointer-events:none; z-index:5;">PREVIEW</span>
+                    </div>
+                    <div style="font-weight:700; font-size:11px; margin:8px 0; color:#fff;">${item.name}</div>
                     ${isEquipped 
-                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
-                        : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
+                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
                     }
                 `;
-                list.appendChild(item);
-            });
-            
-            if(equipped) {
-                 const unequipBtn = document.createElement('button');
-                 unequipBtn.className = 'unequip-all-btn';
-                 unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
-                 unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
-                 actionContainer.appendChild(unequipBtn);
+                list.appendChild(card);
             }
-        } 
-        else if (type === 'banners') {
-            const ownedIds = data.ownedBanners || [];
-            const equipped = data.equippedBanner?.id || null;
-            
-            if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
-            
-            ownedIds.forEach(id => {
-                const item = BANNERS_DB.find(b => b.id === id);
-                if(item) {
-                    const isEquipped = (id === equipped);
-                    const card = document.createElement('div');
-                    card.className = 'shop-badge-item';
-                    card.innerHTML = `
-                        <div class="${item.cssClass}" style="padding:5px; border-radius:5px; font-size:10px; width:100%;">PREVIEW</div>
-                        <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                        ${isEquipped 
-                            ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
-                            : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
-                        }
-                    `;
-                    list.appendChild(card);
-                }
-            });
-            
-            if(equipped) {
-                 const unequipBtn = document.createElement('button');
-                 unequipBtn.className = 'unequip-all-btn';
-                 unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE BANNER';
-                 unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBanner: null }); window.openInventory('banners'); };
-                 actionContainer.appendChild(unequipBtn);
-            }
+        });
+        
+        if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'unequip-all-btn';
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE BANNER';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBanner: null }); window.openInventory('banners'); };
+             actionContainer.appendChild(unequipBtn);
         }
-
-else if(type === 'texts') {
-    const ownedIds = data.ownedTexts || [];
-    const equipped = data.equippedText?.id || null;
-    if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai culori text.</p>';
-    
-    ownedIds.forEach(id => {
-        const item = TEXTS_DB.find(b => b.id === id);
-        if(item) {
-            const isEquipped = (id === equipped);
-            list.innerHTML += `
-                <div class="shop-badge-item">
-                    <div class="${item.cssClass}" style="font-size:14px; font-weight:800; margin-bottom:10px;">${data.username}</div>
-                    <button class="equip-btn" ${isEquipped ? 'style="background:#555;"' : `onclick="equipText('${item.id}', '${item.cssClass}')"`}>
-                        ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
-                    </button>
-                </div>`;
-        }
-    });
-    if(equipped) {
-        const unBtn = document.createElement('button');
-        unBtn.className = 'unequip-all-btn';
-        unBtn.innerHTML = '<i class="fas fa-ban"></i> RESET CULOARE';
-        unBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedText: null }); window.openInventory('texts'); };
-        document.getElementById('inventoryActions').appendChild(unBtn);
     }
-}
-
-else if (type === 'frames') {
-            const ownedIds = data.ownedFrames || [];
-            const equipped = data.equippedFrame?.id || null;
-            const userPic = data.image || auth.currentUser.photoURL;
-
-            if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai rame.</p>'; return; }
-
-            ownedIds.forEach(id => {
-                const item = FRAMES_DB.find(b => b.id === id);
-                if(item) {
-                    const isEquipped = (id === equipped);
-                    const scale = item.scale || 1.45;
-                    const sizePct = scale * 100;
-                    const card = document.createElement('div');
-                    card.className = 'shop-badge-item';
-                    card.innerHTML = `
-                        <div class="frame-preview-box">
-                            <img src="${userPic}" class="frame-preview-user">
-                            <img src="${item.img}" class="frame-preview-img" style="width:${sizePct}%; height:${sizePct}%;">
-                        </div>
-                        <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                        ${isEquipped 
-                            ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
-                            : `<button class="equip-btn" onclick="equipFrame('${item.id}', '${item.img}', ${scale})">ECHIPEAZĂ</button>`
-                        }
-                    `;
-                    list.appendChild(card);
-                }
-            });
-             if(equipped) {
-                 const unequipBtn = document.createElement('button');
-                 unequipBtn.className = 'unequip-all-btn';
-                 unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE RAMA';
-                 unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedFrame: null }); window.openInventory('frames'); };
-                 actionContainer.appendChild(unequipBtn);
+    else if(type === 'texts') {
+        const ownedIds = data.ownedTexts || [];
+        const equipped = data.equippedText?.id || null;
+        if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai culori text.</p>';
+        
+        ownedIds.forEach(id => {
+            const item = TEXTS_DB.find(b => b.id === id);
+            if(item) {
+                const isEquipped = (id === equipped);
+                const card = document.createElement('div');
+                card.className = 'shop-badge-item';
+                card.innerHTML = `
+                    <div class="${item.cssClass}" style="font-size:14px; font-weight:800; margin-bottom:10px;">${data.username}</div>
+                    <button class="equip-btn" ${isEquipped ? 'style="background:#555; cursor:default;"' : `onclick="equipText('${item.id}', '${item.cssClass}')"`}>
+                        ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
+                    </button>`;
+                list.appendChild(card);
             }
+        });
+        if(equipped) {
+            const unBtn = document.createElement('button');
+            unBtn.className = 'unequip-all-btn';
+            unBtn.innerHTML = '<i class="fas fa-ban"></i> RESET CULOARE';
+            unBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedText: null }); window.openInventory('texts'); };
+            actionContainer.appendChild(unBtn);
         }
-    };
+    }
+    else if (type === 'frames') {
+        const ownedIds = data.ownedFrames || [];
+        const equipped = data.equippedFrame?.id || null;
+        const userPic = data.image || auth.currentUser.photoURL;
+
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai rame.</p>'; return; }
+
+        ownedIds.forEach(id => {
+            const item = FRAMES_DB.find(b => b.id === id);
+            if(item) {
+                const isEquipped = (id === equipped);
+                const scale = item.scale || 1.45;
+                const sizePct = scale * 100;
+                const card = document.createElement('div');
+                card.className = 'shop-badge-item';
+                card.innerHTML = `
+                    <div class="frame-preview-box">
+                        <img src="${userPic}" class="frame-preview-user">
+                        <img src="${item.img}" class="frame-preview-img" style="width:${sizePct}%; height:${sizePct}%;">
+                    </div>
+                    <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
+                    ${isEquipped 
+                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipFrame('${item.id}', '${item.img}', ${scale})">ECHIPEAZĂ</button>`
+                    }
+                `;
+                list.appendChild(card);
+            }
+        });
+         if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'unequip-all-btn';
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE RAMA';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedFrame: null }); window.openInventory('frames'); };
+             actionContainer.appendChild(unequipBtn);
+        }
+    }
+};
 
 window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         try {
