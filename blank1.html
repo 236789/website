@@ -1296,20 +1296,15 @@
 
 
 
-.btn-recompense { background: rgba(41, 243, 255, 0.1); border: 1.5px solid var(--primary); color: var(--primary); padding: 10px 20px; border-radius: 50px; font-family: 'Orbitron'; font-size: 11px; cursor: pointer; margin-bottom: 20px; transition: 0.3s; }
-.btn-recompense:hover { background: var(--primary); color: #000; box-shadow: 0 0 20px var(--primary-dim); }
+#wheelCanvas { transition: transform 0.1s; }
+.wheel-bulbs { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; }
+.auto-on { background: #00ff88 !important; color: #000 !important; box-shadow: 0 0 15px #00ff88 !important; }
 
-.wheel-section { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; }
-#wheel { border-radius: 50%; filter: drop-shadow(0 0 25px rgba(0, 0, 0, 0.5)); max-width: 450px; width: 85vw; height: auto; border: 8px solid #ffd700; transition: transform 4s cubic-bezier(0.15, 0, 0.15, 1); }
-.pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 40px; height: 50px; background-color: #ffd700; clip-path: polygon(50% 100%, 0% 0%, 100% 0%); z-index: 10; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); }
-
-.controls-container { display: flex; gap: 15px; margin-top: 25px; }
-.btn-game-main { padding: 15px 40px; font-size: 16px; border-radius: 12px; background: linear-gradient(135deg, #2196f3, #1976d2); color: #fff; border: none; border-bottom: 4px solid #0d47a1; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; transition: 0.2s; }
-.btn-game-main:active { transform: scale(0.95); }
-.btn-game-main:disabled { filter: grayscale(1); cursor: not-allowed; }
-
-.auto-off { padding: 15px 20px; font-size: 14px; border-radius: 12px; background: #37474f; color: #fff; border: none; border-bottom: 4px solid #263238; cursor: pointer; font-family: 'Orbitron'; font-weight: 800; }
-.auto-on { background: #00e676 !important; border-bottom-color: #00a152 !important; color: #004d40 !important; box-shadow: 0 0 15px #00e676; }
+/* Animation for the win popup */
+@keyframes coinCollect {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0); opacity: 0; }
+}
   </style>
 </head>
 <body>
@@ -1560,48 +1555,52 @@
 
 <!-- MAIN CONTENT AREA START -->
 <main class="blank-main-container">
-
-<h1 class="metallic-title-big">ROATA NOROCULUI</h1>
-
-<!-- Secțiune Sus: Buton Info -->
-<button class="btn-recompense" onclick="openRewardsModal()">
-    <i class="fas fa-gift"></i> VEZI RECOMPENSE & ȘANSE
-</button>
-
-<div class="wheel-section">
-    <!-- Timer pentru Free Spin -->
-    <div id="freeSpinTimer" style="margin-bottom:15px; font-family:'Orbitron'; font-size:12px; color:var(--primary);">
-        VERIFICARE STATUS...
-    </div>
-
-    <!-- Container Roată -->
-    <div style="position: relative;">
-        <div class="pointer"></div>
-        <canvas id="wheel" width="500" height="500"></canvas>
-    </div>
     
-    <!-- Controale -->
-    <div class="controls-container">
-        <button id="spinBtn" class="btn-game-main">SPIN (FREE)</button>
-        <button id="autoBtn" class="auto-off">
-            <span id="autoIcon">▶</span> AUTO: OFF
+
+<!-- LOGIN WALL (Shown if not logged in) -->
+<div id="wheelLoginWall" class="login-wall-card" style="display: none;">
+    <i class="fas fa-lock lock-icon"></i>
+    <h2 class="login-wall-title">ACCES RESTRICȚIONAT</h2>
+    <p class="login-wall-desc">Trebuie să fii autentificat pentru a învârti roata norocului și a câștiga premii!</p>
+    <button class="google-btn-wall" onclick="handleLoginFlow()">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/action/google.svg" width="20">
+        LOGHEAZĂ-TE CU GOOGLE
+    </button>
+</div>
+
+<!-- WHEEL GAME CONTAINER (Shown if logged in) -->
+<div id="wheelGameContainer" class="trivia-box" style="display: none; width: 100%; max-width: 600px; padding: 40px 20px;">
+    
+    <button class="btn-outline" style="margin-top: 0; margin-bottom: 20px;" onclick="toggleRewardsModal(true)">
+        <i class="fas fa-eye"></i> VEZI RECOMPENSE
+    </button>
+
+    <div class="wheel-section" style="position: relative;">
+        <div class="pointer" style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); width: 30px; height: 40px; background: #ffeb3b; clip-path: polygon(50% 100%, 0% 0%, 100% 0%); z-index: 10;"></div>
+        <canvas id="wheelCanvas" width="500" height="500" style="max-width: 100%; height: auto; border-radius: 50%; box-shadow: 0 0 30px rgba(41, 243, 255, 0.2); border: 8px solid #08101b;"></canvas>
+    </div>
+
+    <div class="controls-container" style="margin-top: 30px; display: flex; gap: 15px; flex-direction: column; width: 100%; align-items: center;">
+        <button id="spinBtn" class="pop-btn-cyan" style="width: 200px; margin-top: 0;">ÎNVÂRTE</button>
+        <p id="spinTimerText" style="font-size: 12px; color: var(--text-muted); font-family: 'Orbitron';">Verificare timp...</p>
+        
+        <button id="autoSpinBtn" class="btn-tasks" style="flex-direction: row; width: 200px; padding: 10px; margin-bottom: 0;">
+            <i class="fas fa-sync-alt"></i> 
+            <span style="font-size: 11px;">AUTO: OFF (1 <img src="https://iili.io/fv5bmtj.png" width="15">)</span>
         </button>
     </div>
 </div>
 
-<!-- MODAL VEZI RECOMPENSE -->
-<div id="rewardsModal" class="account-modal-overlay">
-    <div class="account-card" style="max-width:320px;">
-        <button class="close-pop" onclick="document.getElementById('rewardsModal').classList.remove('active')">✕</button>
-        <h3 style="font-family:'Orbitron'; color:var(--gold); margin-bottom:15px;">ȘANSE CÂȘTIG</h3>
-        <div id="rewardsList" style="text-align:left; font-size:12px; color:#ccc; line-height:2;">
-            <!-- Generat de JS -->
+<!-- REWARDS INFO MODAL -->
+<div id="rewardsInfoModal" class="reward-modal">
+    <div class="account-card" style="max-width: 350px;">
+        <button class="close-pop" onclick="toggleRewardsModal(false)">✕</button>
+        <h3 style="color: var(--primary); margin-bottom: 20px;">RECOMPENSE POSIBILE</h3>
+        <div id="rewardsList" style="text-align: left; font-size: 13px; max-height: 300px; overflow-y: auto; padding-right: 10px;">
+            <!-- Rewards will be injected by JS -->
         </div>
     </div>
 </div>
-    
-
-
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -1689,165 +1688,187 @@
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
 
 
+
+// --- WHEEL CONFIGURATION ---
 const REWARDS = [
-    { label: "50 COINS", val: 50, type: "coins", color: "#FF5252", weight: 35 },
-    { label: "100 COINS", val: 100, type: "coins", color: "#7C4DFF", weight: 25 },
-    { label: "250 COINS", val: 250, type: "coins", color: "#448AFF", weight: 15 },
-    { label: "500 COINS", val: 500, type: "coins", color: "#69F0AE", weight: 10 },
-    { label: "1000 COINS", val: 1000, type: "coins", color: "#FFD740", weight: 5 },
-    { label: "1 DIAMOND", val: 1, type: "diamonds", color: "#E040FB", weight: 4 },
-    { label: "3 DIAMONDS", val: 3, type: "diamonds", color: "#FF6E40", weight: 3 },
-    { label: "5 DIAMONDS", val: 5, type: "diamonds", color: "#18FFFF", weight: 1.5 },
-    { label: "10 DIAMONDS", val: 10, type: "diamonds", color: "#ffd700", weight: 0.8 },
-    { label: "20 DIAMONDS", val: 20, type: "diamonds", color: "#ffffff", weight: 0.4 },
-    { label: "JACKPOT", val: 5000, type: "coins", color: "#ff0055", weight: 0.2 },
-    { label: "NIMIC", val: 0, type: "none", color: "#263238", weight: 0.1 }
+    { label: "50 COINS", val: 50, type: "coins", color: "#1a237e", chance: 25 },
+    { label: "100 COINS", val: 100, type: "coins", color: "#283593", chance: 20 },
+    { label: "1 DIAMOND", val: 1, type: "diamonds", color: "#7b1fa2", chance: 15 },
+    { label: "250 COINS", val: 250, type: "coins", color: "#303f9f", chance: 10 },
+    { label: "2 DIAMONDS", val: 2, type: "diamonds", color: "#8e24aa", chance: 8 },
+    { label: "500 COINS", val: 500, type: "coins", color: "#3949ab", chance: 7 },
+    { label: "1 DIAMOND", val: 1, type: "diamonds", color: "#9c27b0", chance: 5 },
+    { label: "750 COINS", val: 750, type: "coins", color: "#3f51b5", chance: 4 },
+    { label: "5 DIAMONDS", val: 5, type: "diamonds", color: "#ab47bc", chance: 2 },
+    { label: "1000 COINS", val: 1000, type: "coins", color: "#5c6bc0", chance: 2 },
+    { label: "10 DIAMONDS", val: 10, type: "diamonds", color: "#ba68c8", chance: 1 },
+    { label: "2 DIAMONDS", val: 2, type: "diamonds", color: "#7986cb", chance: 1 }
 ];
 
-let isSpinning = false;
-let autoMode = false;
-let currentRotation = 0;
-let isAwardingInProgress = false; // Fixul cerut anterior
-
-
-
-const canvas = document.getElementById("wheel");
+const canvas = document.getElementById("wheelCanvas");
 const ctx = canvas.getContext("2d");
+let rotation = 0;
+let isSpinning = false;
+let autoSpinActive = false;
 
-// --- 1. DESENARE ROATĂ ---
+// Draw the 12 segments
 function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
-    REWARDS.forEach((reward, i) => {
-        const angle = i * arc;
+    REWARDS.forEach((rew, i) => {
+        const angle = i * arc + rotation;
         ctx.beginPath();
-        ctx.fillStyle = reward.color;
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 230, angle, angle + arc);
+        ctx.fillStyle = rew.color;
         ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.2)";
         ctx.stroke();
 
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(angle + arc / 2);
-        ctx.textAlign = "right";
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 13px Orbitron";
-        ctx.fillText(reward.label, 210, 5);
+        ctx.font = "bold 14px Orbitron";
+        ctx.fillText(rew.label, 100, 5);
         ctx.restore();
     });
+    // Center Logo
+    ctx.beginPath();
+    ctx.arc(250, 250, 40, 0, Math.PI * 2);
+    ctx.fillStyle = "#08101b";
+    ctx.fill();
+ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();    ctx.lineWidth = 3;
+    ctx.stroke();
 }
 
-// --- 2. LOGICĂ SPIN ---
-async function startSpin() {
-    if (isSpinning || !auth.currentUser) return;
+// Logic to pick a reward based on percentage chances
+function pickRewardIndex() {
+    let rand = Math.random() * 100;
+    let cumulative = 0;
+    for (let i = 0; i < REWARDS.length; i++) {
+        cumulative += REWARDS[i].chance;
+        if (rand < cumulative) return i;
+    }
+    return 0;
+}
 
+async function startSpin() {
+    if (isSpinning) return;
+    
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const snap = await getDoc(userRef);
     const data = snap.data();
-
+    
+    // Timer Logic
     const now = Date.now();
-    const lastFree = data.lastWheelSpin || 0;
-    const isFree = (now - lastFree) > (12 * 60 * 60 * 1000);
-
-    // Verifică costul
-    if (!isFree) {
-        if ((data.diamonds || 0) < 1) {
-            alert("Ai nevoie de 1 Diamant pentru un spin extra!");
-            autoMode = false; updateAutoBtn();
-            return;
-        }
-        await updateDoc(userRef, { diamonds: increment(-1) });
-    } else {
-        await updateDoc(userRef, { lastWheelSpin: now });
+    const lastSpin = data.lastWheelSpin?.toDate().getTime() || 0;
+    const isFree = (now - lastSpin) >= (12 * 60 * 60 * 1000);
+    
+    if (!isFree && data.diamonds < 1) {
+        alert("Ai nevoie de 1 Diamant pentru un spin extra!");
+        autoSpinActive = false;
+        return;
     }
 
     isSpinning = true;
-    document.getElementById("spinBtn").disabled = true;
-
-    // ALEGEM PREMIUL BAZAT PE WEIGHT
-    const totalWeight = REWARDS.reduce((acc, r) => acc + r.weight, 0);
-    let random = Math.random() * totalWeight;
-    let winIndex = 0;
-    for (let i = 0; i < REWARDS.length; i++) {
-        if (random < REWARDS[i].weight) { winIndex = i; break; }
-        random -= REWARDS[i].weight;
-    }
-
-    // CALCULĂM ROTAȚIA
-    const extraSpins = 5 + Math.floor(Math.random() * 5);
-    const stopAngle = (winIndex * (360 / 12));
-    const targetRotation = (extraSpins * 360) + (360 - stopAngle);
+    const rewardIdx = pickRewardIndex();
+    const segmentDeg = 360 / 12;
+    const targetDeg = (360 - (rewardIdx * segmentDeg)) + 360 * 8; // 8 full spins
     
-    canvas.style.transition = "transform 4s cubic-bezier(0.15, 0, 0.15, 1)";
-    canvas.style.transform = `rotate(${targetRotation}deg)`;
+    const startRotation = rotation;
+    const startTime = performance.now();
+    const duration = 4000;
 
-    setTimeout(() => finalizeSpin(winIndex), 4500);
-}
-
-// --- 3. FINALIZARE ȘI RECOMPENSĂ ---
-async function finalizeSpin(index) {
-    const prize = REWARDS[index];
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-
-    if (prize.val > 0) {
-        await updateDoc(userRef, { [prize.type]: increment(prize.val) });
-        showPrizePopup(prize);
+    // Charge user if not free
+    if (!isFree) {
+        await updateDoc(userRef, { diamonds: increment(-1) });
     } else {
-        alert("Ghinion! Ai nimerit pe NIMIC.");
+        await updateDoc(userRef, { lastWheelSpin: serverTimestamp() });
     }
 
+    function animate(time) {
+        let elapsed = time - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+        let ease = 1 - Math.pow(1 - progress, 3);
+        rotation = startRotation + (targetDeg * Math.PI / 180) * ease;
+        drawWheel();
+        if (progress < 1) requestAnimationFrame(animate);
+        else finalizeSpin(rewardIdx);
+    }
+    requestAnimationFrame(animate);
+}
+
+async function finalizeSpin(idx) {
     isSpinning = false;
-    document.getElementById("spinBtn").disabled = false;
-    canvas.style.transition = "none";
-    canvas.style.transform = "rotate(0deg)"; // Reset vizual (opțional)
+    const reward = REWARDS[idx];
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
     
-    if (autoMode) setTimeout(startSpin, 1500);
-}
-
-// --- 4. POPUP RECOMPENSĂ ---
-function showPrizePopup(prize) {
+    await updateDoc(userRef, { [reward.type]: increment(reward.val) });
+    
+    // Show win popup using your existing questRewardModal
     const modal = document.getElementById('questRewardModal');
-    modal.querySelector('h2').innerText = "FELICITĂRI!";
-    modal.querySelector('p').innerText = `Ai câștigat ${prize.label}!`;
-    modal.querySelector('.reward-coins-box span').innerText = prize.val;
-    
-    // Schimbăm iconița din popup dacă e diamant
-    const icon = modal.querySelector('.reward-coins-box img');
-    icon.src = prize.type === "coins" ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
-    
+    modal.querySelector('h2').innerHTML = "🎉 AI CÂȘTIGAT!";
+    modal.querySelector('p').innerText = `Felicitări! Ai primit ${reward.label}.`;
+    modal.querySelector('span').innerText = reward.val;
+    modal.querySelector('img').src = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
     modal.classList.add('active');
+
+    if (autoSpinActive) {
+        setTimeout(() => {
+            modal.classList.remove('active');
+            startSpin();
+        }, 2000);
+    }
 }
 
-// --- 5. MODAL INFO RECOMPENSE ---
-window.openRewardsModal = () => {
-    const list = document.getElementById("rewardsList");
+// UI Helpers
+window.toggleRewardsModal = (show) => {
+    const list = document.getElementById('rewardsList');
     list.innerHTML = REWARDS.map(r => `
-        <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.05);">
-            <span style="color:${reward.color}; font-weight:bold;">${r.label}</span>
-            <span style="color:#aaa;">${r.weight}% șansă</span>
+        <div style="display:flex; justify-content:space-between; border-bottom:1px solid #222; padding:8px 0;">
+            <span>${r.label}</span>
+            <span style="color:var(--primary)">${r.chance}%</span>
         </div>
     `).join('');
-    document.getElementById("rewardsModal").classList.add("active");
-}
-
-// AUTO-SPIN TOGGLE
-document.getElementById("autoBtn").onclick = () => {
-    autoMode = !autoMode;
-    updateAutoBtn();
-    if(autoMode && !isSpinning) startSpin();
+    document.getElementById('rewardsInfoModal').classList.toggle('active', show);
 };
 
-function updateAutoBtn() {
-    const btn = document.getElementById("autoBtn");
-    btn.className = autoMode ? "auto-on" : "auto-off";
-    btn.innerHTML = autoMode ? "<span>❚❚</span> AUTO: ON" : "<span>▶</span> AUTO: OFF";
-}
+// --- AUTH UI SYNC ---
+onAuthStateChanged(auth, user => {
+    if (user) {
+        document.getElementById('wheelLoginWall').style.display = 'none';
+        document.getElementById('wheelGameContainer').style.display = 'flex';
+        drawWheel();
+        
+        // Timer Check Loop
+        setInterval(async () => {
+            const snap = await getDoc(doc(db, "accounts", user.uid));
+            const last = snap.data().lastWheelSpin?.toDate().getTime() || 0;
+            const diff = (12 * 60 * 60 * 1000) - (Date.now() - last);
+            const timerText = document.getElementById('spinTimerText');
+            if (diff <= 0) timerText.innerText = "FREE SPIN DISPONIBIL!";
+            else {
+                const h = Math.floor(diff / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                timerText.innerText = `Următorul free spin în: ${h}h ${m}m`;
+            }
+        }, 10000);
 
-document.getElementById("spinBtn").onclick = startSpin;
+    } else {
+        document.getElementById('wheelLoginWall').style.display = 'flex';
+        document.getElementById('wheelGameContainer').style.display = 'none';
+    }
+});
 
-// Pornire Roată la încărcare
-drawWheel();
+document.getElementById('spinBtn').onclick = startSpin;
+document.getElementById('autoSpinBtn').onclick = () => {
+    autoSpinActive = !autoSpinActive;
+    document.getElementById('autoSpinBtn').classList.toggle('auto-on', autoSpinActive);
+    if (autoSpinActive) startSpin();
+};
+
+
 
     // --- BADGE DATABASE (Reused for Inventory Display) ---
      const BADGES_DB = [
