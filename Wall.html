@@ -4034,41 +4034,66 @@ async function sendMessage() {
         } catch(e) { console.error("Bot fail", e); }
     }
 
-    async function initiateWipeSequence(forced) {
-        const warningMsg = forced 
-            ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
-            : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza, acest chat va fi curățat în curând.";
-        await sendBotMessage(warningMsg);
-        setTimeout(async () => { await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde."); }, 2000);
-        setTimeout(async () => { await sendBotMessage("⏳ 10 secunde rămase..."); }, 12000);
-        setTimeout(async () => { await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); }, 17000);
-        setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
-    }
+async function initiateWipeSequence(forced) {
+    const warningMsg = forced 
+        ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
+        : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza, acest chat va fi curățat în curând.";
+    
+    await sendBotMessage(warningMsg);
+    
+    setTimeout(async () => { await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde."); }, 2000);
+    setTimeout(async () => { await sendBotMessage("⏳ 10 secunde rămase..."); }, 12000);
+    setTimeout(async () => { await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); }, 17000);
+    
+    setTimeout(async () => { 
+        try {
+            await wipeAllMessages(); 
+            // Așteptăm o secundă după ștergere înainte de a trimite mesajul de final
+            setTimeout(async () => {
+                await sendBotMessage("✅ Chat curățat cu succes! Mesajele fixate au fost păstrate."); 
+            }, 1000);
+        } catch (e) {
+            console.error("Eroare la wipe:", e);
+            await sendBotMessage("❌ A apărut o eroare la curățarea chat-ului.");
+        }
+    }, 22000);
+}
 
 async function wipeAllMessages() {
-    const batchSize = 400; 
-    const q = query(collection(db, "wall_messages"), limit(batchSize));
-    return new Promise(async (resolve, reject) => {
-        try {
-            let snapshot = await getDocs(q);
-            while (snapshot.size > 0) {
-                const batch = writeBatch(db);
-                snapshot.forEach(docSnap => { 
-                    const data = docSnap.data();
-                    
-                    // --- PROTECT PINNED MESSAGES ---
-                    if (data.isPinned === true) {
-                        return; // Skip this document, don't delete it
-                    }
+    const batchSize = 400;
+    let stopWiping = false;
 
-                    batch.delete(docSnap.ref); 
-                });
-                await batch.commit();
-                snapshot = await getDocs(q);
+    // Rulăm bucla până când terminăm sau până când rămân doar mesaje fixate
+    while (!stopWiping) {
+        const q = query(collection(db, "wall_messages"), limit(batchSize));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) break;
+
+        const batch = writeBatch(db);
+        let deletedInThisBatch = 0;
+
+        snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            // Ștergem DOAR dacă NU este fixat
+            if (data.isPinned !== true) {
+                batch.delete(docSnap.ref);
+                deletedInThisBatch++;
             }
-            resolve();
-        } catch (error) { console.error("Wipe failed:", error); reject(error); }
-    });
+        });
+
+        // Dacă am găsit mesaje de șters, trimitem comanda la Firebase
+        if (deletedInThisBatch > 0) {
+            await batch.commit();
+        } else {
+            // Dacă snapshot-ul nu e gol, dar n-am șters nimic, 
+            // înseamnă că tot ce a rămas în aceste 400 de rezultate sunt mesaje fixate.
+            stopWiping = true; 
+        }
+
+        // Dacă batch-ul a fost mai mic decât limita, înseamnă că am ajuns la capătul bazei de date
+        if (snapshot.size < batchSize) break;
+    }
 }
 
     const seenObserver = new IntersectionObserver((entries) => {
