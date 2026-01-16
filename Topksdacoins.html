@@ -2710,7 +2710,7 @@ function setupLeaderboardListener() {
 
     let q; 
 
-    // 1. STANDARD LEADERBOARDS
+    // 1. STANDARD LEADERBOARDS (Keep these as is)
     if(currentMode === 'coins') {
         q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(50));
     } 
@@ -2720,10 +2720,15 @@ function setupLeaderboardListener() {
     else if(currentMode === 'donated') {
         q = query(collection(db, "accounts"), orderBy("totalCoinsDonated", "desc"), limit(50));
     }
-    // 2. REFERRALS MODE (New)
+    
+    // 2. REFERRALS FIX (Client-Side Sort)
     else if(currentMode === 'referrals') {
-        q = query(collection(db, "accounts"), orderBy("totalReferrals", "desc"), limit(50));
+        // ERROR FIX: We query by 'coins' first to ensure we get a list of active users,
+        // even if they don't have the 'totalReferrals' field yet.
+        // We assume active users (with coins) are the ones we want to check.
+        q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(100));
     }
+
     // 3. SUSTINATORI MODE
     else if(currentMode === 'sustinatori') {
         q = query(
@@ -2737,6 +2742,19 @@ function setupLeaderboardListener() {
     unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
         currentLeaderboardData = [];
         snapshot.forEach(doc => currentLeaderboardData.push({ id: doc.id, ...doc.data() }));
+
+        // MANUAL SORT FIX FOR REFERRALS
+        // This ensures users with 'undefined' referrals are treated as '0' and still show up.
+        if (currentMode === 'referrals') {
+            currentLeaderboardData.sort((a, b) => {
+                let refA = a.totalReferrals || 0;
+                let refB = b.totalReferrals || 0;
+                return refB - refA; // Descending sort
+            });
+            // Slice to top 50 after sorting
+            currentLeaderboardData = currentLeaderboardData.slice(0, 50);
+        }
+
         renderLeaderboard();
     });
 }
@@ -2804,20 +2822,20 @@ function renderLeaderboard() {
         return; // Stop here for Sustinatori mode
     }
 
-    // --- MODE 2: NORMAL LEADERBOARDS (Coins, Diamonds, Donated) ---
+    // --- MODE 2: NORMAL LEADERBOARDS (Coins, Diamonds, Donated, Referrals) ---
     podiumContainer.style.display = 'flex'; 
 
-const getConfig = (m) => {
-    if(currentMode === 'coins') return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
-    if(currentMode === 'diamonds') return { val: formatNumber(m.diamonds || 0), img: 'https://iili.io/fv5bmtj.png', label: '' };
-    if(currentMode === 'donated') return { val: formatNumber(m.totalCoinsDonated || 0), img: 'https://iili.io/fhc1SKQ.png', label: 'DONATED' };
-    
-    // For Referrals, we return the number and a specific Label. 
-    // The render function will need to check if 'currentMode' is referrals to show the <i class="fa-user-plus"></i> instead of an <img>.
-    if(currentMode === 'referrals') return { val: (m.totalReferrals || 0), img: '', iconClass: 'fas fa-user-plus', label: 'INVITES' };
-
-    return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
-};
+    const getConfig = (m) => {
+        // Standard modes
+        if(currentMode === 'coins') return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
+        if(currentMode === 'diamonds') return { val: formatNumber(m.diamonds || 0), img: 'https://iili.io/fv5bmtj.png', label: '' };
+        if(currentMode === 'donated') return { val: formatNumber(m.totalCoinsDonated || 0), img: 'https://iili.io/fhc1SKQ.png', label: 'DONATED' };
+        
+        // REFERRALS FIX: Label is empty string, added iconClass
+        if(currentMode === 'referrals') return { val: (m.totalReferrals || 0), img: '', iconClass: 'fas fa-user-plus', label: '' };
+        
+        return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
+    };
 
     // 1. RENDER PODIUM (Rank 1-3)
     for (let i = 1; i <= 3; i++) {
@@ -2850,7 +2868,16 @@ const getConfig = (m) => {
             if(getCosmeticBadge(m.equippedBadge)) badgeHtml += `<div>${getCosmeticBadge(m.equippedBadge)}</div>`;
             
             document.getElementById(`name-${i}`).innerHTML = nameHtml + badgeHtml;
-            document.getElementById(`coins-${i}`).innerHTML = `${conf.val} <img src="${conf.img}" style="width:18px;"> ${conf.label}`;
+            
+            // --- FIX: Logic to render Image OR Icon in Podium ---
+            let iconHtml = '';
+            if(conf.img && conf.img !== '') {
+                iconHtml = `<img src="${conf.img}" style="width:20px;">`;
+            } else if(conf.iconClass) {
+                iconHtml = `<i class="${conf.iconClass}" style="color:#00ff88; font-size:16px;"></i>`;
+            }
+
+            document.getElementById(`coins-${i}`).innerHTML = `${conf.val} ${iconHtml} ${conf.label}`;
             document.getElementById(`streak-${i}`).innerHTML = `<i class="fas fa-fire"></i> ${m.streak || 0} Days`;
             
             const statusEl = document.getElementById(`status-${i}`);
@@ -2883,6 +2910,14 @@ const getConfig = (m) => {
         let nameHtml = formatName(m.username);
         if(m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
 
+        // --- FIX: Logic to render Image OR Icon in List ---
+        let listIconHtml = '';
+        if(conf.img && conf.img !== '') {
+            listIconHtml = `<img src="${conf.img}" style="width:18px;">`;
+        } else if(conf.iconClass) {
+            listIconHtml = `<i class="${conf.iconClass}" style="color:#00ff88; font-size:14px;"></i>`;
+        }
+
         row.innerHTML = `
             <div class="top-left">
                 <span class="top-rank-num">${rank}</span>
@@ -2899,7 +2934,7 @@ const getConfig = (m) => {
             <div class="top-right">
                 <div class="top-coins">
                     <span>${conf.val}</span>
-                    <img src="${conf.img}">
+                    ${listIconHtml}
                     ${conf.label ? `<span style="font-size:9px; opacity:0.7;">${conf.label}</span>` : ''}
                 </div>
             </div>
@@ -2909,8 +2944,6 @@ const getConfig = (m) => {
     });
 
     // --- BOTTOM BUBBLE (Exact Math & Text) ---
-// --- BOTTOM BUBBLE (Exact Math & Text) ---
-    // FIX: Added check && currentMode !== 'sustinatori'
     if(currentFilter !== 'online' && currentMode !== 'sustinatori') { 
         let total = window.totalUserCount || 0;
         let remaining = Math.max(0, total - 50);
@@ -2922,6 +2955,10 @@ const getConfig = (m) => {
         topListEl.appendChild(showMoreBtn);
     }
 }
+
+
+
+
     let allUsersDataCache = [];
     async function openAllUsersList() {
         allUsersModal.classList.add('active');
