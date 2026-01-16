@@ -1296,14 +1296,69 @@
 
 
 
-#wheelCanvas { transition: transform 0.1s; }
-.wheel-bulbs { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; }
-.auto-on { background: #00ff88 !important; color: #000 !important; box-shadow: 0 0 15px #00ff88 !important; }
+/* Stilul Butoanelor Albastre (SPIN) */
+.btn-spin-blue {
+    background: #0d62cc; /* Partea de jos (umbra) */
+    border-radius: 12px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    outline-offset: 4px;
+    transition: filter 250ms;
+}
+.btn-spin-blue .btn-top {
+    display: block;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 900;
+    background: #2196f3; /* Culoarea de sus */
+    color: white;
+    transform: translateY(-4px);
+    transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+    font-family: 'Poppins', sans-serif;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
 
-/* Animation for the win popup */
-@keyframes coinCollect {
-    0% { transform: scale(1); opacity: 1; }
-    100% { transform: scale(0); opacity: 0; }
+/* Stilul Butonului Gri (AUTO) */
+.btn-auto-grey {
+    background: #37474f;
+    border-radius: 12px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+.btn-auto-grey .btn-top {
+    display: block;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 900;
+    background: #546e7a;
+    color: white;
+    transform: translateY(-4px);
+    transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+    font-family: 'Poppins', sans-serif;
+}
+
+.btn-spin-blue:active .btn-top, .btn-auto-grey:active .btn-top {
+    transform: translateY(-1px);
+    transition: transform 34ms;
+}
+
+/* Beculețele de pe margine */
+.wheel-container-styled {
+    position: relative;
+    padding: 15px;
+    background: #ffeb3b; /* Marginea galbenă */
+    border-radius: 50%;
+    box-shadow: 0 0 20px #fbc02d, inset 0 0 10px rgba(0,0,0,0.5);
+}
+
+/* Modificări pentru Auto ON */
+.btn-auto-active .btn-top {
+    background: #00e676 !important;
+    color: #004d40 !important;
 }
   </style>
 </head>
@@ -1580,17 +1635,28 @@
         <canvas id="wheelCanvas" width="500" height="500" style="max-width: 100%; height: auto; border-radius: 50%; box-shadow: 0 0 30px rgba(41, 243, 255, 0.2); border: 8px solid #08101b;"></canvas>
     </div>
 
-    <div class="controls-container" style="margin-top: 30px; display: flex; gap: 15px; flex-direction: column; width: 100%; align-items: center;">
-        <button id="spinBtn" class="pop-btn-cyan" style="width: 200px; margin-top: 0;">ÎNVÂRTE</button>
-        <p id="spinTimerText" style="font-size: 12px; color: var(--text-muted); font-family: 'Orbitron';">Verificare timp...</p>
-        
-        <button id="autoSpinBtn" class="btn-tasks" style="flex-direction: row; width: 200px; padding: 10px; margin-bottom: 0;">
-            <i class="fas fa-sync-alt"></i> 
-            <span style="font-size: 11px;">AUTO: OFF (1 <img src="https://iili.io/fv5bmtj.png" width="15">)</span>
-        </button>
-    </div>
-</div>
+<div class="controls-container" style="margin-top: 30px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%;">
+    
+    <!-- Buton 1: Free Spin -->
+    <button id="freeSpinBtn" class="btn-spin-blue">
+        <span class="btn-top">FREE SPIN</span>
+    </button>
 
+    <!-- Buton 2: Spin for 1 Diamond -->
+    <button id="paidSpinBtn" class="btn-spin-blue">
+        <span class="btn-top">
+            SPIN -1 <img src="https://iili.io/fv5bmtj.png" width="22" style="vertical-align: middle;">
+        </span>
+    </button>
+
+    <!-- Buton 3: Auto Spin -->
+    <button id="autoSpinBtn" class="btn-auto-grey">
+        <span class="btn-top" id="autoText"><i class="fas fa-play" style="font-size: 12px;"></i> AUTO: OFF</span>
+    </button>
+</div>
+<p id="spinTimerText" style="font-size: 11px; color: #a5b1c2; margin-top: 10px; font-family: 'Orbitron';"></p>
+</div>
+ 
 <!-- REWARDS INFO MODAL -->
 <div id="rewardsInfoModal" class="reward-modal">
     <div class="account-card" style="max-width: 350px;">
@@ -1688,33 +1754,54 @@
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
 
 
-
-// --- WHEEL CONFIGURATION ---
-const REWARDS = [
-    { label: "50 COINS", val: 50, type: "coins", color: "#1a237e", chance: 25 },
-    { label: "100 COINS", val: 100, type: "coins", color: "#283593", chance: 20 },
-    { label: "1 DIAMOND", val: 1, type: "diamonds", color: "#7b1fa2", chance: 15 },
-    { label: "250 COINS", val: 250, type: "coins", color: "#303f9f", chance: 10 },
-    { label: "2 DIAMONDS", val: 2, type: "diamonds", color: "#8e24aa", chance: 8 },
-    { label: "500 COINS", val: 500, type: "coins", color: "#3949ab", chance: 7 },
-    { label: "1 DIAMOND", val: 1, type: "diamonds", color: "#9c27b0", chance: 5 },
-    { label: "750 COINS", val: 750, type: "coins", color: "#3f51b5", chance: 4 },
-    { label: "5 DIAMONDS", val: 5, type: "diamonds", color: "#ab47bc", chance: 2 },
-    { label: "1000 COINS", val: 1000, type: "coins", color: "#5c6bc0", chance: 2 },
-    { label: "10 DIAMONDS", val: 10, type: "diamonds", color: "#ba68c8", chance: 1 },
-    { label: "2 DIAMONDS", val: 2, type: "diamonds", color: "#7986cb", chance: 1 }
-];
-
 const canvas = document.getElementById("wheelCanvas");
 const ctx = canvas.getContext("2d");
+
+// Variabilele de stare (asigură-te că sunt și ele aici)
 let rotation = 0;
 let isSpinning = false;
 let autoSpinActive = false;
 
-// Draw the 12 segments
+// Imaginile pentru iconițe
+const coinImg = new Image(); coinImg.src = "https://iili.io/fhc1SKQ.png";
+const diamImg = new Image(); diamImg.src = "https://iili.io/fv5bmtj.png";
+
+const REWARDS = [
+    { label: "50", val: 50, type: "coins", color: "#00bcd4", icon: coinImg, chance: 25 },
+    { label: "100", val: 100, type: "coins", color: "#f44336", icon: coinImg, chance: 20 },
+    { label: "1", val: 1, type: "diamonds", color: "#9c27b0", icon: diamImg, chance: 15 },
+    { label: "250", val: 250, type: "coins", color: "#2196f3", icon: coinImg, chance: 10 },
+    { label: "2", val: 2, type: "diamonds", color: "#e91e63", icon: diamImg, chance: 8 },
+    { label: "500", val: 500, type: "coins", color: "#4caf50", icon: coinImg, chance: 7 },
+    { label: "1", val: 1, type: "diamonds", color: "#00bcd4", icon: diamImg, chance: 5 },
+    { label: "750", val: 750, type: "coins", color: "#f44336", icon: coinImg, chance: 4 },
+    { label: "5", val: 5, type: "diamonds", color: "#9c27b0", icon: diamImg, chance: 2 },
+    { label: "1000", val: 1000, type: "coins", color: "#2196f3", icon: coinImg, chance: 2 },
+    { label: "10", val: 10, type: "diamonds", color: "#ff9800", icon: diamImg, chance: 1 },
+    { label: "2", val: 2, type: "diamonds", color: "#546e7a", icon: diamImg, chance: 1 }
+];
+
 function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
+
+    // 1. Desenăm Marginea Galbenă cu Becuri (Beculețele)
+    ctx.beginPath();
+    ctx.arc(250, 250, 245, 0, Math.PI * 2);
+    ctx.fillStyle = "#fbc02d";
+    ctx.fill();
+
+    for (let i = 0; i < 24; i++) {
+        const bulbAngle = (i / 24) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(250 + 238 * Math.cos(bulbAngle), 250 + 238 * Math.sin(bulbAngle), 5, 0, Math.PI * 2);
+        ctx.fillStyle = (Math.floor(Date.now() / 500) % 2 == i % 2) ? "#fff" : "#ffeb3b";
+        ctx.shadowBlur = 10; ctx.shadowColor = "#fff";
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    // 2. Desenăm Seliile (Slices)
     REWARDS.forEach((rew, i) => {
         const angle = i * arc + rotation;
         ctx.beginPath();
@@ -1722,25 +1809,122 @@ function drawWheel() {
         ctx.arc(250, 250, 230, angle, angle + arc);
         ctx.fillStyle = rew.color;
         ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.2)";
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 2;
         ctx.stroke();
 
+        // 3. Adăugăm Text + Iconiță în felie
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(angle + arc / 2);
+        
+        // Iconița
+        if (rew.icon.complete) {
+            ctx.drawImage(rew.icon, 140, -15, 30, 30);
+        }
+        
+        // Textul (ex: "50")
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 14px Orbitron";
-        ctx.fillText(rew.label, 100, 5);
+        ctx.font = "bold 18px Poppins";
+        ctx.textAlign = "right";
+        ctx.fillText(rew.label, 135, 8);
+        
         ctx.restore();
     });
-    // Center Logo
+
+    // 4. Centrul (Hub) cu Stea
     ctx.beginPath();
-    ctx.arc(250, 250, 40, 0, Math.PI * 2);
-    ctx.fillStyle = "#08101b";
+    ctx.arc(250, 250, 45, 0, Math.PI * 2);
+    ctx.fillStyle = "#212121";
     ctx.fill();
-ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#fbc02d";
+    ctx.lineWidth = 5;
     ctx.stroke();
+
+    ctx.fillStyle = "#fbc02d";
+    ctx.font = "30px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("★", 250, 252);
 }
+
+
+
+// Funcție unică de pornire Spin (Corectată)
+async function attemptSpin(isFreeAttempt) {
+    // 1. Verificăm dacă roata se învârte deja pentru a preveni spam-ul
+    if (isSpinning) return;
+
+    if (!auth.currentUser) {
+        alert("Trebuie să fii logat!");
+        return;
+    }
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const snap = await getDoc(userRef);
+    const data = snap.data();
+    if (!data) return;
+
+    const now = Date.now();
+    let lastSpinTime = 0;
+
+    // 2. Logica Safe pentru calculul timpului (Fix toDate error)
+    if (data.lastWheelSpin) {
+        lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
+    }
+
+    const freeAvailable = (now - lastSpinTime) >= (12 * 60 * 60 * 1000);
+
+    // 3. Verificăm condițiile de plată/gratis
+    if (isFreeAttempt) {
+        if (!freeAvailable) {
+            alert("Free Spin-ul nu este încă disponibil! Uită-te la cronometru.");
+            return;
+        }
+        // Actualizăm timpul de spin gratis în DB
+        await updateDoc(userRef, { lastWheelSpin: serverTimestamp() });
+    } else {
+        // Spin plătit cu 1 Diamant
+        if ((data.diamonds || 0) < 1) {
+            alert("Nu ai destule diamante pentru un spin extra!");
+            // Oprim auto-spin dacă nu mai sunt resurse
+            autoSpinActive = false;
+            const autoBtn = document.getElementById('autoSpinBtn');
+            const autoTxt = document.getElementById('autoText');
+            if (autoBtn) autoBtn.classList.remove('btn-auto-active');
+            if (autoTxt) autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
+            return;
+        }
+        // Scădem diamantul în DB
+        await updateDoc(userRef, { diamonds: increment(-1) });
+    }
+
+    // 4. Dacă totul e OK, pornim animația roții
+    startSpin();
+}
+
+document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
+document.getElementById('paidSpinBtn').onclick = () => attemptSpin(false);
+
+document.getElementById('autoSpinBtn').onclick = () => {
+    autoSpinActive = !autoSpinActive;
+    const btn = document.getElementById('autoSpinBtn');
+    const txt = document.getElementById('autoText');
+    if(autoSpinActive) {
+        btn.classList.add('btn-auto-active');
+        txt.innerHTML = '<i class="fas fa-pause"></i> AUTO: ON';
+        attemptSpin(false);
+    } else {
+        btn.classList.remove('btn-auto-active');
+        txt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
+    }
+};
+// Request animation frame to make bulbs blink
+function animateWheelStatic() { 
+    if(!isSpinning) drawWheel();
+    requestAnimationFrame(animateWheelStatic);
+}
+animateWheelStatic();
 
 // Logic to pick a reward based on percentage chances
 function pickRewardIndex() {
@@ -1896,9 +2080,8 @@ onAuthStateChanged(auth, user => {
         document.getElementById('wheelLoginWall').style.display = 'flex';
         document.getElementById('wheelGameContainer').style.display = 'none';
     }
-});
+}); 
 
-document.getElementById('spinBtn').onclick = startSpin;
 document.getElementById('autoSpinBtn').onclick = () => {
     autoSpinActive = !autoSpinActive;
     document.getElementById('autoSpinBtn').classList.toggle('auto-on', autoSpinActive);
