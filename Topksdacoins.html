@@ -2651,13 +2651,16 @@ function setupLeaderboardListener() {
 // Ensure this variable is defined at the TOP of your script, outside any function:
 // let totalUserCount = 0; 
 
+window.totalUserCount = 0;
+
+// --- RENDER LEADERBOARD FUNCTION ---
 function renderLeaderboard() {
     let members = currentLeaderboardData;
     if (currentFilter === 'online') members = members.filter(m => checkIsOnline(m));
 
     const podiumContainer = document.getElementById('podiumContainer');
 
-    // --- SPECIAL MODE: SUSTINATORI (No Podium, No Ranks) ---
+    // --- MODE 1: SUSTINATORI (Clean List, No Podium) ---
     if (currentMode === 'sustinatori') {
         podiumContainer.style.display = 'none'; 
         topListEl.innerHTML = '';
@@ -2702,10 +2705,10 @@ function renderLeaderboard() {
             row.onclick = () => openUserProfile(m.id);
             topListEl.appendChild(row);
         });
-        return; 
+        return; // Stop here for Sustinatori mode
     }
 
-    // --- NORMAL MODES ---
+    // --- MODE 2: NORMAL LEADERBOARDS (Coins, Diamonds, Donated) ---
     podiumContainer.style.display = 'flex'; 
 
     const getConfig = (m) => {
@@ -2715,10 +2718,11 @@ function renderLeaderboard() {
         return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
     };
 
-    // 1. PODIUM
+    // 1. RENDER PODIUM (Rank 1-3)
     for (let i = 1; i <= 3; i++) {
         const m = members[i - 1];
         const boxEl = document.getElementById(`box-${i}`);
+        
         if (m) {
             const conf = getConfig(m);
             document.getElementById(`img-${i}`).src = m.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
@@ -2750,6 +2754,7 @@ function renderLeaderboard() {
             
             const statusEl = document.getElementById(`status-${i}`);
             statusEl.className = `podium-status ${checkIsOnline(m) ? 'online' : ''}`;
+
             boxEl.onclick = () => openUserProfile(m.id);
             boxEl.style.opacity = '1'; boxEl.style.pointerEvents = 'auto';
         } else {
@@ -2757,11 +2762,12 @@ function renderLeaderboard() {
         }
     }
 
-    // 2. LIST
+    // 2. RENDER LIST (Rank 4-50)
     topListEl.innerHTML = '';
     members.slice(3).forEach((m, index) => {
         const rank = index + 4;
         const conf = getConfig(m);
+
         const row = document.createElement('div');
         let customClass = 'top-item';
         if(m.equippedBanner?.cssClass) customClass += ` ${m.equippedBanner.cssClass}`;
@@ -2801,9 +2807,8 @@ function renderLeaderboard() {
         topListEl.appendChild(row);
     });
 
-    // --- BUBBLE WITH FIXED MATH & VARIABLE ---
+    // --- BOTTOM BUBBLE (Exact Math & Text) ---
     if(currentFilter !== 'online') { 
-        // Use window.totalUserCount to ensure we find the variable
         let total = window.totalUserCount || 0;
         let remaining = Math.max(0, total - 50);
         
@@ -2813,8 +2818,7 @@ function renderLeaderboard() {
         showMoreBtn.onclick = openAllUsersList;
         topListEl.appendChild(showMoreBtn);
     }
-}​
-
+}
     let allUsersDataCache = [];
     async function openAllUsersList() {
         allUsersModal.classList.add('active');
@@ -3108,9 +3112,7 @@ window.openUserProfile = async (uid) => {
         cosmeticsSelectModal.classList.add('active');
     };
 
-// Global variable definition (safe way)
-window.totalUserCount = 0;
-
+// --- AUTH STATE CHANGED (With Count Logic) ---
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         document.getElementById('headerUserImg').src = user.photoURL;
@@ -3123,17 +3125,15 @@ onAuthStateChanged(auth, async (user) => {
 
         if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-        // --- FETCH THE COUNT NOW (Because we are logged in!) ---
+        // --- FETCH THE COUNT NOW ---
         try {
             const coll = collection(db, "accounts");
             const snapshot = await getCountFromServer(coll);
             window.totalUserCount = snapshot.data().count();
-            // Refresh logic to update the number on screen
-            renderLeaderboard();
+            renderLeaderboard(); // Update UI with the number
         } catch (e) {
             console.log("Count error:", e);
         }
-        // -------------------------------------------------------
 
         onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
             if(uSnap.exists()) {
