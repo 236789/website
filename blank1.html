@@ -1424,6 +1424,22 @@
     background: rgba(255,255,255,0.03); margin-bottom: 10px; padding: 12px; 
     border-radius: 12px; border: 1px solid var(--primary-dim);
 }
+
+
+
+/* Update the Reward list background for clarity */
+.reward-item-row {
+    display: flex; align-items: center; justify-content: space-between; 
+    background: rgba(13, 25, 41, 0.9); margin-bottom: 8px; padding: 15px; 
+    border-radius: 15px; border: 1px solid rgba(41, 243, 255, 0.2);
+}
+
+/* Ensure the Jackpot Banner in the modal pulses */
+.reward-coins-box .bubble-jackpot {
+    animation: ultimateFlow 2s linear infinite, pulseBadge 1.5s infinite;
+    display: inline-block;
+    min-width: 150px;
+}
   </style>
 </head>
 <body>
@@ -1852,7 +1868,7 @@ function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
 
-    // Rim & Bulbs
+    // 1. Outer Frame
     ctx.beginPath(); ctx.arc(250, 250, 245, 0, Math.PI * 2); ctx.fillStyle = "#fbc02d"; ctx.fill();
     for (let i = 0; i < 24; i++) {
         const bulbAngle = (i / 24) * Math.PI * 2;
@@ -1864,53 +1880,58 @@ function drawWheel() {
     REWARDS.forEach((rew, i) => {
         const angle = i * arc + rotation;
         ctx.save();
-        ctx.beginPath(); ctx.moveTo(250, 250); ctx.arc(250, 250, 230, angle, angle + arc);
+        ctx.beginPath();
+        ctx.moveTo(250, 250);
+        ctx.arc(250, 250, 230, angle, angle + arc);
         
-        // 1. MANUALLY DRAW RAINBOW FOR THE BANNER SLICE
+        // --- PREMIUM RAINBOW SLICE ---
         if (rew.rainbow) {
-            let grad = ctx.createRadialGradient(250, 250, 0, 250, 250, 230);
-            grad.addColorStop(0, "red"); grad.addColorStop(0.2, "orange"); grad.addColorStop(0.4, "yellow");
-            grad.addColorStop(0.6, "green"); grad.addColorStop(0.8, "blue"); grad.addColorStop(1, "violet");
+            let grad = ctx.createConicGradient(angle + arc/2, 250, 250);
+            grad.addColorStop(0, "red"); grad.addColorStop(0.2, "yellow"); grad.addColorStop(0.4, "green");
+            grad.addColorStop(0.6, "cyan"); grad.addColorStop(0.8, "blue"); grad.addColorStop(1, "magenta");
             ctx.fillStyle = grad;
         } else {
             ctx.fillStyle = rew.color;
         }
 
-        if (rew.jackpot) { ctx.shadowBlur = 20; ctx.shadowColor = "#ffd700"; ctx.lineWidth = 4; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+        if (rew.jackpot) {
+            ctx.shadowBlur = 25; ctx.shadowColor = "#fff"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 4; ctx.stroke();
+        }
         ctx.fill();
         ctx.restore();
 
-        // 2. DRAW THE ACTUAL ITEM VISUALS
+        // --- CONTENT ---
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(angle + arc / 2);
         
+        // Labels
         ctx.fillStyle = "#fff";
-        ctx.font = rew.jackpot ? "900 18px Orbitron" : "900 16px Orbitron";
+        ctx.font = rew.jackpot ? "900 20px Orbitron" : "900 16px Orbitron";
         ctx.textAlign = "right";
         ctx.fillText(rew.label, 210, 8); 
 
+        // Premium Icons
         if (rew.type === "coins") {
             ctx.drawImage(coinImg, 135, -12, 26, 26);
-        } else if (rew.type === "diamonds" || rew.type === "badge") {
-            // Draw Diamond icon for Diamonds, but Gold Bolt for Badge
-            if(rew.type === "badge") {
-                ctx.fillStyle = "#ffd700"; ctx.font = "20px FontAwesome";
-                ctx.shadowBlur = 10; ctx.shadowColor = "#fff";
-                ctx.fillText("⚡", 160, 10);
-            } else {
-                ctx.drawImage(diamImg, 135, -12, 26, 26);
-            }
+        } else if (rew.type === "diamonds") {
+            ctx.drawImage(diamImg, 135, -12, 26, 26);
+        } else if (rew.type === "badge") {
+            // Larger Bolt
+            ctx.fillStyle = "#ffd700"; ctx.font = "bold 35px Arial";
+            ctx.shadowBlur = 10; ctx.shadowColor = "#000";
+            ctx.fillText("⚡", 155, 15);
         } else if (rew.type === "banner") {
-            // Draw a mini "Ultra" banner box on the wheel
-            ctx.fillStyle = "#fff";
-            ctx.fillRect(135, -10, 30, 20);
-            ctx.strokeStyle = "#000"; ctx.strokeRect(135, -10, 30, 20);
+            // Draw a "Mini Ribbon" for the banner
+            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(130, -10, 40, 20);
+            ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.strokeRect(130, -10, 40, 20);
+            ctx.fillStyle = "#fff"; ctx.font = "bold 10px Orbitron";
+            ctx.fillText("ULTRA", 168, 5);
         }
         ctx.restore();
     });
 
-    // Hub
+    // Center Cap
     ctx.beginPath(); ctx.arc(250, 250, 45, 0, Math.PI * 2); ctx.fillStyle = "#08101b"; ctx.fill();
     ctx.strokeStyle = "#29f3ff"; ctx.lineWidth = 5; ctx.stroke();
 }
@@ -2055,29 +2076,44 @@ async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
     const userRef = doc(db, "accounts", auth.currentUser.uid);
-    
+    const modal = document.getElementById('questRewardModal');
+    if (!modal) return;
+
+    let displayTitle = "🎉 PREMIU!";
+    let displayMsg = `Ai câștigat ${reward.label} ${reward.type}!`;
+    let iconHtml = "";
+
+    // 1. Database Update & Modal Content
     if (reward.type === 'coins' || reward.type === 'diamonds') {
         await updateDoc(userRef, { [reward.type]: increment(reward.val) });
-    } else if (reward.type === 'badge') {
+        const iconUrl = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
+        iconHtml = `<img src="${iconUrl}" style="width: 50px;"> <span>${reward.val}</span>`;
+    } 
+    else if (reward.type === 'badge') {
         await updateDoc(userRef, { ownedBadges: arrayUnion("b_wheel_god") });
-    } else if (reward.type === 'banner') {
+        displayTitle = "🔥 JACKPOT!!! 🔥";
+        displayMsg = "AI DEBLOCAT INSIGNA: WHEEL GOD";
+        iconHtml = `<i class="fas fa-bolt" style="color:#ffd700; font-size:50px; filter:drop-shadow(0 0 10px #fff);"></i>`;
+    } 
+    else if (reward.type === 'banner') {
         await updateDoc(userRef, { ownedBanners: arrayUnion("bub_jackpot") });
+        displayTitle = "🔥 JACKPOT!!! 🔥";
+        displayMsg = "AI DEBLOCAT BANNERUL: ULTRA JACKPOT";
+        // Show the actual banner style in the modal
+        iconHtml = `<div class="bubble-jackpot" style="font-size:12px; padding:15px; width:200px;">ULTRA JACKPOT</div>`;
     }
 
-    const modal = document.getElementById('questRewardModal');
-    if (modal) {
-        let text = `Ai câștigat ${reward.label} ${reward.type}!`;
-        if(reward.type === "badge") text = "AI CÂȘTIGAT INSIGNA WHEEL GOD!";
-        if(reward.type === "banner") text = "AI CÂȘTIGAT BANNERUL ULTRA JACKPOT!";
-        
-        modal.querySelector('h2').innerHTML = reward.jackpot ? "🔥 JACKPOT!!! 🔥" : "🎉 PREMIU!";
-        modal.querySelector('p').innerText = text;
-        modal.querySelector('.reward-coins-box').innerHTML = reward.jackpot ? "🏆" : `<span>${reward.val}</span>`;
-        modal.classList.add('active');
-    }
+    // 2. Inject into Modal
+    modal.querySelector('h2').innerHTML = displayTitle;
+    modal.querySelector('p').innerText = displayMsg;
+    modal.querySelector('.reward-coins-box').innerHTML = iconHtml;
+    modal.classList.add('active');
 
     if (autoSpinActive) {
-        setTimeout(() => { modal.classList.remove('active'); attemptSpin(false); }, 3000);
+        setTimeout(() => {
+            modal.classList.remove('active');
+            attemptSpin(false); 
+        }, 3000);
     }
 }
 
