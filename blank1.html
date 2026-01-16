@@ -1363,33 +1363,14 @@
     transform: translateY(-1px) !important;
 }
 
-/* JACKPOT GLOW ANIMATION */
-@keyframes jackpotGlow {
-    from { shadowBlur: 5; }
-    to { shadowBlur: 20; }
-}
-
-/* MODAL STICKERS FOR JACKPOTS */
-.jackpot-label {
-    background: linear-gradient(90deg, #ff00cc, #333399);
-    color: white;
-    padding: 2px 8px;
-    border-radius: 5px;
-    font-size: 10px;
-    font-weight: 900;
-    margin-left: 10px;
-    animation: pulseBadge 1s infinite;
-}
-/* THE SICKEST JACKPOT BANNER - FIXED FOR INVENTORY */
+/* THE SICKEST JACKPOT BANNER - FIXED & CONFINED */
 .bubble-jackpot {
     position: relative !important;
     width: 100% !important;
-    max-width: 160px; /* Adjust to match your grid width exactly */
     height: 55px !important; /* Matches standard banner height */
-    margin: 0 auto;
-    overflow: hidden !important; /* Clips the shine so it doesn't bleed */
-    border-radius: 12px !important;
-    border: 1.5px solid rgba(255, 255, 255, 0.4) !important;
+    overflow: hidden !important; /* PREVENTS BLEEDING OVER THE SCREEN */
+    border-radius: 12px !important; /* Matches your other banners */
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
     
     /* Premium Gold Gradient */
     background: linear-gradient(135deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
@@ -1397,22 +1378,40 @@
     animation: goldShine 3s linear infinite !important;
     
     /* Glow */
-    box-shadow: 0 0 15px rgba(255, 215, 0, 0.4) !important;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5) !important;
     
-    /* Content Centering */
+    /* Centering Content */
     display: flex !important;
     align-items: center;
     justify-content: center;
-    
     color: #1a1a1a !important;
     font-family: 'Orbitron', sans-serif !important;
     font-weight: 900 !important;
-    font-size: 11px !important;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    text-shadow: 0 1px 0px rgba(255,255,255,0.5);
     z-index: 1;
 }
 
+/* THE MOVING SHINE - CONFINED TO BOX */
+.bubble-jackpot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -150%; width: 100%; height: 100%;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.6), transparent);
+    transform: skewX(-25deg);
+    animation: sheenSweep 3s infinite linear;
+    z-index: 2;
+    pointer-events: none;
+}
+
+@keyframes goldShine {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}
+
+@keyframes sheenSweep {
+    0% { left: -150%; }
+    100% { left: 150%; }
+}
 /* THE SHINE - NOW CONFINED INSIDE THE BOX */
 .bubble-jackpot::before {
     content: '';
@@ -1894,10 +1893,9 @@ function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
 
-    // 1. Outer Frame & Bulbs
+    // Rim & Bulbs
     ctx.beginPath(); ctx.arc(250, 250, 246, 0, Math.PI * 2); ctx.fillStyle = "#111"; ctx.fill();
     ctx.beginPath(); ctx.arc(250, 250, 240, 0, Math.PI * 2); ctx.fillStyle = "#fbc02d"; ctx.fill();
-
     for (let i = 0; i < 24; i++) {
         const bulbAngle = (i / 24) * Math.PI * 2;
         const isOn = (Math.floor(Date.now() / 500) % 2 == i % 2);
@@ -1908,73 +1906,57 @@ function drawWheel() {
     REWARDS.forEach((rew, i) => {
         const sliceAngle = i * arc + rotation;
         
-        // --- DRAW SLICE ---
+        // 1. Draw Slice
         ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(250, 250);
-        ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
-        
+        ctx.beginPath(); ctx.moveTo(250, 250); ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
         if (rew.type === "badge") { 
             let pGrad = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
             pGrad.addColorStop(0, "#fff"); pGrad.addColorStop(1, "#999"); ctx.fillStyle = pGrad;
         } else if (rew.type === "banner") {
             let gGrad = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
             gGrad.addColorStop(0, "#ffd700"); gGrad.addColorStop(1, "#8a6e2f"); ctx.fillStyle = gGrad;
-        } else {
-            ctx.fillStyle = rew.color;
-        }
-
-        if (rew.jackpot) {
-            ctx.shadowBlur = 20; ctx.shadowColor = "#fff"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-        }
+        } else { ctx.fillStyle = rew.color; }
+        if (rew.jackpot) { ctx.shadowBlur = 20; ctx.shadowColor = "#fff"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke(); }
         ctx.fill();
         ctx.restore();
 
-        // --- DRAW CONTENT (SMART ROTATION) ---
+        // 2. Content with Smart Rotation
         ctx.save();
         ctx.translate(250, 250);
-        
-        // Calculate mid-angle of the slice for positioning content
         const midAngle = sliceAngle + arc / 2;
         ctx.rotate(midAngle);
         
-        // Determine if we are in the "bottom" half of the wheel to flip text
-        // This ensures text is always "right way up"
-        const cleanAngle = (midAngle % (Math.PI * 2));
-        const shouldFlip = (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
+        // Check if text is on the bottom half of the wheel
+        const normalizedAngle = (midAngle % (Math.PI * 2));
+        const shouldFlip = (normalizedAngle > Math.PI / 2 && normalizedAngle < (Math.PI * 3) / 2);
 
-        // 1. Draw Text
+        // Text Drawing
         ctx.save();
-        // Move to text position
         ctx.translate(180, 0); 
-        if (shouldFlip) ctx.rotate(Math.PI); // Flip 180 degrees
-
+        if (shouldFlip) ctx.rotate(Math.PI);
         ctx.fillStyle = (rew.type === "badge") ? "#000" : "#fff";
-        ctx.font = rew.label.length > 8 ? "900 11px Orbitron" : "900 18px Orbitron";
+        ctx.font = rew.label.length > 10 ? "900 11px Orbitron" : "900 16px Orbitron";
         ctx.textAlign = "center";
         ctx.fillText(rew.label, 0, 5);
         ctx.restore();
 
-        // 2. Draw Icons (Coins / Diamonds)
+        // Icons Drawing (RESTORED)
         if (rew.type === "coins" || rew.type === "diamonds") {
             const img = (rew.type === "coins") ? coinImg : diamImg;
             if (img.complete) {
                 ctx.save();
-                ctx.translate(120, 0); // Position icon closer to center
+                ctx.translate(120, 0);
                 if (shouldFlip) ctx.rotate(Math.PI);
                 ctx.drawImage(img, -12, -12, 24, 24);
                 ctx.restore();
             }
         }
-        
         ctx.restore();
     });
 
-    // 3. Center Hub
+    // Hub
     ctx.beginPath(); ctx.arc(250, 250, 48, 0, Math.PI * 2); ctx.fillStyle = "#050b14"; ctx.fill();
     ctx.strokeStyle = "#29f3ff"; ctx.lineWidth = 4; ctx.stroke();
-    ctx.fillStyle = "#29f3ff"; ctx.font = "24px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("★", 250, 253);
 }
 
 // Updated Physics Engine for Perfect Landing
@@ -2118,34 +2100,33 @@ async function finalizeSpin(idx) {
     const reward = REWARDS[idx];
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const modal = document.getElementById('questRewardModal');
-    
-    let iconHtml = "";
-    let title = "🎉 PREMIU!";
-    let desc = `Ai câștigat ${reward.label}!`;
+    if (!modal) return;
 
+    let iconHtml = "";
     if (reward.type === 'coins' || reward.type === 'diamonds') {
         await updateDoc(userRef, { [reward.type]: increment(reward.val) });
         const img = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
-        iconHtml = `<div style="display:flex; align-items:center; gap:15px;"><img src="${img}" style="width:70px;"> <span style="font-size:50px; font-weight:900; color:#fff;">${reward.val}</span></div>`;
+        iconHtml = `<div style="display:flex; align-items:center; gap:15px; justify-content:center;">
+                        <img src="${img}" style="width:60px;"> 
+                        <span style="font-size:45px; font-weight:900; color:#fff;">${reward.val}</span>
+                    </div>`;
     } 
     else if (reward.type === 'badge') {
         await updateDoc(userRef, { ownedBadges: arrayUnion("b_wheel_god") });
-        title = "👑 OBIECT EXCLUSIV! 👑";
-        desc = "AI DEBLOCAT INSIGNA 'WHEEL GOD'!";
-        iconHtml = `<div class="shop-badge-preview" style="background:linear-gradient(45deg, #fff, #ffd700); color:#000; padding:20px 40px; font-size:24px; border-radius:100px; box-shadow:0 0 30px #ffd700;"><i class="fas fa-bolt"></i> WHEEL GOD</div>`;
+        iconHtml = `<div class="shop-badge-preview" style="background:linear-gradient(45deg, #fff, #ffd700); color:#000; padding:15px 30px; font-size:18px; border-radius:50px; box-shadow:0 0 20px #ffd700;"><i class="fas fa-bolt"></i> WHEEL GOD</div>`;
     } 
     else if (reward.type === 'banner') {
         await updateDoc(userRef, { ownedBanners: arrayUnion("bub_jackpot") });
-        title = "👑 OBIECT EXCLUSIV! 👑";
-        desc = "AI DEBLOCAT BANNERUL 'ULTRA TREASURE'!";
-        iconHtml = `<div class="bubble-jackpot" style="transform: scale(1.3);">ULTRA TREASURE</div>`;
+        iconHtml = `<div class="bubble-jackpot" style="width:200px; height:60px;">ULTRA TREASURE</div>`;
     }
 
-    if (modal) {
-        modal.querySelector('h2').innerHTML = title;
-        modal.querySelector('p').innerText = desc;
-        modal.querySelector('.reward-coins-box').innerHTML = iconHtml;
-        modal.classList.add('active');
+    modal.querySelector('h2').innerHTML = reward.jackpot ? "🔥 JACKPOT!!! 🔥" : "🎉 PREMIU!";
+    modal.querySelector('p').innerText = `Ai deblocat: ${reward.label}`;
+    modal.querySelector('.reward-coins-box').innerHTML = iconHtml;
+    modal.classList.add('active');
+
+    if (autoSpinActive) {
+        setTimeout(() => { modal.classList.remove('active'); attemptSpin(false); }, 3000);
     }
 }
 
@@ -2731,32 +2712,31 @@ window.openInventory = async (type = 'badges') => {
              actionContainer.appendChild(unequipBtn);
         }
     } 
-    else if (type === 'banners') {
-        const ownedIds = data.ownedBanners || [];
-        const equipped = data.equippedBanner?.id || null;
-        
-        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
-        
-        ownedIds.forEach(id => {
-            const item = BANNERS_DB.find(b => b.id === id);
-            if(item) {
-                const isEquipped = (id === equipped);
-                const card = document.createElement('div');
-                card.className = 'shop-badge-item';
-                // FIXED: Wrapped the banner in a container with overflow hidden and centered the PREVIEW text
-                card.innerHTML = `
-                    <div class="${item.cssClass}" style="width:100%; height:55px; border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;">
-                        <span style="opacity:0.5; font-size:10px; font-weight:800; letter-spacing:2px; pointer-events:none; z-index:5;">PREVIEW</span>
-                    </div>
-                    <div style="font-weight:700; font-size:11px; margin:8px 0; color:#fff;">${item.name}</div>
-                    ${isEquipped 
-                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
-                        : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
-                    }
-                `;
-                list.appendChild(card);
-            }
-        });
+   else if (type === 'banners') {
+    const ownedIds = data.ownedBanners || [];
+    const equipped = data.equippedBanner?.id || null;
+    
+    if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
+    
+    ownedIds.forEach(id => {
+        const item = BANNERS_DB.find(b => b.id === id);
+        if(item) {
+            const isEquipped = (id === equipped);
+            const card = document.createElement('div');
+            card.className = 'shop-badge-item';
+            card.innerHTML = `
+                <div class="${item.cssClass}" style="width:100%; height:55px; border-radius:12px; display:flex; align-items:center; justify-content:center;">
+                    <span style="opacity:0.5; font-size:10px; font-weight:800; letter-spacing:2px;">PREVIEW</span>
+                </div>
+                <div style="font-weight:700; font-size:11px; margin:8px 0; color:#fff;">${item.name}</div>
+                ${isEquipped 
+                    ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                    : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
+                }
+            `;
+            list.appendChild(card);
+        }
+    });
         
         if(equipped) {
              const unequipBtn = document.createElement('button');
