@@ -1293,6 +1293,20 @@
 .pop-reward-pill { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 30px; padding: 15px 25px; display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
 .pop-btn-cyan { background: #00ffff; color: #000; font-family: 'Orbitron'; font-weight: 900; border: none; padding: 18px 60px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-size: 15px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); margin-top: 20px; transition: 0.3s; position: relative; z-index: 99; }
 #flyingDiamond { position: fixed; width: 55px; z-index: 40000; pointer-events: none; display: none; }
+
+
+
+.btn-recompense { background: rgba(41, 243, 255, 0.1); border: 1.5px solid var(--primary); color: var(--primary); padding: 10px 20px; border-radius: 50px; font-family: 'Orbitron'; font-size: 11px; cursor: pointer; margin-bottom: 30px; transition: 0.3s; }
+.btn-recompense:hover { background: var(--primary); color: #000; }
+
+.wheel-section { position: relative; display: flex; flex-direction: column; align-items: center; }
+canvas { border-radius: 50%; filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.5)); max-width: 450px; width: 85vw; height: auto; border: 8px solid #ffd700; }
+.pointer { position: absolute; top: 35px; left: 50%; transform: translateX(-50%); width: 40px; height: 50px; background-color: #ffd700; clip-path: polygon(50% 100%, 0% 0%, 100% 0%); z-index: 10; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); }
+
+.controls-container { display: flex; gap: 15px; margin-top: 25px; }
+.btn-game-main { padding: 12px 40px; font-size: 16px; border-radius: 12px; background: linear-gradient(135deg, #2196f3, #1976d2); color: #fff; border: none; border-bottom: 4px solid #0d47a1; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; }
+.auto-off { padding: 12px 20px; font-size: 14px; border-radius: 12px; background: #37474f; color: #fff; border: none; border-bottom: 4px solid #263238; cursor: pointer; font-family: 'Orbitron'; }
+.auto-on { background: #00e676 !important; border-bottom-color: #00a152 !important; color: #004d40 !important; box-shadow: 0 0 15px #00e676; }
   </style>
 </head>
 <body>
@@ -1543,6 +1557,43 @@
 
 <!-- MAIN CONTENT AREA START -->
 <main class="blank-main-container">
+
+<main class="blank-main-container">
+    <h1 class="metallic-title-big">ROATA NOROCULUI</h1>
+    
+    <!-- Buton Recompense -->
+    <button class="btn-recompense" onclick="openRewardsModal()">
+        <i class="fas fa-gift"></i> VEZI RECOMPENSE & ȘANSE
+    </button>
+
+    <div class="wheel-section">
+        <!-- Timer pentru Free Spin -->
+        <div id="freeSpinTimer" style="margin-bottom:15px; font-family:'Orbitron'; font-size:12px; color:var(--primary);">
+            VERIFICARE STATUS...
+        </div>
+
+        <div class="pointer"></div>
+        <canvas id="wheel" width="500" height="500"></canvas>
+        
+        <div class="controls-container">
+            <button id="spinBtn" class="btn-game-main">SPIN</button>
+            <button id="autoBtn" class="auto-off">
+                <span id="autoIcon">▶</span> AUTO: OFF
+            </button>
+        </div>
+    </div>
+</main>
+
+<!-- MODAL RECOMPENSE -->
+<div id="rewardsModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width:320px;">
+        <button class="close-pop" onclick="document.getElementById('rewardsModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--gold); margin-bottom:15px;">RECOMPENSE</h3>
+        <div id="rewardsList" style="text-align:left; font-size:13px; color:#ccc;">
+            <!-- Injected by JS -->
+        </div>
+    </div>
+</div>
     
 
 
@@ -1888,6 +1939,29 @@ const TEXTS_DB = [
     { id: 't_army', name: 'MILITAR', cssClass: 'bubble-military', price: 1300 },
     { id: 't_lava', name: 'LAVĂ', cssClass: 'bubble-fire', price: 1400 }
 ];
+
+
+
+const REWARDS = [
+    { label: "100 COINS", val: 100, type: "coins", color: "#FF5252", weight: 40 },
+    { label: "250 COINS", val: 250, type: "coins", color: "#7C4DFF", weight: 25 },
+    { label: "500 COINS", val: 500, type: "coins", color: "#448AFF", weight: 15 },
+    { label: "1000 COINS", val: 1000, type: "coins", color: "#69F0AE", weight: 8 },
+    { label: "2500 COINS", val: 2500, type: "coins", color: "#FFD740", weight: 4 },
+    { label: "1 DIAMOND", val: 1, type: "diamonds", color: "#E040FB", weight: 3 },
+    { label: "5 DIAMONDS", val: 5, type: "diamonds", color: "#FF6E40", weight: 2.5 },
+    { label: "10 DIAMONDS", val: 10, type: "diamonds", color: "#18FFFF", weight: 1.5 },
+    { label: "50 DIAMONDS", val: 50, type: "diamonds", color: "#ffd700", weight: 0.5 },
+    { label: "JACKPOT", val: 5000, type: "coins", color: "#ffffff", weight: 0.3 },
+    { label: "SĂRAC", val: 10, type: "coins", color: "#546e7a", weight: 0.1 },
+    { label: "5000 COINS", val: 5000, type: "coins", color: "#C2185B", weight: 0.1 }
+];
+
+let rotation = 0;
+let isSpinning = false;
+let isAutoOn = false;
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
 window.equipText = async (id, cssClass) => {
     try {
         await updateDoc(doc(db, "accounts", auth.currentUser.uid), { 
@@ -1909,7 +1983,62 @@ window.equipText = async (id, cssClass) => {
 
 
 
+async function handleSpinAttempt() {
+    if (isSpinning) return;
+    const user = auth.currentUser;
+    const userRef = doc(db, "accounts", user.uid);
+    const snap = await getDoc(userRef);
+    const data = snap.data();
 
+    const now = Date.now();
+    const lastSpin = data.lastWheelSpin || 0;
+    const coolingTime = 12 * 60 * 60 * 1000; // 12 Ore
+
+    let isFree = (now - lastSpin) >= coolingTime;
+
+    if (!isFree) {
+        // Dacă nu e moca, verificăm dacă are diamant
+        if ((data.diamonds || 0) < 1) {
+            alert("Nu ai destule Diamante pentru un spin extra!");
+            isAutoOn = false;
+            updateAutoBtn();
+            return;
+        }
+        // Plătește 1 diamant
+        await updateDoc(userRef, { diamonds: increment(-1) });
+    } else {
+        // Dacă a fost free, salvăm timpul
+        await updateDoc(userRef, { lastWheelSpin: now });
+    }
+
+    startWheelAnimation();
+}
+
+
+
+
+function drawWheel() {
+    const arc = (2 * Math.PI) / 12;
+    ctx.clearRect(0, 0, 500, 500);
+
+    REWARDS.forEach((reward, i) => {
+        const angle = i * arc + rotation;
+        ctx.beginPath();
+        ctx.fillStyle = reward.color;
+        ctx.moveTo(250, 250);
+        ctx.arc(250, 250, 230, angle, angle + arc);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.save();
+        ctx.translate(250, 250);
+        ctx.rotate(angle + arc / 2);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 12px Orbitron";
+        ctx.fillText(reward.label, 100, 5);
+        ctx.restore();
+    });
+}
 // 1. GLOBAL BAN CHECK (OPTIMIZED)
     async function checkGlobalBan() {
         // Check local storage first to save Firebase Reads
