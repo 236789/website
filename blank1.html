@@ -1394,6 +1394,29 @@
     text-shadow: 2px 2px 4px #000;
     font-weight: 900;
 }
+
+
+
+/* THE ULTRA JACKPOT BANNER - RAINBOW & GLOW */
+@keyframes rainbowFlow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.bubble-jackpot {
+    background: linear-gradient(-45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000) !important;
+    background-size: 400% 400% !important;
+    animation: rainbowFlow 3s ease infinite !important;
+    border: 3px solid #fff !important;
+    box-shadow: 0 0 20px rgba(255,255,255,0.8), inset 0 0 15px rgba(255,255,255,0.5) !important;
+    color: #fff !important;
+    text-shadow: 2px 2px 4px #000;
+    font-weight: 900;
+    text-transform: uppercase;
+    padding: 8px 15px;
+    border-radius: 12px;
+}
   </style>
 </head>
 <body>
@@ -1800,6 +1823,9 @@ let autoSpinActive = false;
 const coinImg = new Image(); coinImg.src = "https://iili.io/fhc1SKQ.png";
 const diamImg = new Image(); diamImg.src = "https://iili.io/fv5bmtj.png";
 
+// New Icons for Badge/Banner
+const trophyImg = new Image(); trophyImg.src = "https://iili.io/fXvBEiB.png"; // Using your logo as a trophy placeholder
+
 const REWARDS = [
     { label: "50", val: 50, type: "coins", color: "#00bcd4", chance: 25 },
     { label: "75", val: 75, type: "coins", color: "#f44336", chance: 20 },
@@ -1812,15 +1838,14 @@ const REWARDS = [
     { label: "5", val: 5, type: "diamonds", color: "#f44336", chance: 4 },
     { label: "10", val: 10, type: "diamonds", color: "#ffd700", chance: 2, jackpot: true },
     { label: "GOD", val: "b_wheel_god", type: "badge", color: "#fff", chance: 1, jackpot: true },
-    { label: "JACK", val: "bub_jackpot", type: "banner", color: "#000", chance: 1, jackpot: true }
+    { label: "ULTRA", val: "bub_jackpot", type: "banner", color: "#000", chance: 1, jackpot: true }
 ];
 
-// Updated Draw function to ensure 0 degrees is correctly handled
 function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
 
-    // 1. Draw Outer Border & Bulbs
+    // 1. Draw Rim
     ctx.beginPath();
     ctx.arc(250, 250, 245, 0, Math.PI * 2);
     ctx.fillStyle = "#fbc02d";
@@ -1830,94 +1855,65 @@ function drawWheel() {
         const bulbAngle = (i / 24) * Math.PI * 2;
         ctx.beginPath();
         ctx.arc(250 + 238 * Math.cos(bulbAngle), 250 + 238 * Math.sin(bulbAngle), 5, 0, Math.PI * 2);
-        
         const isOn = (Math.floor(Date.now() / 500) % 2 == i % 2);
         ctx.fillStyle = isOn ? "#fff" : "#666";
-        
-        if (isOn) {
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = "#fff";
-        } else {
-            ctx.shadowBlur = 0;
-        }
-        
+        if (isOn) { ctx.shadowBlur = 15; ctx.shadowColor = "#fff"; }
         ctx.fill();
-        ctx.shadowBlur = 0; // Reset for next elements
+        ctx.shadowBlur = 0;
     }
 
-    // 2. Draw Slices
+    // 2. Slices
     REWARDS.forEach((rew, i) => {
         const angle = i * arc + rotation;
-        
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 230, angle, angle + arc);
         
-        // --- JACKPOT SLICE GLOW ---
         if (rew.jackpot) {
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = "#ffd700"; // Gold glow for jackpots
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#ffd700";
             ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 4;
             ctx.stroke();
         } else {
-            ctx.strokeStyle = "rgba(0,0,0,0.1)";
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = "rgba(255,255,255,0.1)";
             ctx.stroke();
         }
-
         ctx.fillStyle = rew.color;
         ctx.fill();
         ctx.restore();
 
-        // 3. Draw Text and Icons
+        // 3. Labels & Correct Icons
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(angle + arc / 2);
         
-        // --- TEXT SPACING (OUTER EDGE) ---
         ctx.fillStyle = "#fff";
-        // Make jackpot text slightly bigger and glowing
-        if (rew.jackpot) {
-            ctx.font = "900 18px Orbitron";
-            ctx.shadowBlur = 5;
-            ctx.shadowColor = "#000";
-        } else {
-            ctx.font = "900 16px Orbitron";
-        }
-        
+        ctx.font = rew.jackpot ? "900 18px Orbitron" : "900 16px Orbitron";
         ctx.textAlign = "right";
-        ctx.fillText(rew.label, 215, 8); 
-        
-        // --- ICON SPACING (INNER CIRCLE) ---
-        // Pick icon based on type
-        let iconToDraw = coinImg;
-        if (rew.type === 'diamonds' || rew.type === 'badge' || rew.type === 'banner') {
-            iconToDraw = diamImg; // Using diamond image for all jackpots/rarities
-        }
+        ctx.fillText(rew.label, 210, 8); 
 
-        if (iconToDraw.complete) {
-            ctx.drawImage(iconToDraw, 135, -12, 26, 26);
+        // ICON LOGIC - EXPLICIT CHECKS
+        let imgToUse;
+        if (rew.type === "coins") imgToUse = coinImg;
+        else if (rew.type === "diamonds") imgToUse = diamImg;
+        else imgToUse = trophyImg; // For Badge & Banner
+
+        if (imgToUse && imgToUse.complete) {
+            ctx.drawImage(imgToUse, 130, -12, 26, 26);
         }
         ctx.restore();
     });
 
-    // 4. Center Cap (The Hub)
+    // Hub
     ctx.beginPath();
-    ctx.arc(250, 250, 48, 0, Math.PI * 2);
+    ctx.arc(250, 250, 45, 0, Math.PI * 2);
     ctx.fillStyle = "#08101b";
     ctx.fill();
     ctx.strokeStyle = "#29f3ff";
     ctx.lineWidth = 5;
     ctx.stroke();
-
-    // Small decorative star in center
-    ctx.fillStyle = "#29f3ff";
-    ctx.font = "24px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("★", 250, 253);
 }
 
 // Updated Physics Engine for Perfect Landing
@@ -2061,27 +2057,30 @@ async function finalizeSpin(idx) {
     const reward = REWARDS[idx];
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     
-    let displayVal = reward.val;
-    let displayType = reward.type;
+    let displayVal = reward.label;
+    let iconUrl = "https://iili.io/fhc1SKQ.png"; // Default Coin
 
     if (reward.type === 'coins' || reward.type === 'diamonds') {
         await updateDoc(userRef, { [reward.type]: increment(reward.val) });
+        iconUrl = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
     } 
     else if (reward.type === 'badge') {
         await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
         displayVal = "WHEEL GOD BADGE";
+        iconUrl = "https://iili.io/fv5bmtj.png"; // Special icon for jackpot items
     } 
     else if (reward.type === 'banner') {
         await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
         displayVal = "ULTRA JACKPOT BANNER";
+        iconUrl = "https://iili.io/fv5bmtj.png";
     }
 
-    // Show Payout Modal with Jackpot style
     const modal = document.getElementById('questRewardModal');
     if (modal) {
         modal.querySelector('h2').innerHTML = reward.jackpot ? "🔥 JACKPOT!!! 🔥" : "🎉 PREMIU!";
         modal.querySelector('p').innerText = `Ai câștigat ${displayVal}!`;
-        modal.querySelector('.reward-coins-box span').innerText = reward.jackpot ? "⭐" : reward.val;
+        modal.querySelector('.reward-coins-box span').innerText = reward.jackpot ? "🏆" : reward.val;
+        modal.querySelector('.reward-coins-box img').src = iconUrl;
         modal.classList.add('active');
     }
 
@@ -2089,7 +2088,7 @@ async function finalizeSpin(idx) {
         setTimeout(() => {
             modal.classList.remove('active');
             attemptSpin(false); 
-        }, 2500);
+        }, 3000);
     }
 }
 
@@ -2349,7 +2348,8 @@ const BANNERS_DB = [
     { id: 'anim_gold', name: 'GOLD RUSH', cssClass: 'bubble-anim-gold', price: 10000, desc: 'Shimmering Gold' },
     { id: 'anim_ghost', name: 'POLTERGEIST', cssClass: 'bubble-anim-ghost', price: 4500, desc: 'Floating Fade' },
     { id: 'anim_love', name: 'HEARTBEAT', cssClass: 'bubble-anim-love', price: 4000, desc: 'Pulsing Hearts' },
-    { id: 'anim_sparkle', name: 'STARDUST', cssClass: 'bubble-anim-sparkle', price: 5000, desc: 'Twinkling' }
+    { id: 'anim_sparkle', name: 'STARDUST', cssClass: 'bubble-anim-sparkle', price: 5000, desc: 'Twinkling' },
+{ id: 'bub_jackpot', name: 'ULTRA JACKPOT', cssClass: 'bubble-jackpot', price: 99999, desc: 'Landed on 1%' }
 ];
 
 
