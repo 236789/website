@@ -1818,11 +1818,12 @@ const REWARDS = [
     { label: "2", val: 2, type: "diamonds", color: "#546e7a", icon: diamImg, chance: 1 }
 ];
 
+// Updated Draw function to ensure 0 degrees is correctly handled
 function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
 
-    // 1. Desenăm Marginea Galbenă cu Becuri (Beculețele)
+    // 1. Draw Outer Border & Bulbs
     ctx.beginPath();
     ctx.arc(250, 250, 245, 0, Math.PI * 2);
     ctx.fillStyle = "#fbc02d";
@@ -1832,13 +1833,11 @@ function drawWheel() {
         const bulbAngle = (i / 24) * Math.PI * 2;
         ctx.beginPath();
         ctx.arc(250 + 238 * Math.cos(bulbAngle), 250 + 238 * Math.sin(bulbAngle), 5, 0, Math.PI * 2);
-        ctx.fillStyle = (Math.floor(Date.now() / 500) % 2 == i % 2) ? "#fff" : "#ffeb3b";
-        ctx.shadowBlur = 10; ctx.shadowColor = "#fff";
+        ctx.fillStyle = (Math.floor(Date.now() / 500) % 2 == i % 2) ? "#fff" : "#444";
         ctx.fill();
-        ctx.shadowBlur = 0;
     }
 
-    // 2. Desenăm Seliile (Slices)
+    // 2. Draw Slices
     REWARDS.forEach((rew, i) => {
         const angle = i * arc + rotation;
         ctx.beginPath();
@@ -1846,46 +1845,73 @@ function drawWheel() {
         ctx.arc(250, 250, 230, angle, angle + arc);
         ctx.fillStyle = rew.color;
         ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.4)";
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
         ctx.stroke();
 
-        // 3. Adăugăm Text + Iconiță în felie
+        // Add Text and Icons
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(angle + arc / 2);
-        
-        // Iconița
-        if (rew.icon.complete) {
-            ctx.drawImage(rew.icon, 140, -15, 30, 30);
-        }
-        
-        // Textul (ex: "50")
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 18px Poppins";
+        ctx.font = "bold 18px Orbitron";
         ctx.textAlign = "right";
-        ctx.fillText(rew.label, 135, 8);
-        
+        ctx.fillText(rew.label, 200, 10);
+        if (rew.icon.complete) {
+            ctx.drawImage(rew.icon, 150, -15, 25, 25);
+        }
         ctx.restore();
     });
 
-    // 4. Centrul (Hub) cu Stea
+    // 3. Center Cap
     ctx.beginPath();
-    ctx.arc(250, 250, 45, 0, Math.PI * 2);
-    ctx.fillStyle = "#212121";
+    ctx.arc(250, 250, 40, 0, Math.PI * 2);
+    ctx.fillStyle = "#08101b";
     ctx.fill();
-    ctx.strokeStyle = "#fbc02d";
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#29f3ff";
+    ctx.lineWidth = 3;
     ctx.stroke();
-
-    ctx.fillStyle = "#fbc02d";
-    ctx.font = "30px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("★", 250, 252);
 }
 
+// Updated Physics Engine for Perfect Landing
+async function startSpin() {
+    if (isSpinning) return;
+    isSpinning = true;
 
+    const rewardIdx = pickRewardIndex();
+    const sliceWidth = 360 / 12;
+    
+    // The trick: Calculate the exact rotation needed to put the middle 
+    // of the chosen slice at the 270-degree mark (top).
+    const currentRotationDeg = (rotation * 180 / Math.PI) % 360;
+    const targetMidAngle = (rewardIdx * sliceWidth) + (sliceWidth / 2);
+    const landingRotation = (360 - targetMidAngle + 270) % 360;
+    
+    const extraSpins = 360 * 8; // 8 full spins for excitement
+    const totalTargetRotation = extraSpins + landingRotation;
+    
+    const startTime = performance.now();
+    const duration = 5000; 
+
+    function animate(currentTime) {
+        let elapsed = currentTime - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+        
+        // Next-level easing (Cubic Out)
+        let ease = 1 - Math.pow(1 - progress, 4);
+        
+        let currentDeg = (totalTargetRotation * ease);
+        rotation = currentDeg * (Math.PI / 180);
+        
+        drawWheel();
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            finalizeSpin(rewardIdx);
+        }
+    }
+    requestAnimationFrame(animate);
+}
 
 // Funcție unică de pornire Spin (Corectată)
 async function attemptSpin(isFreeAttempt) {
@@ -1948,16 +1974,17 @@ document.getElementById('autoSpinBtn').onclick = () => {
 
     autoSpinActive = !autoSpinActive;
     const btn = document.getElementById('autoSpinBtn');
-    const icon = autoSpinActive ? 'fa-pause' : 'fa-play';
-    const text = autoSpinActive ? 'AUTO: ON' : 'AUTO: OFF';
+    const autoTxt = document.getElementById('autoText');
 
     if (autoSpinActive) {
-        btn.classList.add('btn-auto-active');
-        document.getElementById('autoText').innerHTML = `<i class="fas ${icon}"></i> ${text}`;
-        attemptSpin(false); // Start first paid spin
+        // Add the class that matches your CSS
+        btn.classList.add('btn-auto-active'); 
+        autoTxt.innerHTML = '<i class="fas fa-pause"></i> AUTO: ON';
+        attemptSpin(false); 
     } else {
+        // Remove the class
         btn.classList.remove('btn-auto-active');
-        document.getElementById('autoText').innerHTML = `<i class="fas ${icon}"></i> ${text}`;
+        autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
     }
 };
 // Request animation frame to make bulbs blink
@@ -1979,50 +2006,7 @@ function pickRewardIndex() {
 }
 
 // --- PRO PHYSICS ENGINE ---
-async function startSpin() {
-    if (isSpinning) return;
-    isSpinning = true;
 
-    // 1. Pick the reward FIRST so the math is based on the result
-    const rewardIdx = pickRewardIndex();
-    const reward = REWARDS[rewardIdx];
-
-    // 2. MATH CALIBRATION (Pointer is at 270 degrees / Top)
-    const sliceWidth = 360 / 12; // 30 degrees
-    const sliceCenter = sliceWidth / 2;
-    
-    // To land slice X on top (270deg): 
-    // We need to rotate: 270 - (X * 30) - 15
-    const targetPos = 270 - (rewardIdx * sliceWidth) - sliceCenter;
-    
-    // Total spin: many full circles + the specific target position
-    const totalRotationDegrees = (360 * 10) + targetPos; 
-    
-    const startTime = performance.now();
-    const duration = 5000; // Smooth 5 second spin
-    const startRotationDegrees = (rotation * 180 / Math.PI) % 360;
-
-    function animate(currentTime) {
-        let elapsed = currentTime - startTime;
-        let progress = Math.min(elapsed / duration, 1);
-        
-        // Custom Easing: Cubic Out (Fast start, slow finish)
-        let ease = 1 - Math.pow(1 - progress, 3);
-        
-        let currentDeg = startRotationDegrees + (totalRotationDegrees * ease);
-        rotation = currentDeg * (Math.PI / 180);
-        
-        drawWheel();
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            // GUARANTEED SYNC: The reward we picked at the start is given here
-            finalizeSpin(rewardIdx);
-        }
-    }
-    requestAnimationFrame(animate);
-}
 
 async function finalizeSpin(idx) {
     isSpinning = false;
