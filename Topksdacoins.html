@@ -2546,6 +2546,21 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         setStatusOnline();
         idleTimer = setTimeout(setStatusOffline, IDLE_TIMEOUT);
     }
+
+// --- NEW FUNCTION: FETCH TOTAL USERS INDEPENDENTLY ---
+async function fetchTotalCount() {
+    try {
+        const coll = collection(db, "accounts");
+        const snapshot = await getCountFromServer(coll);
+        window.totalUserCount = snapshot.data().count();
+        console.log("Total Users Loaded:", window.totalUserCount); // Debug log
+        
+        // Re-render the leaderboard immediately so the bubble updates
+        renderLeaderboard(); 
+    } catch (e) {
+        console.error("Error fetching count:", e);
+    }
+}
     window.onload = resetIdleTimer;
     document.onmousemove = resetIdleTimer;
     document.onkeypress = resetIdleTimer;
@@ -2609,7 +2624,12 @@ else if (mode === 'sustinatori') {
     }
 
     // Re-fetch Data
-    setupLeaderboardListener();
+// Auto-refresh UI every 30s
+    setInterval(renderLeaderboard, 30000);
+    setupLeaderboardListener(); 
+    
+    // --- ADD THIS LINE HERE ---
+    fetchTotalCount();
 };
 
 function setupLeaderboardListener() {
@@ -3113,6 +3133,7 @@ window.openUserProfile = async (uid) => {
     };
 
 // --- AUTH STATE CHANGED (With Count Logic) ---
+// --- AUTH STATE CHANGED ---
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         document.getElementById('headerUserImg').src = user.photoURL;
@@ -3125,15 +3146,8 @@ onAuthStateChanged(auth, async (user) => {
 
         if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-        // --- FETCH THE COUNT NOW ---
-        try {
-            const coll = collection(db, "accounts");
-            const snapshot = await getCountFromServer(coll);
-            window.totalUserCount = snapshot.data().count();
-            renderLeaderboard(); // Update UI with the number
-        } catch (e) {
-            console.log("Count error:", e);
-        }
+        // NOTE: The user count fetch has been moved OUTSIDE of here 
+        // so it works for people who are not logged in too.
 
         onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
             if(uSnap.exists()) {
