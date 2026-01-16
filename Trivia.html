@@ -1740,6 +1740,9 @@
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+
+
+
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -3845,7 +3848,8 @@ function handleAnswer(selectedIndex, btnElement) {
             collectBtn.innerText = "EROARE";
         }
     };
-let isAwardingInProgress = false; // Flag to prevent double triggers
+// ADAUGĂ ACEASTĂ LINIE chiar la începutul scriptului tău, sub importuri
+let isAwardingInProgress = false; 
 
 onAuthStateChanged(auth, user => {
     if (user) {
@@ -3865,12 +3869,9 @@ onAuthStateChanged(auth, user => {
         const triviaMode = document.getElementById('screenMode');
         
         if (triviaLogin && triviaMode) {
-            const isLoginScreenActive = triviaLogin.classList.contains('active');
-            const isAnyScreenActive = document.querySelector('.trivia-screen.active');
-            
-            if (isLoginScreenActive || !isAnyScreenActive) {
-                document.querySelectorAll('.trivia-screen').forEach(el => el.classList.remove('active'));
-                triviaMode.classList.add('active');
+            // Dacă utilizatorul este pe ecranul de login, îl trimitem la selecția modului
+            if (triviaLogin.classList.contains('active')) {
+                window.showScreen('screenMode');
             }
         }
 
@@ -3883,134 +3884,77 @@ onAuthStateChanged(auth, user => {
                 if(!uSnap.exists()) return;
                 const data = uSnap.data();
                 
-                // --- A. QUEST RESET & STREAK LOSS LOGIC ---
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
 
-                // --- B. 6/6 QUEST COMPLETION REWARD (THE FIRE MODAL) ---
+                // QUEST MASTER (6/6) REWARD
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // Check if all 6 quests are done and not already awarded for this block
                 if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
-
                             const oldStr = data.streak || 0;
                             
-                            // Update Firebase: Give +1 Streak and +1 Diamond
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
 
-                            // Show the FIRE Modal
                             const rewardModal = document.getElementById('streakRewardModal');
                             if (rewardModal) {
                                 document.getElementById('streakOld').innerText = oldStr;
                                 document.getElementById('streakNew').innerText = oldStr + 1;
                                 rewardModal.classList.add('active');
                             }
-                            
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
                 }
 
-                // --- C. AVATAR & FRAME LOGIC ---
-                document.getElementById('popUserImg').src = data.image || user.photoURL;
+                // AVATAR & FRAME
+                if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = data.image || user.photoURL;
                 const popFrame = document.getElementById('popUserFrame');
                 if(popFrame) {
                     if (data.equippedFrame && data.equippedFrame.img) {
                         popFrame.src = data.equippedFrame.img;
                         popFrame.style.display = "block";
                         const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = scale * 100;
-                        popFrame.style.width = `${sizePct}%`;
-                        popFrame.style.height = `${sizePct}%`;
-                    } else {
-                        popFrame.style.display = "none";
-                    }
+                        popFrame.style.width = `${scale * 100}%`;
+                        popFrame.style.height = `${scale * 100}%`;
+                    } else { popFrame.style.display = "none"; }
                 }
 
-                // --- D. NAME CUSTOMIZATION ---
+                // NAME & COSMETICS
                 let rawName = data.username || user.displayName;
                 if(user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
                 const popNameEl = document.getElementById('popUserName');
-                if (data.equippedText && data.equippedText.cssClass) {
-                    popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                } else {
-                    popNameEl.innerText = rawName;
+                if (popNameEl) {
+                    if (data.equippedText && data.equippedText.cssClass) {
+                        popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                    } else { popNameEl.innerText = rawName; }
                 }
 
-                // --- E. STACKED BADGES (Staff + Cosmetic) ---
-                const popBadgeBox = document.getElementById('popUserBadges');
-                if(popBadgeBox) {
-                    let staffHtml = "";
-                    const email = data.email || "";
-                    
-                    if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                    
-                    let cosmeticHtml = "";
-                    if(data.equippedBadge) {
-                        cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                    }
-                    popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
-                }
-
-                // --- F. DUAL CURRENCY & STREAK UI ---
-                document.getElementById('popUserEmail').innerText = data.email;
+                // CURRENCY
+                if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email;
+                if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
                 
-                // Use formatCurrency (e.g., 1000 -> 1k)
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
-
-                // --- G. NOTIFICATION BADGE LOGIC ---
-                const userVazute = data.lastSeenNewsCount || 0;
-                const noutatiNoi = totalGlobal - userVazute;
-                const heroBadge = document.getElementById('heroNotifBadge');
-                const headerBadge = document.getElementById('headerNotifBadge');
-
-                [heroBadge, headerBadge].forEach(badge => {
-                    if (badge) {
-                        if (noutatiNoi > 0) {
-                            badge.innerText = `+${noutatiNoi}`;
-                            badge.style.display = 'flex';
-                        } else {
-                            badge.style.display = 'none';
-                        }
-                    }
-                });
             });
         });
 
-        updateOnlineStatus(); // Start tracking online presence
+        if (typeof updateOnlineStatus === "function") updateOnlineStatus();
     } else {
-        // LOGGED OUT STATE
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        }
-
-        // --- TRIVIA LOGIC: LOCK GAME ---
-        if (document.getElementById('screenLogin')) {
-            document.querySelectorAll('.trivia-screen').forEach(el => el.classList.remove('active'));
-            document.getElementById('screenLogin').classList.add('active');
-        }
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+        window.showScreen('screenLogin');
     }
 });
 
@@ -4405,76 +4349,62 @@ function showRoundLeaderboard(data) {
     container.innerHTML = '';
 
     const votes = data.roundVotes || [];
+    // Sortăm: corectitudine prima dată, apoi timpul cel mai mic
     votes.sort((a, b) => {
         if (a.correct === b.correct) return a.time - b.time;
         return b.correct ? -1 : 1;
     });
 
-    if(votes.length === 0) container.innerHTML = "<div style='text-align:center; color:#888;'>Nimeni nu a răspuns.</div>";
+    if(votes.length === 0) {
+        container.innerHTML = "<div style='text-align:center; color:#888; padding: 20px;'>Niciun răspuns primit în această rundă.</div>";
+    }
 
     votes.forEach((v, idx) => {
         const cosm = v.cosmetics || {};
         const color = v.correct ? '#2ecc71' : '#ff4757';
-        
         const bannerClass = cosm.banner ? cosm.banner.cssClass : '';
         const textClass = cosm.text ? cosm.text.cssClass : '';
         const frameImg = cosm.frame ? cosm.frame.img : '';
         const frameScale = cosm.frame ? (cosm.frame.scale * 100) : 130;
 
         const row = document.createElement('div');
-        // IMPORTANT: Bannerul se pune aici ca clasă
         row.className = `lb-row top-${idx+1} ${bannerClass}`;
-        
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.justifyContent = "space-between";
-        row.style.padding = "12px 15px";
-        row.style.marginBottom = "10px";
-        row.style.borderRadius = "15px";
-
         row.innerHTML = `
             <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
-                <!-- AVATAR STÂNGA -->
-                <div class="profile-frame-wrapper" style="width:50px; height:50px; flex-shrink: 0; position: relative;">
+                <div class="profile-frame-wrapper" style="width:45px; height:45px; flex-shrink: 0; position: relative; margin: 0;">
                     <img src="${v.pic}" class="pop-img-inner" style="border: 2px solid ${color}; width: 100%; height: 100%;">
                     ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale}%; height:${frameScale}%;">` : ''}
                 </div>
-                
-                <!-- NUME ȘI RĂSPUNS (LÂNGĂ AVATAR) -->
-                <div style="margin-left: 15px; display: flex; flex-direction: column; align-items: flex-start; overflow: hidden;">
-                    <span class="display-name ${textClass}" style="color:#fff; font-size: 15px; font-weight: 900; font-family:'Orbitron'; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 150px;">
-                        ${v.name}
-                    </span>
-                    <span style="color:#fff; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-top: 4px; border-left: 2px solid ${color};">
-                        A ales: ${v.picked}
-                    </span>
+                <div class="user-name-container" style="margin-left: 12px;">
+                    <span class="display-name ${textClass}">${v.name}</span>
+                    <span class="picked-answer-text" style="color:${color}">A ales: ${v.picked}</span>
                 </div>
             </div>
-
-            <!-- SCOR ȘI TIMP (EXTREMĂ DREAPTĂ) -->
-            <div style="text-align: right; flex-shrink: 0; margin-left: 10px;">
-                <div style="color:${color}; font-weight: 900; font-size: 20px; font-family:'Orbitron'; text-shadow: 0 0 10px rgba(0,0,0,0.5);">
-                    ${v.correct ? '+25' : '0'} pts
-                </div>
-                <div style="font-size: 10px; font-weight: 700; color:#fff; opacity: 0.9;">
-                    ${v.time}s
-                </div>
+            <div class="lb-time">
+                <div style="color:${color};">+${v.correct ? '25' : '0'} pts</div>
+                <div>${v.time}s</div>
             </div>
         `;
         container.appendChild(row);
     });
 
+    // Curățăm orice timeout anterior pentru a preveni "sariturile" peste întrebări
     if(intermissionTimerInterval) clearTimeout(intermissionTimerInterval);
 
     intermissionTimerInterval = setTimeout(async () => {
         const lobbyRef = doc(db, "lobbies", currentLobbyId);
         const freshSnap = await getDoc(lobbyRef);
+        if (!freshSnap.exists()) return;
+        
         const freshData = freshSnap.data();
-        const latestPlayers = freshData.players || [];
+        const players = freshData.players || [];
 
-        if (latestPlayers.length > 0 && auth.currentUser.uid === latestPlayers[0].uid) {
+        // VALIDARE HOST: Doar jucătorul care este ACTUALMENTE pe prima poziție execută mutarea
+        if (players.length > 0 && auth.currentUser.uid === players[0].uid) {
             let nextIndex = (freshData.currentQIndex || 0) + 1;
+            
             if (nextIndex < 15) {
+                // Trecem la următoarea întrebare
                 await updateDoc(lobbyRef, { 
                     state: 'playing', 
                     roundVotes: [], 
@@ -4482,6 +4412,7 @@ function showRoundLeaderboard(data) {
                     lastUpdate: serverTimestamp() 
                 });
             } else {
+                // Final de joc
                 await updateDoc(lobbyRef, { state: 'finished', lastUpdate: serverTimestamp() });
             }
         }
@@ -4517,34 +4448,34 @@ function showRoundLeaderboard(data) {
         }
     }
 
-    window.leaveMultiplayer = async () => {
-        if(multiUnsubscribe) multiUnsubscribe();
-        if(lobbyTimerInterval) clearInterval(lobbyTimerInterval);
-        if(votingTimerInterval) clearInterval(votingTimerInterval);
-        if(gameTimerInterval) clearInterval(gameTimerInterval);
-        if(intermissionTimerInterval) clearInterval(intermissionTimerInterval);
-        
-        currentGameState = 'waiting';
-        localQIndex = -1;
-        window.showScreen('screenMode');
-        
-        const user = auth.currentUser;
-        if(user) {
-            const lobbyRef = doc(db, "lobbies", currentLobbyId);
-            const snap = await getDoc(lobbyRef);
-            if(snap.exists()) {
-                const data = snap.data();
-                let newPlayers = (data.players || []).filter(p => p.uid !== user.uid);
-                
-                // If empty, Force Reset state to waiting immediately
-                if(newPlayers.length === 0) {
-                    await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
-                } else {
-                    await updateDoc(lobbyRef, { players: newPlayers });
-                }
+window.leaveMultiplayer = async () => {
+    if(multiUnsubscribe) multiUnsubscribe();
+    // Oprim toate cronometrele locale
+    [lobbyTimerInterval, votingTimerInterval, gameTimerInterval, intermissionTimerInterval].forEach(clearInterval);
+    
+    currentGameState = 'waiting';
+    localQIndex = -1;
+    window.showScreen('screenMode');
+    
+    const user = auth.currentUser;
+    if(user) {
+        const lobbyRef = doc(db, "lobbies", currentLobbyId);
+        const snap = await getDoc(lobbyRef);
+        if(snap.exists()) {
+            const data = snap.data();
+            let players = data.players || [];
+            let newPlayers = players.filter(p => p.uid !== user.uid);
+            
+            if(newPlayers.length === 0) {
+                // Dacă era ultimul, lobby-ul devine curat și "waiting"
+                await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
+            } else {
+                // Dacă mai sunt jucători, doar îl scoatem pe cel actual
+                await updateDoc(lobbyRef, { players: newPlayers });
             }
-        }
-    };
+        } 
+    }
+};
 
 
 function formatCurrency(num) {
