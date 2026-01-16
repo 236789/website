@@ -1760,27 +1760,37 @@ async function startSpin() {
     const snap = await getDoc(userRef);
     const data = snap.data();
     
-    // Timer Logic
+    // Logica Safe pentru Timp
     const now = Date.now();
-    const lastSpin = data.lastWheelSpin?.toDate().getTime() || 0;
+    let lastSpin = 0;
+    if (data.lastWheelSpin) {
+        // Verificăm dacă e obiect Firestore sau alt format
+        lastSpin = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
+    }
+
     const isFree = (now - lastSpin) >= (12 * 60 * 60 * 1000);
+    const userDiamonds = data.diamonds || 0;
     
-    if (!isFree && data.diamonds < 1) {
+    if (!isFree && userDiamonds < 1) {
         alert("Ai nevoie de 1 Diamant pentru un spin extra!");
         autoSpinActive = false;
+        document.getElementById('autoSpinBtn').classList.remove('auto-on');
         return;
     }
 
     isSpinning = true;
     const rewardIdx = pickRewardIndex();
+    
+    // Calcul rotație: 12 segmente = 30 grade per segment
+    // Adăugăm 360 * 8 pentru 8 rotiri complete de animație
     const segmentDeg = 360 / 12;
-    const targetDeg = (360 - (rewardIdx * segmentDeg)) + 360 * 8; // 8 full spins
+    const targetRotation = (360 - (rewardIdx * segmentDeg)) + (360 * 8); 
     
     const startRotation = rotation;
     const startTime = performance.now();
     const duration = 4000;
 
-    // Charge user if not free
+    // Plată: Dacă nu e free, scădem diamant. Dacă e free, resetăm timer-ul.
     if (!isFree) {
         await updateDoc(userRef, { diamonds: increment(-1) });
     } else {
@@ -1790,11 +1800,18 @@ async function startSpin() {
     function animate(time) {
         let elapsed = time - startTime;
         let progress = Math.min(elapsed / duration, 1);
-        let ease = 1 - Math.pow(1 - progress, 3);
-        rotation = startRotation + (targetDeg * Math.PI / 180) * ease;
+        
+        // Efect de încetinire (Out-Quart)
+        let ease = 1 - Math.pow(1 - progress, 4);
+        
+        rotation = startRotation + (targetRotation * Math.PI / 180) * ease;
         drawWheel();
-        if (progress < 1) requestAnimationFrame(animate);
-        else finalizeSpin(rewardIdx);
+        
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            finalizeSpin(rewardIdx);
+        }
     }
     requestAnimationFrame(animate);
 }
@@ -1841,19 +1858,39 @@ onAuthStateChanged(auth, user => {
         document.getElementById('wheelGameContainer').style.display = 'flex';
         drawWheel();
         
-        // Timer Check Loop
-        setInterval(async () => {
+        // Timer Check Loop - Actualizare la fiecare secundă
+        const timerInterval = setInterval(async () => {
+            if (!auth.currentUser) {
+                clearInterval(timerInterval);
+                return;
+            }
+
             const snap = await getDoc(doc(db, "accounts", user.uid));
-            const last = snap.data().lastWheelSpin?.toDate().getTime() || 0;
+            const data = snap.data();
+            if(!data) return;
+
+            let last = 0;
+            if (data.lastWheelSpin) {
+                last = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
+            }
+
             const diff = (12 * 60 * 60 * 1000) - (Date.now() - last);
             const timerText = document.getElementById('spinTimerText');
-            if (diff <= 0) timerText.innerText = "FREE SPIN DISPONIBIL!";
-            else {
+            const spinBtn = document.getElementById('spinBtn');
+
+            if (diff <= 0) {
+                timerText.innerText = "FREE SPIN DISPONIBIL!";
+                timerText.style.color = "var(--primary)";
+                spinBtn.innerText = "ÎNVÂRTE (GRATIS)";
+            } else {
                 const h = Math.floor(diff / 3600000);
                 const m = Math.floor((diff % 3600000) / 60000);
-                timerText.innerText = `Următorul free spin în: ${h}h ${m}m`;
+                const s = Math.floor((diff % 60000) / 1000);
+                timerText.innerText = `Următorul free spin în: ${h}h ${m}m ${s}s`;
+                timerText.style.color = "var(--text-muted)";
+                spinBtn.innerText = "ÎNVÂRTE (1 DIAMOND)";
             }
-        }, 10000);
+        }, 1000);
 
     } else {
         document.getElementById('wheelLoginWall').style.display = 'flex';
