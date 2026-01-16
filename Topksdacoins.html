@@ -2645,6 +2645,25 @@ function setupLeaderboardListener() {
     });
 }
 
+
+// Global variable to store the total count
+let totalUserCount = 0;
+
+async function fetchTotalUserCount() {
+    try {
+        const coll = collection(db, "accounts");
+        const snapshot = await getCountFromServer(coll);
+        totalUserCount = snapshot.data().count();
+        
+        // Refresh the leaderboard to show the number immediately
+        renderLeaderboard(); 
+    } catch (e) {
+        console.error("Error fetching count:", e);
+    }
+}
+
+// Call this function once when the page loads
+fetchTotalUserCount();
 // --- 2. RENDER LOGIC ---
 function renderLeaderboard() {
     let members = currentLeaderboardData;
@@ -2707,7 +2726,6 @@ function renderLeaderboard() {
         if(currentMode === 'coins') return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
         if(currentMode === 'diamonds') return { val: formatNumber(m.diamonds || 0), img: 'https://iili.io/fv5bmtj.png', label: '' };
         if(currentMode === 'donated') return { val: formatNumber(m.totalCoinsDonated || 0), img: 'https://iili.io/fhc1SKQ.png', label: 'DONATED' };
-        // Just in case
         return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
     };
 
@@ -2800,11 +2818,18 @@ function renderLeaderboard() {
         topListEl.appendChild(row);
     });
 
-    // --- RESTORED: THE "SHOW MORE" BUBBLE ---
-    if(currentFilter !== 'online') { // Don't show if filtering by online
+    // --- RESTORED & UPDATED: "SHOW MORE" BUBBLE WITH MATH ---
+    if(currentFilter !== 'online') { 
+        // Calculate remaining users
+        // If totalUserCount hasn't loaded yet (0), it defaults to 0 to prevent negative numbers
+        let remaining = Math.max(0, totalUserCount - 50);
+        
         const showMoreBtn = document.createElement('div');
         showMoreBtn.className = 'show-more-bubble';
-        showMoreBtn.innerHTML = '<i class="fas fa-plus"></i> VEZI RESTUL CLASAMENTULUI (Locurile 51+)';
+        
+        // This line updates the text dynamically
+        showMoreBtn.innerHTML = `<i class="fas fa-plus"></i> VEZI CEILALȚI ${remaining} MEMBRI DIN FAMILIA KSDA`;
+        
         showMoreBtn.onclick = openAllUsersList;
         topListEl.appendChild(showMoreBtn);
     }
