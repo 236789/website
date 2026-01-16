@@ -1361,22 +1361,41 @@
     color: #004d40 !important;
 }
 
-
-/* Auto OFF (Starea default) */
+/* Base 3D Button Style */
 .btn-auto-grey {
-    background: #37474f !important;
-}
-.btn-auto-grey .btn-top {
-    background: #546e7a !important;
+    background: #37474f; /* Bottom shadow */
+    border-radius: 12px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: transform 0.1s;
 }
 
-/* Auto ON (Verde) */
-.btn-auto-active {
-    background: #1b5e20 !important; /* Umbra verde închis */
+.btn-auto-grey .btn-top {
+    display: block;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 900;
+    background: #546e7a; /* Default Gray Top */
+    color: white;
+    transform: translateY(-6px);
+    transition: transform 0.1s, background 0.3s;
 }
+
+/* THE GREEN STATE - THIS WILL WORK */
+.btn-auto-active {
+    background: #1b5e20 !important; /* Dark Green shadow */
+}
+
 .btn-auto-active .btn-top {
-    background: #00e676 !important; /* Suprafața verde aprins */
-    color: #000 !important;
+    background: #00e676 !important; /* Bright Green surface */
+    color: #003300 !important;
+}
+
+/* Pressed Effect */
+.btn-auto-grey:active .btn-top {
+    transform: translateY(-2px);
 }
   </style>
 </head>
@@ -1925,19 +1944,20 @@ document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
 document.getElementById('paidSpinBtn').onclick = () => attemptSpin(false);
 
 document.getElementById('autoSpinBtn').onclick = () => {
-    if (isSpinning) return; // Nu lăsăm toggle în timpul învârtirii
-    
+    if (isSpinning) return; 
+
     autoSpinActive = !autoSpinActive;
     const btn = document.getElementById('autoSpinBtn');
-    const txt = document.getElementById('autoText');
+    const icon = autoSpinActive ? 'fa-pause' : 'fa-play';
+    const text = autoSpinActive ? 'AUTO: ON' : 'AUTO: OFF';
 
-    if(autoSpinActive) {
+    if (autoSpinActive) {
         btn.classList.add('btn-auto-active');
-        txt.innerHTML = '<i class="fas fa-pause"></i> AUTO: ON';
-        attemptSpin(false); // Începe automat cu diamante
+        document.getElementById('autoText').innerHTML = `<i class="fas ${icon}"></i> ${text}`;
+        attemptSpin(false); // Start first paid spin
     } else {
         btn.classList.remove('btn-auto-active');
-        txt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
+        document.getElementById('autoText').innerHTML = `<i class="fas ${icon}"></i> ${text}`;
     }
 };
 // Request animation frame to make bulbs blink
@@ -1958,44 +1978,46 @@ function pickRewardIndex() {
     return 0;
 }
 
+// --- PRO PHYSICS ENGINE ---
 async function startSpin() {
     if (isSpinning) return;
     isSpinning = true;
 
-    const rewardIdx = pickRewardIndex(); // Alegem premiul
+    // 1. Pick the reward FIRST so the math is based on the result
+    const rewardIdx = pickRewardIndex();
+    const reward = REWARDS[rewardIdx];
+
+    // 2. MATH CALIBRATION (Pointer is at 270 degrees / Top)
+    const sliceWidth = 360 / 12; // 30 degrees
+    const sliceCenter = sliceWidth / 2;
     
-    // MATEMATICĂ FIXĂ:
-    // 12 segmente = 30 grade per segment.
-    // Pointer-ul este sus (270 grade în sistemul Canvas).
-    // Segmentul 0 începe de la 0 grade.
-    // Pentru a aduce segmentul X sub pointer: 270 - (X * 30) - 15 (pentru a fi pe mijloc)
-    const segmentDeg = 360 / 12;
-    const offset = 270 - (rewardIdx * segmentDeg) - (segmentDeg / 2);
+    // To land slice X on top (270deg): 
+    // We need to rotate: 270 - (X * 30) - 15
+    const targetPos = 270 - (rewardIdx * sliceWidth) - sliceCenter;
     
-    // Adăugăm minim 8 rotații complete pentru viteză
-    const extraSpins = 360 * 10; 
-    const finalTargetRotation = extraSpins + offset;
+    // Total spin: many full circles + the specific target position
+    const totalRotationDegrees = (360 * 10) + targetPos; 
     
     const startTime = performance.now();
-    const duration = 5000; // 5 secunde de animație fluidă
-    const startRot = rotation % (Math.PI * 2);
+    const duration = 5000; // Smooth 5 second spin
+    const startRotationDegrees = (rotation * 180 / Math.PI) % 360;
 
-    function animate(time) {
-        let elapsed = time - startTime;
+    function animate(currentTime) {
+        let elapsed = currentTime - startTime;
         let progress = Math.min(elapsed / duration, 1);
         
-        // Efect de încetinire realist (Cubic Out)
+        // Custom Easing: Cubic Out (Fast start, slow finish)
         let ease = 1 - Math.pow(1 - progress, 3);
         
-        // Convertim gradele în radiani pentru Canvas
-        let currentRotationDegrees = startRot * (180 / Math.PI) + (finalTargetRotation * ease);
-        rotation = currentRotationDegrees * (Math.PI / 180);
+        let currentDeg = startRotationDegrees + (totalRotationDegrees * ease);
+        rotation = currentDeg * (Math.PI / 180);
         
         drawWheel();
-        
+
         if (progress < 1) {
             requestAnimationFrame(animate);
         } else {
+            // GUARANTEED SYNC: The reward we picked at the start is given here
             finalizeSpin(rewardIdx);
         }
     }
@@ -2007,32 +2029,26 @@ async function finalizeSpin(idx) {
     const reward = REWARDS[idx];
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     
-    // Salvăm în baza de date
+    // Add reward to database
     await updateDoc(userRef, { [reward.type]: increment(reward.val) });
     
-    // AFIȘARE MODAL RECOMPENSĂ (Folosim questRewardModal existent)
+    // Show Payout Modal
     const modal = document.getElementById('questRewardModal');
     if (modal) {
-        // Căutăm elementele în mod sigur
-        const title = modal.querySelector('h2');
-        const desc = modal.querySelector('p');
-        const valSpan = modal.querySelector('.reward-coins-box span');
-        const img = modal.querySelector('.reward-coins-box img');
-
-        if(title) title.innerHTML = "🎉 RECOMPENSĂ!";
-        if(desc) desc.innerText = `Ai câștigat ${reward.label} ${reward.type === 'coins' ? 'KSDA Coins' : 'Diamonds'}!`;
-        if(valSpan) valSpan.innerText = reward.val;
-        if(img) img.src = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
-        
+        modal.querySelector('h2').innerHTML = "🎉 PREMIU!";
+        modal.querySelector('p').innerText = `Ai câștigat ${reward.label} ${reward.type === 'coins' ? 'Coins' : 'Diamonds'}!`;
+        modal.querySelector('.reward-coins-box span').innerText = reward.val;
+        modal.querySelector('.reward-coins-box img').src = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
         modal.classList.add('active');
     }
 
-    // Logică pentru Auto-Spin
+    // Auto Spin Logic
     if (autoSpinActive) {
         setTimeout(() => {
-            if (modal) modal.classList.remove('active');
-            attemptSpin(false); // Continuă cu spin plătit
-        }, 2500);
+            modal.classList.remove('active');
+            // Check if user still has diamonds before next auto-spin
+            attemptSpin(false); 
+        }, 2000);
     }
 }
 
@@ -2041,19 +2057,18 @@ window.toggleRewardsModal = (show) => {
     const list = document.getElementById('rewardsList');
     const modal = document.getElementById('rewardsInfoModal');
     
-    // Generăm lista cu iconițe
+    // Inject with site colors and images
     list.innerHTML = REWARDS.map(r => `
-        <div style="display:flex; align-items:center; justify-content:space-between; background: rgba(255,255,255,0.03); margin-bottom:8px; padding:12px; border-radius:12px; border:1px solid rgba(41,243,255,0.1);">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <img src="${r.type === 'coins' ? 'https://iili.io/fhc1SKQ.png' : 'https://iili.io/fv5bmtj.png'}" width="25">
-                <span style="font-family:'Orbitron'; font-weight:700;">${r.label}</span>
+        <div style="display:flex; align-items:center; justify-content:space-between; background: rgba(5, 11, 20, 0.6); margin-bottom:8px; padding:15px; border-radius:15px; border: 1px solid var(--primary-dim);">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <img src="${r.type === 'coins' ? 'https://iili.io/fhc1SKQ.png' : 'https://iili.io/fv5bmtj.png'}" width="30">
+                <span style="font-family:'Orbitron'; font-weight:800; color:#fff; font-size:16px;">${r.label}</span>
             </div>
-            <span style="color:var(--primary); font-family:'Orbitron'; font-size:12px;">${r.chance}%</span>
+            <span style="color:var(--primary); font-family:'Orbitron'; font-weight:900;">${r.chance}%</span>
         </div>
     `).join('');
 
-    if(show) modal.classList.add('active');
-    else modal.classList.remove('active');
+    modal.classList.toggle('active', show);
 };
 
 // --- AUTH UI SYNC ---
