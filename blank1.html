@@ -1833,7 +1833,7 @@ function drawWheel() {
         const bulbAngle = (i / 24) * Math.PI * 2;
         ctx.beginPath();
         ctx.arc(250 + 238 * Math.cos(bulbAngle), 250 + 238 * Math.sin(bulbAngle), 5, 0, Math.PI * 2);
-        ctx.fillStyle = (Math.floor(Date.now() / 500) % 2 == i % 2) ? "#fff" : "#444";
+        ctx.fillStyle = (Math.floor(Date.now() / 500) % 2 == i % 2) ? "#fff" : "#666";
         ctx.fill();
     }
 
@@ -1845,30 +1845,34 @@ function drawWheel() {
         ctx.arc(250, 250, 230, angle, angle + arc);
         ctx.fillStyle = rew.color;
         ctx.fill();
-        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.strokeStyle = "rgba(0,0,0,0.1)";
         ctx.stroke();
 
-        // Add Text and Icons
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(angle + arc / 2);
+        
+        // --- FIXED OVERLAP LOGIC ---
+        // Text is moved further out (210)
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 18px Orbitron";
+        ctx.font = "900 16px Orbitron";
         ctx.textAlign = "right";
-        ctx.fillText(rew.label, 200, 10);
+        ctx.fillText(rew.label, 210, 8); 
+        
+        // Icon is moved further in (140) to avoid text
         if (rew.icon.complete) {
-            ctx.drawImage(rew.icon, 150, -15, 25, 25);
+            ctx.drawImage(rew.icon, 130, -12, 24, 24);
         }
         ctx.restore();
     });
 
     // 3. Center Cap
     ctx.beginPath();
-    ctx.arc(250, 250, 40, 0, Math.PI * 2);
+    ctx.arc(250, 250, 45, 0, Math.PI * 2);
     ctx.fillStyle = "#08101b";
     ctx.fill();
     ctx.strokeStyle = "#29f3ff";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.stroke();
 }
 
@@ -1977,12 +1981,12 @@ document.getElementById('autoSpinBtn').onclick = () => {
     const autoTxt = document.getElementById('autoText');
 
     if (autoSpinActive) {
-        // Add the class that matches your CSS
+        // FORCING THE CLASS
         btn.classList.add('btn-auto-active'); 
         autoTxt.innerHTML = '<i class="fas fa-pause"></i> AUTO: ON';
+        // Start first paid spin automatically
         attemptSpin(false); 
     } else {
-        // Remove the class
         btn.classList.remove('btn-auto-active');
         autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
     }
@@ -2058,20 +2062,25 @@ window.toggleRewardsModal = (show) => {
 // --- AUTH UI SYNC ---
 onAuthStateChanged(auth, user => {
     if (user) {
-        document.getElementById('wheelLoginWall').style.display = 'none';
-        document.getElementById('wheelGameContainer').style.display = 'flex';
+        // Safe UI display toggle
+        const wheelWall = document.getElementById('wheelLoginWall');
+        const wheelGame = document.getElementById('wheelGameContainer');
+        if (wheelWall) wheelWall.style.display = 'none';
+        if (wheelGame) wheelGame.style.display = 'flex';
+
         drawWheel();
         
-        // Timer Check Loop - Actualizare la fiecare secundă
+        // Timer Check Loop - Optimized for the 3D buttons
         const timerInterval = setInterval(async () => {
             if (!auth.currentUser) {
                 clearInterval(timerInterval);
                 return;
             }
 
-            const snap = await getDoc(doc(db, "accounts", user.uid));
+            const userRef = doc(db, "accounts", auth.currentUser.uid);
+            const snap = await getDoc(userRef);
             const data = snap.data();
-            if(!data) return;
+            if (!data) return;
 
             let last = 0;
             if (data.lastWheelSpin) {
@@ -2079,28 +2088,52 @@ onAuthStateChanged(auth, user => {
             }
 
             const diff = (12 * 60 * 60 * 1000) - (Date.now() - last);
-            const timerText = document.getElementById('spinTimerText');
-            const spinBtn = document.getElementById('spinBtn');
+            
+            // Reference the correct Button IDs from your HTML
+            const freeBtn = document.getElementById('freeSpinBtn');
+            const timerTextLabel = document.getElementById('spinTimerText');
 
-            if (diff <= 0) {
-                timerText.innerText = "FREE SPIN DISPONIBIL!";
-                timerText.style.color = "var(--primary)";
-                spinBtn.innerText = "ÎNVÂRTE (GRATIS)";
-            } else {
-                const h = Math.floor(diff / 3600000);
-                const m = Math.floor((diff % 3600000) / 60000);
-                const s = Math.floor((diff % 60000) / 1000);
-                timerText.innerText = `Următorul free spin în: ${h}h ${m}m ${s}s`;
-                timerText.style.color = "var(--text-muted)";
-                spinBtn.innerText = "ÎNVÂRTE (1 DIAMOND)";
+            if (freeBtn) {
+                const btnTop = freeBtn.querySelector('.btn-top');
+                
+                if (diff <= 0) {
+                    // --- AVAILABLE STATE ---
+                    if (btnTop) btnTop.innerText = "FREE SPIN";
+                    if (timerTextLabel) {
+                        timerTextLabel.innerText = "FREE SPIN DISPONIBIL!";
+                        timerTextLabel.style.color = "var(--primary)";
+                    }
+                    freeBtn.style.pointerEvents = "auto"; // Clickable
+                    freeBtn.style.opacity = "1";
+                    freeBtn.style.filter = "none";
+                } else {
+                    // --- COOLDOWN STATE ---
+                    const h = Math.floor(diff / 3600000);
+                    const m = Math.floor((diff % 3600000) / 60000);
+                    const s = Math.floor((diff % 60000) / 1000);
+                    
+                    // Put timer inside the button surface
+                    if (btnTop) btnTop.innerText = `${h}h ${m}m ${s}s`;
+                    
+                    if (timerTextLabel) {
+                        timerTextLabel.innerText = `Reîncărcare: ${h}h ${m}m ${s}s`;
+                        timerTextLabel.style.color = "var(--text-muted)";
+                    }
+                    
+                    freeBtn.style.pointerEvents = "none"; // NOT clickable
+                    freeBtn.style.opacity = "0.7";
+                    freeBtn.style.filter = "grayscale(0.8)";
+                }
             }
         }, 1000);
 
     } else {
-        document.getElementById('wheelLoginWall').style.display = 'flex';
-        document.getElementById('wheelGameContainer').style.display = 'none';
+        const wheelWall = document.getElementById('wheelLoginWall');
+        const wheelGame = document.getElementById('wheelGameContainer');
+        if (wheelWall) wheelWall.style.display = 'flex';
+        if (wheelGame) wheelGame.style.display = 'none';
     }
-}); 
+});
 
 document.getElementById('autoSpinBtn').onclick = () => {
     autoSpinActive = !autoSpinActive;
