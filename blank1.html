@@ -1394,26 +1394,31 @@
     100% { transform: translateX(150%) skewX(-25deg); }
 }
 
-/* THE ULTIMATE ELITE BANNER - GLASS + METALLIC GOLD */
+/* THE SICKEST JACKPOT BANNER - MATCHING INVENTORY STYLE */
 .bubble-jackpot {
-    position: relative;
-    overflow: hidden;
     background: linear-gradient(135deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
-    border: 2px solid #fff !important;
-    border-radius: 12px !important;
-    padding: 12px 35px !important;
+    background-size: 200% auto !important;
+    animation: goldShine 3s linear infinite !important;
+    
+    /* Matching your other banners' shape */
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-radius: 12px !important; 
+    
+    /* Glow effect */
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5), inset 0 0 10px rgba(255,255,255,0.2) !important;
+    
     color: #1a1a1a !important;
     font-family: 'Orbitron', sans-serif !important;
     font-weight: 900 !important;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    box-shadow: 
-        0 0 25px rgba(255, 215, 0, 0.7),
-        inset 0 0 10px rgba(255, 255, 255, 0.8),
-        inset -5px 0 10px rgba(255, 0, 0, 0.3),    /* Ruby Sparkle */
-        inset 5px 0 10px rgba(0, 255, 136, 0.3) !important; /* Emerald Sparkle */
-    text-shadow: 0 1px 0px rgba(255,255,255,0.8);
-    display: inline-block;
+    
+    /* Centering the "PREVIEW" text */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 55px; /* Matches standard banner height */
+    text-shadow: 0 1px 0px rgba(255,255,255,0.5);
 }
 
 /* THE MOVING LIGHT REFLECTION */
@@ -1885,11 +1890,10 @@ function drawWheel() {
     const arc = (2 * Math.PI) / 12;
     ctx.clearRect(0, 0, 500, 500);
 
-    // 1. High-End Outer Rim
+    // 1. Outer Frame & Bulbs
     ctx.beginPath(); ctx.arc(250, 250, 246, 0, Math.PI * 2); ctx.fillStyle = "#111"; ctx.fill();
     ctx.beginPath(); ctx.arc(250, 250, 240, 0, Math.PI * 2); ctx.fillStyle = "#fbc02d"; ctx.fill();
 
-    // Bulbs logic (rim lights)
     for (let i = 0; i < 24; i++) {
         const bulbAngle = (i / 24) * Math.PI * 2;
         const isOn = (Math.floor(Date.now() / 500) % 2 == i % 2);
@@ -1898,63 +1902,74 @@ function drawWheel() {
     }
 
     REWARDS.forEach((rew, i) => {
-        const angle = i * arc + rotation;
-        ctx.save();
-        ctx.beginPath(); ctx.moveTo(250, 250); ctx.arc(250, 250, 230, angle, angle + arc);
+        const sliceAngle = i * arc + rotation;
         
-        // --- PREMIUM METALLIC GRADIENTS ---
+        // --- DRAW SLICE ---
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(250, 250);
+        ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
+        
         if (rew.type === "badge") { 
             let pGrad = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
-            pGrad.addColorStop(0, "#fff"); pGrad.addColorStop(1, "#999"); 
-            ctx.fillStyle = pGrad;
+            pGrad.addColorStop(0, "#fff"); pGrad.addColorStop(1, "#999"); ctx.fillStyle = pGrad;
         } else if (rew.type === "banner") {
             let gGrad = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
-            gGrad.addColorStop(0, "#ffd700"); gGrad.addColorStop(1, "#8a6e2f"); 
-            ctx.fillStyle = gGrad;
+            gGrad.addColorStop(0, "#ffd700"); gGrad.addColorStop(1, "#8a6e2f"); ctx.fillStyle = gGrad;
         } else {
             ctx.fillStyle = rew.color;
         }
 
-        // Jackpot Stroke Effect
         if (rew.jackpot) {
-            ctx.shadowBlur = 20; ctx.shadowColor = "#fff"; 
-            ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
-        } else {
-            ctx.strokeStyle = "rgba(0,0,0,0.15)"; ctx.lineWidth = 1; ctx.stroke();
+            ctx.shadowBlur = 20; ctx.shadowColor = "#fff"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke();
         }
         ctx.fill();
         ctx.restore();
 
-        // --- TEXT CONTENT (NO ICONS) ---
+        // --- DRAW CONTENT (SMART ROTATION) ---
         ctx.save();
         ctx.translate(250, 250);
-        ctx.rotate(angle + arc / 2);
         
-        // Contrast check: black text on white slices, white text on colored slices
-        ctx.fillStyle = (rew.type === "badge") ? "#000" : "#fff";
-        ctx.shadowBlur = rew.jackpot ? 10 : 4; 
-        ctx.shadowColor = (rew.type === "badge") ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)";
+        // Calculate mid-angle of the slice for positioning content
+        const midAngle = sliceAngle + arc / 2;
+        ctx.rotate(midAngle);
+        
+        // Determine if we are in the "bottom" half of the wheel to flip text
+        // This ensures text is always "right way up"
+        const cleanAngle = (midAngle % (Math.PI * 2));
+        const shouldFlip = (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
 
-        // Handle text scaling for "EXCLUSIVE" items
-        const isLong = rew.label.length > 8;
-        ctx.font = isLong ? "900 11px Orbitron" : "900 18px Orbitron";
-        ctx.textAlign = "right";
-        
-        // Positioned closer to the outer rim to look balanced
-        ctx.fillText(rew.label, 215, 8); 
+        // 1. Draw Text
+        ctx.save();
+        // Move to text position
+        ctx.translate(180, 0); 
+        if (shouldFlip) ctx.rotate(Math.PI); // Flip 180 degrees
+
+        ctx.fillStyle = (rew.type === "badge") ? "#000" : "#fff";
+        ctx.font = rew.label.length > 8 ? "900 11px Orbitron" : "900 18px Orbitron";
+        ctx.textAlign = "center";
+        ctx.fillText(rew.label, 0, 5);
+        ctx.restore();
+
+        // 2. Draw Icons (Coins / Diamonds)
+        if (rew.type === "coins" || rew.type === "diamonds") {
+            const img = (rew.type === "coins") ? coinImg : diamImg;
+            if (img.complete) {
+                ctx.save();
+                ctx.translate(120, 0); // Position icon closer to center
+                if (shouldFlip) ctx.rotate(Math.PI);
+                ctx.drawImage(img, -12, -12, 24, 24);
+                ctx.restore();
+            }
+        }
         
         ctx.restore();
     });
 
-    // 3. Center Cap (The Hub)
+    // 3. Center Hub
     ctx.beginPath(); ctx.arc(250, 250, 48, 0, Math.PI * 2); ctx.fillStyle = "#050b14"; ctx.fill();
     ctx.strokeStyle = "#29f3ff"; ctx.lineWidth = 4; ctx.stroke();
-
-    // Decorative center star
-    ctx.fillStyle = "#29f3ff";
-    ctx.font = "24px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#29f3ff"; ctx.font = "24px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("★", 250, 253);
 }
 
@@ -2134,17 +2149,26 @@ window.toggleRewardsModal = (show) => {
     const list = document.getElementById('rewardsList');
     const modal = document.getElementById('rewardsInfoModal');
     
+    if (!list || !modal) return;
+
     list.innerHTML = REWARDS.map(r => {
         let visual = "";
-        if (r.type === "coins") visual = `<img src="https://iili.io/fhc1SKQ.png" width="28"> <span style="color:#fff; font-weight:900;">${r.label}</span>`;
-        else if (r.type === "diamonds") visual = `<img src="https://iili.io/fv5bmtj.png" width="28"> <span style="color:#00ffcc; font-weight:900;">${r.label}</span>`;
-        else if (r.type === "badge") visual = `<span class="shop-badge-preview" style="background:linear-gradient(to right, #fff, #ffd700); color:#000; border:none; padding:5px 15px; border-radius:50px; font-size:10px;">👑 WHEEL GOD</span>`;
-        else if (r.type === "banner") visual = `<span class="bubble-jackpot" style="font-size:9px; padding:5px 10px !important;">ULTRA TREASURE</span>`;
+        if (r.type === "coins") {
+            visual = `<img src="https://iili.io/fhc1SKQ.png" width="28"> <span style="color:#fff; font-weight:900; font-size:16px;">${r.label}</span>`;
+        } else if (r.type === "diamonds") {
+            visual = `<img src="https://iili.io/fv5bmtj.png" width="28"> <span style="color:#00ffcc; font-weight:900; font-size:16px;">${r.label}</span>`;
+        } else if (r.type === "badge") {
+            // Premium Gold Badge Visual
+            visual = `<span class="shop-badge-preview" style="background:linear-gradient(45deg, #fff, #ffd700); color:#000; padding:8px 15px; border-radius:50px; font-size:11px; font-weight:900; box-shadow: 0 0 15px rgba(255,215,0,0.4);">👑 EXCLUSIVE BADGE</span>`;
+        } else if (r.type === "banner") {
+            // Matches Inventory Banner Shape exactly
+            visual = `<div class="bubble-jackpot" style="height:38px; width:170px; font-size:10px; padding:0 15px !important; border-radius:12px !important; box-shadow: 0 0 15px rgba(255,215,0,0.3) !important;">EXCLUSIVE BANNER</div>`;
+        }
 
         return `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:15px; margin-bottom:10px; border-radius:12px; border: 1px solid rgba(255,255,255,0.05); box-shadow: ${r.jackpot ? '0 0 10px rgba(255,215,0,0.2)' : 'none'};">
-                <div style="display:flex; align-items:center; gap:15px;">${visual}</div>
-                <div style="font-family:'Orbitron'; font-size:12px; color:var(--primary); font-weight:900;">${r.chance}%</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.04); padding:15px; margin-bottom:10px; border-radius:16px; border: 1px solid rgba(255,255,255,0.08); box-shadow: ${r.jackpot ? '0 0 20px rgba(255,215,0,0.1)' : 'none'}; transition: transform 0.2s;">
+                <div style="display:flex; align-items:center; gap:15px; flex: 1;">${visual}</div>
+                <div style="font-family:'Orbitron'; font-size:13px; color:var(--primary); font-weight:900; min-width: 55px; text-align: right; text-shadow: 0 0 5px var(--primary-dim);">${r.chance}%</div>
             </div>
         `;
     }).join('');
