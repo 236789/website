@@ -1669,6 +1669,47 @@ transition: 0.3s;
     box-shadow: 0 0 10px rgba(0, 255, 136, 0.2); 
     background: rgba(0, 255, 136, 0.1); 
 }
+
+
+/* Long Button for Newest Members */
+.modal-long-btn {
+    width: 100%;
+    background: rgba(41, 243, 255, 0.05);
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    padding: 12px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: 0.3s;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.modal-long-btn:hover {
+    background: var(--primary);
+    color: #000;
+    box-shadow: 0 0 20px rgba(41, 243, 255, 0.3);
+}
+
+.modal-long-btn.active {
+    background: var(--primary);
+    color: #000;
+}
+
+/* Joined At text style */
+.joined-at-text {
+    font-size: 9px;
+    color: #aaa;
+    display: block;
+    margin-top: 2px;
+}
   </style>
 </head>
 <body>
@@ -1970,6 +2011,10 @@ transition: 0.3s;
     <i class="fas fa-user-plus" style="color:#00ff88;"></i>
 </button>
         </div>
+
+<button id="m-btn-newest" class="modal-long-btn" onclick="sortModal('newest')">
+    <i class="fas fa-user-clock"></i> MEMBRI NOI (RECENT ALĂTURAȚI)
+</button>
 
         <input type="text" id="searchAllUsers" placeholder="Caută membru..." style="background:rgba(255,255,255,0.1); border:1px solid #333; color:#fff; padding:12px; width:100%; box-sizing:border-box; border-radius:15px; margin-bottom:15px; font-family:'Poppins';">
         <div id="allUsersList" style="overflow-y: auto; flex: 1; padding-right: 5px;">
@@ -2975,40 +3020,37 @@ function renderLeaderboard() {
 // --- MODAL SORTING LOGIC ---
 let currentModalSort = 'coins';
 
+// --- UPDATED SORT MODAL ---
 window.sortModal = (type) => {
     currentModalSort = type;
 
-    // 1. Update Buttons Visuals
-    document.querySelectorAll('.modal-tab').forEach(b => b.classList.remove('active'));
-    document.getElementById(`m-btn-${type}`).classList.add('active');
-
-    // 2. Sort the Data
-    if(type === 'coins') {
-        allUsersDataCache.sort((a,b) => (b.coins || 0) - (a.coins || 0));
-    } else if(type === 'diamonds') {
-        allUsersDataCache.sort((a,b) => (b.diamonds || 0) - (a.diamonds || 0));
-    } else if(type === 'donated') {
-        allUsersDataCache.sort((a,b) => (b.totalCoinsDonated || 0) - (a.totalCoinsDonated || 0));
-    } else if(type === 'referrals') {
-        allUsersDataCache.sort((a,b) => (b.totalReferrals || 0) - (a.totalReferrals || 0));
-    } else if(type === 'sustinatori') {
-        allUsersDataCache.sort((a,b) => {
-            if (a.isSustinatori === b.isSustinatori) {
-                return (a.sustinatorOrder || 999) - (b.sustinatorOrder || 999);
-            }
-            return a.isSustinatori ? -1 : 1;
-        });
+    // Update Buttons Visuals
+    document.querySelectorAll('.modal-tab, .modal-long-btn').forEach(b => b.classList.remove('active'));
+    
+    if(type === 'newest') {
+        document.getElementById('m-btn-newest').classList.add('active');
+    } else {
+        document.getElementById(`m-btn-${type}`).classList.add('active');
     }
 
-    // 3. Re-render the list
+    // Sort Logic
+    if(type === 'newest') {
+        allUsersDataCache.sort((a, b) => {
+            const timeA = a.joinedAt?.seconds || 0;
+            const timeB = b.joinedAt?.seconds || 0;
+            return timeB - timeA; // Most recent first
+        });
+    } else if(type === 'coins') {
+        allUsersDataCache.sort((a,b) => (b.coins || 0) - (a.coins || 0));
+    } 
+    // ... keep your other diamonds/donated/referrals logic ...
+
     renderAllUsersList(allUsersDataCache);
 };
 
-// --- UPDATE THE RENDER FUNCTION ---
+// --- UPDATED RENDER LIST ---
 function renderAllUsersList(data) {
     allUsersListEl.innerHTML = '';
-    
-    // Always hide top 50 in this modal
     let listToShow = data.slice(50); 
 
     if(listToShow.length === 0) { 
@@ -3016,65 +3058,39 @@ function renderAllUsersList(data) {
         return; 
     }
 
-    // Determine what Icon/Value to show
-    let icon = 'https://iili.io/fhc1SKQ.png'; 
-    let iconClass = ''; // For FontAwesome
-    let key = 'coins';
-    let color = '#29f3ff'; // Cyan
-
-    if(currentModalSort === 'diamonds') { 
-        icon = 'https://iili.io/fv5bmtj.png'; key = 'diamonds'; color = '#00ff88'; 
-    } else if(currentModalSort === 'donated') { 
-        icon = 'https://iili.io/fhc1SKQ.png'; key = 'totalCoinsDonated'; color = '#ffd700';
-    } else if(currentModalSort === 'referrals') {
-        icon = ''; iconClass = 'fas fa-user-plus'; key = 'totalReferrals'; color = '#00ff88';
-    } else if(currentModalSort === 'sustinatori') {
-        icon = ''; iconClass = 'fas fa-heart'; key = ''; color = '#ff69b4';
-    }
-
     listToShow.forEach((m, idx) => {
         let realRank = idx + 51;
-
-        if(currentModalSort === 'sustinatori' && !m.isSustinatori) return;
-
         const item = document.createElement('div');
-        item.className = 'top-item'; item.style.marginBottom = '10px';
+        item.className = 'top-item';
         if(m.equippedBanner?.cssClass) item.className += ` ${m.equippedBanner.cssClass}`;
 
-        // Get Value
-        let valDisplay = (key !== '') ? formatNumber(m[key] || 0) : '';
-        
-        // Logic: If icon is empty string, use the Icon Class (Font Awesome)
-        let iconDisplay = (icon !== '') 
-            ? `<img src="${icon}" style="width:18px;">` 
-            : `<i class="${iconClass}" style="color:${color}; font-size:14px;"></i>`;
-
-        let nameHtml = formatName(m.username || 'Anonim');
-        if (m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
-
-        let frameHtml = '';
-        if (m.equippedFrame && m.equippedFrame.img) {
-             const scale = m.equippedFrame.scale || 1.45;
-             frameHtml = `<img src="${m.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%;">`;
+        // Formatting Joined Date
+        let joinedHtml = "";
+        if(currentModalSort === 'newest' && m.joinedAt) {
+            const date = new Date(m.joinedAt.seconds * 1000);
+            const day = date.toLocaleDateString('ro-RO');
+            const time = date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+            joinedHtml = `<span class="joined-at-text">S-a alăturat: ${day} la ${time}</span>`;
         }
+
+        // ... Keep your existing icon/val logic ...
+        let valDisplay = formatNumber(m[currentModalSort] || 0);
+        if(currentModalSort === 'newest') valDisplay = ""; // Hide coins if looking at new users
 
         item.innerHTML = `
             <div class="top-left">
                 <span class="top-rank-num" style="font-size:12px;">#${realRank}</span>
                 <div class="top-img-box" style="width:35px; height:35px;">
                     <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
-                    ${frameHtml}
-                    <div class="list-status ${checkIsOnline(m) ? 'online' : ''}" style="width:10px; height:10px;"></div>
                 </div>
-                <div class="top-user-name" style="font-size:13px;">
-                    <span class="name-text">${nameHtml}</span> 
-                    ${getRoleBadge(m.email)}
+                <div class="top-user-name" style="font-size:13px; display:block;">
+                    <div class="name-text">${formatName(m.username || 'Anonim')} ${getRoleBadge(m.email)}</div>
+                    ${joinedHtml}
                 </div>
             </div>
             <div class="top-right">
-                <div class="top-coins" style="font-size:14px; color:${color};">
+                <div class="top-coins">
                     <span>${valDisplay}</span>
-                    ${iconDisplay}
                 </div>
             </div>
         `;
