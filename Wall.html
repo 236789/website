@@ -4266,7 +4266,7 @@ function loadMessages() {
     
     unsubscribe = onSnapshot(q, snapshot => {
         const feed = messagesFeed;
-        // INCREASED threshold to 200 for better detection
+        // Prag de 200px pentru a detecta dacă userul este la fundul chatului
         const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 200);
 
         const docs = [];
@@ -4293,6 +4293,9 @@ function loadMessages() {
             let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
             let bubbleContent = "";
             let bubbleClass = 'msg-bubble';
+
+            // Extragem stilul de text echipat (dacă există)
+            const textStyleClass = (data.equippedText && data.equippedText.cssClass) ? data.equippedText.cssClass : "";
 
             // --- A. POLL MESSAGE ---
             if (data.type === 'poll') {
@@ -4340,10 +4343,15 @@ function loadMessages() {
                 if(data.image) {
                     bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
                 }
+                
                 let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
+                
                 if(safeText) {
-                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
+                    // APLICĂM STILUL DE TEXT PE CONȚINUTUL MESAJULUI
+                    let styledText = textStyleClass ? `<span class="${textStyleClass}">${linkify(safeText)}</span>` : linkify(safeText);
+                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${styledText}</div>` : styledText);
                 }
+
                 if(data.equippedBanner && data.equippedBanner.cssClass) {
                     bubbleClass += ` ${data.equippedBanner.cssClass}`;
                 } else {
@@ -4358,9 +4366,12 @@ function loadMessages() {
             // --- BUILD NAMES & BADGES ---
             let authorNameText = data.name;
             if(isBot) authorNameText = `🤖 ${data.name}`;
-            if (data.equippedText && data.equippedText.cssClass) {
-                authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
+            
+            // APLICĂM STILUL DE TEXT PE NUME
+            if (textStyleClass) {
+                authorNameText = `<span class="${textStyleClass}">${data.name}</span>`;
             }
+
             let staffHtml = "";
             if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
             else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
@@ -4370,7 +4381,7 @@ function loadMessages() {
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
             let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
-            // --- REACTIONS (Visible below bubble) ---
+            // --- REACTIONS ---
             let reactionsHtml = "";
             if(data.reactions) {
                 const counts = {};
@@ -4394,18 +4405,18 @@ function loadMessages() {
             let menuHtml = `
                 <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                 <div id="menu-${msgId}" class="options-dropdown">
-                    <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                    <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
                     <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                     <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                     
-                    <!-- NEW: PIN OPTION (Only for staff) -->
-${(isOwner || isAdmin || isMod || isHelper) ? `
-    <button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>
-    ${data.isPinned ? `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-times"></i> Despinge</button>` : ''}
-` : ''}
+                    ${(isOwner || isAdmin || isMod || isHelper) ? `
+                        <button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>
+                        ${data.isPinned ? `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-times"></i> Despinge</button>` : ''}
+                    ` : ''}
+
                     ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
-                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name.replace(/'/g, "\\'")}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name.replace(/'/g, "\\'")}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
                     
                     <div id="emojis-${msgId}" class="emoji-picker-menu">
                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
@@ -4452,11 +4463,10 @@ ${(isOwner || isAdmin || isMod || isHelper) ? `
             seenObserver.observe(wrapper);
         });
         
-        // --- NEW SCROLL FIX LOGIC ---
+        // --- SCROLL FIX ---
         const lastMsgInDocs = docs[docs.length - 1];
         const isMyNewMsg = lastMsgInDocs && lastMsgInDocs.uid === currentUid;
 
-        // Auto-scroll ONLY if user was already at bottom or if they sent the message
         if (wasAtBottom || isMyNewMsg) {
             feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
         }
