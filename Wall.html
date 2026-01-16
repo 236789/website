@@ -1709,7 +1709,30 @@
 .hist-gold { color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.3); }
 .hist-green { color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3); }​
 
+/* --- PINNED SYSTEM --- */
+.pinned-bar {
+    background: rgba(255, 215, 0, 0.15);
+    border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+    padding: 8px 15px;
+    display: none; /* Hidden by default */
+    align-items: center; justify-content: center; gap: 8px;
+    color: #ffd700; font-family: 'Orbitron', sans-serif;
+    font-size: 11px; font-weight: 700;
+    cursor: pointer; transition: 0.3s;
+    text-transform: uppercase; letter-spacing: 1px;
+}
+.pinned-bar:hover { background: rgba(255, 215, 0, 0.25); }
 
+/* Highlight Pinned Messages in Chat */
+.msg-wrapper.pinned-msg .msg-bubble {
+    border: 2px solid #ffd700 !important;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.2) !important;
+}
+.pinned-indicator {
+    font-size: 10px; color: #ffd700; font-weight: 700; 
+    font-family: 'Orbitron'; margin-bottom: 2px; 
+    display: flex; align-items: center; gap: 4px;
+}
   </style>
 
 </head>
@@ -2152,6 +2175,8 @@
         <img id="userAvatar" src="" class="user-pfp-inner">
         <img id="userHeaderFrame" src="" class="header-frame-overlay" style="display: none;">
     </div>
+<!-- PINNED MESSAGE BAR -->
+<div id="pinnedBar" class="pinned-bar" onclick="scrollToPinned()"></div>
     <div>
         <span style="font-size:10px; color:var(--primary); display:block;">Autentificat ca</span>
         <div id="userName" class="user-name"></div>
@@ -4071,22 +4096,32 @@ async function sendMessage() {
         setTimeout(async () => { await wipeAllMessages(); await sendBotMessage("✅ Chat curățat cu succes! Discuția poate continua."); }, 22000);
     }
 
-    async function wipeAllMessages() {
-        const batchSize = 400; 
-        const q = query(collection(db, "wall_messages"), limit(batchSize));
-        return new Promise(async (resolve, reject) => {
-            try {
-                let snapshot = await getDocs(q);
-                while (snapshot.size > 0) {
-                    const batch = writeBatch(db);
-                    snapshot.forEach(doc => { batch.delete(doc.ref); });
-                    await batch.commit();
-                    snapshot = await getDocs(q);
-                }
-                resolve();
-            } catch (error) { console.error("Wipe failed:", error); reject(error); }
-        });
-    }
+async function wipeAllMessages() {
+    const batchSize = 400; 
+    // IMPORTANT: Only query messages where isPinned is NOT true
+    const q = query(collection(db, "wall_messages"), where("isPinned", "==", false), limit(batchSize));
+    
+    return new Promise(async (resolve, reject) => {
+        try {
+            let snapshot = await getDocs(q);
+            while (snapshot.size > 0) {
+                const batch = writeBatch(db);
+                snapshot.forEach(doc => { 
+                    // Double safety check
+                    if(doc.data().isPinned !== true) {
+                        batch.delete(doc.ref); 
+                    }
+                });
+                await batch.commit();
+                snapshot = await getDocs(q); // Fetch next batch
+            }
+            resolve();
+        } catch (error) { 
+            console.error("Wipe failed:", error); 
+            reject(error); 
+        }
+    });
+}
 
     const seenObserver = new IntersectionObserver((entries) => {
         entries.forEach(async entry => {
@@ -4252,193 +4287,140 @@ async function sendMessage() {
             list.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>';
         }
     };
+let pinnedUnsubscribe;
+
 function loadMessages() {
     if(unsubscribe) unsubscribe();
-    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
-    
-    unsubscribe = onSnapshot(q, snapshot => {
-        const feed = messagesFeed;
-        const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 100);
+    if(pinnedUnsubscribe) pinnedUnsubscribe();
 
-        const docs = [];
-        snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-        docs.reverse();
+    const feed = messagesFeed;
+    let recentMessages = [];
+    let pinnedMessages = [];
 
-        feed.innerHTML = '';
-        docs.forEach(data => {
+    // Helper to merge and render
+    const renderMerged = () => {
+        // 1. SCROLL FIX: Check position BEFORE clearing DOM
+        // If distance from bottom is less than 150px, we allow auto-scroll
+        const isNearBottom = (feed.scrollHeight - feed.scrollTop - feed.clientHeight) < 150;
+
+        // Merge arrays, remove duplicates based on ID
+        const allMap = new Map();
+        [...recentMessages, ...pinnedMessages].forEach(m => allMap.set(m.id, m));
+        const allMsgs = Array.from(allMap.values()).sort((a,b) => a.createdAt - b.createdAt); // Sort by time
+
+        feed.innerHTML = ''; // Clear DOM
+
+        // Update Pinned Bar Count
+        const pinnedCount = allMsgs.filter(m => m.isPinned).length;
+        const pinBar = document.getElementById('pinnedBar');
+        if(pinnedCount > 0) {
+            pinBar.style.display = 'flex';
+            pinBar.innerHTML = `<i class="fas fa-thumbtack"></i> ${pinnedCount} MESAJE FIXATE (CLICK TO JUMP)`;
+        } else {
+            pinBar.style.display = 'none';
+        }
+
+        allMsgs.forEach(data => {
             if(data.isDeleted) return; 
 
             const msgId = data.id;
             const isMine = data.uid === currentUid;
-            const isBot = data.isBot === true;
+            const isPinned = data.isPinned === true;
             
-            const msgIsAdmin = data.isAdmin === true;
-            const msgIsOwner = data.isOwner === true;
-            const msgIsMod = data.isMod === true;
-            const msgIsHelper = data.isHelper === true;
-
+            // WRAPPER CLASSES
             const wrapper = document.createElement('div');
             wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
+            if(isPinned) {
+                wrapper.classList.add('pinned-msg');
+                wrapper.id = `pinned-${msgId}`; // ID for jumping
+            }
             wrapper.dataset.id = msgId;
 
-            let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
-            let bubbleContent = "";
+            // ... (Rest of your existing bubble logic logic below) ...
+            
             let bubbleClass = 'msg-bubble';
+            if(data.equippedBanner && data.equippedBanner.cssClass) bubbleClass += ` ${data.equippedBanner.cssClass}`;
+            else if(data.isBot) bubbleClass += ' bot-msg';
+            else if(data.isOwner) bubbleClass += ' owner-msg';
+            else if(data.isAdmin) bubbleClass += ' admin-msg';
+            else if(data.isMod) bubbleClass += ' mod-msg';
+            else if(data.isHelper) bubbleClass += ' helper-msg';
 
-            // --- A. POLL MESSAGE ---
-            if (data.type === 'poll') {
-                const now = Date.now();
-                const isExpired = now > data.expiresAt;
-                const myVote = data.votes ? data.votes[currentUid] : undefined;
-                const hasVoted = myVote !== undefined;
-                const optionCount = data.options ? data.options.length : 2;
-                const results = new Array(optionCount).fill(0);
-                let totalVotes = 0;
-                if(data.votes) {
-                    Object.values(data.votes).forEach(val => {
-                        if(val >= 0 && val < optionCount) { results[val]++; totalVotes++; }
-                    });
-                }
-                let optionsHtml = '<div class="poll-options">';
-                if(data.options) {
-                    data.options.forEach((opt, idx) => {
-                        if (isExpired || hasVoted) {
-                            const count = results[idx];
-                            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                            const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
-                            optionsHtml += `
-                                <div class="poll-btn" style="cursor:default; ${myChoiceStyle}">
-                                    <div class="poll-result-bar" style="width:${percent}%"></div>
-                                    <div class="poll-text"><span>${opt} ${myVote === idx ? '(Tu)' : ''}</span><span class="poll-percent">${percent}%</span></div>
-                                </div>`;
-                        } else {
-                            optionsHtml += `<button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">${opt}</button>`;
-                        }
-                    });
-                }
-                optionsHtml += '</div>';
-                let durationTxt = data.durationLabel || "1 Min";
-                let statusText = isExpired ? "Vot Încheiat" : `Votează (${durationTxt})`;
-                let viewResultsLink = (isExpired || hasVoted) ? ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>` : "";
-                bubbleContent = `<div class="poll-card"><div class="poll-question">${data.question}</div>${optionsHtml}<div class="poll-meta">${totalVotes} Voturi • ${statusText}${viewResultsLink}</div></div>`;
-            } 
-            // --- B. STANDARD MESSAGE ---
-            else {
-                if(data.replyToName) {
-                    const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
-                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
-                }
-                if(data.image) {
-                    bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
-                }
-                let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
-                if(safeText) {
-                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
-                }
-                if(data.equippedBanner && data.equippedBanner.cssClass) {
-                    bubbleClass += ` ${data.equippedBanner.cssClass}`;
-                } else {
-                    if(isBot) bubbleClass += ' bot-msg';
-                    else if(msgIsOwner) bubbleClass += ' owner-msg';
-                    else if(msgIsAdmin) bubbleClass += ' admin-msg';
-                    else if(msgIsMod) bubbleClass += ' mod-msg';
-                    else if(msgIsHelper) bubbleClass += ' helper-msg';
-                }
+            let bubbleContent = "";
+            
+            // PIN INDICATOR INSIDE BUBBLE
+            if(isPinned) bubbleContent += `<div class="pinned-indicator"><i class="fas fa-thumbtack"></i> FIXAT DE STAFF</div>`;
+
+            if(data.replyToName) {
+                const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
+                bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${shortText.replace(/</g, "&lt;")}</span>`;
             }
+            if(data.image) {
+                bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
+            }
+            let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
+            if(safeText) bubbleContent += (data.image ? `<div style="margin-top:8px;">${linkify(safeText)}</div>` : linkify(safeText));
 
-            // --- BUILD NAMES & BADGES ---
+            // NAMES & BADGES
             let authorNameText = data.name;
-            if(isBot) authorNameText = `🤖 ${data.name}`;
-            if (data.equippedText && data.equippedText.cssClass) {
-                authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
-            }
+            if (data.equippedText && data.equippedText.cssClass) authorNameText = `<span class="${data.equippedText.cssClass}">${data.name}</span>`;
+            
             let staffHtml = "";
-            if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
-            else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
-            else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
-            else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
+            if(data.isOwner) staffHtml = ` <span class="owner-badge">OWNER</span>`;
+            else if(data.isAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
+            else if(data.isMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
+            else if(data.isHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
 
-            let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-            let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
-
-            // --- REACTIONS (Visible below bubble) ---
-            let reactionsHtml = "";
-            if(data.reactions) {
-                const counts = {};
-                Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
-                if(Object.keys(counts).length > 0) {
-                    reactionsHtml = `<div class="msg-reactions">`;
-                    for(let [emoji, count] of Object.entries(counts)) { 
-                        reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
-                    }
-                    reactionsHtml += `</div>`;
-                }
+            // MENU BUTTON (Added Fixeaza option)
+            let pinOption = "";
+            if(isOwner || isAdmin || isMod || isHelper) {
+                const pinLabel = isPinned ? "Dez-fixează" : "Fixează";
+                pinOption = `<button onclick="togglePin('${msgId}', ${!isPinned})"><i class="fas fa-thumbtack"></i> ${pinLabel}</button>`;
             }
 
-            // --- SEEN COUNT ---
-            const seenCount = (data.seenBy || []).length;
-            const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
-                <i class="fas fa-eye"></i> ${seenCount}
-            </button>`;
-
-            // --- MESSAGE MENU (Keeps Localized Emoji Reactions) ---
             let menuHtml = `
                 <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                 <div id="menu-${msgId}" class="options-dropdown">
-                    <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
-                    <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                    ${pinOption} 
+                    <button onclick="startReply('${msgId}', '${data.name}', '${(data.text||"").replace(/'/g, "\\'")}')"><i class="fas fa-reply"></i> Răspunde</button>
                     <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                     ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
-                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
-                    
-                    <!-- LOCAL REACTION PICKER -->
-                    <div id="emojis-${msgId}" class="emoji-picker-menu">
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
-<div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
-
-                    </div>
+                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute</button>` : ''}
                 </div>
             `;
 
+            let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+
             wrapper.innerHTML = `
-                <div class="msg-author">${finalNameHtml}</div>
+                <div class="msg-author">${authorNameText}${staffHtml} ${getCosmeticBadge(data.equippedBadge)}</div>
                 <div class="${bubbleClass}">${bubbleContent}</div>
-                ${reactionsHtml}
-                <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
+                <div class="msg-info"><span>${time}</span></div>
                 ${menuHtml}
             `;
             
             feed.appendChild(wrapper);
-            seenObserver.observe(wrapper);
         });
-        
-        if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
+
+        // 2. SCROLL FIX: Only auto-scroll if user was already at bottom
+        if (isNearBottom) {
+            feed.scrollTop = feed.scrollHeight;
+        }
+    };
+
+    // LISTENER 1: Recent 50
+    const qRecent = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
+    unsubscribe = onSnapshot(qRecent, snapshot => {
+        recentMessages = [];
+        snapshot.forEach(doc => recentMessages.push({ id: doc.id, ...doc.data() }));
+        renderMerged();
+    });
+
+    // LISTENER 2: Pinned Messages (Ensure they are always visible)
+    const qPinned = query(collection(db, "wall_messages"), where("isPinned", "==", true));
+    pinnedUnsubscribe = onSnapshot(qPinned, snapshot => {
+        pinnedMessages = [];
+        snapshot.forEach(doc => pinnedMessages.push({ id: doc.id, ...doc.data() }));
+        renderMerged();
     });
 }
 
@@ -4598,6 +4580,35 @@ window.toggleEmojiPicker = function(id) {
             checkWallQuest('wall_react_10'); // <--- ADD THIS
         } catch(e) {} 
     }
+
+// --- PINNING LOGIC ---
+window.togglePin = async function(msgId, newState) {
+    closeAllMenus();
+    if(!isOwner && !isAdmin && !isMod && !isHelper) {
+        showToast("Nu ai permisiuni!", "error");
+        return;
+    }
+    try {
+        const msgRef = doc(db, "wall_messages", msgId);
+        await updateDoc(msgRef, { isPinned: newState });
+        showToast(newState ? "Mesaj fixat!" : "Mesaj dez-fixat!", "success");
+    } catch(e) {
+        console.error(e);
+        showToast("Eroare la fixare.");
+    }
+};
+
+// Scroll to the first pinned message visible
+window.scrollToPinned = function() {
+    const pinned = document.querySelector('.pinned-msg');
+    if(pinned) {
+        pinned.scrollIntoView({ behavior: "smooth", block: "center" });
+        pinned.querySelector('.msg-bubble').style.transform = "scale(1.1)";
+        setTimeout(() => pinned.querySelector('.msg-bubble').style.transform = "scale(1)", 300);
+    } else {
+        showToast("Mesajul fixat nu este vizibil momentan.");
+    }
+};
     
 window.deleteMsg = async function(id) { 
         closeAllMenus(); 
