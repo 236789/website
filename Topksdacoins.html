@@ -1622,6 +1622,39 @@ transition: 0.3s;
     border-color: #ff69b4; 
     box-shadow: 0 0 20px rgba(255, 105, 180, 0.2); 
 }
+
+
+/* --- MODAL SORT TABS --- */
+.modal-filter-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    width: 100%;
+}
+
+.modal-tab {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 10px 0;
+    cursor: pointer;
+    transition: 0.3s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-tab img { width: 24px; height: 24px; object-fit: contain; }
+.modal-tab i { font-size: 20px; }
+
+.modal-tab:hover { background: rgba(255, 255, 255, 0.1); }
+
+/* Active States Colors */
+.modal-tab.active[data-type="coins"] { border-color: var(--primary); box-shadow: 0 0 10px rgba(41, 243, 255, 0.2); background: rgba(41, 243, 255, 0.1); }
+.modal-tab.active[data-type="diamonds"] { border-color: #00ff88; box-shadow: 0 0 10px rgba(0, 255, 136, 0.2); background: rgba(0, 255, 136, 0.1); }
+.modal-tab.active[data-type="donated"] { border-color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.2); background: rgba(255, 215, 0, 0.1); }
   </style>
 </head>
 <body>
@@ -1902,7 +1935,21 @@ transition: 0.3s;
 <div id="allUsersModal" class="account-modal-overlay">
     <div class="account-card" style="max-width: 500px; height: 80vh; display: flex; flex-direction: column;">
         <button id="closeAllUsers" class="close-pop">✕</button>
-        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom: 20px;">RESTUL FAMILIEI KSDA</h3>
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom: 15px;">RESTUL FAMILIEI KSDA</h3>
+        
+<!-- NEW SORTING BUTTONS (Fixed IDs) -->
+        <div class="modal-filter-tabs">
+            <button id="m-btn-coins" class="modal-tab active" data-type="coins" onclick="sortModal('coins')">
+                <img src="https://iili.io/fhc1SKQ.png" alt="Coins">
+            </button>
+            <button id="m-btn-diamonds" class="modal-tab" data-type="diamonds" onclick="sortModal('diamonds')">
+                <img src="https://iili.io/fv5bmtj.png" alt="Diamonds">
+            </button>
+            <button id="m-btn-donated" class="modal-tab" data-type="donated" onclick="sortModal('donated')">
+                <i class="fas fa-hand-holding-usd" style="color:#ffd700;"></i>
+            </button>
+        </div>
+
         <input type="text" id="searchAllUsers" placeholder="Caută membru..." style="background:rgba(255,255,255,0.1); border:1px solid #333; color:#fff; padding:12px; width:100%; box-sizing:border-box; border-radius:15px; margin-bottom:15px; font-family:'Poppins';">
         <div id="allUsersList" style="overflow-y: auto; flex: 1; padding-right: 5px;">
             <div style="text-align:center; color:#aaa;">Se încarcă lista...</div>
@@ -2832,7 +2879,9 @@ function renderLeaderboard() {
     });
 
     // --- BOTTOM BUBBLE (Exact Math & Text) ---
-    if(currentFilter !== 'online') { 
+// --- BOTTOM BUBBLE (Exact Math & Text) ---
+    // FIX: Added check && currentMode !== 'sustinatori'
+    if(currentFilter !== 'online' && currentMode !== 'sustinatori') { 
         let total = window.totalUserCount || 0;
         let remaining = Math.max(0, total - 50);
         
@@ -2856,68 +2905,116 @@ function renderLeaderboard() {
         } catch (e) { allUsersListEl.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>'; }
     }
 
-function renderAllUsersList(data) {
-        allUsersListEl.innerHTML = '';
-        // In the popup, we show everyone starting from Rank 51
-        const listToShow = data.slice(50); 
-        
-        if(listToShow.length === 0) { 
-            allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:40px; font-family:Orbitron;">NU MAI SUNT ALȚI MEMBRI.</div>'; 
-            return; 
-        }
+// --- MODAL SORTING LOGIC ---
+let currentModalSort = 'coins';
 
-        listToShow.forEach((m, idx) => {
-            const realRank = idx + 51;
-            const item = document.createElement('div');
-            item.className = 'top-item'; 
-            item.style.marginBottom = '10px';
-            
-            // Apply Banner Class if exists
-            if(m.equippedBanner && m.equippedBanner.cssClass) {
-                item.className += ` ${m.equippedBanner.cssClass}`;
+window.sortModal = (type) => {
+    currentModalSort = type;
+
+    // 1. Update Buttons Visuals
+    document.querySelectorAll('.modal-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById(`m-btn-${type}`).classList.add('active');
+
+    // 2. Sort the Data
+    if(type === 'coins') {
+        allUsersDataCache.sort((a,b) => (b.coins || 0) - (a.coins || 0));
+    } else if(type === 'diamonds') {
+        allUsersDataCache.sort((a,b) => (b.diamonds || 0) - (a.diamonds || 0));
+    } else if(type === 'donated') {
+        allUsersDataCache.sort((a,b) => (b.totalCoinsDonated || 0) - (a.totalCoinsDonated || 0));
+    } else if(type === 'sustinatori') {
+        // Sort sustinatori first, then by order
+        allUsersDataCache.sort((a,b) => {
+            if (a.isSustinatori === b.isSustinatori) {
+                return (a.sustinatorOrder || 999) - (b.sustinatorOrder || 999);
             }
-
-            let badge = getRoleBadge(m.email);
-            let cosmetic = getCosmeticBadge(m.equippedBadge);
-            let isOnline = checkIsOnline(m);
-
-            // --- TEXT COLOR LOGIC (SEARCH LIST) ---
-            let listNameHtml = formatName(m.username || 'Anonim');
-            if (m.equippedText && m.equippedText.cssClass) {
-                listNameHtml = `<span class="${m.equippedText.cssClass}">${listNameHtml}</span>`;
-            }
-            
-            // Frame Logic (Simplified for List)
-            let frameHtml = '';
-            if (m.equippedFrame && m.equippedFrame.img) {
-                 // Reuse list-frame-overlay style
-                 const scale = m.equippedFrame.scale || 1.45;
-                 const sizePct = scale * 100;
-                 frameHtml = `<img src="${m.equippedFrame.img}" class="list-frame-overlay" style="width:${sizePct}%; height:${sizePct}%;">`;
-            }
-
-            item.innerHTML = `
-                <div class="top-left">
-                    <span class="top-rank-num" style="font-size:12px;">#${realRank}</span>
-                    <div class="top-img-box" style="width:35px; height:35px;">
-                        <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
-                        ${frameHtml}
-                        <div class="list-status ${isOnline ? 'online' : ''}" style="width:10px; height:10px;"></div>
-                    </div>
-                    <div class="top-user-name" style="font-size:13px;">
-                        <span class="name-text">${listNameHtml}</span> 
-                        ${badge} ${cosmetic}
-                    </div>
-                </div>
-                <div class="top-right">
-                    <div class="top-streak" style="font-size:11px;"><i class="fas fa-fire"></i> ${m.streak || 0}</div>
-                    <div class="top-coins" style="font-size:14px;"><span>${formatNumber(m.coins || 0)}</span><img src="https://iili.io/fhc1SKQ.png" style="width:18px;"></div>
-                </div>
-            `;
-            item.onclick = () => openUserProfile(m.id);
-            allUsersListEl.appendChild(item);
+            return a.isSustinatori ? -1 : 1;
         });
     }
+
+    // 3. Re-render the list
+    renderAllUsersList(allUsersDataCache);
+};
+
+// --- UPDATE THE RENDER FUNCTION ---
+// Find your existing renderAllUsersList function and replace it with this:
+function renderAllUsersList(data) {
+    allUsersListEl.innerHTML = '';
+    
+    // Logic: If sorting by Coins, hide the Top 50 (since they are on main page).
+    // If sorting by anything else, show EVERYONE (since rank 100 in coins might be rank 1 in diamonds).
+    let listToShow = data;
+    if(currentModalSort === 'coins') {
+        listToShow = data.slice(50); 
+    }
+
+    if(listToShow.length === 0) { 
+        allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:20px;">NIMENI AICI.</div>'; 
+        return; 
+    }
+
+    // Determine what Icon/Value to show on the right side
+    let icon = 'https://iili.io/fhc1SKQ.png'; 
+    let key = 'coins';
+    let color = '#29f3ff'; // Cyan
+
+    if(currentModalSort === 'diamonds') { 
+        icon = 'https://iili.io/fv5bmtj.png'; key = 'diamonds'; color = '#00ff88'; 
+    } else if(currentModalSort === 'donated') { 
+        icon = 'https://iili.io/fhc1SKQ.png'; key = 'totalCoinsDonated'; color = '#ffd700';
+    } else if(currentModalSort === 'sustinatori') {
+        icon = ''; key = ''; color = '#ff69b4'; // Sustinatori just shows the list
+    }
+
+    listToShow.forEach((m, idx) => {
+        // If sorting by coins, rank starts at 51. Otherwise start at 1.
+        let realRank = (currentModalSort === 'coins') ? (idx + 51) : (idx + 1);
+
+        // Hide non-sustinatori if that tab is active
+        if(currentModalSort === 'sustinatori' && !m.isSustinatori) return;
+
+        const item = document.createElement('div');
+        item.className = 'top-item'; item.style.marginBottom = '10px';
+        if(m.equippedBanner?.cssClass) item.className += ` ${m.equippedBanner.cssClass}`;
+
+        // Get Display Value
+        let valDisplay = (key !== '') ? formatNumber(m[key] || 0) : '';
+        let iconDisplay = (icon !== '') ? `<img src="${icon}" style="width:18px;">` : '<i class="fas fa-heart" style="color:#ff69b4"></i>';
+
+        let nameHtml = formatName(m.username || 'Anonim');
+        if (m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
+
+        // Frame
+        let frameHtml = '';
+        if (m.equippedFrame && m.equippedFrame.img) {
+             const scale = m.equippedFrame.scale || 1.45;
+             frameHtml = `<img src="${m.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%;">`;
+        }
+
+        item.innerHTML = `
+            <div class="top-left">
+                <span class="top-rank-num" style="font-size:12px;">#${realRank}</span>
+                <div class="top-img-box" style="width:35px; height:35px;">
+                    <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
+                    ${frameHtml}
+                    <div class="list-status ${checkIsOnline(m) ? 'online' : ''}" style="width:10px; height:10px;"></div>
+                </div>
+                <div class="top-user-name" style="font-size:13px;">
+                    <span class="name-text">${nameHtml}</span> 
+                    ${getRoleBadge(m.email)}
+                </div>
+            </div>
+            <div class="top-right">
+                <div class="top-coins" style="font-size:14px; color:${color};">
+                    <span>${valDisplay}</span>
+                    ${iconDisplay}
+                </div>
+            </div>
+        `;
+        item.onclick = () => openUserProfile(m.id);
+        allUsersListEl.appendChild(item);
+    });
+}
 
     // --- SEARCH LOGIC ---
     searchInput.addEventListener('input', (e) => {
