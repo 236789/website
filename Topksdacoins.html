@@ -2702,10 +2702,10 @@ function renderLeaderboard() {
             row.onclick = () => openUserProfile(m.id);
             topListEl.appendChild(row);
         });
-        return; // Stop here for Sustinatori mode
+        return; 
     }
 
-    // --- NORMAL MODES (Coins, Diamonds, Donated) ---
+    // --- NORMAL MODES ---
     podiumContainer.style.display = 'flex'; 
 
     const getConfig = (m) => {
@@ -2715,11 +2715,10 @@ function renderLeaderboard() {
         return { val: formatNumber(m.coins || 0), img: 'https://iili.io/fhc1SKQ.png', label: '' };
     };
 
-    // 1. RENDER PODIUM (Rank 1-3)
+    // 1. PODIUM
     for (let i = 1; i <= 3; i++) {
         const m = members[i - 1];
         const boxEl = document.getElementById(`box-${i}`);
-        
         if (m) {
             const conf = getConfig(m);
             document.getElementById(`img-${i}`).src = m.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
@@ -2751,7 +2750,6 @@ function renderLeaderboard() {
             
             const statusEl = document.getElementById(`status-${i}`);
             statusEl.className = `podium-status ${checkIsOnline(m) ? 'online' : ''}`;
-
             boxEl.onclick = () => openUserProfile(m.id);
             boxEl.style.opacity = '1'; boxEl.style.pointerEvents = 'auto';
         } else {
@@ -2759,12 +2757,11 @@ function renderLeaderboard() {
         }
     }
 
-    // 2. RENDER LIST (Rank 4-50)
+    // 2. LIST
     topListEl.innerHTML = '';
     members.slice(3).forEach((m, index) => {
         const rank = index + 4;
         const conf = getConfig(m);
-
         const row = document.createElement('div');
         let customClass = 'top-item';
         if(m.equippedBanner?.cssClass) customClass += ` ${m.equippedBanner.cssClass}`;
@@ -2804,20 +2801,20 @@ function renderLeaderboard() {
         topListEl.appendChild(row);
     });
 
-    // --- "SHOW MORE" BUBBLE (Exact Text Updated) ---
+    // --- BUBBLE WITH FIXED MATH & VARIABLE ---
     if(currentFilter !== 'online') { 
-        let remaining = Math.max(0, totalUserCount - 50);
+        // Use window.totalUserCount to ensure we find the variable
+        let total = window.totalUserCount || 0;
+        let remaining = Math.max(0, total - 50);
         
         const showMoreBtn = document.createElement('div');
         showMoreBtn.className = 'show-more-bubble';
-        
-        // UPDATED TEXT HERE:
         showMoreBtn.innerHTML = `<i class="fas fa-plus"></i> SI INCA ${remaining} MEMBRI IN ECHIPA KSDA`;
-        
         showMoreBtn.onclick = openAllUsersList;
         topListEl.appendChild(showMoreBtn);
     }
-}
+}​
+
     let allUsersDataCache = [];
     async function openAllUsersList() {
         allUsersModal.classList.add('active');
@@ -3111,24 +3108,36 @@ window.openUserProfile = async (uid) => {
         cosmeticsSelectModal.classList.add('active');
     };
 
-onAuthStateChanged(auth, user => {
+// Global variable definition (safe way)
+window.totalUserCount = 0;
+
+onAuthStateChanged(auth, async (user) => {
     if (user) {
         document.getElementById('headerUserImg').src = user.photoURL;
         document.getElementById('headerUserImg').style.display = "block";
         
-        // BUG 1 FIX: Header text is static and we reset the class to prevent "bubble" logic
         const headerText = document.getElementById('headerLoginText');
         const headerBtn = document.getElementById('headerLoginBtn');
         headerText.innerText = "ACCOUNT";
-        headerBtn.className = 'login-btn-header'; // Resets any banner classes
+        headerBtn.className = 'login-btn-header'; 
 
         if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+
+        // --- FETCH THE COUNT NOW (Because we are logged in!) ---
+        try {
+            const coll = collection(db, "accounts");
+            const snapshot = await getCountFromServer(coll);
+            window.totalUserCount = snapshot.data().count();
+            // Refresh logic to update the number on screen
+            renderLeaderboard();
+        } catch (e) {
+            console.log("Count error:", e);
+        }
+        // -------------------------------------------------------
 
         onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
             if(uSnap.exists()) {
                 const data = uSnap.data();
-                
-                // --- AVATAR & FRAME LOGIC ---
                 document.getElementById('popUserImg').src = data.image;
                 const popFrame = document.getElementById('popUserFrame');
                 if(popFrame) {
@@ -3144,7 +3153,6 @@ onAuthStateChanged(auth, user => {
                     }
                 }
 
-                // --- TEXT COLOR LOGIC (ACCOUNT POPUP) ---
                 const popName = document.getElementById('popUserName');
                 let myName = data.username || "Anonim";
                 if (data.equippedText && data.equippedText.cssClass) {
@@ -3154,12 +3162,8 @@ onAuthStateChanged(auth, user => {
                 }
 
                 document.getElementById('popUserEmail').innerText = data.email;
-                
-                // --- FIX: ADDED FORMATTING & DIAMONDS ---
                 document.getElementById('popUserCoins').innerText = formatNumber(data.coins || 0);
                 document.getElementById('popUserDiamonds').innerText = formatNumber(data.diamonds || 0);
-                // ----------------------------------------
-
                 document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
             }
         });
