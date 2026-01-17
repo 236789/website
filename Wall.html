@@ -1530,20 +1530,18 @@
     padding-bottom: 2px;
 }
 
-
-    /* Stil pentru meniul de reacții din dreptul mesajelor */
-/* --- INTERNAL EXPANDING EMOJI MENU --- */
-/* --- INTERNAL EMOJI MENU (MATCHING SCREENSHOT) --- */
+/* --- INTERNAL EMOJI MENU (SCROLLABLE GRID) --- */
 .emoji-picker-menu {
-    display: none; /* Hidden by default */
+    display: none; /* Hidden by default, toggled via JS */
     grid-template-columns: repeat(5, 1fr); /* 5 emojis per row */
     gap: 5px;
     padding: 10px;
-    background: rgba(0, 0, 0, 0.4); /* Darker background inside menu */
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.4); /* Darker background */
+    border-top: 1px solid rgba(255, 255, 255, 0.1); /* Separator line */
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    max-height: 160px; /* Fixed height to force scroll */
-    overflow-y: auto; /* Enable vertical scroll */
+    max-height: 160px; /* Limits height to force scroll */
+    overflow-y: auto; /* Enables vertical scrolling */
+    margin-top: 5px;
 }
 
 /* Custom Scrollbar for the Emoji Box */
@@ -1573,7 +1571,6 @@
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.1);
 }
-
 /* --- NEW PROFILE STYLES --- */
 
 /* Revamped Streak Badge */
@@ -4570,7 +4567,7 @@ function loadMessages() {
             let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
             let bubbleContent = "";
             let bubbleClass = 'msg-bubble';
-            
+
             const textStyleClass = (data.equippedText && data.equippedText.cssClass) ? data.equippedText.cssClass : "";
 
             // --- 1. JACKPOT / SYSTEM ALERT DETECTION ---
@@ -4681,46 +4678,14 @@ function loadMessages() {
                 <i class="fas fa-eye"></i> ${seenCount}
             </button>`;
 
-            // --- FIX 1: DEFINE EMOJI HTML INSIDE MENU ---
-            const emojiMenuHtml = `
-                <div id="emojis-${msgId}" class="emoji-picker-menu">
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-                    
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
-                    
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
-                    
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
-                    
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
-                </div>
-            `;
-
-            // --- FIX 2: MENU LOGIC ---
+            // --- MENU LOGIC (RESTORED FROM OLD CODE + FIXED) ---
             let menuHtml = "";
+            
+            // Allow menu for: Regular messages OR System messages if user is Admin/Owner
             const showMenu = (data.uid !== 'system-alert') || (isOwner || isAdmin);
 
             if (showMenu) {
+                // Pin/Unpin Logic (Fixed)
                 let pinBtnHtml = "";
                 if (isOwner || isAdmin || isMod || isHelper) {
                     if (data.isPinned) {
@@ -4733,20 +4698,49 @@ function loadMessages() {
                 menuHtml = `
                     <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                     <div id="menu-${msgId}" class="options-dropdown">
-                        ${data.uid !== 'system-alert' ? `
-                            <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
-                            
-                            <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                            ${emojiMenuHtml}
-                            
-                            <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                        ` : ''}
                         
+                        ${data.uid !== 'system-alert' ? `
+                        <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                        ` : ''}
+
                         ${pinBtnHtml}
 
                         ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        ${(isOwner || isAdmin || isMod || isHelper) && data.uid !== 'system-alert' ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                        ${isOwner && data.uid !== 'system-alert' ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
                         
-                        ${(data.uid !== 'system-alert' && (isOwner || isAdmin || isMod || isHelper)) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name.replace(/'/g, "\\'")}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                        <!-- LOCAL REACTION PICKER (INSIDE MENU) -->
+                        <div id="emojis-${msgId}" class="emoji-picker-menu">
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
+
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
+                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
+                        </div>
                     </div>
                 `;
             }
