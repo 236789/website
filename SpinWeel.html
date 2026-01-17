@@ -1515,6 +1515,45 @@
 .wheel-stats-icon {
     width: 16px; height: 16px;
 }
+
+
+
+/* --- WHEEL HEADER --- */
+.wheel-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 5px 15px;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.wheel-head-btn {
+    background: transparent;
+    border: none;
+    color: #a5b1c2;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.3s;
+    display: flex; align-items: center; gap: 6px;
+}
+
+.wheel-head-btn:hover { color: var(--primary); text-shadow: 0 0 5px var(--primary); }
+.divider-vertical { width: 1px; height: 15px; background: #333; }
+
+/* Leaderboard Specifics */
+.lb-stat-badge {
+    display: flex; align-items: center; gap: 4px; 
+    font-size: 11px; font-weight: 700; 
+    padding: 3px 8px; border-radius: 4px;
+    font-family: 'Orbitron';
+}
   </style>
 </head>
 <body>
@@ -1778,6 +1817,48 @@
     </button>
 </div>
 
+
+
+<!-- 1. THE HEADER BUTTONS (Insert inside wheelGameContainer at the top) -->
+<div class="wheel-header-row">
+    <button class="wheel-head-btn" onclick="openJackpotHistory()">
+        <i class="fas fa-trophy"></i> ISTORIC JACKPOT
+    </button>
+    <div class="divider-vertical"></div>
+    <button class="wheel-head-btn" onclick="openWheelLeaderboard()">
+        <i class="fas fa-chart-bar"></i> TOP CÂȘTIGĂTORI
+    </button>
+</div>
+
+<!-- 2. JACKPOT HISTORY MODAL (Insert at bottom of body) -->
+<div id="jackpotHistoryModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 450px;">
+        <button class="close-pop" onclick="document.getElementById('jackpotHistoryModal').classList.remove('active')">✕</button>
+        <h3 style="color: #ffd700; font-family: 'Orbitron'; margin-bottom: 20px;">🏆 ULTIMII CÂȘTIGĂTORI</h3>
+        <div id="jackpotList" class="lobby-container" style="max-height: 400px;">
+            <!-- List will load here -->
+            <p style="color:#888;">Se încarcă...</p>
+        </div>
+    </div>
+</div>
+
+<!-- 3. LEADERBOARD MODAL (Insert at bottom of body) -->
+<div id="wheelLeaderboardModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 450px;">
+        <button class="close-pop" onclick="document.getElementById('wheelLeaderboardModal').classList.remove('active')">✕</button>
+        <h3 style="color: var(--primary); font-family: 'Orbitron'; margin-bottom: 20px;">📊 TOP JUCĂTORI ROATĂ</h3>
+        
+        <div class="lb-header-row" style="display:flex; justify-content:space-between; color:#888; font-size:10px; padding:0 15px; margin-bottom:10px;">
+            <span>JUCĂTOR</span>
+            <span>TOTAL CÂȘTIGAT</span>
+        </div>
+
+        <div id="wheelLeaderboardList" class="lobby-container" style="max-height: 400px;">
+            <!-- List will load here -->
+            <p style="color:#888;">Se încarcă...</p>
+        </div>
+    </div>
+</div>
 <!-- WHEEL GAME CONTAINER (Shown if logged in) -->
 <div id="wheelGameContainer" class="trivia-box" style="display: none; width: 100%; max-width: 600px; padding: 40px 20px;">
 
@@ -1914,6 +1995,103 @@
     const cosmeticsSelectModal = document.getElementById('cosmeticsSelectModal');
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
 
+
+
+ window.openJackpotHistory = async () => {
+        document.getElementById('jackpotHistoryModal').classList.add('active');
+        const list = document.getElementById('jackpotList');
+        list.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">Se încarcă istoricul...</p>';
+
+        try {
+            const q = query(collection(db, "wheel_jackpot_history"), orderBy("timestamp", "desc"), limit(20));
+            const snapshot = await getDocs(q);
+            
+            list.innerHTML = "";
+            
+            if(snapshot.empty) {
+                list.innerHTML = '<p style="color:#888; text-align:center;">Niciun jackpot câștigat recent.</p>';
+                return;
+            }
+
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                let rewardColor = "#fff";
+                if(d.rewardType === 'diamonds') rewardColor = "#00ffcc";
+                if(d.rewardType === 'badge' || d.rewardType === 'banner') rewardColor = "#ffd700";
+
+                list.innerHTML += `
+                <div class="lobby-player" style="justify-content: space-between; padding: 8px 15px; min-height: 50px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="${d.userPhoto}" class="lobby-pfp" style="width:30px; height:30px;">
+                        <span class="lobby-name" style="font-size:12px;">${d.username}</span>
+                    </div>
+                    <div style="font-family:'Orbitron'; font-size:11px; font-weight:700; color:${rewardColor}; text-align:right;">
+                        ${d.rewardLabel}
+                        <div style="font-size:9px; opacity:0.6; color:#fff;">JACKPOT</div>
+                    </div>
+                </div>`;
+            });
+        } catch(e) {
+            console.error(e);
+            list.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
+        }
+    };
+
+    // 2. OPEN WHEEL LEADERBOARD
+    window.openWheelLeaderboard = async () => {
+        document.getElementById('wheelLeaderboardModal').classList.add('active');
+        const list = document.getElementById('wheelLeaderboardList');
+        list.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">Se calculează topul...</p>';
+
+        try {
+            // We order by total Diamonds won on the wheel
+            const q = query(collection(db, "accounts"), orderBy("wheelStats.diamonds", "desc"), limit(20));
+            const snapshot = await getDocs(q);
+            
+            list.innerHTML = "";
+            
+            if(snapshot.empty) {
+                list.innerHTML = '<p style="color:#888; text-align:center;">Nu există date încă.</p>';
+                return;
+            }
+
+            let rank = 1;
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                const totalDia = d.wheelStats?.diamonds || 0;
+                const totalCoins = d.wheelStats?.coins || 0;
+
+                // Only show if they actually played
+                if(totalDia === 0 && totalCoins === 0) return;
+
+                let rankColor = "#fff";
+                if(rank === 1) rankColor = "#ffd700";
+                if(rank === 2) rankColor = "#c0c0c0";
+                if(rank === 3) rankColor = "#cd7f32";
+
+                list.innerHTML += `
+                <div class="lobby-player" style="justify-content: space-between; padding: 8px 15px; min-height: 55px; border-left: 3px solid ${rankColor};">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="font-weight:900; color:${rankColor}; width:15px;">#${rank}</div>
+                        <img src="${d.image}" class="lobby-pfp" style="width:35px; height:35px;">
+                        <span class="lobby-name" style="font-size:12px;">${d.username}</span>
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
+                        <span class="lb-stat-badge" style="background:rgba(0,255,204,0.1); color:#00ffcc;">
+                            +${totalDia} <img src="https://iili.io/fv5bmtj.png" width="10">
+                        </span>
+                        <span class="lb-stat-badge" style="background:rgba(255,255,255,0.1); color:#fff;">
+                            +${formatCurrency(totalCoins)} <img src="https://iili.io/fhc1SKQ.png" width="10">
+                        </span>
+                    </div>
+                </div>`;
+                rank++;
+            });
+        } catch(e) {
+            console.error(e);
+            list.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
+        }
+    };
 
 const canvas = document.getElementById("wheelCanvas");
 const ctx = canvas.getContext("2d");
@@ -2203,24 +2381,27 @@ function pickRewardIndex() {
 // --- PRO PHYSICS ENGINE ---
 
 
+// Add these imports to your top import line if missing: 
+// query, orderBy, limit, getDocs
+
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const modal = document.getElementById('questRewardModal');
     
-    // UI Elements
     const amountText = modal.querySelector('.reward-coins-box span');
     const coinsLabel = modal.querySelector('p'); 
     const titleText = modal.querySelector('h2');
     const iconImg = modal.querySelector('.reward-coins-box img');
 
-    // --- FETCH USER DATA FIRST ---
+    // Fetch user
     const userSnap = await getDoc(userRef);
     const userData = userSnap.exists() ? userSnap.data() : {};
     const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
+    const userPhoto = userData.image || auth.currentUser.photoURL;
 
-    // --- CHECK FOR DUPLICATES (Badges/Banners) ---
+    // --- CHECK DUPLICATES ---
     let isDuplicate = false;
     if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) isDuplicate = true;
     if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) isDuplicate = true;
@@ -2231,45 +2412,52 @@ async function finalizeSpin(idx) {
         amountText.innerText = "5000";
         coinsLabel.innerText = "KSDA COINS";
         iconImg.src = "https://iili.io/fhc1SKQ.png";
-        await updateDoc(userRef, { coins: increment(5000) });
+        
+        // Update Coins & Wheel Stats
+        await updateDoc(userRef, { 
+            coins: increment(5000),
+            "wheelStats.coins": increment(5000) 
+        });
+        
         modal.classList.add('active');
         return; 
     }
 
-    // --- RESET DEFAULT TITLE ---
-    titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
-    modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
-
-    // --- HANDLE REWARD TYPES ---
-  // --- HANDLE REWARD TYPES ---
+    // --- DISPLAY REWARD ---
     if (reward.type === "xp") {
         titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
-        
-        // --- FIX: MAKE TEXT SMALLER FOR LONG WORD ---
-        amountText.style.fontSize = "26px"; // Smaller font
+        amountText.style.fontSize = "26px"; 
         amountText.style.letterSpacing = "1px"; 
         amountText.innerText = "EXPERIENȚĂ";
-        
         coinsLabel.innerText = "DATA VIITOARE!";
         modal.querySelector('p').innerText = "Nu ai câștigat nimic material, dar ai acumulat experiență de viață!";
         iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png"; 
     } 
     else {
-        // --- RESET FONT SIZE FOR OTHERS ---
         amountText.style.fontSize = ""; 
         amountText.style.letterSpacing = "";
+        
+        titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
+        modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
 
+        // --- DATABASE UPDATES & STAT TRACKING ---
         if (reward.type === "coins") {
             amountText.innerText = reward.label;
             coinsLabel.innerText = "KSDA COINS";
             iconImg.src = "https://iili.io/fhc1SKQ.png";
-            await updateDoc(userRef, { coins: increment(reward.val) });
+            await updateDoc(userRef, { 
+                coins: increment(reward.val),
+                "wheelStats.coins": increment(reward.val) // Track Total Won
+            });
         } 
         else if (reward.type === "diamonds") {
             amountText.innerText = reward.label;
             coinsLabel.innerText = "DIAMANTE";
             iconImg.src = "https://iili.io/fv5bmtj.png";
-            await updateDoc(userRef, { diamonds: increment(reward.val) });
+            await updateDoc(userRef, { 
+                diamonds: increment(reward.val),
+                "wheelStats.diamonds": increment(reward.val) // Track Total Won
+            });
         }
         else if (reward.type === "badge") {
             amountText.innerText = "BADGE";
@@ -2287,27 +2475,33 @@ async function finalizeSpin(idx) {
 
     modal.classList.add('active');
 
-    // --- JACKPOT ANNOUNCEMENT SYSTEM ---
+    // --- JACKPOT LOGIC (LOGGING & ALERT) ---
     let isJackpot = false;
     if (reward.type === 'badge' || reward.type === 'banner') isJackpot = true;
     if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true;
     if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;
 
     if (isJackpot) {
+        // 1. Log to Database for "Jackpot History"
+        try {
+            await addDoc(collection(db, "wheel_jackpot_history"), {
+                username: correctName,
+                userPhoto: userPhoto,
+                rewardLabel: reward.label,
+                rewardType: reward.type,
+                timestamp: serverTimestamp()
+            });
+        } catch(e) { console.log("Log error", e); }
+
+        // 2. Announce in Chat
         try {
             let alertText = `🚨 JACKPOT! ${correctName} a câștigat ${reward.label} la roata norocului!`;
             await addDoc(collection(db, "wall_messages"), {
-                text: alertText,
-                uid: 'system-alert',
-                name: 'SYSTEM',
-                photo: 'https://iili.io/fXvBEiB.png', 
-                isBot: true,
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {},
-                seenBy: []
+                text: alertText, uid: 'system-alert', name: 'SYSTEM',
+                photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp(),
+                isDeleted: false, reactions: {}, seenBy: []
             });
-        } catch (e) { console.error("Alert failed:", e); }
+        } catch (e) {}
     }
 }
 
