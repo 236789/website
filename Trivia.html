@@ -1362,6 +1362,35 @@
     to { background-position: 200% center; }
 }
     
+
+
+/* --- TRIVIA LOBBY FIXES --- */
+
+/* Stop the Quantum banner from centering the player info */
+.lobby-player.bubble-jackpot {
+    justify-content: flex-start !important; /* Aligns content to the left */
+    text-transform: none !important;       /* Restores normal name casing */
+    overflow: visible !important;           /* Allows Profile Frames to show */
+    padding-left: 15px !important;
+    gap: 15px !important;
+}
+
+/* Ensure the laser beam stays in the background */
+.lobby-player.bubble-jackpot::before {
+    z-index: 0 !important;
+    pointer-events: none;
+}
+
+/* Keep player name and badges on top of the laser */
+.lobby-name, .lobby-pfp {
+    position: relative;
+    z-index: 2;
+}
+
+/* --- INVENTORY STYLE OVERRIDE --- */
+.shop-badge-item .badge-wheel-god {
+    margin-bottom: 10px; /* Spacing above the equip button */
+}
   </style>
 </head>
 <body>
@@ -2286,38 +2315,47 @@ window.equipText = async (id, cssClass) => {
 
         list.innerHTML = '';
 
-        if(type === 'badges') {
-            const ownedIds = data.ownedBadges || [];
-            const equipped = data.equippedBadge?.id || null;
+if(type === 'badges') {
+        const ownedIds = data.ownedBadges || [];
+        const equipped = data.equippedBadge?.id || null;
 
-            if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
 
-            ownedIds.forEach(id => {
-                const badge = BADGES_DB.find(b => b.id === id);
-                if(!badge) return;
-                const isEquipped = (id === equipped);
-                const item = document.createElement('div');
-                item.className = 'shop-badge-item';
-                item.innerHTML = `
-                    <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 10px ${badge.color};">
-                        <i class="fas ${badge.icon}"></i> ${badge.text}
-                    </span>
-                    ${isEquipped 
-                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
-                        : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
-                    }
-                `;
-                list.appendChild(item);
-            });
+        ownedIds.forEach(id => {
+            const badge = BADGES_DB.find(b => b.id === id);
+            if(!badge) return;
             
-            if(equipped) {
-                 const unequipBtn = document.createElement('button');
-                 unequipBtn.className = 'unequip-all-btn';
-                 unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
-                 unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
-                 actionContainer.appendChild(unequipBtn);
-            }
-        } 
+            const isEquipped = (id === equipped);
+            const isQuantum = (id === 'b_wheel_god'); // Detect special badge
+            
+            const item = document.createElement('div');
+            item.className = 'shop-badge-item';
+            
+            // FIX: If it's the quantum badge, we DON'T apply inline styles
+            // This allows the .badge-wheel-god CSS class to show the neon and scanner
+            const styleAttr = isQuantum ? "" : `style="background:${badge.color}; color:#000; box-shadow:0 0 10px ${badge.color}; border:none;"`;
+            const badgeClass = isQuantum ? "badge-wheel-god" : "shop-badge-preview";
+
+            item.innerHTML = `
+                <span class="${badgeClass}" ${styleAttr}>
+                    <i class="fas ${badge.icon}"></i> ${badge.text}
+                </span>
+                ${isEquipped 
+                    ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
+                    : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
+                }
+            `;
+            list.appendChild(item);
+        });
+        
+        if(equipped) {
+             const unBtn = document.createElement('button');
+             unBtn.className = 'unequip-all-btn';
+             unBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
+             unBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
+             actionContainer.appendChild(unBtn);
+        }
+    }
         else if (type === 'banners') {
             const ownedIds = data.ownedBanners || [];
             const equipped = data.equippedBanner?.id || null;
