@@ -1867,8 +1867,8 @@ const diamImg = new Image(); diamImg.src = "https://iili.io/fv5bmtj.png";
 const trophyImg = new Image(); trophyImg.src = "https://iili.io/fXvBEiB.png"; // Using your logo as a trophy placeholder
 
 const REWARDS = [
-    // 1. Common (Coins)
-    { label: "50", val: 50, type: "coins", color: "#00bcd4", chance: 25 },
+    // 1. Common (XP / NOTHING) - Changed from 50 coins
+    { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 },
 
     // 2. Rare (Jackpot Diamond)
     { label: "10", val: 10, type: "diamonds", color: "#ffd700", chance: 1, jackpot: true },
@@ -1885,8 +1885,8 @@ const REWARDS = [
     // 6. Uncommon (Coins)
     { label: "500", val: 500, type: "coins", color: "#2196f3", chance: 10 },
  
-    // 7. Common (Coins - 2nd slice for the 50% total)
-    { label: "50", val: 150, type: "coins", color: "#00bcd4", chance: 15 },
+    // 7. Uncommon (150 Coins) - Changed from 50 coins
+    { label: "150", val: 150, type: "coins", color: "#00bcd4", chance: 15 },
 
     // 8. Ultra Rare (BANNER)
     { label: "EXCLUSIVE BANNER", val: "bub_jackpot", type: "banner", color: "#d4af37", chance: 0.4, jackpot: true },
@@ -1980,15 +1980,21 @@ window.toggleRewardsModal = (show) => {
     const sortedRewards = [...REWARDS].sort((a, b) => b.chance - a.chance);
 
     list.innerHTML = sortedRewards.map(r => {
-        // FIX: Defining the visual variable inside the loop
         let visual = "";
-        if (r.type === "coins") {
+        
+        if (r.type === "xp") {
+            visual = `<span style="font-size:20px;">📉</span> <span style="color:#aaa; font-weight:900; font-size:14px; margin-left:5px;">EXPERIENȚĂ</span>`;
+        } 
+        else if (r.type === "coins") {
             visual = `<img src="https://iili.io/fhc1SKQ.png" width="28"> <span style="color:#fff; font-weight:900; font-size:16px;">${r.label}</span>`;
-        } else if (r.type === "diamonds") {
+        } 
+        else if (r.type === "diamonds") {
             visual = `<img src="https://iili.io/fv5bmtj.png" width="28"> <span style="color:#00ffcc; font-weight:900; font-size:16px;">${r.label}</span>`;
-        } else if (r.type === "badge") {
+        } 
+        else if (r.type === "badge") {
             visual = `<span class="badge-wheel-god" style="padding:5px 12px; border-radius:50px; font-size:10px;">👑 EXCLUSIVE BADGE</span>`;
-        } else if (r.type === "banner") {
+        } 
+        else if (r.type === "banner") {
             visual = `<div class="bubble-jackpot" style="height:35px; width:150px; font-size:9px;">ULTRA BANNER</div>`;
         }
 
@@ -2143,106 +2149,78 @@ async function finalizeSpin(idx) {
     const titleText = modal.querySelector('h2');
     const iconImg = modal.querySelector('.reward-coins-box img');
 
-    // --- FETCH USER DATA FIRST (To check inventory) ---
+    // --- FETCH USER DATA FIRST ---
     const userSnap = await getDoc(userRef);
     const userData = userSnap.exists() ? userSnap.data() : {};
     const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
 
-    // --- CHECK FOR DUPLICATES ---
+    // --- CHECK FOR DUPLICATES (Badges/Banners) ---
     let isDuplicate = false;
-    
-    if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) {
-        isDuplicate = true;
-    }
-    if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) {
-        isDuplicate = true;
-    }
+    if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) isDuplicate = true;
+    if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) isDuplicate = true;
 
-    // --- HANDLE DUPLICATE (CONSOLATION PRIZE) ---
     if (isDuplicate) {
-        // 1. Update UI for Consolation
         titleText.innerHTML = `<span style="font-size: 24px;">😅</span> UPS!`;
-        modal.querySelector('p').innerText = "Deja deții acest item! Nu te întrista, uite un premiu de consolare:";
-        
+        modal.querySelector('p').innerText = "Deja deții acest item! Premiu de consolare:";
         amountText.innerText = "5000";
-        coinsLabel.innerText = "KSDA COINS (CONSOLARE)";
+        coinsLabel.innerText = "KSDA COINS";
         iconImg.src = "https://iili.io/fhc1SKQ.png";
-
-        // 2. Give 5000 Coins
         await updateDoc(userRef, { coins: increment(5000) });
-        
-        // 3. Show Modal and EXIT (Do not announce in chat)
         modal.classList.add('active');
         return; 
     }
 
-    // --- NORMAL REWARD FLOW (Not a duplicate) ---
-    
-    // Reset default title just in case
+    // --- RESET DEFAULT TITLE ---
     titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
     modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
 
-    if (reward.type === "coins") {
+    // --- HANDLE REWARD TYPES ---
+    if (reward.type === "xp") {
+        // --- NEW LOGIC FOR XP ---
+        titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
+        amountText.innerText = "EXPERIENȚĂ";
+        coinsLabel.innerText = "DATA VIITOARE!";
+        modal.querySelector('p').innerText = "Nu ai câștigat nimic material, dar ai acumulat experiență de viață!";
+        // Use a generic icon or the logo
+        iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png"; // Or use your logo
+        // No DB update needed
+    } 
+    else if (reward.type === "coins") {
         amountText.innerText = reward.label;
         coinsLabel.innerText = "KSDA COINS";
         iconImg.src = "https://iili.io/fhc1SKQ.png";
+        await updateDoc(userRef, { coins: increment(reward.val) });
     } 
     else if (reward.type === "diamonds") {
         amountText.innerText = reward.label;
         coinsLabel.innerText = "DIAMANTE";
         iconImg.src = "https://iili.io/fv5bmtj.png";
+        await updateDoc(userRef, { diamonds: increment(reward.val) });
     }
     else if (reward.type === "badge") {
         amountText.innerText = "BADGE";
         coinsLabel.innerText = reward.label;
         iconImg.src = "https://iili.io/fXvBEiB.png";
+        await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
     }
     else if (reward.type === "banner") {
         amountText.innerText = "BANNER";
         coinsLabel.innerText = reward.label;
         iconImg.src = "https://iili.io/fXvBEiB.png";
+        await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
     }
 
     modal.classList.add('active');
 
-    // Give the actual reward
-    if (reward.type === "coins") {
-        await updateDoc(userRef, { coins: increment(reward.val) });
-    } 
-    else if (reward.type === "diamonds") {
-        await updateDoc(userRef, { diamonds: increment(reward.val) });
-    } 
-    else if (reward.type === "badge") {
-        await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
-    }
-    else if (reward.type === "banner") {
-        await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
-    }
-
     // --- JACKPOT ANNOUNCEMENT SYSTEM ---
     let isJackpot = false;
-    if (reward.type === 'badge') isJackpot = true;
-    if (reward.type === 'banner') isJackpot = true;
+    if (reward.type === 'badge' || reward.type === 'banner') isJackpot = true;
     if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true;
     if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;
 
     if (isJackpot) {
         try {
-            let alertText = "";
-
-            if (reward.type === 'badge') {
-                alertText = `🚨 JACKPOT! ${correctName} a câștigat Insigna Exclusivă [${reward.label}] la roata norocului!`;
-            } 
-            else if (reward.type === 'banner') {
-                alertText = `🚨 JACKPOT! ${correctName} a câștigat Bannerul Ultra-Rar [${reward.label}] la roata norocului!`;
-            } 
-            else if (reward.type === 'diamonds') {
-                alertText = `💎 JACKPOT! ${correctName} a câștigat ${reward.label} DIAMANTE la roata norocului!`;
-            } 
-            else if (reward.type === 'coins') {
-                alertText = `💰 JACKPOT! ${correctName} a câștigat ${reward.label} Coins la roata norocului!`;
-            }
-            
+            let alertText = `🚨 JACKPOT! ${correctName} a câștigat ${reward.label} la roata norocului!`;
             await addDoc(collection(db, "wall_messages"), {
                 text: alertText,
                 uid: 'system-alert',
@@ -2254,9 +2232,7 @@ async function finalizeSpin(idx) {
                 reactions: {},
                 seenBy: []
             });
-        } catch (e) {
-            console.error("Alert failed:", e);
-        }
+        } catch (e) { console.error("Alert failed:", e); }
     }
 }
 
