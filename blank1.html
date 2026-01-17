@@ -1767,7 +1767,14 @@
 </div>
 </main>
 <!-- MAIN CONTENT AREA END -->
-
+<!-- DEV TOOLS (DELETE BEFORE RELEASE) -->
+<div style="position: fixed; bottom: 10px; left: 10px; z-index: 99999; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid red; border-radius: 10px;">
+    <h4 style="color:red; margin:0 0 5px 0;">ADMIN CHEATS</h4>
+    <button onclick="window.adminSpin(3)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force BADGE</button>
+    <button onclick="window.adminSpin(6)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force BANNER</button>
+    <button onclick="window.adminSpin(11)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force 10 DIAM</button>
+    <button onclick="window.adminSpin(10)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force 2.5K</button>
+</div>
 
 <!-- Footer -->
 <footer>
@@ -2084,7 +2091,19 @@ function animateWheelStatic() {
 animateWheelStatic();
 
 // Logic to pick a reward based on percentage chances
+// GLOBAL DEBUG VARIABLE
+let debugForcedIndex = -1;
+
+// Logic to pick a reward
 function pickRewardIndex() {
+    // 1. Check if Admin forced a result
+    if (debugForcedIndex !== -1) {
+        const idx = debugForcedIndex;
+        debugForcedIndex = -1; // Reset after one spin
+        return idx;
+    }
+
+    // 2. Normal Random Logic
     let rand = Math.random() * 100;
     let cumulative = 0;
     for (let i = 0; i < REWARDS.length; i++) {
@@ -2092,6 +2111,13 @@ function pickRewardIndex() {
         if (rand < cumulative) return i;
     }
     return 0;
+}
+
+// ADMIN FUNCTION TO FORCE SPIN
+window.adminSpin = (index) => {
+    debugForcedIndex = index;
+    // Trigger the spin (we simulate a Free Spin click to bypass payment for testing)
+    attemptSpin(true); 
 }
 
 // --- PRO PHYSICS ENGINE ---
@@ -2103,16 +2129,51 @@ async function finalizeSpin(idx) {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const modal = document.getElementById('questRewardModal');
     
-    // --- 1. UPDATE THE POPUP UI ---
+    // UI Elements
     const amountText = modal.querySelector('.reward-coins-box span');
-    const coinsLabel = modal.querySelector('p'); // The text that says "KSDA COINS"
+    const coinsLabel = modal.querySelector('p'); 
     const titleText = modal.querySelector('h2');
     const iconImg = modal.querySelector('.reward-coins-box img');
 
-    // Reset default styling
-    titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
+    // --- FETCH USER DATA FIRST (To check inventory) ---
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.exists() ? userSnap.data() : {};
+    const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
+
+    // --- CHECK FOR DUPLICATES ---
+    let isDuplicate = false;
     
-    // Update visuals based on reward type
+    if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) {
+        isDuplicate = true;
+    }
+    if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) {
+        isDuplicate = true;
+    }
+
+    // --- HANDLE DUPLICATE (CONSOLATION PRIZE) ---
+    if (isDuplicate) {
+        // 1. Update UI for Consolation
+        titleText.innerHTML = `<span style="font-size: 24px;">😅</span> UPS!`;
+        modal.querySelector('p').innerText = "Deja deții acest item! Nu te întrista, uite un premiu de consolare:";
+        
+        amountText.innerText = "5000";
+        coinsLabel.innerText = "KSDA COINS (CONSOLARE)";
+        iconImg.src = "https://iili.io/fhc1SKQ.png";
+
+        // 2. Give 5000 Coins
+        await updateDoc(userRef, { coins: increment(5000) });
+        
+        // 3. Show Modal and EXIT (Do not announce in chat)
+        modal.classList.add('active');
+        return; 
+    }
+
+    // --- NORMAL REWARD FLOW (Not a duplicate) ---
+    
+    // Reset default title just in case
+    titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
+    modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
+
     if (reward.type === "coins") {
         amountText.innerText = reward.label;
         coinsLabel.innerText = "KSDA COINS";
@@ -2134,10 +2195,9 @@ async function finalizeSpin(idx) {
         iconImg.src = "https://iili.io/fXvBEiB.png";
     }
 
-    // --- SHOW THE POPUP ---
     modal.classList.add('active');
 
-    // --- 2. UPDATE THE DATABASE ---
+    // Give the actual reward
     if (reward.type === "coins") {
         await updateDoc(userRef, { coins: increment(reward.val) });
     } 
@@ -2151,22 +2211,15 @@ async function finalizeSpin(idx) {
         await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
     }
 
-    // --- 3. JACKPOT ANNOUNCEMENT SYSTEM ---
-    // Logic: Only announce specific High-Tier rewards
+    // --- JACKPOT ANNOUNCEMENT SYSTEM ---
     let isJackpot = false;
-
     if (reward.type === 'badge') isJackpot = true;
     if (reward.type === 'banner') isJackpot = true;
-    if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true; // Only 10 Diamonds
-    if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;  // Only 2500 Coins
+    if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true;
+    if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;
 
     if (isJackpot) {
         try {
-            // Fetch the Real Username
-            const userSnap = await getDoc(userRef);
-            const userData = userSnap.exists() ? userSnap.data() : {};
-            const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
-            
             let alertText = "";
 
             if (reward.type === 'badge') {
@@ -2176,11 +2229,9 @@ async function finalizeSpin(idx) {
                 alertText = `🚨 JACKPOT! ${correctName} a câștigat Bannerul Ultra-Rar [${reward.label}] la roata norocului!`;
             } 
             else if (reward.type === 'diamonds') {
-                // Must be the 10 diamond prize to get here
                 alertText = `💎 JACKPOT! ${correctName} a câștigat ${reward.label} DIAMANTE la roata norocului!`;
             } 
             else if (reward.type === 'coins') {
-                // Must be the 2500 coin prize to get here
                 alertText = `💰 JACKPOT! ${correctName} a câștigat ${reward.label} Coins la roata norocului!`;
             }
             
