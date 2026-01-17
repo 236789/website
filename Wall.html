@@ -1,6 +1,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -1853,6 +1854,29 @@
 .msg-bubble.bubble-jackpot .quoted-msg {
     text-transform: none !important;
     color: rgba(255,255,255,0.6) !important;
+}
+
+
+/* Ensure the chat header lets the frame 'breathe' */
+#chatHeaderBar.bubble-jackpot {
+    overflow: visible !important; /* This is the fix for the frame being cut off */
+}
+
+/* Ensure the Laser effect stays BEHIND the profile frame */
+#chatHeaderBar.bubble-jackpot::before {
+    z-index: 0 !important;
+}
+
+/* Bring the profile container to the front */
+#headerProfileContainer {
+    position: relative;
+    z-index: 5;
+}
+
+/* Prevent the banner from centering the header content on mobile */
+#chatHeaderBar.bubble-jackpot {
+    justify-content: space-between !important;
+    display: flex !important;
 }
   </style>
 
@@ -3772,15 +3796,17 @@ onAuthStateChanged(auth, async (user) => {
         lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
         if (userAvatar) userAvatar.src = user.photoURL;
 
-        // --- LIVE USER DATA LISTENER ---
+// --- LIVE USER DATA LISTENER (FIXED FOR HEADERS & FRAMES) ---
         onSnapshot(userRef, async (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
 
+                // 1. Quest & Streak Logic
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
 
+                // Streak Reward Completion (6/6 Quests)
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
@@ -3805,23 +3831,45 @@ onAuthStateChanged(auth, async (user) => {
                     }
                 }
 
-                if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = data.image;
+                // 2. AVATAR & FRAME SYNC (Updates both Account Modal AND Chat Header)
+                const userPic = data.image || user.photoURL;
+                if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = userPic;
+                if(userAvatar) userAvatar.src = userPic; // Updates Header PFP
+
                 const popFrame = document.getElementById('popUserFrame');
-                if (popFrame) {
-                    if (data.equippedFrame?.img) {
-                        popFrame.src = data.equippedFrame.img;
-                        popFrame.style.display = 'block';
-                        const scale = data.equippedFrame.scale || 1.45;
-                        popFrame.style.width = (scale * 100) + '%';
-                        popFrame.style.height = (scale * 100) + '%';
-                    } else { popFrame.style.display = 'none'; }
+                const headFrame = document.getElementById('userHeaderFrame'); // Header Frame
+
+                if (data.equippedFrame && data.equippedFrame.img) {
+                    const scale = data.equippedFrame.scale || 1.45;
+                    const sizePct = (scale * 100) + '%';
+                    
+                    // Apply to both frame elements
+                    [popFrame, headFrame].forEach(f => {
+                        if(f) {
+                            f.src = data.equippedFrame.img;
+                            f.style.display = 'block';
+                            f.style.width = sizePct;
+                            f.style.height = sizePct;
+                        }
+                    });
+                } else {
+                    if(popFrame) popFrame.style.display = 'none';
+                    if(headFrame) headFrame.style.display = 'none';
                 }
 
+                // 3. NAME & TEXT COLORING
                 let rawName = data.username || "Anonim";
                 if (isOwner) rawName = "Lost Soul";
-                let coloredNameHtml = (data.equippedText?.cssClass) ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` : rawName;
+                
+                // Apply custom text color if equipped
+                let coloredNameHtml = (data.equippedText && data.equippedText.cssClass) 
+                    ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` 
+                    : rawName;
 
+                // Update Name in Account Modal
                 if(document.getElementById('popUserName')) document.getElementById('popUserName').innerHTML = coloredNameHtml;
+                
+                // Update Currencies & Email
                 if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email;
                 if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
@@ -3829,18 +3877,25 @@ onAuthStateChanged(auth, async (user) => {
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
+                // 4. HEADER BANNER LOGIC (Fix for alignment)
                 const chatHeaderBar = document.getElementById('chatHeaderBar');
                 if (chatHeaderBar) {
+                    // Reset class to base and add banner if exists
                     chatHeaderBar.className = 'chat-header';
-                    if (data.equippedBanner?.cssClass) chatHeaderBar.classList.add(data.equippedBanner.cssClass);
+                    if (data.equippedBanner && data.equippedBanner.cssClass) {
+                        chatHeaderBar.classList.add(data.equippedBanner.cssClass);
+                    }
                 }
 
+                // 5. HEADER STAFF BADGES & COSMETIC BADGES
                 if(userName) {
                     let headerStaffBadge = "";
-                    if (isOwner) headerStaffBadge = ` <span class="owner-badge">OWNER</span>`;
+                    if (isOwner) headerStaffBadge = ` <span class="owner-badge"> Website Owner</span>`;
                     else if (isAdmin) headerStaffBadge = ` <span class="admin-badge">ADMIN</span>`;
-                    else if (isMod) headerStaffBadge = ` <span class="mod-badge">MOD</span>`;
+                    else if (isMod) headerStaffBadge = ` <span class="mod-badge">Moderator</span>`;
                     else if (isHelper) headerStaffBadge = ` <span class="helper-badge">HELPER</span>`;
+                    
+                    // Final assembly: Colored Name + Staff Rank + Item Badge
                     userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
                 }
             }
@@ -4889,13 +4944,14 @@ window.deleteMsg = async function(id) {
         const msgSnap = await getDoc(msgRef);
         if (!msgSnap.exists()) return;
         
-        const yes = await showCustomConfirm("ȘTERGE MESAJ", "Ești sigur?", true);
+        const yes = await showCustomConfirm("ȘTERGE MESAJ", "Ești sigur? Dacă mesajul este fixat, va dispărea din bară.", true);
         if(yes) {
-            // Când ștergem, scoatem și Pin-ul pentru a ascunde bara
+            // We set isPinned to false IMMEDIATELY so the bar hides instantly
             await updateDoc(msgRef, { 
                 isDeleted: true,
                 isPinned: false 
             }); 
+            showToast("Mesaj șters.", "success");
         }
     } catch(e) { console.error(e); } 
 }
