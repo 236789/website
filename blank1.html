@@ -2103,7 +2103,7 @@ async function finalizeSpin(idx) {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const modal = document.getElementById('questRewardModal');
     
-    // --- 1. UPDATE THE POPUP UI (Make it look good) ---
+    // --- 1. UPDATE THE POPUP UI ---
     const amountText = modal.querySelector('.reward-coins-box span');
     const coinsLabel = modal.querySelector('p'); // The text that says "KSDA COINS"
     const titleText = modal.querySelector('h2');
@@ -2116,28 +2116,28 @@ async function finalizeSpin(idx) {
     if (reward.type === "coins") {
         amountText.innerText = reward.label;
         coinsLabel.innerText = "KSDA COINS";
-        iconImg.src = "https://iili.io/fhc1SKQ.png"; // Coin Icon
+        iconImg.src = "https://iili.io/fhc1SKQ.png";
     } 
     else if (reward.type === "diamonds") {
         amountText.innerText = reward.label;
         coinsLabel.innerText = "DIAMANTE";
-        iconImg.src = "https://iili.io/fv5bmtj.png"; // Diamond Icon
+        iconImg.src = "https://iili.io/fv5bmtj.png";
     }
     else if (reward.type === "badge") {
         amountText.innerText = "BADGE";
-        coinsLabel.innerText = reward.label; // "EXCLUSIVE BADGE"
-        iconImg.src = "https://iili.io/fXvBEiB.png"; // Logo or Trophy
+        coinsLabel.innerText = reward.label;
+        iconImg.src = "https://iili.io/fXvBEiB.png";
     }
     else if (reward.type === "banner") {
         amountText.innerText = "BANNER";
-        coinsLabel.innerText = reward.label; // "EXCLUSIVE BANNER"
-        iconImg.src = "https://iili.io/fXvBEiB.png"; // Logo
+        coinsLabel.innerText = reward.label;
+        iconImg.src = "https://iili.io/fXvBEiB.png";
     }
 
-    // --- CRITICAL FIX 1: ACTUALLY SHOW THE POPUP ---
+    // --- SHOW THE POPUP ---
     modal.classList.add('active');
 
-    // --- 2. UPDATE THE DATABASE (GIVE THE REWARD) ---
+    // --- 2. UPDATE THE DATABASE ---
     if (reward.type === "coins") {
         await updateDoc(userRef, { coins: increment(reward.val) });
     } 
@@ -2151,36 +2151,37 @@ async function finalizeSpin(idx) {
         await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
     }
 
-    // --- 3. JACKPOT ANNOUNCEMENT SYSTEM (Fix 2 & 3) ---
-    // Only announce significant wins
-    if (reward.val >= 50 || reward.type === 'diamonds' || reward.type === 'badge' || reward.type === 'banner') {
+    // --- 3. JACKPOT ANNOUNCEMENT SYSTEM ---
+    // Logic: Only announce specific High-Tier rewards
+    let isJackpot = false;
+
+    if (reward.type === 'badge') isJackpot = true;
+    if (reward.type === 'banner') isJackpot = true;
+    if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true; // Only 10 Diamonds
+    if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;  // Only 2500 Coins
+
+    if (isJackpot) {
         try {
-            // FIX 2: Fetch the Real Username from Firestore
+            // Fetch the Real Username
             const userSnap = await getDoc(userRef);
             const userData = userSnap.exists() ? userSnap.data() : {};
-            
-            // Prioritize: Custom Username -> Google Name -> Fallback
             const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
             
-            // FIX 3: Custom Messages
             let alertText = "";
 
             if (reward.type === 'badge') {
-                alertText = `🚨 **JACKPOT!** 🚨 **${correctName}** a câștigat Insigna Exclusivă **[${reward.label}]**!`;
+                alertText = `🚨 JACKPOT! ${correctName} a câștigat Insigna Exclusivă [${reward.label}] la roata norocului!`;
             } 
             else if (reward.type === 'banner') {
-                alertText = `🚨 **JACKPOT!** 🚨 **${correctName}** a câștigat Bannerul Ultra-Rar **[${reward.label}]**!`;
+                alertText = `🚨 JACKPOT! ${correctName} a câștigat Bannerul Ultra-Rar [${reward.label}] la roata norocului!`;
             } 
             else if (reward.type === 'diamonds') {
-                if (reward.val >= 5) {
-                    alertText = `💎 **JACKPOT!** **${correctName}** a câștigat **${reward.label} DIAMANTE** la roată!`;
-                } else {
-                    alertText = `💎 **${correctName}** a câștigat **${reward.label} Diamante**!`;
-                }
+                // Must be the 10 diamond prize to get here
+                alertText = `💎 JACKPOT! ${correctName} a câștigat ${reward.label} DIAMANTE la roata norocului!`;
             } 
-            else {
-                // Coins (High amount)
-                alertText = `💰 **${correctName}** a câștigat **${reward.label} Coins**!`;
+            else if (reward.type === 'coins') {
+                // Must be the 2500 coin prize to get here
+                alertText = `💰 JACKPOT! ${correctName} a câștigat ${reward.label} Coins la roata norocului!`;
             }
             
             await addDoc(collection(db, "wall_messages"), {
