@@ -2402,7 +2402,6 @@ async function startSpin() {
 
 // Funcție unică de pornire Spin (Corectată)
 async function attemptSpin(isFreeAttempt) {
-    // 1. Verificăm dacă roata se învârte deja pentru a preveni spam-ul
     if (isSpinning) return;
 
     if (!auth.currentUser) {
@@ -2417,36 +2416,41 @@ async function attemptSpin(isFreeAttempt) {
 
     const now = Date.now();
     let lastSpinTime = 0;
- 
-    // 2. Logica Safe pentru calculul timpului (Fix toDate error)
     if (data.lastWheelSpin) {
         lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
     }
 
     const freeAvailable = (now - lastSpinTime) >= (12 * 60 * 60 * 1000);
 
-    // 3. Verificăm condițiile de plată/gratis
+    // --- CHECK PAYMENT ---
     if (isFreeAttempt) {
         if (!freeAvailable) {
-            alert("Free Spin-ul nu este încă disponibil! Uită-te la cronometru.");
+            alert("Free Spin-ul nu este încă disponibil!");
             return;
         }
-        // Actualizăm timpul de spin gratis în DB
         await updateDoc(userRef, { lastWheelSpin: serverTimestamp() });
     } else {
-        // Spin plătit cu 1 Diamant
+        // Check for Diamonds
         if ((data.diamonds || 0) < 1) {
-            alert("Nu ai destule diamante pentru un spin extra!");
-            // Oprim auto-spin dacă nu mai sunt resurse
-            const autoTxt = document.getElementById('autoText');
-            if (autoTxt) autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
+            // --- AUTO STOP LOGIC ---
+            if (window.isAutoEnabled) {
+                window.isAutoEnabled = false; // Stop the loop
+                
+                // Reset Button to Gray
+                const btn = document.getElementById('autoSpinBtn');
+                if(btn) {
+                    btn.classList.remove('btn-auto-active');
+                    btn.querySelector('.btn-top').innerHTML = '<i class="fas fa-robot"></i> AUTO: OFF';
+                }
+            }
+            
+            alert("Nu ai destule diamante!");
             return;
         }
-        // Scădem diamantul în DB
+        // Deduct 1 Diamond
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    // 4. Dacă totul e OK, pornim animația roții
     startSpin();
 }
 
@@ -2501,7 +2505,7 @@ async function finalizeSpin(idx) {
     const titleText = modal.querySelector('h2');
     const iconImg = modal.querySelector('.reward-coins-box img');
 
-    // Fetch user
+    // Fetch user data
     const userSnap = await getDoc(userRef);
     const userData = userSnap.exists() ? userSnap.data() : {};
     const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
@@ -2512,126 +2516,91 @@ async function finalizeSpin(idx) {
     if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) isDuplicate = true;
     if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) isDuplicate = true;
 
+    // --- DISPLAY LOGIC ---
     if (isDuplicate) {
         titleText.innerHTML = `<span style="font-size: 24px;">😅</span> UPS!`;
         modal.querySelector('p').innerText = "Deja deții acest item! Premiu de consolare:";
+        amountText.style.fontSize = ""; 
+        amountText.style.letterSpacing = "";
         amountText.innerText = "5000";
         coinsLabel.innerText = "KSDA COINS";
         iconImg.src = "https://iili.io/fhc1SKQ.png";
         
-        // Update Coins & Wheel Stats
         await updateDoc(userRef, { 
             coins: increment(5000),
             "wheelStats.coins": increment(5000) 
         });
-        
-        modal.classList.add('active');
-        
-        // Return here so we don't trigger auto-spin on duplicate (optional, but safer)
-        return; 
-    }
-
-    // --- DISPLAY REWARD ---
-    if (reward.type === "xp") {
-        titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
-        amountText.style.fontSize = "26px"; 
-        amountText.style.letterSpacing = "1px"; 
-        amountText.innerText = "EXPERIENȚĂ";
-        coinsLabel.innerText = "DATA VIITOARE!";
-        modal.querySelector('p').innerText = "Nu ai câștigat nimic material, dar ai acumulat experiență de viață!";
-        iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png"; 
-    } 
-    else {
-        amountText.style.fontSize = ""; 
-        amountText.style.letterSpacing = "";
-        
-        titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
-        modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
-
-        // --- DATABASE UPDATES & STAT TRACKING ---
-        if (reward.type === "coins") {
-            amountText.innerText = reward.label;
-            coinsLabel.innerText = "KSDA COINS";
-            iconImg.src = "https://iili.io/fhc1SKQ.png";
-            await updateDoc(userRef, { 
-                coins: increment(reward.val),
-                "wheelStats.coins": increment(reward.val) // Track Total Won
-            });
+    } else {
+        if (reward.type === "xp") {
+            titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
+            amountText.style.fontSize = "26px"; 
+            amountText.style.letterSpacing = "1px"; 
+            amountText.innerText = "EXPERIENȚĂ";
+            coinsLabel.innerText = "DATA VIITOARE!";
+            modal.querySelector('p').innerText = "Nu ai câștigat nimic material, dar ai acumulat experiență de viață!";
+            iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png"; 
         } 
-        else if (reward.type === "diamonds") {
-            amountText.innerText = reward.label;
-            coinsLabel.innerText = "DIAMANTE";
-            iconImg.src = "https://iili.io/fv5bmtj.png";
-            await updateDoc(userRef, { 
-                diamonds: increment(reward.val),
-                "wheelStats.diamonds": increment(reward.val) // Track Total Won
-            });
-        }
-        else if (reward.type === "badge") {
-            amountText.innerText = "BADGE";
-            coinsLabel.innerText = reward.label;
-            iconImg.src = "https://iili.io/fXvBEiB.png";
-            await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
-        }
-        else if (reward.type === "banner") {
-            amountText.innerText = "BANNER";
-            coinsLabel.innerText = reward.label;
-            iconImg.src = "https://iili.io/fXvBEiB.png";
-            await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
+        else {
+            titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
+            modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
+            amountText.style.fontSize = ""; 
+            amountText.style.letterSpacing = "";
+
+            if (reward.type === "coins") {
+                amountText.innerText = reward.label;
+                coinsLabel.innerText = "KSDA COINS";
+                iconImg.src = "https://iili.io/fhc1SKQ.png";
+                await updateDoc(userRef, { coins: increment(reward.val), "wheelStats.coins": increment(reward.val) });
+            } 
+            else if (reward.type === "diamonds") {
+                amountText.innerText = reward.label;
+                coinsLabel.innerText = "DIAMANTE";
+                iconImg.src = "https://iili.io/fv5bmtj.png";
+                await updateDoc(userRef, { diamonds: increment(reward.val), "wheelStats.diamonds": increment(reward.val) });
+            }
+            else if (reward.type === "badge") {
+                amountText.innerText = "BADGE";
+                coinsLabel.innerText = reward.label;
+                iconImg.src = "https://iili.io/fXvBEiB.png";
+                await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
+            }
+            else if (reward.type === "banner") {
+                amountText.innerText = "BANNER";
+                coinsLabel.innerText = reward.label;
+                iconImg.src = "https://iili.io/fXvBEiB.png";
+                await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
+            }
         }
     }
 
     modal.classList.add('active');
 
-    // --- JACKPOT LOGIC (LOGGING & ALERT) ---
+    // --- JACKPOT LOGIC ---
     let isJackpot = false;
     if (reward.type === 'badge' || reward.type === 'banner') isJackpot = true;
     if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true;
     if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;
 
     if (isJackpot) {
-        // 1. Log to Database for "Jackpot History"
         try {
             await addDoc(collection(db, "wheel_jackpot_history"), {
-                username: correctName,
-                userPhoto: userPhoto,
-                rewardLabel: reward.label,
-                rewardType: reward.type,
-                timestamp: serverTimestamp()
+                username: correctName, userPhoto: userPhoto, rewardLabel: reward.label, rewardType: reward.type, timestamp: serverTimestamp()
             });
-        } catch(e) { console.log("Log error", e); }
-
-        // 2. Announce in Chat
-        try {
-            let alertText = `🚨 JACKPOT! ${correctName} a câștigat ${reward.label} la roata norocului!`;
             await addDoc(collection(db, "wall_messages"), {
-                text: alertText, uid: 'system-alert', name: 'SYSTEM',
-                photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp(),
-                isDeleted: false, reactions: {}, seenBy: []
+                text: `🚨 JACKPOT! ${correctName} a câștigat ${reward.label} la roata norocului!`, uid: 'system-alert', name: 'SYSTEM', photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp(), isDeleted: false, reactions: {}, seenBy: []
             });
-        } catch (e) {}
+        } catch(e) {}
     }
 
-    // --- AUTO SPIN LOOP (CORRECTLY PLACED HERE) ---
+    // --- AUTO SPIN LOOP (Updated) ---
     if (window.isAutoEnabled) {
-        // 1. Check if user has diamonds left for the next spin
-        if ((userData.diamonds || 0) < 1) {
-            // Stop Auto if out of money
-            window.isAutoEnabled = false;
-            document.getElementById('autoSpinBtn').classList.remove('btn-auto-active');
-            document.getElementById('autoSpinBtn').querySelector('.btn-top').innerHTML = '<i class="fas fa-robot"></i> AUTO: OFF';
-            // Optional: alert("Auto-Spin oprit: Diamante insuficiente.");
-            return;
-        }
-
-        // 2. Wait 2 seconds, Close Modal, and Spin Again
         setTimeout(() => {
-            // Close the reward modal automatically
+            // 1. Close the modal (Simulate clicking "Super")
             document.getElementById('questRewardModal').classList.remove('active');
             
-            // Trigger next Paid Spin
+            // 2. Trigger the next Paid Spin
             attemptSpin(false); 
-        }, 2000);
+        }, 1500); // 1.5 second delay to see the reward
     }
 }
 
