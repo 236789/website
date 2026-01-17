@@ -1710,6 +1710,38 @@ transition: 0.3s;
     display: block;
     margin-top: 2px;
 }
+
+
+/* Spațiu între utilizatori în listă */
+#allUsersList .top-item {
+    margin-bottom: 12px !important; /* Mărește spațiul dintre carduri */
+}
+
+/* Stil pentru sub-filtrele (All Time / Azi) */
+.newest-sub-filters {
+    display: none; /* Ascuns implicit, afișat doar la 'Membri Noi' */
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.sub-filter-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(41, 243, 255, 0.3);
+    color: var(--text-muted);
+    padding: 6px 15px;
+    border-radius: 10px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.sub-filter-btn.active {
+    background: rgba(41, 243, 255, 0.2);
+    border-color: var(--primary);
+    color: var(--primary);
+}
   </style>
 </head>
 <body>
@@ -2017,6 +2049,11 @@ transition: 0.3s;
 </button>
 
         <input type="text" id="searchAllUsers" placeholder="Caută membru..." style="background:rgba(255,255,255,0.1); border:1px solid #333; color:#fff; padding:12px; width:100%; box-sizing:border-box; border-radius:15px; margin-bottom:15px; font-family:'Poppins';">
+
+<div id="newestSubFilters" class="newest-sub-filters">
+    <button id="sub-all" class="sub-filter-btn active" onclick="setNewestSubFilter('all')">TOATE (ALL TIME)</button>
+    <button id="sub-today" class="sub-filter-btn" onclick="setNewestSubFilter('today')">AZI (ULTIMELE 24H)</button>
+</div>
         <div id="allUsersList" style="overflow-y: auto; flex: 1; padding-right: 5px;">
             <div style="text-align:center; color:#aaa;">Se încarcă lista...</div>
         </div>
@@ -3003,94 +3040,160 @@ function renderLeaderboard() {
 
 
 
-
-    let allUsersDataCache = [];
-    async function openAllUsersList() {
-        allUsersModal.classList.add('active');
-        allUsersListEl.innerHTML = '<div style="text-align:center; padding:40px; font-family:Orbitron;">Se descarcă toți membrii... <br><i class="fas fa-spinner fa-spin" style="margin-top:15px; font-size:24px;"></i></div>';
-        try {
-            const q = query(collection(db, "accounts"), orderBy("coins", "desc"));
-            const snapshot = await getDocs(q);
-            allUsersDataCache = [];
-            snapshot.forEach(doc => { allUsersDataCache.push({ id: doc.id, ...doc.data() }); });
-            renderAllUsersList(allUsersDataCache);
-        } catch (e) { allUsersListEl.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>'; }
-    }
-
-// --- MODAL SORTING LOGIC ---
+let allUsersDataCache = [];
 let currentModalSort = 'coins';
+let newestSubFilter = 'all'; // Implicit: Toate timpurile
 
-// --- UPDATED SORT MODAL ---
+async function openAllUsersList() {
+    allUsersModal.classList.add('active');
+    allUsersListEl.innerHTML = '<div style="text-align:center; padding:40px; font-family:Orbitron;">Se descarcă toți membrii... <br><i class="fas fa-spinner fa-spin" style="margin-top:15px; font-size:24px;"></i></div>';
+    try {
+        // Preluăm toți utilizatorii ordonați după monede ca bază
+        const q = query(collection(db, "accounts"), orderBy("coins", "desc"));
+        const snapshot = await getDocs(q);
+        allUsersDataCache = [];
+        snapshot.forEach(doc => { allUsersDataCache.push({ id: doc.id, ...doc.data() }); });
+        
+        // Resetăm filtrele la deschidere
+        currentModalSort = 'coins';
+        newestSubFilter = 'all';
+        sortModal('coins'); 
+    } catch (e) { 
+        allUsersListEl.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>'; 
+    }
+}
+
+// --- FUNCȚIE NOUĂ PENTRU SUB-FILTRE (ALL TIME / AZI) ---
+window.setNewestSubFilter = (mode) => {
+    newestSubFilter = mode;
+    // Update vizual butoane sub-filtru
+    document.querySelectorAll('.sub-filter-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`sub-${mode}`).classList.add('active');
+    
+    renderAllUsersList(allUsersDataCache);
+};
+
+// --- SORTARE MODAL ACTUALIZATĂ ---
 window.sortModal = (type) => {
     currentModalSort = type;
 
-    // Update Buttons Visuals
+    // Update vizual butoane principale
     document.querySelectorAll('.modal-tab, .modal-long-btn').forEach(b => b.classList.remove('active'));
     
+    const subFiltersDiv = document.getElementById('newestSubFilters');
+
     if(type === 'newest') {
         document.getElementById('m-btn-newest').classList.add('active');
-    } else {
-        document.getElementById(`m-btn-${type}`).classList.add('active');
-    }
-
-    // Sort Logic
-    if(type === 'newest') {
+        if(subFiltersDiv) subFiltersDiv.style.display = 'flex'; // Arătăm butoanele All Time / Azi
+        
         allUsersDataCache.sort((a, b) => {
             const timeA = a.joinedAt?.seconds || 0;
             const timeB = b.joinedAt?.seconds || 0;
-            return timeB - timeA; // Most recent first
+            return timeB - timeA; 
         });
-    } else if(type === 'coins') {
-        allUsersDataCache.sort((a,b) => (b.coins || 0) - (a.coins || 0));
-    } 
-    // ... keep your other diamonds/donated/referrals logic ...
+    } else {
+        document.getElementById(`m-btn-${type}`).classList.add('active');
+        if(subFiltersDiv) subFiltersDiv.style.display = 'none'; // Ascundem sub-filtrele
+        
+        // Sortări standard
+        if(type === 'coins') allUsersDataCache.sort((a,b) => (b.coins || 0) - (a.coins || 0));
+        else if(type === 'diamonds') allUsersDataCache.sort((a,b) => (b.diamonds || 0) - (a.diamonds || 0));
+        else if(type === 'donated') allUsersDataCache.sort((a,b) => (b.totalCoinsDonated || 0) - (a.totalCoinsDonated || 0));
+        else if(type === 'referrals') allUsersDataCache.sort((a,b) => (b.totalReferrals || 0) - (a.totalReferrals || 0));
+    }
 
     renderAllUsersList(allUsersDataCache);
 };
 
-// --- UPDATED RENDER LIST ---
+// --- RENDER LIST ACTUALIZAT ---
 function renderAllUsersList(data) {
     allUsersListEl.innerHTML = '';
+    
+    // Începem de la rank 51 (sărim peste podium și primii 50)
     let listToShow = data.slice(50); 
 
+    // LOGICA FILTRARE "AZI" (Ultimele 24 ore)
+    if (currentModalSort === 'newest' && newestSubFilter === 'today') {
+        const nowMs = Date.now();
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        
+        listToShow = listToShow.filter(m => {
+            if (!m.joinedAt) return false;
+            const joinTimeMs = m.joinedAt.seconds * 1000;
+            return (nowMs - joinTimeMs) < oneDayMs;
+        });
+    }
+
     if(listToShow.length === 0) { 
-        allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:20px;">NIMENI AICI.</div>'; 
+        allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:20px; font-family:Orbitron; font-size:11px;">NICIUN MEMBRU ÎN ACEASTĂ CATEGORIE.</div>'; 
         return; 
     }
 
     listToShow.forEach((m, idx) => {
         let realRank = idx + 51;
         const item = document.createElement('div');
+        
+        // ADAUGARE CLASE ȘI SPAȚIERE
         item.className = 'top-item';
+        item.style.marginBottom = '12px'; // SPAȚIUL ÎNTRE UTILIZATORI
+        
         if(m.equippedBanner?.cssClass) item.className += ` ${m.equippedBanner.cssClass}`;
 
-        // Formatting Joined Date
+        // Definire Iconițe/Valori în funcție de sortare
+        let valDisplay = "";
+        let iconHtml = "";
+
+        if (currentModalSort === 'coins') {
+            valDisplay = formatNumber(m.coins || 0);
+            iconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="width:16px;">`;
+        } else if (currentModalSort === 'diamonds') {
+            valDisplay = formatNumber(m.diamonds || 0);
+            iconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width:16px;">`;
+        } else if (currentModalSort === 'donated') {
+            valDisplay = formatNumber(m.totalCoinsDonated || 0);
+            iconHtml = `<i class="fas fa-hand-holding-usd" style="color:#ffd700; font-size:12px;"></i>`;
+        } else if (currentModalSort === 'referrals') {
+            valDisplay = m.totalReferrals || 0;
+            iconHtml = `<i class="fas fa-user-plus" style="color:#00ff88; font-size:12px;"></i>`;
+        }
+
+        // LOGICA DATA ALĂTURĂRII
         let joinedHtml = "";
         if(currentModalSort === 'newest' && m.joinedAt) {
             const date = new Date(m.joinedAt.seconds * 1000);
             const day = date.toLocaleDateString('ro-RO');
             const time = date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
-            joinedHtml = `<span class="joined-at-text">S-a alăturat: ${day} la ${time}</span>`;
+            joinedHtml = `<span style="font-size:9px; color:#aaa; display:block; margin-top:2px; font-family:sans-serif;">
+                📅 Alăturat: ${day} la ${time}
+            </span>`;
         }
 
-        // ... Keep your existing icon/val logic ...
-        let valDisplay = formatNumber(m[currentModalSort] || 0);
-        if(currentModalSort === 'newest') valDisplay = ""; // Hide coins if looking at new users
+        let nameHtml = formatName(m.username || 'Anonim');
+        if (m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
+
+        // Frame Logic
+        let frameHtml = '';
+        if (m.equippedFrame && m.equippedFrame.img) {
+            const scale = m.equippedFrame.scale || 1.45;
+            frameHtml = `<img src="${m.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%;">`;
+        }
 
         item.innerHTML = `
             <div class="top-left">
-                <span class="top-rank-num" style="font-size:12px;">#${realRank}</span>
-                <div class="top-img-box" style="width:35px; height:35px;">
+                <span class="top-rank-num" style="font-size:11px; width:25px;">#${realRank}</span>
+                <div class="top-img-box" style="width:38px; height:38px;">
                     <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
+                    ${frameHtml}
                 </div>
-                <div class="top-user-name" style="font-size:13px; display:block;">
-                    <div class="name-text">${formatName(m.username || 'Anonim')} ${getRoleBadge(m.email)}</div>
+                <div class="top-user-name" style="font-size:13px; display:flex; flex-direction:column; align-items:flex-start; gap:0;">
+                    <div class="name-text">${nameHtml} ${getRoleBadge(m.email)}</div>
                     ${joinedHtml}
                 </div>
             </div>
             <div class="top-right">
-                <div class="top-coins">
+                <div class="top-coins" style="font-size:13px; gap:5px;">
                     <span>${valDisplay}</span>
+                    ${iconHtml}
                 </div>
             </div>
         `;
