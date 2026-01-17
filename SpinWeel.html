@@ -2033,7 +2033,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp, addDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -2048,6 +2048,30 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, ar
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- TRANSACTION LOGGER FUNCTION ---
+async function logTransaction(amount, type, desc) {
+    if (!auth.currentUser) return;
+    try {
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+
+        await addDoc(collection(db, "transactions"), {
+            userId: auth.currentUser.uid,
+            username: userData.username || auth.currentUser.displayName || "Unknown",
+            userImage: userData.image || auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
+            amount: amount,
+            type: type,
+            source: "Spin Wheel",
+            description: desc,
+            timestamp: serverTimestamp()
+        });
+        console.log("Transaction logged:", desc);
+    } catch (e) {
+        console.error("Failed to log transaction:", e);
+    }
+}
 
     const headerLoginBtn = document.getElementById('headerLoginBtn');
     const headerLoginText = document.getElementById('headerLoginText');
@@ -2574,8 +2598,11 @@ async function attemptSpin(isFreeAttempt) {
             return;
         }
         // Scădem diamantul în DB
-        await updateDoc(userRef, { diamonds: increment(-1) });
-    }
+// --- LOG TRANSACTION (-1 Diamond) ---
+        await logTransaction(-1, "DIAMONDS", "Spin Cost");
+
+        // Scădem diamantul în DB
+        await updateDoc(userRef, { diamonds: increment(-1) });    }
 
     // 4. Dacă totul e OK, pornim sunetul și animația
     audioSpin.volume = 0.5;
@@ -2707,23 +2734,37 @@ async function finalizeSpin(idx) {
         titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
         modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
 
-        // --- DATABASE UPDATES & STAT TRACKING ---
+ // --- DATABASE UPDATES & STAT TRACKING ---
+        let logDesc = "Spin Wheel Reward";
+        
+        // Define what is considered a "Jackpot" for logging purposes
+        if (reward.val >= 2500 && reward.type === 'coins') logDesc = "JACKPOT REWARD";
+        if (reward.val >= 10 && reward.type === 'diamonds') logDesc = "JACKPOT REWARD";
+
         if (reward.type === "coins") {
             amountText.innerText = reward.label;
             coinsLabel.innerText = "KSDA COINS";
             iconImg.src = "https://iili.io/fhc1SKQ.png";
+            
+            // --- LOG TRANSACTION (COINS) ---
+            await logTransaction(reward.val, "COINS", logDesc);
+
             await updateDoc(userRef, { 
                 coins: increment(reward.val),
-                "wheelStats.coins": increment(reward.val) // Track Total Won
+                "wheelStats.coins": increment(reward.val) 
             });
         } 
         else if (reward.type === "diamonds") {
             amountText.innerText = reward.label;
             coinsLabel.innerText = "DIAMANTE";
             iconImg.src = "https://iili.io/fv5bmtj.png";
+
+            // --- LOG TRANSACTION (DIAMONDS) ---
+            await logTransaction(reward.val, "DIAMONDS", logDesc);
+
             await updateDoc(userRef, { 
                 diamonds: increment(reward.val),
-                "wheelStats.diamonds": increment(reward.val) // Track Total Won
+                "wheelStats.diamonds": increment(reward.val) 
             });
         }
         else if (reward.type === "badge") {
@@ -3533,13 +3574,16 @@ onAuthStateChanged(auth, user => {
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
                 // Check if all 6 quests are done and not already awarded for this block
-                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+               if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        if (!isAwardingInProgress) {
-                            isAwardingInProgress = true;
+                        if (!window.isAwardingInProgress) {
+                            window.isAwardingInProgress = true;
 
                             const oldStr = data.streak || 0;
                             
+                            // --- LOG TRANSACTION (+1 Diamond Streak) ---
+                            await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
+
                             // Update Firebase: Give +1 Streak and +1 Diamond
                             await updateDoc(userRef, {
                                 streak: increment(1),
