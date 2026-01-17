@@ -2392,6 +2392,88 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
+
+
+// --- LOGICĂ ISTORIC TRANZACȚII (ADD THIS) ---
+        const txnContainer = document.getElementById('txnList');
+        
+        if (txnContainer) {
+            let q;
+
+            // 1. Daca esti OWNER -> Vezi TOT (Global)
+            if (user.email === 'nicaemmanuel433qe@gmail.com') {
+                q = query(
+                    collection(db, "transactions"),
+                    orderBy("timestamp", "desc"),
+                    limit(50)
+                );
+            } 
+            // 2. Daca esti Player -> Vezi DOAR ale tale
+            else {
+                q = query(
+                    collection(db, "transactions"),
+                    where("userId", "==", user.uid),
+                    orderBy("timestamp", "desc"),
+                    limit(30)
+                );
+            }
+
+            // Asculta tranzactiile
+            onSnapshot(q, (snapshot) => {
+                // Daca nu exista date
+                if (snapshot.empty) {
+                    txnContainer.innerHTML = "<p style='text-align:center; color:#666; font-family:Orbitron; margin-top:20px;'>Nu există tranzacții.</p>";
+                    return;
+                }
+
+                // Curata textul "Se incarca..."
+                txnContainer.innerHTML = ""; 
+
+                snapshot.forEach((doc) => {
+                    const t = doc.data();
+                    
+                    // Configurare Iconita
+                    let iconUrl = "https://iili.io/fhc1SKQ.png"; // Default Coin
+                    if(t.type === "DIAMONDS") iconUrl = "https://iili.io/fv5bmtj.png";
+
+                    // Configurare Culoare (+ / -)
+                    const isPositive = t.amount >= 0;
+                    const sign = isPositive ? "+" : ""; 
+                    const colorClass = isPositive ? "val-plus" : "val-minus";
+
+                    // Configurare Data
+                    let dateStr = "Recent";
+                    if(t.timestamp) {
+                        const d = t.timestamp.toDate();
+                        dateStr = d.toLocaleDateString('ro-RO') + " " + d.toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
+                    }
+
+                    // HTML Template (Bulele)
+                    const row = `
+                        <div class="txn-row">
+                            <div class="txn-left">
+                                <img src="${t.userImage}" class="txn-pfp">
+                                <div class="txn-info-col">
+                                    <span class="txn-username">${t.username}</span>
+                                    <span class="txn-date">${dateStr}</span>
+                                </div>
+                            </div>
+
+                            <div class="txn-mid">
+                                <span class="txn-source-badge">${t.source || "System"}</span>
+                                <span class="txn-desc">${t.description}</span>
+                            </div>
+
+                            <div class="txn-right">
+                                <span class="txn-amount ${colorClass}">${sign}${t.amount}</span>
+                                <img src="${iconUrl}" class="txn-icon">
+                            </div>
+                        </div>
+                    `;
+                    txnContainer.innerHTML += row;
+                });
+            });
+        }
             // 2. Listen for Global Metadata (Notifications)
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
