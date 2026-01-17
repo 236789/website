@@ -2313,36 +2313,51 @@ async function finalizeSpin(idx) {
 // --- AUTH UI SYNC ---
 onAuthStateChanged(auth, user => {
     if (user) {
-        // Safe UI display toggle
+        // 1. UI Toggle (Show Game, Hide Wall)
         const wheelWall = document.getElementById('wheelLoginWall');
         const wheelGame = document.getElementById('wheelGameContainer');
         if (wheelWall) wheelWall.style.display = 'none';
         if (wheelGame) wheelGame.style.display = 'flex';
 
         drawWheel();
+
+        // 2. REAL-TIME LISTENER (Efficient)
+        // This updates the Bubble AND gets the time for the loop
+        let lastSpinTime = 0; 
+
+        const userRef = doc(db, "accounts", user.uid);
+        onSnapshot(userRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+
+                // --- A. UPDATE STATS BUBBLE (Real-time) ---
+                const wheelPfp = document.getElementById('wheelStatsPfp');
+                const wheelName = document.getElementById('wheelStatsName');
+                const wheelDia = document.getElementById('wheelStatsDiamonds');
+                
+                if (wheelPfp) wheelPfp.src = data.image || user.photoURL;
+                if (wheelName) wheelName.innerText = data.username || user.displayName || "Gamer";
+                if (wheelDia) wheelDia.innerText = data.diamonds || 0; // Updates Diamonds instantly
+
+                // --- B. UPDATE TIMER DATA ---
+                if (data.lastWheelSpin) {
+                    lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
+                }
+            }
+        });
         
-        // Timer Check Loop - Optimized for the 3D buttons
-        const timerInterval = setInterval(async () => {
+        // 3. TIMER LOOP (Pure Math - No Database Calls)
+        const timerInterval = setInterval(() => {
             if (!auth.currentUser) {
                 clearInterval(timerInterval);
                 return;
             }
 
-            const userRef = doc(db, "accounts", auth.currentUser.uid);
-            const snap = await getDoc(userRef);
-            const data = snap.data();
-            if (!data) return;
-
-            let last = 0;
-            if (data.lastWheelSpin) {
-                last = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
-            }
-
-            const diff = (12 * 60 * 60 * 1000) - (Date.now() - last);
+            // Calculate difference using the variable from the snapshot
+            const diff = (12 * 60 * 60 * 1000) - (Date.now() - lastSpinTime);
             
-            // Reference the correct Button IDs from your HTML
             const freeBtn = document.getElementById('freeSpinBtn');
-            const timerTextLabel = document.getElementById('spinTimerText');
+            // const timerTextLabel = document.getElementById('spinTimerText'); // Optional label
 
             if (freeBtn) {
                 const btnTop = freeBtn.querySelector('.btn-top');
@@ -2350,10 +2365,7 @@ onAuthStateChanged(auth, user => {
                 if (diff <= 0) {
                     // --- AVAILABLE STATE ---
                     if (btnTop) btnTop.innerText = "FREE SPIN";
-                    if (timerTextLabel) {
-                        timerTextLabel.innerText = "FREE SPIN DISPONIBIL!";
-                        timerTextLabel.style.color = "var(--primary)";
-                    }
+                    
                     freeBtn.style.pointerEvents = "auto"; // Clickable
                     freeBtn.style.opacity = "1";
                     freeBtn.style.filter = "none";
@@ -2363,13 +2375,8 @@ onAuthStateChanged(auth, user => {
                     const m = Math.floor((diff % 3600000) / 60000);
                     const s = Math.floor((diff % 60000) / 1000);
                     
-                    // Put timer inside the button surface
+                    // Show Timer inside the button
                     if (btnTop) btnTop.innerText = `${h}h ${m}m ${s}s`;
-                    
-                    if (timerTextLabel) {
-                        timerTextLabel.innerText = `Reîncărcare: ${h}h ${m}m ${s}s`;
-                        timerTextLabel.style.color = "var(--text-muted)";
-                    }
                     
                     freeBtn.style.pointerEvents = "none"; // NOT clickable
                     freeBtn.style.opacity = "0.7";
@@ -2379,6 +2386,7 @@ onAuthStateChanged(auth, user => {
         }, 1000);
 
     } else {
+        // LOGGED OUT STATE
         const wheelWall = document.getElementById('wheelLoginWall');
         const wheelGame = document.getElementById('wheelGameContainer');
         if (wheelWall) wheelWall.style.display = 'flex';
