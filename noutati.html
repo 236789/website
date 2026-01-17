@@ -954,7 +954,7 @@ nav a, .hero-btns a {
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, query, orderBy, where, serverTimestamp, doc, getDoc, setDoc, updateDoc, onSnapshot, getDocs, increment, arrayUnion, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     const firebaseConfig = {
@@ -971,6 +971,28 @@ nav a, .hero-btns a {
     const db = getFirestore(app);
     const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- FUNCȚIE GLOBALĂ PENTRU LOGARE TRANZACȚII ---
+    async function logTransaction(amount, type, description, source = "System") {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        try {
+            await addDoc(collection(db, "transactions"), {
+                userId: user.uid,
+                username: user.displayName || "User",
+                userImage: user.photoURL || "https://iili.io/fhc1SKQ.png",
+                amount: amount,
+                type: type, // "COINS" sau "DIAMONDS"
+                description: description,
+                source: source,
+                timestamp: serverTimestamp()
+            });
+        } catch (e) {
+            console.error("Error logging transaction:", e);
+        }
+    }
 
     // DOM Elements
     const messagesFeed = document.getElementById('messagesFeed');
@@ -1287,7 +1309,7 @@ onAuthStateChanged(auth, async (user) => {
                 await resetUserQuests(userRef, data);
             }
 
-            // B. QUEST VIZITĂ NOUTĂȚI (Trigger doar dacă e activ pe Firebase)
+ // B. QUEST VIZITĂ NOUTĂȚI (Trigger doar dacă e activ pe Firebase)
             const activeQuests = data.activeDailyQuests || [];
             const completedQuests = data.completedQuests || [];
 
@@ -1296,6 +1318,10 @@ onAuthStateChanged(auth, async (user) => {
                     coins: increment(100), 
                     completedQuests: arrayUnion('visit_news') 
                 });
+
+                // --- LOG TRANSACTION (QUEST) ---
+                await logTransaction(100, "COINS", "Quest: Visit News", "Quests");
+
                 if (document.getElementById('rewardModal')) {
                     document.getElementById('rewardModal').classList.add('active');
                 }
@@ -1306,7 +1332,7 @@ onAuthStateChanged(auth, async (user) => {
 
             if (activeQuests.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                 if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                    if (!isAwardingInProgress) {
+if (!isAwardingInProgress) {
                         isAwardingInProgress = true;
                         const oldStr = data.streak || 0;
 
@@ -1315,6 +1341,9 @@ onAuthStateChanged(auth, async (user) => {
                             diamonds: increment(1),
                             lastStreakAwardedBlock: data.lastResetBlock
                         });
+
+                        // --- LOG TRANSACTION (DIAMOND STREAK) ---
+                        await logTransaction(1, "DIAMONDS", "Streak Bonus: 6/6 Quests", "Daily Streak");
 
                         const streakModal = document.getElementById('streakRewardModal');
                         if (streakModal) {
