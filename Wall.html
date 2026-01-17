@@ -1906,6 +1906,38 @@
     from { transform: scale(1); border-color: #ffd700; }
     to { transform: scale(1.02); border-color: #fff; box-shadow: 0 0 50px #ffd700; }
 }
+
+
+/* --- FIX FOR TEXT STYLES INSIDE BUBBLES --- */
+
+/* 1. Remove the "Box" look from Banner styles used as Text */
+#messagesFeed .msg-bubble span[class*="bubble-"] {
+    background: none !important;        /* Removes the box background */
+    border: none !important;            /* Removes the border */
+    box-shadow: none !important;        /* Removes the box glow */
+    padding: 0 !important;              /* Removes padding */
+    margin: 0 !important;               /* Removes margins */
+    display: inline !important;         /* Ensures it sits nicely in the sentence */
+    border-radius: 0 !important;
+    
+    /* Adds a nice glow to the text itself since we removed the box glow */
+    text-shadow: 0 0 8px currentColor !important; 
+}
+
+/* 2. Specific fix for "Animation" banners used as text (like Rainbow/Holo) */
+#messagesFeed .msg-bubble span[class*="anim-"] {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    /* For animated backgrounds to work on text, we need these: */
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    /* Ensure text color is transparent so background shows through */
+    color: transparent !important; 
+    /* Make the font thick so the animation is visible */
+    font-weight: 900 !important; 
+}
   </style>
 
 </head>
@@ -4635,22 +4667,46 @@ function loadMessages() {
                 <i class="fas fa-eye"></i> ${seenCount}
             </button>`;
 
-            // MENU LOGIC (Don't show menu for System Alerts)
+            // --- FIX 1: EMOJI MENU (Hidden by default, shown by toggle) ---
+            const emojiMenuHtml = `
+                <div id="emojis-${msgId}" class="emoji-picker-menu" style="display:none;">
+                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😮')">😮</div>
+                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😢')">😢</div>
+                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                </div>
+            `;
+
+            // --- FIX 2 & 3: MENU LOGIC (UNPIN & SYSTEM 3-DOTS) ---
             let menuHtml = "";
-            if (data.uid !== 'system-alert') {
+            const showMenu = (data.uid !== 'system-alert') || (isOwner || isAdmin);
+
+            if (showMenu) {
+                let pinBtnHtml = "";
+                if (isOwner || isAdmin || isMod || isHelper) {
+                    if (data.isPinned) {
+                        pinBtnHtml = `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-thumbtack"></i> Dezfixează</button>`;
+                    } else {
+                        pinBtnHtml = `<button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>`;
+                    }
+                }
+
                 menuHtml = `
                     <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                     <div id="menu-${msgId}" class="options-dropdown">
-                        <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
-                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                        
-                        ${(isOwner || isAdmin || isMod || isHelper) ? `
-                            <button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>
+                        ${data.uid !== 'system-alert' ? `
+                            <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                            <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                            <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                         ` : ''}
+                        
+                        ${pinBtnHtml}
 
                         ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                        ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name.replace(/'/g, "\\'")}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                        
+                        ${(data.uid !== 'system-alert' && (isOwner || isAdmin || isMod || isHelper)) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name.replace(/'/g, "\\'")}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
                     </div>
                 `;
             }
@@ -4658,6 +4714,7 @@ function loadMessages() {
             wrapper.innerHTML = `
                 <div class="msg-author">${finalNameHtml}</div>
                 <div class="${bubbleClass}">${bubbleContent}</div>
+                ${emojiMenuHtml} 
                 ${reactionsHtml}
                 <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
                 ${menuHtml}
