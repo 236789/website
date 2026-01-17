@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -1724,7 +1725,7 @@ botSendBtn.onclick = () => {
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -1739,6 +1740,48 @@ botSendBtn.onclick = () => {
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- HELPER: LOG TRANSACTION FUNCTION ---
+    async function logTransaction(amount, type, description, source, customUserId = null) {
+        // If customUserId is passed (for the Inviter), use that. Otherwise use current user.
+        const uid = customUserId || (auth.currentUser ? auth.currentUser.uid : null);
+        
+        if (!uid) return;
+
+        try {
+            // We need the user's name/image for the history display
+            // If it's the current user, we have it. If it's another user (inviter), we might need to fetch or just use defaults.
+            let uName = "User";
+            let uImg = "https://iili.io/fhc1SKQ.png";
+
+            if (!customUserId && auth.currentUser) {
+                uName = auth.currentUser.displayName;
+                uImg = auth.currentUser.photoURL;
+            } else if (customUserId) {
+                // Fetch inviter data quickly to make the log look nice
+                const snap = await getDoc(doc(db, "accounts", customUserId));
+                if(snap.exists()) {
+                    uName = snap.data().username || "Unknown";
+                    uImg = snap.data().image || uImg;
+                }
+            }
+
+            await addDoc(collection(db, "transactions"), {
+                userId: uid,
+                username: uName,
+                userImage: uImg,
+                amount: amount,
+                type: type, // "COINS" or "DIAMONDS"
+                description: description,
+                source: source, // e.g., "Quest", "Login", "Shop"
+                timestamp: serverTimestamp()
+            });
+            console.log("Transaction logged:", description);
+        } catch (e) {
+            console.error("Log Transaction Error:", e);
+        }
+    }
 
     const headerLoginBtn = document.getElementById('headerLoginBtn');
     const headerLoginText = document.getElementById('headerLoginText');
@@ -2192,6 +2235,7 @@ window.equipText = async (id, cssClass) => {
             const count = data.kevinMessagesToday || 0;
 
             // 3. Logic: Active Quest + Count >= 15 + Not Done
+// 3. Logic: Active Quest + Count >= 15 + Not Done
             if (active.includes('kevin_talk_15') && !completed.includes('kevin_talk_15') && count >= 15) {
                 
                 // Award 350 Coins
@@ -2199,8 +2243,11 @@ window.equipText = async (id, cssClass) => {
                     coins: increment(350),
                     completedQuests: arrayUnion('kevin_talk_15')
                 });
+
+                // --- LOG 3: KEVIN BOT QUEST ---
+                await logTransaction(350, "COINS", "Quest: Vorbește cu Kevin", "Quest");
                 
-                // Show Popup
+                // Show Popup... (Keep your existing popup code here)
                 const modal = document.getElementById('questRewardModal');
                 if(modal) {
                     // Update text dynamically
@@ -2257,17 +2304,20 @@ async function handleLoginFlow() {
             const userRef = doc(db, "accounts", user.uid);
             const snap = await getDoc(userRef);
 
-            if(!snap.exists()) {
+if(!snap.exists()) {
                 // --- NEW USER DETECTED ---
                 
                 // 1. Check for Referral
-                let startingCoins = 250; 
+                let baseCoins = 250;
+                let referralBonus = 1000;
+                let startingCoins = baseCoins;
+                
                 let referrerId = sessionStorage.getItem('referrerUid'); 
                 let hasReferred = false;
 
                 // Validate Referral (Cannot refer self)
                 if (referrerId && referrerId !== user.uid) {
-                    startingCoins += 1000; // Bonus for new user
+                    startingCoins += referralBonus; // Total 1250
                     hasReferred = true;
                 }
 
@@ -2280,31 +2330,57 @@ async function handleLoginFlow() {
                     coins: startingCoins,
                     diamonds: 0, 
                     streak: 0,
-                    joinedAt: serverTimestamp(), // USE THIS from Firebase Firestore
-                    totalReferrals: 0, // Init counter
+                    joinedAt: serverTimestamp(),
+                    totalReferrals: 0,
                     ip: ip,
-                    joinedAt: new Date(),
-                    kevinMessagesToday: 0,
+                    kevinMessagesToday: 0, 
                     completedQuests: []
                 });
 
+                // --- TRANSACTION LOG 1: WELCOME BONUS (250) ---
+                // Se loghează pentru userul curent
+                await logTransaction(baseCoins, "COINS", "Welcome Bonus", "System");
+
                 // 3. Handle Referral Rewards
-// 3. Handle Referral Rewards
                 if (hasReferred) {
                     try {
+                        // --- TRANSACTION LOG 2: REFERRAL BONUS FOR ME (1000) ---
+                        await logTransaction(referralBonus, "COINS", "Referral Bonus (Invited)", "Referral System");
+
                         const inviterRef = doc(db, "accounts", referrerId);
+                        
+                        // Citim datele inviter-ului pentru a-i putea loga numele in tranzactie
+                        const inviterSnap = await getDoc(inviterRef);
+
                         await updateDoc(inviterRef, { 
                             coins: increment(1000),          
                             pendingReferrals: increment(1),  
                             totalReferrals: increment(1),     
                             
-                            // --- NEW: SAVE THE FRIEND TO THE LIST ---
+                            // Save friend to list
                             referralHistory: arrayUnion({
                                 name: user.displayName || "User Nou",
                                 uid: user.uid,
                                 timestamp: Date.now()
                             })
                         });
+
+                        // --- TRANSACTION LOG 3: REFERRAL BONUS FOR INVITER (1000) ---
+                        // Aici trebuie să folosim addDoc manual pentru că funcția logTransaction folosește implicit auth.currentUser
+                        if (inviterSnap.exists()) {
+                            const invData = inviterSnap.data();
+                            await addDoc(collection(db, "transactions"), {
+                                userId: referrerId, // ID-ul celui care a invitat
+                                username: invData.username || "Inviter",
+                                userImage: invData.image || "https://iili.io/fhc1SKQ.png",
+                                amount: 1000,
+                                type: "COINS",
+                                description: `Referral Bonus (Invited ${user.displayName})`,
+                                source: "Referral System",
+                                timestamp: serverTimestamp()
+                            });
+                        }
+
                     } catch(e) { console.error("Referral error:", e); }
 
                     // Show Popup to NEW USER
@@ -2665,19 +2741,20 @@ onAuthStateChanged(auth, async (user) => {
                     const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
                     // Dacă a terminat tot și e un block curat (nu FORCE_RESET)
-                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            if (!isAwardingInProgress) {
-                                isAwardingInProgress = true;
+if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                    if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+                        if (!isAwardingInProgress) {
+                            isAwardingInProgress = true;
+                            const oldStr = data.streak || 0;
+                            
+                            // --- LOG TRANSACTION (+1 Diamond) ---
+                            await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
 
-                                const oldStr = data.streak || 0;
-                                
-                                // Update REAL Firebase: +1 Streak & +1 Diamond
-                                await updateDoc(userRef, {
-                                    streak: increment(1),
-                                    diamonds: increment(1),
-                                    lastStreakAwardedBlock: data.lastResetBlock
-                                });
+                            await updateDoc(userRef, {
+                                streak: increment(1),
+                                diamonds: increment(1),
+                                lastStreakAwardedBlock: data.lastResetBlock
+                            });
 
                                 // Afișăm Modalul Premium FIRE
                                 const rewardModal = document.getElementById('streakRewardModal');
