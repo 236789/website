@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -1301,7 +1302,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp, arrayUnion, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, serverTimestamp, arrayUnion, setDoc,addDoc, collection, } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -1325,6 +1326,31 @@
     let claimedInSession = new Set();
     let isAwarding = false;
 
+
+
+// --- TRANSACTION LOGGER FUNCTION ---
+async function logTransaction(amount, type, desc) {
+    if (!auth.currentUser) return;
+    try {
+        // Get latest user data for the image/name
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+
+        await addDoc(collection(db, "transactions"), {
+            userId: auth.currentUser.uid,
+            username: userData.username || auth.currentUser.displayName || "Unknown",
+            userImage: userData.image || auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
+            amount: amount,       // e.g., -250 or +100
+            type: type,           // "COINS" or "DIAMONDS"
+            source: "Daily Tasks",
+            description: desc,    // e.g. "Quest Skip: [Name]"
+            timestamp: serverTimestamp()
+        });
+        console.log("Transaction logged:", desc);
+    } catch (e) {
+        console.error("Failed to log transaction:", e);
+    }
+}
 
 // --- CURRENCY FORMATTER (1000 -> 1k) ---
     const formatCurrency = (num) => {
@@ -1996,17 +2022,20 @@ function renderQuests(userData) {
         return `<div class="progress-wrapper"><div class="progress-info"><span>Progres</span><span>${cur}/${tar}</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${perc}%"></div></div></div>`;
     }
 
-    async function awardQuest(questId, amount) {
+async function awardQuest(questId, amount) {
         if (isAwarding || claimedInSession.has(questId)) return;
         isAwarding = true;
         claimedInSession.add(questId);
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         try {
+            // --- NEW LOGGING LINE ---
+            await logTransaction(amount, "COINS", `QUEST COMPLETE: ${questId}`);
+            // ------------------------
+
             await updateDoc(userRef, { coins: increment(amount), completedQuests: arrayUnion(questId) });
         } catch (e) { console.error(e); claimedInSession.delete(questId); } 
         finally { isAwarding = false; }
     }
-
     // --- 4. RESET SYSTEM (12 HOURS) ---
     function generateDailyIds() {
         // Exclude one-time quests from the daily rotation pool
@@ -2330,8 +2359,7 @@ adminBtn.onclick = async () => {
             // 3. Ascultăm datele în timp real
 // Variabilă globală în script pentru a preveni declanșarea dublă a ferestrei
             window.isAwardingPremiu = false;
-
-            onSnapshot(userRef, async (snap) => {
+onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
@@ -2357,6 +2385,9 @@ adminBtn.onclick = async () => {
 
                             const oldStr = data.streak || 0;
                             const newStr = oldStr + 1;
+
+                            // --- NEW: LOG TRANSACTION FOR DIAMOND REWARD ---
+                            await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
 
                             // Update REAL în Firebase
                             await updateDoc(userRef, {
@@ -2415,7 +2446,6 @@ adminBtn.onclick = async () => {
                 // Randăm cardurile de misiuni pe ecran
                 renderQuests(data);
             });
-
         } else {
             // Reset interfață dacă utilizatorul se deloghează
             document.getElementById('headerLoginText').innerText = "LOGIN";
