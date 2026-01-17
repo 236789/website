@@ -1765,24 +1765,34 @@
 }
 
 /* 2. THE BADGE - Strictly inline to stop pushing headers */
+/* --- QUANTUM VOID BADGE: GLOBAL FIX --- */
 .badge-wheel-god {
     position: relative !important;
     background: #050b14 !important;
     color: #fff !important;
     border: 1.5px solid #29f3ff !important;
-    padding: 2px 10px !important;
-    border-radius: 4px !important; /* Matches your 'Owner' badge shape */
+    padding: 3px 10px !important;
+    border-radius: 50px !important;
     font-family: 'Orbitron', sans-serif !important;
     font-weight: 900 !important;
-    text-transform: uppercase;
-    font-size: 10px !important;
-    letter-spacing: 0.5px;
-    box-shadow: 0 0 10px rgba(41, 243, 255, 0.3), inset 0 0 5px #7000ff !important;
+    text-transform: uppercase !important;
+    font-size: 9px !important;
+    box-shadow: 0 0 15px rgba(41, 243, 255, 0.5), inset 0 0 8px #7000ff !important;
     overflow: hidden !important;
     display: inline-flex !important;
-    vertical-align: middle;
-    margin-left: 5px;
+    align-items: center;
+    gap: 5px;
     text-shadow: 0 0 5px #29f3ff;
+    vertical-align: middle;
+}
+
+.badge-wheel-god::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -150%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(41, 243, 255, 0.8), transparent);
+    animation: quantumGlobalScan 2.5s infinite linear !important;
+    z-index: 1;
 }
 
 /* 3. THE TEXT COLOR */
@@ -1877,6 +1887,24 @@
 #chatHeaderBar.bubble-jackpot {
     justify-content: space-between !important;
     display: flex !important;
+}
+
+
+/* THE JACKPOT ANNOUNCEMENT BUBBLE */
+.msg-bubble.jackpot-system-alert {
+    background: linear-gradient(135deg, #000 0%, #7000ff 50%, #000 100%) !important;
+    border: 2px solid #ffd700 !important; /* Gold Border */
+    color: #fff !important;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.4) !important;
+    animation: jackpotPulse 1.5s infinite alternate;
+}
+
+@keyframes jackpotPulse {
+    from { transform: scale(1); border-color: #ffd700; }
+    to { transform: scale(1.02); border-color: #fff; box-shadow: 0 0 50px #ffd700; }
 }
   </style>
 
@@ -2855,7 +2883,7 @@ let selectedPollDuration = 60000; // Default 1 min
     { id: 'b_vedeta', text: 'VEDETĂ', color: 'linear-gradient(45deg, #fdbb2d, #b21f1f, #1a2a6c)', price: 3000, icon: 'fa-camera-retro' }, 
     { id: 'b_bisericos', text: 'SFINȚIȘOR', color: 'linear-gradient(45deg, #fff, #ffd700)', price: 3333, icon: 'fa-cross' },
     { id: 'b_escroc', text: 'ESCROC SENTIMENTAL', color: 'linear-gradient(45deg, #2C3E50, #FD746C)', price: 1669, icon: 'fa-user-tie' },
-        { id: 't_quantum_void', name: 'QUANTUM COLOR', cssClass: 't-quantum', price: 99999 },
+    { id: 'b_wheel_god', text: 'QUANTUM GOD', color: '#050b14', price: 99999, icon: 'fa-atom', isJackpot: true },
 
 ];
 
@@ -3037,10 +3065,15 @@ const TEXTS_DB = [
     { id: 't_army', name: 'MILITAR', cssClass: 'bubble-military', price: 1300 },
     { id: 't_lava', name: 'LAVĂ', cssClass: 'bubble-fire', price: 1400 }
 ];
-    function getCosmeticBadge(equippedBadge) {
-        if (!equippedBadge) return "";
-        return ` <span class="cosmetic-badge" style="background:${equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${equippedBadge.color};"><i class="fas ${equippedBadge.icon}"></i> ${equippedBadge.text}</span>`;
+function getCosmeticBadge(equippedBadge) {
+    if (!equippedBadge) return "";
+    // Check if it is the Jackpot Badge
+    if (equippedBadge.id === 'b_wheel_god') {
+        return ` <span class="badge-wheel-god"><i class="fas fa-atom"></i> QUANTUM GOD</span>`;
     }
+    // Default style
+    return ` <span class="cosmetic-badge" style="background:${equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${equippedBadge.color};"><i class="fas ${equippedBadge.icon}"></i> ${equippedBadge.text}</span>`;
+}
 
     // DOM ELEMENTS
     const lockedView = document.getElementById('lockedView');
@@ -3258,38 +3291,29 @@ window.openInventory = async (type = 'badges') => {
 
         list.innerHTML = '';
 
-        if(type === 'badges') {
-            const ownedIds = data.ownedBadges || [];
-            const equipped = data.equippedBadge?.id || null;
+if(type === 'badges') {
+    const ownedIds = data.ownedBadges || [];
+    const equipped = data.equippedBadge?.id || null;
+    if(ownedIds.length === 0) { list.innerHTML = '<p style="text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
 
-            if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
+    ownedIds.forEach(id => {
+        const badge = BADGES_DB.find(b => b.id === id);
+        if(!badge) return;
+        const isEquipped = (id === equipped);
+        const isQuantum = (id === 'b_wheel_god');
+        
+        const styleAttr = isQuantum ? "" : `style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 10px ${badge.color};"`;
+        const badgeClass = isQuantum ? "badge-wheel-god" : "shop-badge-preview";
 
-            ownedIds.forEach(id => {
-                const badge = BADGES_DB.find(b => b.id === id);
-                if(!badge) return;
-                const isEquipped = (id === equipped);
-                const item = document.createElement('div');
-                item.className = 'shop-badge-item';
-                item.innerHTML = `
-                    <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 10px ${badge.color};">
-                        <i class="fas ${badge.icon}"></i> ${badge.text}
-                    </span>
-                    ${isEquipped 
-                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
-                        : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
-                    }
-                `;
-                list.appendChild(item);
-            });
-            
-            if(equipped) {
-                 const unequipBtn = document.createElement('button');
-                 unequipBtn.className = 'unequip-all-btn';
-                 unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
-                 unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
-                 actionContainer.appendChild(unequipBtn);
-            }
-        } 
+        list.innerHTML += `
+            <div class="shop-badge-item">
+                <span class="${badgeClass}" ${styleAttr}><i class="fas ${badge.icon}"></i> ${badge.text}</span>
+                <button class="equip-btn" ${isEquipped ? 'style="background:#555;" disabled' : `onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')"`}>
+                    ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
+                </button>
+            </div>`;
+    });
+}
         else if (type === 'banners') {
             const ownedIds = data.ownedBanners || [];
             const equipped = data.equippedBanner?.id || null;
@@ -4499,11 +4523,15 @@ function loadMessages() {
             let bubbleContent = "";
             let bubbleClass = 'msg-bubble';
 
-            // Stilul de text (ex: bubble-fire, t-matrix)
             const textStyleClass = (data.equippedText && data.equippedText.cssClass) ? data.equippedText.cssClass : "";
 
-            // --- A. POLL MESSAGE ---
-            if (data.type === 'poll') {
+            // --- 1. JACKPOT / SYSTEM ALERT DETECTION ---
+            if (data.uid === 'system-alert') {
+                bubbleClass += ' jackpot-system-alert';
+                bubbleContent = data.text; // System alerts are plain text with heavy styling
+            } 
+            // --- 2. POLL MESSAGE ---
+            else if (data.type === 'poll') {
                 const now = Date.now();
                 const isExpired = now > data.expiresAt;
                 const myVote = data.votes ? data.votes[currentUid] : undefined;
@@ -4539,7 +4567,7 @@ function loadMessages() {
                 let viewResultsLink = (isExpired || hasVoted) ? ` • <span style="cursor:pointer; color:var(--primary); font-weight:700; text-decoration:underline;" onclick="openPollVoters('${msgId}')">Vezi Votanții</span>` : "";
                 bubbleContent = `<div class="poll-card"><div class="poll-question">${data.question}</div>${optionsHtml}<div class="poll-meta">${totalVotes} Voturi • ${statusText}${viewResultsLink}</div></div>`;
             } 
-            // --- B. STANDARD MESSAGE ---
+            // --- 3. STANDARD MESSAGE ---
             else {
                 if(data.replyToName) {
                     const shortText = data.replyToText.length > 60 ? data.replyToText.substring(0, 60) + "..." : data.replyToText;
@@ -4552,13 +4580,13 @@ function loadMessages() {
                 let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
                 
                 if(safeText) {
-                    // REVENIRE: Aplicăm stilul normal (cu casetă/fundal) pe textul mesajului
                     let styledText = textStyleClass 
                         ? `<span class="${textStyleClass}">${linkify(safeText)}</span>` 
                         : linkify(safeText);
                     bubbleContent += (data.image ? `<div style="margin-top:8px;">${styledText}</div>` : styledText);
                 }
 
+                // APPLY BANNER
                 if(data.equippedBanner && data.equippedBanner.cssClass) {
                     bubbleClass += ` ${data.equippedBanner.cssClass}`;
                 } else {
@@ -4574,21 +4602,21 @@ function loadMessages() {
             let authorNameText = data.name;
             if(isBot) authorNameText = `🤖 ${data.name}`;
             
-            // Numele rămâne în caseta lui stilizată
             if (textStyleClass) {
                 authorNameText = `<span class="${textStyleClass}">${data.name}</span>`;
             }
 
             let staffHtml = "";
             if(msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
-            else if(msgIsAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
-            else if(msgIsMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
-            else if(msgIsHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
+            else if(msgIsAdmin) staffHtml = ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+            else if(msgIsMod) staffHtml = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
+            else if(msgIsHelper) staffHtml = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
 
+            // This calls the fixed getCosmeticBadge logic
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
             let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
-            // --- REACTIONS ---
+            // --- REACTIONS & UI ---
             let reactionsHtml = "";
             if(data.reactions) {
                 const counts = {};
@@ -4602,59 +4630,30 @@ function loadMessages() {
                 }
             }
 
-            // --- SEEN COUNT ---
             const seenCount = (data.seenBy || []).length;
             const seenBtnHtml = `<button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
                 <i class="fas fa-eye"></i> ${seenCount}
             </button>`;
 
-            // --- MESSAGE MENU ---
-            let menuHtml = `
-                <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
-                <div id="menu-${msgId}" class="options-dropdown">
-                    <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
-                    <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
-                    <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                    
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `
-                        <button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>
-                        ${data.isPinned ? `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-times"></i> Despinge</button>` : ''}
-                    ` : ''}
+            // MENU LOGIC (Don't show menu for System Alerts)
+            let menuHtml = "";
+            if (data.uid !== 'system-alert') {
+                menuHtml = `
+                    <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                    <div id="menu-${msgId}" class="options-dropdown">
+                        <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
+                        <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                        <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                        
+                        ${(isOwner || isAdmin || isMod || isHelper) ? `
+                            <button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>
+                        ` : ''}
 
-                    ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
-                    ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name.replace(/'/g, "\\'")}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
-                    ${isOwner ? `<button style="color:#ff4757; font-weight:800;" onclick="banIpUser('${data.uid}', '${data.name.replace(/'/g, "\\'")}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
-                    
-                    <div id="emojis-${msgId}" class="emoji-picker-menu">
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
-                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
+                        ${(isMine || isAdmin || isOwner || isMod) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        ${(isOwner || isAdmin || isMod || isHelper) ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name.replace(/'/g, "\\'")}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
                     </div>
-                </div>
-            `;
+                `;
+            }
 
             wrapper.innerHTML = `
                 <div class="msg-author">${finalNameHtml}</div>
@@ -4669,14 +4668,11 @@ function loadMessages() {
         });
         
         const lastMsgInDocs = docs[docs.length - 1];
-        const isMyNewMsg = lastMsgInDocs && lastMsgInDocs.uid === currentUid;
-
-        if (wasAtBottom || isMyNewMsg) {
+        if (wasAtBottom || (lastMsgInDocs && lastMsgInDocs.uid === currentUid)) {
             feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
         }
     });
 }
-
     window.openSeenByList = async (msgId) => {
         const modal = document.getElementById('seenByModal');
         const list = document.getElementById('seenByList');
