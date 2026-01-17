@@ -1557,7 +1557,48 @@
     width: 1px; 
     height: 15px; 
     background: #444; 
-}  </style>
+}  
+
+
+/* --- AUTO SPIN BUTTON STYLES --- */
+/* DEFAULT (OFF) - GRAY */
+.btn-auto-grey {
+    background: #37474f; /* Dark Gray Shadow */
+    border-radius: 12px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    outline-offset: 4px;
+    transition: filter 250ms;
+}
+.btn-auto-grey .btn-top {
+    display: block;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 900;
+    background: #546e7a; /* Lighter Gray Top */
+    color: #cfd8dc;
+    transform: translateY(-4px);
+    transition: transform 600ms cubic-bezier(.3, .7, .4, 1), background 0.3s;
+    font-family: 'Orbitron', sans-serif;
+}
+
+.btn-auto-grey:active .btn-top {
+    transform: translateY(-1px);
+}
+
+/* ACTIVE (ON) - GREEN (Applied via JS) */
+.btn-auto-active {
+    background: #1b5e20 !important; /* Dark Green Shadow */
+}
+.btn-auto-active .btn-top {
+    background: #00e676 !important; /* Neon Green Top */
+    color: #000 !important;
+    text-shadow: 0 0 5px rgba(255,255,255,0.5);
+    transform: translateY(-1px); /* Keep it pressed slightly */
+}
+</style>
 </head>
 <body>
 <!-- BANNED OVERLAY -->
@@ -1898,6 +1939,13 @@
             <span class="btn-top">FREE SPIN</span>
         </button>
 
+<!-- Buton 3: Auto Spin -->
+    <button id="autoSpinBtn" class="btn-auto-grey">
+        <span class="btn-top">
+            <i class="fas fa-robot"></i> AUTO: OFF
+        </span>
+    </button>
+
         <!-- Buton 2: Spin for 1 Diamond -->
         <button id="paidSpinBtn" class="btn-spin-blue">
             <span class="btn-top">
@@ -2127,6 +2175,32 @@ const ctx = canvas.getContext("2d");
 let rotation = 0;
 let isSpinning = false;
 
+
+// --- AUTO SPIN LOGIC ---
+let isAutoEnabled = false;
+
+document.getElementById('autoSpinBtn').onclick = () => {
+    const btn = document.getElementById('autoSpinBtn');
+    const span = btn.querySelector('.btn-top');
+    
+    isAutoEnabled = !isAutoEnabled; // Toggle state
+
+    if (isAutoEnabled) {
+        // TURN ON
+        btn.classList.add('btn-auto-active');
+        span.innerHTML = '<i class="fas fa-sync fa-spin"></i> AUTO: ON';
+        
+        // Start spinning immediately if not already spinning
+        if (!isSpinning) {
+            attemptSpin(false); // False = Paid Spin (Auto uses Diamonds)
+        }
+    } else {
+        // TURN OFF
+        btn.classList.remove('btn-auto-active');
+        span.innerHTML = '<i class="fas fa-robot"></i> AUTO: OFF';
+    }
+};
+
 // Imaginile pentru iconițe
 const coinImg = new Image(); coinImg.src = "https://iili.io/fhc1SKQ.png";
 const diamImg = new Image(); diamImg.src = "https://iili.io/fv5bmtj.png";
@@ -2279,6 +2353,11 @@ window.toggleRewardsModal = (show) => {
 
     modal.classList.toggle('active', show);
 };
+
+
+// ... (Your existing code inside finalizeSpin) ...
+
+
 
 // Updated Physics Engine for Perfect Landing
 async function startSpin() {
@@ -2447,6 +2526,8 @@ async function finalizeSpin(idx) {
         });
         
         modal.classList.add('active');
+        
+        // Return here so we don't trigger auto-spin on duplicate (optional, but safer)
         return; 
     }
 
@@ -2529,6 +2610,28 @@ async function finalizeSpin(idx) {
                 isDeleted: false, reactions: {}, seenBy: []
             });
         } catch (e) {}
+    }
+
+    // --- AUTO SPIN LOOP (CORRECTLY PLACED HERE) ---
+    if (window.isAutoEnabled) {
+        // 1. Check if user has diamonds left for the next spin
+        if ((userData.diamonds || 0) < 1) {
+            // Stop Auto if out of money
+            window.isAutoEnabled = false;
+            document.getElementById('autoSpinBtn').classList.remove('btn-auto-active');
+            document.getElementById('autoSpinBtn').querySelector('.btn-top').innerHTML = '<i class="fas fa-robot"></i> AUTO: OFF';
+            // Optional: alert("Auto-Spin oprit: Diamante insuficiente.");
+            return;
+        }
+
+        // 2. Wait 2 seconds, Close Modal, and Spin Again
+        setTimeout(() => {
+            // Close the reward modal automatically
+            document.getElementById('questRewardModal').classList.remove('active');
+            
+            // Trigger next Paid Spin
+            attemptSpin(false); 
+        }, 2000);
     }
 }
 
