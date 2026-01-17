@@ -3109,8 +3109,9 @@ window.sortModal = (type) => {
 function renderAllUsersList(data) {
     allUsersListEl.innerHTML = '';
     
-    // Începem de la rank 51 (sărim peste podium și primii 50)
-    let listToShow = data.slice(50); 
+    // MODIFICARE: Dacă sortăm după "Newest", arătăm pe toată lumea.
+    // Dacă sortăm după monede/diamante, tăiem primii 50 (slice).
+    let listToShow = (currentModalSort === 'newest') ? data : data.slice(50); 
 
     // LOGICA FILTRARE "AZI" (Ultimele 24 ore)
     if (currentModalSort === 'newest' && newestSubFilter === 'today') {
@@ -3125,73 +3126,57 @@ function renderAllUsersList(data) {
     }
 
     if(listToShow.length === 0) { 
-        allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:20px; font-family:Orbitron; font-size:11px;">NICIUN MEMBRU ÎN ACEASTĂ CATEGORIE.</div>'; 
+        allUsersListEl.innerHTML = '<div style="text-align:center; color:#aaa; margin-top:20px; font-family:Orbitron; font-size:11px;">NIMENI AICI MOMENTAN.</div>'; 
         return; 
     }
 
     listToShow.forEach((m, idx) => {
-        let realRank = idx + 51;
-        const item = document.createElement('div');
+        // Dacă e modul Newest, rank-ul e cel real din listă (1, 2, 3...)
+        // Dacă e restul familiei, rank-ul începe de la 51
+        let realRank = (currentModalSort === 'newest') ? (idx + 1) : (idx + 51);
         
-        // ADAUGARE CLASE ȘI SPAȚIERE
+        const item = document.createElement('div');
         item.className = 'top-item';
-        item.style.marginBottom = '12px'; // SPAȚIUL ÎNTRE UTILIZATORI
+        item.style.marginBottom = '12px';
         
         if(m.equippedBanner?.cssClass) item.className += ` ${m.equippedBanner.cssClass}`;
 
-        // Definire Iconițe/Valori în funcție de sortare
+        // Valori display
         let valDisplay = "";
         let iconHtml = "";
-
         if (currentModalSort === 'coins') {
             valDisplay = formatNumber(m.coins || 0);
             iconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="width:16px;">`;
         } else if (currentModalSort === 'diamonds') {
             valDisplay = formatNumber(m.diamonds || 0);
             iconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width:16px;">`;
-        } else if (currentModalSort === 'donated') {
-            valDisplay = formatNumber(m.totalCoinsDonated || 0);
-            iconHtml = `<i class="fas fa-hand-holding-usd" style="color:#ffd700; font-size:12px;"></i>`;
-        } else if (currentModalSort === 'referrals') {
-            valDisplay = m.totalReferrals || 0;
-            iconHtml = `<i class="fas fa-user-plus" style="color:#00ff88; font-size:12px;"></i>`;
         }
 
-        // LOGICA DATA ALĂTURĂRII
+        // Data alăturării
         let joinedHtml = "";
-        if(currentModalSort === 'newest' && m.joinedAt) {
+        if(m.joinedAt) {
             const date = new Date(m.joinedAt.seconds * 1000);
-            const day = date.toLocaleDateString('ro-RO');
-            const time = date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
-            joinedHtml = `<span style="font-size:9px; color:#aaa; display:block; margin-top:2px; font-family:sans-serif;">
-                📅 Alăturat: ${day} la ${time}
+            joinedHtml = `<span style="font-size:9px; color:#aaa; display:block; margin-top:2px;">
+                📅 Alăturat: ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
             </span>`;
         }
 
         let nameHtml = formatName(m.username || 'Anonim');
         if (m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
 
-        // Frame Logic
-        let frameHtml = '';
-        if (m.equippedFrame && m.equippedFrame.img) {
-            const scale = m.equippedFrame.scale || 1.45;
-            frameHtml = `<img src="${m.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%;">`;
-        }
-
         item.innerHTML = `
             <div class="top-left">
                 <span class="top-rank-num" style="font-size:11px; width:25px;">#${realRank}</span>
                 <div class="top-img-box" style="width:38px; height:38px;">
                     <img src="${m.image || 'https://i.ibb.co/4pGm9S2/user-placeholder.png'}" class="top-user-img">
-                    ${frameHtml}
                 </div>
-                <div class="top-user-name" style="font-size:13px; display:flex; flex-direction:column; align-items:flex-start; gap:0;">
+                <div class="top-user-name" style="font-size:13px; display:flex; flex-direction:column; align-items:flex-start;">
                     <div class="name-text">${nameHtml} ${getRoleBadge(m.email)}</div>
                     ${joinedHtml}
                 </div>
             </div>
             <div class="top-right">
-                <div class="top-coins" style="font-size:13px; gap:5px;">
+                <div class="top-coins" style="font-size:13px;">
                     <span>${valDisplay}</span>
                     ${iconHtml}
                 </div>
