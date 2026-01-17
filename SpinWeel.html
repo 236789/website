@@ -1559,7 +1559,59 @@
     width: 1px; 
     height: 15px; 
     background: #444; 
-}  </style>
+}  
+
+/* --- SOUND TOGGLE --- */
+.sound-toggle-btn {
+    position: fixed; bottom: 20px; left: 20px;
+    width: 50px; height: 50px;
+    background: rgba(0,0,0,0.8);
+    border: 2px solid var(--primary);
+    border-radius: 50%;
+    color: var(--primary);
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 10000;
+    transition: 0.3s;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 15px rgba(41, 243, 255, 0.3);
+}
+.sound-toggle-btn:hover { transform: scale(1.1); background: var(--primary); color: #000; }
+.sound-toggle-btn.muted { border-color: #ff4757; color: #ff4757; opacity: 0.7; }
+
+/* --- FLYING JACKPOT BAR (TikTok Universe Style) --- */
+.jackpot-fly-container {
+    position: fixed; top: 15%; left: -100%; /* Start off screen */
+    width: auto;
+    z-index: 20000;
+    pointer-events: none; /* Let clicks pass through */
+}
+
+.jackpot-bar {
+    display: flex; align-items: center; gap: 15px;
+    background: linear-gradient(90deg, rgba(0,0,0,0.9), rgba(112, 0, 255, 0.9), rgba(0,0,0,0.9));
+    border-top: 2px solid #ffd700;
+    border-bottom: 2px solid #ffd700;
+    padding: 10px 40px;
+    border-radius: 50px;
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
+    animation: flyAcross 6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.fly-user-img { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #fff; }
+.fly-text-box { display: flex; flex-direction: column; }
+.fly-title { font-family: 'Orbitron'; font-weight: 900; color: #ffd700; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+.fly-desc { font-family: 'Poppins'; color: #fff; font-size: 12px; white-space: nowrap; }
+.fly-icon { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 0 10px #fff); }
+
+@keyframes flyAcross {
+    0% { left: -100%; opacity: 0; }
+    10% { left: 50%; transform: translateX(-50%); opacity: 1; } /* Fly to center */
+    80% { left: 50%; transform: translateX(-50%); opacity: 1; } /* Stay */
+    100% { left: 150%; transform: translateX(-50%); opacity: 0; } /* Fly out right */
+}
+
+</style>
 </head>
 <body>
 <!-- BANNED OVERLAY -->
@@ -1742,6 +1794,9 @@
     </div>
 </div>
 
+
+
+
 <!-- ACCOUNT POP-UP MODAL -->
 <div id="accountModal" class="account-modal-overlay">
     <div class="account-card">
@@ -1842,6 +1897,11 @@
 
 <!-- MAIN CONTENT AREA START -->
 <main class="blank-main-container">
+
+<!-- GLOBAL JACKPOT NOTIFICATION CONTAINER -->
+<div id="globalJackpotContainer" class="jackpot-fly-container">
+    <!-- Content gets injected here by JS -->
+</div>
     
 
 <!-- LOGIN WALL (Shown if not logged in) -->
@@ -1857,6 +1917,12 @@
 
 <!-- WHEEL GAME CONTAINER -->
 <div id="wheelGameContainer" class="trivia-box" style="display: none; width: 100%; max-width: 600px; padding: 40px 20px; flex-direction: column; align-items: center;">
+
+<!-- SOUND TOGGLE BUTTON (Bottom Left) -->
+<button id="soundToggleBtn" class="sound-toggle-btn">
+    <i class="fas fa-volume-up"></i>
+</button>
+
 
     <!-- 1. THE HEADER BUTTONS (Moved Inside) -->
     <div class="wheel-header-row" style="margin-bottom: 25px;">
@@ -2005,6 +2071,9 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, ar
     // --- NEW COSMETICS MODAL ---
     const cosmeticsSelectModal = document.getElementById('cosmeticsSelectModal');
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
+
+
+
 
 
 
@@ -2175,6 +2244,101 @@ function launchConfetti() {
         confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
         confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
     }, 250);
+}
+
+
+
+// --- 1. SOUND TOGGLE LOGIC ---
+let isMuted = localStorage.getItem('siteMuted') === 'true';
+const soundBtn = document.getElementById('soundToggleBtn');
+const allAudioObjects = [audioSpin, audioReward, audioJackpot, audioFail];
+
+function applyMuteSettings() {
+    allAudioObjects.forEach(audio => {
+        audio.muted = isMuted;
+    });
+    
+    // Update Button UI
+    if(isMuted) {
+        soundBtn.classList.add('muted');
+        soundBtn.innerHTML = '<i class="fas fa-volume-mute"></i>';
+    } else {
+        soundBtn.classList.remove('muted');
+        soundBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+    }
+}
+
+// Initial Apply
+applyMuteSettings();
+
+soundBtn.addEventListener('click', () => {
+    isMuted = !isMuted;
+    localStorage.setItem('siteMuted', isMuted);
+    applyMuteSettings();
+});
+
+
+// --- 2. GLOBAL JACKPOT LISTENER (The Flying Bar) ---
+
+// Listen to the jackpot history collection
+const jackpotRef = collection(db, "wheel_jackpot_history");
+const qJackpot = query(jackpotRef, orderBy("timestamp", "desc"), limit(1));
+
+onSnapshot(qJackpot, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+            const data = change.doc.data();
+            
+            // Check time: Only show if it happened in the last 10 seconds 
+            // (prevents showing old jackpots when you first load the page)
+            const eventTime = data.timestamp ? data.timestamp.toMillis() : Date.now();
+            const timeDiff = Date.now() - eventTime;
+
+            if (timeDiff < 10000) { 
+                showFlyingNotification(data);
+            }
+        }
+    });
+});
+
+function showFlyingNotification(data) {
+    const container = document.getElementById('globalJackpotContainer');
+    
+    // Determine Image based on type
+    let rewardIconUrl = "https://iili.io/fhc1SKQ.png"; // Default Coin
+    if(data.rewardType === 'diamonds') rewardIconUrl = "https://iili.io/fv5bmtj.png";
+    if(data.rewardType === 'badge' || data.rewardType === 'banner') rewardIconUrl = "https://iili.io/fXvBEiB.png"; // Trophy/Crown
+
+    // Construct HTML
+    const html = `
+    <div class="jackpot-bar">
+        <img src="${data.userPhoto}" class="fly-user-img">
+        <div class="fly-text-box">
+            <span class="fly-title">JACKPOT WINNER!</span>
+            <span class="fly-desc">
+                <span style="font-weight:700; color:#29f3ff;">${data.username}</span> 
+                a câștigat 
+                <span style="font-weight:700; color:#ffd700;">${data.rewardLabel}</span>!
+            </span>
+        </div>
+        <img src="${rewardIconUrl}" class="fly-icon">
+    </div>
+    `;
+
+    container.innerHTML = html;
+
+    // Optional: Play a sound for EVERYONE (if not muted)
+    if(!isMuted) {
+        // We clone the jackpot sound so it can overlap if needed
+        let alertSound = audioReward.cloneNode(); 
+        alertSound.volume = 0.3;
+        alertSound.play().catch(()=>{});
+    }
+
+    // Remove from DOM after animation (6s)
+    setTimeout(() => {
+        container.innerHTML = '';
+    }, 6000);
 }
 
 // New Icons for Badge/Banner
