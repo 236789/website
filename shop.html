@@ -1086,7 +1086,54 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
 }
 
 
+/* --- SHOP CATEGORY SWITCHER --- */
+.shop-category-switch {
+    display: flex; 
+    gap: 15px; 
+    justify-content: center; 
+    margin-bottom: 25px;
+}
 
+.shop-cat-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    color: #a5b1c2;
+    padding: 15px 30px;
+    border-radius: 15px;
+    font-family: 'Orbitron';
+    font-weight: 900;
+    cursor: pointer;
+    display: flex; 
+    align-items: center; 
+    gap: 10px;
+    transition: 0.3s;
+    font-size: 14px;
+    text-transform: uppercase;
+}
+
+.shop-cat-btn img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    filter: grayscale(1);
+    transition: 0.3s;
+}
+
+.shop-cat-btn:hover { 
+    background: rgba(255,255,255,0.1); 
+    color: #fff;
+}
+
+.shop-cat-btn.active {
+    background: var(--primary);
+    color: #000;
+    border-color: var(--primary);
+    box-shadow: 0 0 25px rgba(41, 243, 255, 0.3);
+}
+
+.shop-cat-btn.active img {
+    filter: grayscale(0);
+}
   </style>
 </head>
 <body>
@@ -1137,6 +1184,8 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
         </div>
     </aside>
 
+
+
     <main class="shop-hero">
         <h1 class="metallic-title">Cumpără KSDA Coins</h1>
         
@@ -1151,6 +1200,16 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
             </div>
         </div>
 
+
+<!-- SHOP CATEGORY TOGGLE -->
+<div class="shop-category-switch">
+    <button id="cat-coins" class="shop-cat-btn active" onclick="switchShopCategory('coins')">
+        <img src="https://iili.io/fhc1SKQ.png"> KSDA COINS
+    </button>
+    <button id="cat-diamonds" class="shop-cat-btn" onclick="switchShopCategory('diamonds')">
+        <img src="https://iili.io/fv5bmtj.png"> Diamante
+    </button>
+</div>
         <!-- NEW CURRENCY CALCULATOR / SELECTOR -->
         <div>
             <div style="font-size: 10px; color: #aaa; margin-bottom: 5px; font-family: 'Orbitron'; text-transform: uppercase;">Alege Moneda</div>
@@ -2034,57 +2093,126 @@ const TEXTS_DB = [
     window.addEventListener('mousemove', resetIdleTimer);
     window.addEventListener('click', resetIdleTimer);
 
-    // --- SHOP LOGIC ---
+ // --- SHOP LOGIC (UPDATED) ---
+    let currentShopMode = 'coins'; // Default
     const rechargeGrid = document.getElementById('rechargeGrid');
-    const packages = [
-        { coins: 250, price: 2.5 }, { coins: 750, price: 7.5 },
-        { coins: 1500, price: 15 }, { coins: 3000, price: 30 },
-        { coins: 5000, price: 50 }, { coins: 7500, price: 75 },
-        { coins: 10000, price: 100 }
+
+    // 1. COIN PACKAGES (Standard)
+    const coinPackages = [
+        { amount: 250, price: 2.5 }, 
+        { amount: 750, price: 7.5 },
+        { amount: 1500, price: 15 }, 
+        { amount: 3000, price: 30 },
+        { amount: 5000, price: 50 }, 
+        { amount: 7500, price: 75 },
+        { amount: 10000, price: 100 }
     ];
+
+    // 2. DIAMOND PACKAGES (Price = Amount / 2)
+    const diamondPackages = [
+        { amount: 10, price: 5 }, 
+        { amount: 50, price: 25 },
+        { amount: 100, price: 50 }, 
+        { amount: 200, price: 100 },
+        { amount: 500, price: 250 }
+    ];
+
+    window.switchShopCategory = (mode) => {
+        currentShopMode = mode;
+        
+        // Update Buttons
+        document.getElementById('cat-coins').className = mode === 'coins' ? 'shop-cat-btn active' : 'shop-cat-btn';
+        document.getElementById('cat-diamonds').className = mode === 'diamonds' ? 'shop-cat-btn active' : 'shop-cat-btn';
+        
+        renderShop();
+    };
 
     window.switchCurrency = (curr) => {
         selectedCurrency = curr;
         document.querySelectorAll('.currency-btn').forEach(btn => btn.classList.remove('active'));
         document.getElementById(`btn-${curr}`).classList.add('active');
-        renderShop(); calculatePrice();
-    }
+        renderShop(); 
+        calculatePrice(); // Recalc if modal is open
+    };
 
     function renderShop() {
         rechargeGrid.innerHTML = '';
-        packages.forEach(p => {
+        
+        // Choose Data based on Mode
+        const data = currentShopMode === 'coins' ? coinPackages : diamondPackages;
+        const icon = currentShopMode === 'coins' ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
+        const label = currentShopMode === 'coins' ? "Coins" : "Diamonds";
+
+        data.forEach(p => {
             const convertedPrice = (p.price / RATES[selectedCurrency]).toFixed(2);
             const symbol = SYMBOLS[selectedCurrency];
+            
             const card = document.createElement('div');
             card.className = 'package-card';
             card.innerHTML = `
-                <img src="https://iili.io/fhc1SKQ.png">
-                <span class="package-count">${p.coins.toLocaleString()}</span>
+                <img src="${icon}">
+                <span class="package-count">${p.amount.toLocaleString()}</span>
+                <span style="font-size:10px; color:#aaa; margin-bottom:5px;">${label}</span>
                 <span class="price-tag">${symbol} ${convertedPrice}</span>
             `;
+            
             card.onclick = () => {
-                document.getElementById('payDetails').innerHTML = `${p.coins.toLocaleString()} Coins = ${symbol} ${convertedPrice}`;
+                document.getElementById('payDetails').innerHTML = `${p.amount.toLocaleString()} ${label} = ${symbol} ${convertedPrice}`;
                 document.getElementById('paymentModal').classList.add('active');
             };
             rechargeGrid.appendChild(card);
         });
+
+        // Add Custom Calculator Card
         const custom = document.createElement('div');
         custom.className = 'package-card custom-card';
         custom.innerHTML = `
-            <i class="fas fa-magic" style="font-size:35px; color:var(--primary); margin-bottom:15px;"></i>
-            <span class="package-count">Personalizat</span>
+            <i class="fas fa-calculator" style="font-size:35px; color:var(--primary); margin-bottom:15px;"></i>
+            <span class="package-count">Custom</span>
             <span class="price-tag" style="padding: 8px 15px;">Calculator<br><span style="font-size:10px; color:#aaa;">${selectedCurrency}</span></span>
         `;
-        custom.onclick = () => { calculatePrice(); document.getElementById('customModal').classList.add('active'); }
+        custom.onclick = () => { 
+            // Update modal text context
+            const modalTitle = document.querySelector('#customModal h2');
+            const input = document.getElementById('customInput');
+            
+            if(currentShopMode === 'coins') {
+                modalTitle.innerText = "CALCULATOR COINS";
+                input.placeholder = "Min. 100 Coins";
+            } else {
+                modalTitle.innerText = "CALCULATOR DIAMONDS";
+                input.placeholder = "Min. 2 Diamonds";
+            }
+            
+            document.getElementById('customInput').value = "";
+            document.getElementById('priceVal').innerText = "0.00";
+            
+            calculatePrice(); 
+            document.getElementById('customModal').classList.add('active'); 
+        }
         rechargeGrid.appendChild(custom);
     }
 
     window.calculatePrice = () => {
         const val = document.getElementById('customInput').value;
-        const ronPrice = (val * 0.01);
+        if(!val) return;
+
+        let ronPrice = 0;
+
+        // Calculate Logic
+        if(currentShopMode === 'coins') {
+            // 100 Coins = 1 RON (0.01 per coin)
+            ronPrice = val * 0.01;
+            document.getElementById('rateDisplay').innerText = `100 Coins = ${ (1 / RATES[selectedCurrency]).toFixed(2) } ${SYMBOLS[selectedCurrency]}`;
+        } else {
+            // 2 Diamonds = 1 RON (0.50 per diamond)
+            ronPrice = val * 0.50;
+            document.getElementById('rateDisplay').innerText = `2 Diamonds = ${ (1 / RATES[selectedCurrency]).toFixed(2) } ${SYMBOLS[selectedCurrency]}`;
+        }
+
         const finalPrice = (ronPrice / RATES[selectedCurrency]).toFixed(2);
         const symbol = SYMBOLS[selectedCurrency];
-        document.getElementById('rateDisplay').innerText = `${symbol} ${ (1 / RATES[selectedCurrency]).toFixed(2) }`;
+        
         document.getElementById('priceVal').innerText = `${symbol} ${finalPrice}`;
     };
 
