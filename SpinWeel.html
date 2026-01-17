@@ -3,6 +3,8 @@
 <head>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
+<!-- Add this line inside the <head> section -->
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
@@ -2131,6 +2133,44 @@ let isSpinning = false;
 const coinImg = new Image(); coinImg.src = "https://iili.io/fhc1SKQ.png";
 const diamImg = new Image(); diamImg.src = "https://iili.io/fv5bmtj.png";
 
+// --- AUDIO SETUP ---
+// 1. Spin Click Sound
+const audioSpin = new Audio("https://drive.google.com/uc?export=download&id=1kyJpBT85R0cXGNlEm0sz2v5gZcXt0i38");
+
+// 2. Standard Reward Pop-up Sound
+const audioReward = new Audio("https://drive.google.com/uc?export=download&id=1m_6v3PGQhcnmOh9jB_O1E7RjJG3q4Cb_");
+
+// 3. Jackpot Sound (Direct MP3 link for cleaner code than iframe)
+const audioJackpot = new Audio("https://www.myinstants.com/media/sounds/vegas-jackpot.mp3");
+
+// 4. XP / Fail Sound (Direct MP3)
+const audioFail = new Audio("https://www.myinstants.com/media/sounds/spongebob-fail.mp3");
+
+// Adjust volumes if needed
+audioSpin.volume = 0.5;
+audioReward.volume = 0.5;
+audioJackpot.volume = 0.4;
+audioFail.volume = 0.6;
+
+
+// --- CONFETTI ANIMATION FUNCTION ---
+function launchConfetti() {
+    var duration = 3 * 1000;
+    var animationEnd = Date.now() + duration;
+    var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 12000 };
+
+    function randomInRange(min, max) { return Math.random() * (max - min) + min; }
+
+    var interval = setInterval(function() {
+        var timeLeft = animationEnd - Date.now();
+        if (timeLeft <= 0) { return clearInterval(interval); }
+        var particleCount = 50 * (timeLeft / duration);
+        // Creates particles from left and right sides
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+    }, 250);
+}
+
 // New Icons for Badge/Banner
 const trophyImg = new Image(); trophyImg.src = "https://iili.io/fXvBEiB.png"; // Using your logo as a trophy placeholder
 
@@ -2322,6 +2362,7 @@ async function startSpin() {
 }
 
 // Funcție unică de pornire Spin (Corectată)
+// Funcție unică de pornire Spin (Corectată)
 async function attemptSpin(isFreeAttempt) {
     // 1. Verificăm dacă roata se învârte deja pentru a preveni spam-ul
     if (isSpinning) return;
@@ -2339,7 +2380,7 @@ async function attemptSpin(isFreeAttempt) {
     const now = Date.now();
     let lastSpinTime = 0;
  
-    // 2. Logica Safe pentru calculul timpului (Fix toDate error)
+    // 2. Logica Safe pentru calculul timpului
     if (data.lastWheelSpin) {
         lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
     }
@@ -2358,7 +2399,6 @@ async function attemptSpin(isFreeAttempt) {
         // Spin plătit cu 1 Diamant
         if ((data.diamonds || 0) < 1) {
             alert("Nu ai destule diamante pentru un spin extra!");
-            // Oprim auto-spin dacă nu mai sunt resurse
             const autoTxt = document.getElementById('autoText');
             if (autoTxt) autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
             return;
@@ -2367,7 +2407,11 @@ async function attemptSpin(isFreeAttempt) {
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    // 4. Dacă totul e OK, pornim animația roții
+    // 4. Dacă totul e OK, pornim sunetul și animația
+    audioSpin.volume = 0.5;
+    audioSpin.currentTime = 0;
+    audioSpin.play().catch(e => console.log("Audio play failed", e));
+    
     startSpin();
 }
 
@@ -2410,7 +2454,7 @@ function pickRewardIndex() {
 
 // Add these imports to your top import line if missing: 
 // query, orderBy, limit, getDocs
-
+ 
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
@@ -2434,6 +2478,9 @@ async function finalizeSpin(idx) {
     if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) isDuplicate = true;
 
     if (isDuplicate) {
+        audioReward.currentTime = 0;
+        audioReward.play(); // Play normal reward sound for duplicate compensation
+
         titleText.innerHTML = `<span style="font-size: 24px;">😅</span> UPS!`;
         modal.querySelector('p').innerText = "Deja deții acest item! Premiu de consolare:";
         amountText.innerText = "5000";
@@ -2450,8 +2497,13 @@ async function finalizeSpin(idx) {
         return; 
     }
 
-    // --- DISPLAY REWARD ---
+    // --- DISPLAY REWARD & SOUNDS ---
     if (reward.type === "xp") {
+        // PLAY FAIL SOUND
+        audioFail.volume = 0.6;
+        audioFail.currentTime = 0;
+        audioFail.play();
+
         titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
         amountText.style.fontSize = "26px"; 
         amountText.style.letterSpacing = "1px"; 
@@ -2461,6 +2513,24 @@ async function finalizeSpin(idx) {
         iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png"; 
     } 
     else {
+        // WINNING LOGIC - DETERMINE SOUND TYPE
+        let isJackpotSound = false;
+        if (reward.type === 'badge' || reward.type === 'banner') isJackpotSound = true;
+        if (reward.type === 'diamonds' && reward.val >= 10) isJackpotSound = true; // 10 Diamonds or more
+        if (reward.type === 'coins' && reward.val >= 2500) isJackpotSound = true; // 2.5k Coins or more
+
+        if (isJackpotSound) {
+            audioJackpot.volume = 0.5;
+            audioJackpot.currentTime = 0;
+            audioJackpot.play();
+            launchConfetti(); // Heavy confetti
+        } else {
+            audioReward.volume = 0.5;
+            audioReward.currentTime = 0;
+            audioReward.play();
+            launchConfetti(); // Normal confetti
+        }
+
         amountText.style.fontSize = ""; 
         amountText.style.letterSpacing = "";
         
