@@ -2103,29 +2103,49 @@ async function finalizeSpin(idx) {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const modal = document.getElementById('questRewardModal');
     
-    // ... your existing coin award logic here ...
+// 1. UPDATE THE POPUP UI
+    // Find the number inside the box and change it to the reward value
+    const amountText = modal.querySelector('.reward-coins-box span');
+    const titleText = modal.querySelector('h2');
+    
+    // Update the text based on what they won
+    amountText.innerText = reward.label; // Displays "50", "2.5k", etc.
+    titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
 
+    // 2. UPDATE THE DATABASE (GIVE THE REWARD)
+    // We check the reward type defined in your REWARDS array
+    if (reward.type === "coins") {
+        await updateDoc(userRef, { coins: increment(reward.val) });
+    } 
+    else if (reward.type === "diamonds") {
+        await updateDoc(userRef, { diamonds: increment(reward.val) });
+    } 
+    else if (reward.type === "badge") {
+        await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
+    }
+    else if (reward.type === "banner") {
+        await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
+    }
     // --- NEW: JACKPOT ANNOUNCEMENT SYSTEM ---
     if (reward.jackpot) {
         try {
-            const userName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
+           const userName = auth.currentUser.displayName || "Un utilizator";
+            
             await addDoc(collection(db, "wall_messages"), {
-                text: `🚨 ALERTĂ JACKPOT: ${userName} a câștigat [${reward.label}] învârtind ROATA NOROCULUI! 🔥`,
-                uid: 'system-alert',
-                name: 'KSDA ANNOUNCEMENT',
-                photo: 'https://iili.io/fXvBEiB.png', // Use your logo
+                text: `🎰 **${userName}** a câștigat [${reward.label}] la Roata Norocului!`,
+                uid: 'system-alert',        // This matches the rule we just fixed
+                name: 'SYSTEM',             // The name displayed in chat
+                photo: 'https://iili.io/fXvBEiB.png', // Your logo
                 isBot: true,
                 createdAt: serverTimestamp(),
                 isDeleted: false,
                 reactions: {},
                 seenBy: []
             });
-        } catch (e) { console.log("Jackpot message failed", e); }
+        } catch (e) {
+            console.error("Alert failed:", e);
+        }
     }
-
-    modal.classList.add('active');
-    // ... rest of your code ...
-}
 
 window.toggleRewardsModal = (show) => {
     const list = document.getElementById('rewardsList');
