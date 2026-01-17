@@ -1767,14 +1767,7 @@
 </div>
 </main>
 <!-- MAIN CONTENT AREA END -->
-<!-- DEV TOOLS (DELETE BEFORE RELEASE) -->
-<div style="position: fixed; bottom: 10px; left: 10px; z-index: 99999; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid red; border-radius: 10px;">
-    <h4 style="color:red; margin:0 0 5px 0;">ADMIN CHEATS</h4>
-    <button onclick="window.adminSpin(3)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force BADGE</button>
-    <button onclick="window.adminSpin(6)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force BANNER</button>
-    <button onclick="window.adminSpin(11)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force 10 DIAM</button>
-    <button onclick="window.adminSpin(10)" style="background: #333; color: #fff; border: 1px solid #fff; cursor: pointer; padding: 5px;">Force 2.5K</button>
-</div>
+
 
 <!-- Footer -->
 <footer>
@@ -2029,22 +2022,14 @@ async function startSpin() {
 }
 
 // Funcție unică de pornire Spin (Corectată)
-async function attemptSpin(isFreeAttempt, isAdminBypass = false) {
-    // 1. Verificăm dacă roata se învârte deja
+async function attemptSpin(isFreeAttempt) {
+    // 1. Verificăm dacă roata se învârte deja pentru a preveni spam-ul
     if (isSpinning) return;
 
     if (!auth.currentUser) {
         alert("Trebuie să fii logat!");
         return;
     }
-
-    // --- ADMIN BYPASS (TESTING TOOLS) ---
-    if (isAdminBypass) {
-        console.log("⚠️ DEV MODE: Spinning without cost/timer checks.");
-        startSpin();
-        return;
-    }
-    // ------------------------------------
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const snap = await getDoc(userRef);
@@ -2054,6 +2039,7 @@ async function attemptSpin(isFreeAttempt, isAdminBypass = false) {
     const now = Date.now();
     let lastSpinTime = 0;
  
+    // 2. Logica Safe pentru calculul timpului (Fix toDate error)
     if (data.lastWheelSpin) {
         lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
     }
@@ -2072,6 +2058,7 @@ async function attemptSpin(isFreeAttempt, isAdminBypass = false) {
         // Spin plătit cu 1 Diamant
         if ((data.diamonds || 0) < 1) {
             alert("Nu ai destule diamante pentru un spin extra!");
+            // Oprim auto-spin dacă nu mai sunt resurse
             const autoTxt = document.getElementById('autoText');
             if (autoTxt) autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
             return;
@@ -2097,19 +2084,7 @@ function animateWheelStatic() {
 animateWheelStatic();
 
 // Logic to pick a reward based on percentage chances
-// GLOBAL DEBUG VARIABLE
-let debugForcedIndex = -1;
-
-// Logic to pick a reward
 function pickRewardIndex() {
-    // 1. Check if Admin forced a result
-    if (debugForcedIndex !== -1) {
-        const idx = debugForcedIndex;
-        debugForcedIndex = -1; // Reset after one spin
-        return idx;
-    }
-
-    // 2. Normal Random Logic
     let rand = Math.random() * 100;
     let cumulative = 0;
     for (let i = 0; i < REWARDS.length; i++) {
@@ -2119,13 +2094,6 @@ function pickRewardIndex() {
     return 0;
 }
 
-// ADMIN FUNCTION TO FORCE SPIN
-// ADMIN FUNCTION TO FORCE SPIN
-window.adminSpin = (index) => {
-    debugForcedIndex = index;
-    // Pass 'true' as the second argument to bypass checks
-    attemptSpin(true, true); 
-}
 // --- PRO PHYSICS ENGINE ---
 
 
