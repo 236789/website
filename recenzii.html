@@ -500,7 +500,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // Standard Configuration
     const firebaseConfig = {
@@ -516,6 +516,28 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- FUNCȚIE GLOBALĂ PENTRU LOGARE TRANZACȚII ---
+    async function logTransaction(amount, type, description, source = "System") {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        try {
+            await addDoc(collection(db, "transactions"), {
+                userId: user.uid,
+                username: user.displayName || "User",
+                userImage: user.photoURL || "https://iili.io/fhc1SKQ.png",
+                amount: amount,
+                type: type, // "COINS" sau "DIAMONDS"
+                description: description,
+                source: source,
+                timestamp: serverTimestamp()
+            });
+        } catch (e) {
+            console.error("Error logging transaction:", e);
+        }
+    }
 
     // Mapping DOM Elements
     const messagesFeed = document.getElementById('messagesFeed');
@@ -833,7 +855,7 @@
         
         if(userAccSnap.exists() && userAccSnap.data().hasWrittenReview === true) { alert("Ai lăsat deja o recenzie!"); return; }
 
-        const reviewData = { 
+const reviewData = { 
             text: revInput.value.trim(), rating: selectedRating, 
             name: auth.currentUser.displayName, email: auth.currentUser.email, 
             photo: auth.currentUser.photoURL, uid: uid, 
@@ -841,15 +863,22 @@
         };
 
         try {
+            // 1. Salvăm recenzia
             await setDoc(doc(db, "reviews", uid), reviewData);
             appendReviewCard({id: uid, ...reviewData, createdAt: new Date()}, true);
+            
+            // 2. Dăm banii utilizatorului
             await updateDoc(userAccRef, { hasWrittenReview: true, coins: increment(500) });
+
+            // --- 3. LOGĂM TRANZACȚIA ---
+            await logTransaction(500, "COINS", "Quest: Write Review", "Recenzii");
+
+            // 4. Update UI
             rewardModal.classList.add('active'); 
             reviewForm.style.display = 'none'; 
             alreadyPostedMsg.style.display = 'block';
         } catch(e) { alert("Eroare la trimitere: " + e.message); }
     };
-
     window.voteReview = async (reviewId, type, btnElement) => {
         if (!auth.currentUser) return alert("Loghează-te!");
         const countSpan = btnElement.querySelector('.vote-count');
