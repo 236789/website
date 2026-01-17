@@ -1532,13 +1532,16 @@
 
 
     /* Stil pentru meniul de reacții din dreptul mesajelor */
+/* --- INTERNAL EXPANDING EMOJI MENU --- */
 .emoji-picker-menu {
-    display: none; /* Este pornit de funcția toggleEmojiPicker */
-    grid-template-columns: repeat(6, 1fr); /* Pune 6 emoji-uri pe un rând */
+    display: none; /* Hidden by default */
+    grid-template-columns: repeat(5, 1fr); /* 5 emojis per row like the screenshot */
     gap: 5px;
     padding: 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3); /* Darker background for contrast */
+    border-top: 1px solid rgba(255, 255, 255, 0.1); /* The separator line */
+    max-height: 200px;
+    overflow-y: auto; /* Scroll if too many emojis */
 }
 
 .emoji-btn {
@@ -1557,7 +1560,6 @@
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.2);
 }
-
 
 /* --- NEW PROFILE STYLES --- */
 
@@ -4560,10 +4562,11 @@ function loadMessages() {
             // --- 1. JACKPOT / SYSTEM ALERT DETECTION ---
             if (data.uid === 'system-alert') {
                 bubbleClass += ' jackpot-system-alert';
-                bubbleContent = data.text; // System alerts are plain text with heavy styling
+                bubbleContent = data.text; 
             } 
             // --- 2. POLL MESSAGE ---
             else if (data.type === 'poll') {
+                // ... (Poll logic remains same) ...
                 const now = Date.now();
                 const isExpired = now > data.expiresAt;
                 const myVote = data.votes ? data.votes[currentUid] : undefined;
@@ -4618,7 +4621,6 @@ function loadMessages() {
                     bubbleContent += (data.image ? `<div style="margin-top:8px;">${styledText}</div>` : styledText);
                 }
 
-                // APPLY BANNER
                 if(data.equippedBanner && data.equippedBanner.cssClass) {
                     bubbleClass += ` ${data.equippedBanner.cssClass}`;
                 } else {
@@ -4633,7 +4635,6 @@ function loadMessages() {
             // --- BUILD NAMES & BADGES ---
             let authorNameText = data.name;
             if(isBot) authorNameText = `🤖 ${data.name}`;
-            
             if (textStyleClass) {
                 authorNameText = `<span class="${textStyleClass}">${data.name}</span>`;
             }
@@ -4644,7 +4645,6 @@ function loadMessages() {
             else if(msgIsMod) staffHtml = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
             else if(msgIsHelper) staffHtml = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
 
-            // This calls the fixed getCosmeticBadge logic
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
             let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
@@ -4667,23 +4667,13 @@ function loadMessages() {
                 <i class="fas fa-eye"></i> ${seenCount}
             </button>`;
 
-            // --- FIX 1: EMOJI MENU (Hidden by default, shown by toggle) ---
-            const emojiMenuHtml = `
-                <div id="emojis-${msgId}" class="emoji-picker-menu" style="display:none;">
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😮')">😮</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😢')">😢</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-                    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                </div>
-            `;
-
-            // --- FIX 2 & 3: MENU LOGIC (UNPIN & SYSTEM 3-DOTS) ---
+            // --- FIX: MENU LOGIC (Emoji inside Dropdown) ---
             let menuHtml = "";
+            // Show menu for standard users, or for Admins/Owners on System messages
             const showMenu = (data.uid !== 'system-alert') || (isOwner || isAdmin);
 
             if (showMenu) {
+                // Pin/Unpin Logic
                 let pinBtnHtml = "";
                 if (isOwner || isAdmin || isMod || isHelper) {
                     if (data.isPinned) {
@@ -4693,12 +4683,46 @@ function loadMessages() {
                     }
                 }
 
+                // Emoji HTML (INSIDE MENU)
+                const emojiInternalHtml = `
+                    <div id="emojis-${msgId}" class="emoji-picker-menu">
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
+
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
+<div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
+                    </div>
+                `;
+
                 menuHtml = `
                     <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                     <div id="menu-${msgId}" class="options-dropdown">
                         ${data.uid !== 'system-alert' ? `
                             <button onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-reply"></i> Răspunde</button>
                             <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                            ${emojiInternalHtml} <!-- PICKER IS HERE NOW -->
                             <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
                         ` : ''}
                         
@@ -4714,7 +4738,6 @@ function loadMessages() {
             wrapper.innerHTML = `
                 <div class="msg-author">${finalNameHtml}</div>
                 <div class="${bubbleClass}">${bubbleContent}</div>
-                ${emojiMenuHtml} 
                 ${reactionsHtml}
                 <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
                 ${menuHtml}
@@ -4869,8 +4892,12 @@ window.handleMuteAction = async (targetUid, targetName) => {
 window.toggleEmojiPicker = function(id) { 
     const picker = document.getElementById(`emojis-${id}`); 
     if(picker) {
-        // Dacă e ascuns, îl arătăm ca 'grid', dacă e vizibil, îl ascundem
-        picker.style.display = picker.style.display === 'grid' ? 'none' : 'grid'; 
+        // Toggle between 'grid' (visible) and 'none' (hidden)
+        if (picker.style.display === 'grid') {
+            picker.style.display = 'none';
+        } else {
+            picker.style.display = 'grid';
+        }
     }
 }
     window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
