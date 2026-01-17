@@ -2102,32 +2102,29 @@ async function finalizeSpin(idx) {
     const reward = REWARDS[idx];
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const modal = document.getElementById('questRewardModal');
-    if (!modal) return;
+    
+    // ... your existing coin award logic here ...
 
-    let iconHtml = "";
-    if (reward.type === 'coins' || reward.type === 'diamonds') {
-        await updateDoc(userRef, { [reward.type]: increment(reward.val) });
-        const img = (reward.type === 'coins') ? "https://iili.io/fhc1SKQ.png" : "https://iili.io/fv5bmtj.png";
-        iconHtml = `<div style="display:flex; align-items:center; gap:15px; justify-content:center;">
-                        <img src="${img}" style="width:60px;"> 
-                        <span style="font-size:45px; font-weight:900; color:#fff;">${reward.val}</span>
-                    </div>`;
-    } 
-    else if (reward.type === 'badge') {
-        await updateDoc(userRef, { ownedBadges: arrayUnion("b_wheel_god") });
-        iconHtml = `<div class="shop-badge-preview" style="background:linear-gradient(45deg, #fff, #ffd700); color:#000; padding:15px 30px; font-size:18px; border-radius:50px; box-shadow:0 0 20px #ffd700;"><i class="fas fa-bolt"></i> WHEEL GOD</div>`;
-    } 
-    else if (reward.type === 'banner') {
-        await updateDoc(userRef, { ownedBanners: arrayUnion("bub_jackpot") });
-        iconHtml = `<div class="bubble-jackpot" style="width:200px; height:60px;">ULTRA TREASURE</div>`;
+    // --- NEW: JACKPOT ANNOUNCEMENT SYSTEM ---
+    if (reward.jackpot) {
+        try {
+            const userName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
+            await addDoc(collection(db, "wall_messages"), {
+                text: `🚨 ALERTĂ JACKPOT: ${userName} a câștigat [${reward.label}] învârtind ROATA NOROCULUI! 🔥`,
+                uid: 'system-alert',
+                name: 'KSDA ANNOUNCEMENT',
+                photo: 'https://iili.io/fXvBEiB.png', // Use your logo
+                isBot: true,
+                createdAt: serverTimestamp(),
+                isDeleted: false,
+                reactions: {},
+                seenBy: []
+            });
+        } catch (e) { console.log("Jackpot message failed", e); }
     }
 
-    modal.querySelector('h2').innerHTML = reward.jackpot ? "🔥 JACKPOT!!! 🔥" : "🎉 PREMIU!";
-    modal.querySelector('p').innerText = `Ai deblocat: ${reward.label}`;
-    modal.querySelector('.reward-coins-box').innerHTML = iconHtml;
     modal.classList.add('active');
-
-
+    // ... rest of your code ...
 }
 
 window.toggleRewardsModal = (show) => {
