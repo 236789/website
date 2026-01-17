@@ -1994,7 +1994,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -2009,6 +2009,30 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- TRANSACTION LOGGER FUNCTION ---
+async function logTransaction(amount, type, desc) {
+    if (!auth.currentUser) return;
+    try {
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+
+        await addDoc(collection(db, "transactions"), {
+            userId: auth.currentUser.uid,
+            username: userData.username || auth.currentUser.displayName || "Unknown",
+            userImage: userData.image || auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
+            amount: amount,
+            type: type,
+            source: "Gaming Center",
+            description: desc,
+            timestamp: serverTimestamp()
+        });
+        console.log("Transaction logged:", desc);
+    } catch (e) {
+        console.error("Failed to log transaction:", e);
+    }
+}
 
     const headerLoginBtn = document.getElementById('headerLoginBtn');
     const headerLoginText = document.getElementById('headerLoginText');
@@ -2082,10 +2106,13 @@
                 return;
             }
 
-            try {
+try {
+                // --- LOG TRANSACTION (-500 Coins) ---
+                await logTransaction(-window.pendingGameCost, "COINS", `GAME UNLOCK: ${window.pendingGameId}`);
+
                 // Deduct coins & Add to unlocked list
                 await updateDoc(userRef, {
-                    coins: increment(-window.pendingGameCost),
+                    coins: increment(-window.pendingGameCost), 
                     unlockedGames: arrayUnion(window.pendingGameId)
                 });
 
