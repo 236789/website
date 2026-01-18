@@ -1724,16 +1724,7 @@ botSendBtn.onclick = () => {
 
 
 <!-- ANTI-TAMPER SCRIPT -->
-<script>
-document.addEventListener('contextmenu', event => event.preventDefault());
-document.onkeydown = function(e) {
-    if(e.keyCode == 123) return false; // F12
-    if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false; // Ctrl+Shift+I
-    if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false; // Ctrl+Shift+C
-    if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false; // Ctrl+Shift+J
-    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false; // Ctrl+U
-}
-</script>
+
  <!-- FIREBASE GLOBAL LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -2194,53 +2185,55 @@ window.equipText = async (id, cssClass) => {
 
 // 1. GLOBAL BAN CHECK (OPTIMIZED)
 // --- ULTIMATE BAN SYSTEM ---
+// --- 1. SUPERIOR BAN SYSTEM (FIXED) ---
 async function checkGlobalBan() {
     const overlay = document.getElementById('bannedOverlay');
     const content = document.getElementById('siteContent');
+    const sideMenu = document.getElementById('sideMenu'); // Get side menu
+    const header = document.querySelector('.header-container'); // Get header
+    
     const reasonText = document.getElementById('globalBanReason');
     const ipText = document.getElementById('globalBanIp');
 
-    // HELPER: EXECUTE THE NUKE
+    // HELPER: EXECUTE THE NUKE (ONLY RUNS IF BANNED)
     const hammerBan = (reason, ipOrId) => {
-        // 1. Mark the browser (Browser Fingerprint)
+        console.log("BAN TRIGGERED: ", reason);
+
+        // 1. Mark the browser (The "Mark of Death")
         localStorage.setItem('ksda_perma_ban', 'true');
         sessionStorage.setItem('isBanned', 'true');
         
-        // 2. NUKE THE CONTENT (Delete the website elements)
+        // 2. NUKE VISUALS (Remove content so they see nothing)
         if(content) content.remove();
-        if(document.getElementById('sideMenu')) document.getElementById('sideMenu').remove();
-        if(document.querySelector('.header-container')) document.querySelector('.header-container').remove();
+        if(sideMenu) sideMenu.remove();
+        if(header) header.remove();
         
-        // 3. Show the Red Overlay
+        // 3. SHOW RED OVERLAY
         if(overlay) {
             overlay.style.display = 'flex';
             if(reasonText) reasonText.innerText = reason;
             if(ipText) ipText.innerText = ipOrId;
         }
         document.body.style.overflow = 'hidden'; // Stop scrolling
+
+        // 4. ACTIVATE ANTI-TAMPER (ONLY NOW)
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.onkeydown = function(e) {
+            if(e.keyCode == 123) return false; // F12
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+        }
     };
 
-    // CHECK 1: Is this browser already marked as dead?
+    // CHECK 1: Browser Fingerprint (Instant Local Check)
     if (localStorage.getItem('ksda_perma_ban') === 'true') {
         hammerBan("Dispozitiv Banat Anterior", "Device-ID");
         return;
     }
 
-    // CHECK 2: Is the Logged-in Account Banned? (Prevents VPN bypass)
-    if (auth.currentUser) {
-        try {
-            const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            if (userSnap.exists()) {
-                const data = userSnap.data();
-                if (data.isBanned === true) {
-                    hammerBan("Cont Banat Permanent", auth.currentUser.uid);
-                    return;
-                }
-            }
-        } catch(e) { console.log("Ban check error"); }
-    }
-
-    // CHECK 3: IP Check (Standard)
+    // CHECK 2: IP Address (Database Check)
     try {
         const res = await fetch('https://api.ipify.org?format=json');
         const data = await res.json();
@@ -2257,9 +2250,10 @@ async function checkGlobalBan() {
         console.error("IP Check Error:", e);
     }
 }
- 
-// Run immediately
+
+// Run the check immediately
 checkGlobalBan();
+ 
 
     // LOGICA QUEST KEVIN BOT (15 MESAJE)
 // LOGICA QUEST KEVIN BOT (15 MESAJE) - WITH FIREBASE CHECK
@@ -2720,9 +2714,51 @@ async function resetUserQuests(userRef, snapData) {
 // --- 5. AUTH & LOGIC (VARIANTA FINALĂ INDEX.HTML) ---
     let isAwardingInProgress = false; // Previne dublarea ferestrelor
 
-onAuthStateChanged(auth, async (user) => {
+// --- 5. AUTH & LOGIC (UPDATED WITH BAN CHECK) ---
+    let isAwardingInProgress = false; 
+
+    onAuthStateChanged(auth, async (user) => {
         if (user) {
             const userRef = doc(db, "accounts", user.uid);
+
+            // 1. IMMEDIATE BAN CHECK (THE NUKE)
+            // We check the database immediately. If banned, we destroy the interface.
+            const snapCheck = await getDoc(userRef);
+            if (snapCheck.exists() && snapCheck.data().isBanned === true) {
+                console.log("ACCOUNT BANNED. NUKING INTERFACE.");
+                
+                // A. Mark Browser Memory
+                localStorage.setItem('ksda_perma_ban', 'true');
+                sessionStorage.setItem('isBanned', 'true');
+
+                // B. Remove Website Elements (NUKE)
+                const content = document.getElementById('siteContent');
+                const sideMenu = document.getElementById('sideMenu');
+                const header = document.querySelector('.header-container');
+                if(content) content.remove();
+                if(sideMenu) sideMenu.remove();
+                if(header) header.remove();
+
+                // C. Show Red Overlay
+                const overlay = document.getElementById('bannedOverlay');
+                if(overlay) {
+                    overlay.style.display = 'flex';
+                    document.getElementById('globalBanReason').innerText = "Cont Banat Permanent";
+                    document.getElementById('globalBanIp').innerText = "ID: " + user.uid;
+                }
+                document.body.style.overflow = 'hidden';
+
+                // D. Disable Inputs (Anti-Tamper)
+                document.addEventListener('contextmenu', event => event.preventDefault());
+                document.onkeydown = function(e) {
+                    if(e.keyCode == 123) return false; 
+                    if(e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0))) return false;
+                    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+                }
+
+                return; // STOP HERE. DO NOT LOAD THE REST OF THE SITE.
+            }
+            // --- END OF BAN CHECK ---
 
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
@@ -2732,7 +2768,7 @@ onAuthStateChanged(auth, async (user) => {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
-            // 1. Verificare OWNER (nicaemmanuel433qe@gmail.com)
+            // 1. Verificare OWNER
             const adminBtn = document.getElementById('ownerResetBtn');
             if (user.email === 'nicaemmanuel433qe@gmail.com' && adminBtn) {
                 adminBtn.style.display = 'inline-block';
@@ -2747,14 +2783,20 @@ onAuthStateChanged(auth, async (user) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
 
-                    // --- CHECK FOR REFERRAL REWARD (UPDATED: COUNTER LOGIC) ---
+                    // --- SECONDARY BAN CHECK (LIVE) ---
+                    // If an admin bans them while they are online, this kills the session instantly
+                    if (data.isBanned === true) {
+                        location.reload(); // Reloads page, triggering the main ban check above
+                        return;
+                    }
+
+                    // --- CHECK FOR REFERRAL REWARD ---
                     if (data.pendingReferrals && data.pendingReferrals > 0) {
                         const count = data.pendingReferrals;
                         const totalBonus = count * 1000;
 
                         const refModal = document.getElementById('referralRewardModal');
                         const refText = document.getElementById('referralText');
-                        // Find the number inside the coin box to update it
                         const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
 
                         if (refModal && refText && refAmount) {
@@ -2763,13 +2805,8 @@ onAuthStateChanged(auth, async (user) => {
                             } else {
                                 refText.innerText = `${count} prieteni s-au înregistrat cu link-ul tău! Ai primit bonus.`;
                             }
-                            
-                            // Update the displayed amount (e.g. 1000, 2000, 3000)
                             refAmount.innerText = totalBonus; 
-                            
                             refModal.classList.add('active');
-                            
-                            // Reset the counter to 0 so it doesn't show again
                             await updateDoc(userRef, { pendingReferrals: 0 });
                         }
                     }
@@ -2784,23 +2821,20 @@ onAuthStateChanged(auth, async (user) => {
                     const completedIds = data.completedQuests || [];
                     const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                    // Dacă a terminat tot și e un block curat (nu FORCE_RESET)
-if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                    if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        if (!isAwardingInProgress) {
-                            isAwardingInProgress = true;
-                            const oldStr = data.streak || 0;
-                            
-                            // --- LOG TRANSACTION (+1 Diamond) ---
-                            await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă");
+                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+                            if (!isAwardingInProgress) {
+                                isAwardingInProgress = true;
+                                const oldStr = data.streak || 0;
+                                
+                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă");
 
-                            await updateDoc(userRef, {
-                                streak: increment(1),
-                                diamonds: increment(1),
-                                lastStreakAwardedBlock: data.lastResetBlock
-                            });
+                                await updateDoc(userRef, {
+                                    streak: increment(1),
+                                    diamonds: increment(1),
+                                    lastStreakAwardedBlock: data.lastResetBlock
+                                });
 
-                                // Afișăm Modalul Premium FIRE
                                 const rewardModal = document.getElementById('streakRewardModal');
                                 if (rewardModal) {
                                     document.getElementById('streakOld').innerText = oldStr;
@@ -2814,8 +2848,6 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                     }
 
                     // --- POPULARE MODAL ACCOUNT ---
-                    
-                    // 1. Avatar & Frame
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
                     const popFrame = document.getElementById('popUserFrame');
                     if(popFrame) {
@@ -2828,7 +2860,6 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                         } else { popFrame.style.display = "none"; }
                     }
 
-                    // 2. Nume Colorat
                     const nameEl = document.getElementById('popUserName');
                     let rawName = data.username || user.displayName;
                     if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
@@ -2837,17 +2868,14 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                         nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
                     } else { nameEl.innerText = rawName; }
 
-                    // 3. Email & Streak
                     document.getElementById('popUserEmail').innerText = data.email;
                     const streakDisplay = document.querySelector('.streak-txt');
                     if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    // 4. Valute Duble (Formatate 1k, 10k)
                     document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                     const diamondEl = document.getElementById('popUserDiamonds');
                     if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
 
-                    // 5. Badges (Staff + Cosmetic)
                     const popBadgeBox = document.getElementById('popUserBadges');
                     if(popBadgeBox) {
                         let badgesHtml = "";
@@ -2862,7 +2890,6 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                         popBadgeBox.innerHTML = badgesHtml;
                     }
 
-                    // 6. Notificări Cerc Roșu (Noutăți)
                     const userVazute = data.lastSeenNewsCount || 0;
                     const noutatiNoi = totalGlobal - userVazute;
                     const heroBadge = document.getElementById('heroNotifBadge');
