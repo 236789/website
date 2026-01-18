@@ -2716,21 +2716,21 @@ async function resetUserQuests(userRef, snapData) {
 
 // --- 5. AUTH & LOGIC (UPDATED WITH BAN CHECK) ---
 
-    onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
         if (user) {
             const userRef = doc(db, "accounts", user.uid);
-
-            // 1. IMMEDIATE BAN CHECK (THE NUKE)
-            // We check the database immediately. If banned, we destroy the interface.
+            
+            // --- BAN SYSTEM LOGIC ---
             const snapCheck = await getDoc(userRef);
-            if (snapCheck.exists() && snapCheck.data().isBanned === true) {
+            const isDbBanned = snapCheck.exists() && snapCheck.data().isBanned === true;
+
+            if (isDbBanned) {
+                // 1. EXECUTE BAN (If DB says banned)
                 console.log("ACCOUNT BANNED. NUKING INTERFACE.");
-                
-                // A. Mark Browser Memory
                 localStorage.setItem('ksda_perma_ban', 'true');
                 sessionStorage.setItem('isBanned', 'true');
 
-                // B. Remove Website Elements (NUKE)
+                // Remove Site Content
                 const content = document.getElementById('siteContent');
                 const sideMenu = document.getElementById('sideMenu');
                 const header = document.querySelector('.header-container');
@@ -2738,7 +2738,7 @@ async function resetUserQuests(userRef, snapData) {
                 if(sideMenu) sideMenu.remove();
                 if(header) header.remove();
 
-                // C. Show Red Overlay
+                // Show Overlay
                 const overlay = document.getElementById('bannedOverlay');
                 if(overlay) {
                     overlay.style.display = 'flex';
@@ -2747,17 +2747,27 @@ async function resetUserQuests(userRef, snapData) {
                 }
                 document.body.style.overflow = 'hidden';
 
-                // D. Disable Inputs (Anti-Tamper)
+                // Anti-Tamper
                 document.addEventListener('contextmenu', event => event.preventDefault());
                 document.onkeydown = function(e) {
                     if(e.keyCode == 123) return false; 
                     if(e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0))) return false;
                     if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
                 }
-
-                return; // STOP HERE. DO NOT LOAD THE REST OF THE SITE.
+                return; // STOP EXECUTION
+            } 
+            else {
+                // 2. UNBAN RECOVERY (SELF-HEALING)
+                // If DB says NOT banned, but browser has the mark, remove it and reload.
+                if (localStorage.getItem('ksda_perma_ban') === 'true') {
+                    console.log("Account is safe. Removing local ban mark...");
+                    localStorage.removeItem('ksda_perma_ban');
+                    sessionStorage.removeItem('isBanned');
+                    window.location.reload(); // Reload to restore the deleted site content
+                    return;
+                }
             }
-            // --- END OF BAN CHECK ---
+            // --- END BAN LOGIC ---
 
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
@@ -2773,49 +2783,40 @@ async function resetUserQuests(userRef, snapData) {
                 adminBtn.style.display = 'inline-block';
             }
 
-            // 2. Ascultăm numărul TOTAL de postări (Metadata)
+            // 2. Metadata Listener
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
 
-                // 3. Ascultăm DATELE UTILIZATORULUI LIVE
+                // 3. User Data Listener
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
 
-                    // --- SECONDARY BAN CHECK (LIVE) ---
-                    // If an admin bans them while they are online, this kills the session instantly
+                    // LIVE BAN CHECK (If banned while online)
                     if (data.isBanned === true) {
-                        location.reload(); // Reloads page, triggering the main ban check above
+                        location.reload(); 
                         return;
                     }
 
-                    // --- CHECK FOR REFERRAL REWARD ---
+                    // Referral Logic
                     if (data.pendingReferrals && data.pendingReferrals > 0) {
                         const count = data.pendingReferrals;
                         const totalBonus = count * 1000;
-
                         const refModal = document.getElementById('referralRewardModal');
                         const refText = document.getElementById('referralText');
                         const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
 
                         if (refModal && refText && refAmount) {
-                            if (count === 1) {
-                                refText.innerText = "Un prieten s-a înregistrat cu link-ul tău! Ai primit bonus.";
-                            } else {
-                                refText.innerText = `${count} prieteni s-au înregistrat cu link-ul tău! Ai primit bonus.`;
-                            }
+                            refText.innerText = count === 1 ? "Un prieten s-a înregistrat!" : `${count} prieteni s-au înregistrat!`;
                             refAmount.innerText = totalBonus; 
                             refModal.classList.add('active');
                             await updateDoc(userRef, { pendingReferrals: 0 });
                         }
                     }
                     
-                    // --- LOGICĂ RESET / PIERDERE STREAK ---
-                    if (typeof resetUserQuests === "function") {
-                        await resetUserQuests(userRef, data);
-                    }
+                    // Quest & Streak Logic
+                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
 
-                    // --- LOGICĂ RECOMPENSĂ FINALĂ: 6/6 QUESTURI ---
                     const activeIds = data.activeDailyQuests || [];
                     const completedIds = data.completedQuests || [];
                     const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
@@ -2825,28 +2826,24 @@ async function resetUserQuests(userRef, snapData) {
                             if (!isAwardingInProgress) {
                                 isAwardingInProgress = true;
                                 const oldStr = data.streak || 0;
-                                
                                 await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă");
-
                                 await updateDoc(userRef, {
                                     streak: increment(1),
                                     diamonds: increment(1),
                                     lastStreakAwardedBlock: data.lastResetBlock
                                 });
-
                                 const rewardModal = document.getElementById('streakRewardModal');
                                 if (rewardModal) {
                                     document.getElementById('streakOld').innerText = oldStr;
                                     document.getElementById('streakNew').innerText = oldStr + 1;
                                     rewardModal.classList.add('active');
                                 }
-                                
                                 setTimeout(() => { isAwardingInProgress = false; }, 3000);
                             }
                         }
                     }
 
-                    // --- POPULARE MODAL ACCOUNT ---
+                    // Populate UI
                     document.getElementById('popUserImg').src = data.image || user.photoURL;
                     const popFrame = document.getElementById('popUserFrame');
                     if(popFrame) {
@@ -2862,7 +2859,6 @@ async function resetUserQuests(userRef, snapData) {
                     const nameEl = document.getElementById('popUserName');
                     let rawName = data.username || user.displayName;
                     if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
                     if (data.equippedText?.cssClass) {
                         nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
                     } else { nameEl.innerText = rawName; }
