@@ -1721,6 +1721,19 @@ botSendBtn.onclick = () => {
        setTimeout(() => cookieConsent.style.display = 'none', 500);
    };
   </script>
+
+
+<!-- ANTI-TAMPER SCRIPT -->
+<script>
+document.addEventListener('contextmenu', event => event.preventDefault());
+document.onkeydown = function(e) {
+    if(e.keyCode == 123) return false; // F12
+    if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false; // Ctrl+Shift+I
+    if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false; // Ctrl+Shift+C
+    if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false; // Ctrl+Shift+J
+    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false; // Ctrl+U
+}
+</script>
  <!-- FIREBASE GLOBAL LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -2180,42 +2193,73 @@ window.equipText = async (id, cssClass) => {
     }
 
 // 1. GLOBAL BAN CHECK (OPTIMIZED)
-    async function checkGlobalBan() {
-        // Check local storage first to save Firebase Reads
-        if (sessionStorage.getItem('isBanned') === 'false') {
-            return; // User is safe, do not read from database
+// --- ULTIMATE BAN SYSTEM ---
+async function checkGlobalBan() {
+    const overlay = document.getElementById('bannedOverlay');
+    const content = document.getElementById('siteContent');
+    const reasonText = document.getElementById('globalBanReason');
+    const ipText = document.getElementById('globalBanIp');
+
+    // HELPER: EXECUTE THE NUKE
+    const hammerBan = (reason, ipOrId) => {
+        // 1. Mark the browser (Browser Fingerprint)
+        localStorage.setItem('ksda_perma_ban', 'true');
+        sessionStorage.setItem('isBanned', 'true');
+        
+        // 2. NUKE THE CONTENT (Delete the website elements)
+        if(content) content.remove();
+        if(document.getElementById('sideMenu')) document.getElementById('sideMenu').remove();
+        if(document.querySelector('.header-container')) document.querySelector('.header-container').remove();
+        
+        // 3. Show the Red Overlay
+        if(overlay) {
+            overlay.style.display = 'flex';
+            if(reasonText) reasonText.innerText = reason;
+            if(ipText) ipText.innerText = ipOrId;
         }
+        document.body.style.overflow = 'hidden'; // Stop scrolling
+    };
 
-        try {
-            const res = await fetch('https://api.ipify.org?format=json');
-            const data = await res.json();
-            const userIP = data.ip;
-
-            // Check Firebase
-            const banRef = doc(db, "banned_ips", userIP);
-            const banSnap = await getDoc(banRef);
-
-            if (banSnap.exists()) {
-                // User is banned
-                const banData = banSnap.data();
-                sessionStorage.setItem('isBanned', 'true'); // Remember status
-                
-                if(document.getElementById('siteContent')) document.getElementById('siteContent').style.display = 'none';
-                if(document.getElementById('bannedOverlay')) {
-                    document.getElementById('bannedOverlay').style.display = 'flex';
-                    document.getElementById('globalBanReason').innerText = banData.reason || "Nespecificat";
-                    document.getElementById('globalBanIp').innerText = userIP;
-                }
-                document.body.style.overflow = 'hidden';
-            } else {
-                // User is NOT banned - save this so we don't pay for reads again this session
-                sessionStorage.setItem('isBanned', 'false');
-            }
-        } catch (e) {
-            console.error("Eroare verificare ban:", e);
-        }
+    // CHECK 1: Is this browser already marked as dead?
+    if (localStorage.getItem('ksda_perma_ban') === 'true') {
+        hammerBan("Dispozitiv Banat Anterior", "Device-ID");
+        return;
     }
-    checkGlobalBan();
+
+    // CHECK 2: Is the Logged-in Account Banned? (Prevents VPN bypass)
+    if (auth.currentUser) {
+        try {
+            const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+            if (userSnap.exists()) {
+                const data = userSnap.data();
+                if (data.isBanned === true) {
+                    hammerBan("Cont Banat Permanent", auth.currentUser.uid);
+                    return;
+                }
+            }
+        } catch(e) { console.log("Ban check error"); }
+    }
+
+    // CHECK 3: IP Check (Standard)
+    try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        const userIP = data.ip;
+
+        const banRef = doc(db, "banned_ips", userIP);
+        const banSnap = await getDoc(banRef);
+
+        if (banSnap.exists()) {
+            const banData = banSnap.data();
+            hammerBan(banData.reason || "IP Blacklisted", userIP);
+        }
+    } catch (e) {
+        console.error("IP Check Error:", e);
+    }
+}
+ 
+// Run immediately
+checkGlobalBan();
 
     // LOGICA QUEST KEVIN BOT (15 MESAJE)
 // LOGICA QUEST KEVIN BOT (15 MESAJE) - WITH FIREBASE CHECK
@@ -2886,8 +2930,7 @@ function generateDailyIds() {
 
 
 
-
-
+ 
 
 
 
