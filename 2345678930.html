@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -1390,6 +1391,75 @@
         .txn-desc { font-size: 10px; max-width: 100px; }
         .txn-amount { font-size: 14px; }
     }
+
+
+/* Controls Layout */
+.txn-controls-wrapper {
+    max-width: 600px;
+    margin: 0 auto 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+}
+
+/* Search Bar */
+.txn-search-box {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.txn-search-box input {
+    background: transparent;
+    border: none;
+    color: white;
+    width: 100%;
+    font-family: 'Poppins';
+}
+
+/* Filter Buttons */
+.txn-filter-row {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+.filter-btn {
+    background: rgba(13, 25, 41, 0.8);
+    border: 1px solid var(--glass-border);
+    padding: 8px 20px;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-family: 'Orbitron';
+    font-size: 12px;
+}
+.filter-btn img { width: 20px; height: 20px; }
+.filter-btn.active {
+    border-color: var(--primary);
+    box-shadow: 0 0 15px var(--primary-dim);
+    color: var(--primary);
+}
+
+/* IMPROVED TIMESTAMPS */
+.txn-date { 
+    display: block !important; /* Force visible on mobile */
+    font-size: 11px !important; 
+    color: var(--primary) !important; /* Brighter color */
+    font-weight: 600;
+    margin-top: 2px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
   </style>
 </head>
 <body>
@@ -1638,18 +1708,32 @@
 </aside>
 
 
-<!-- MAIN CONTENT AREA START -->
-<main class="blank-main-container">
-
 <main class="txn-hero">
     <h1 class="metallic-title-big">ISTORIC TRANZACȚII</h1>
-    <p style="color: var(--text-muted); font-size: 14px; max-width: 600px; margin: 0 auto 40px;">
-        Monitorizează toate intrările și ieșirile de fonduri din ecosistemul KSDA.
-    </p>
     
-    <!-- This is where the JS will put the bubbles -->
+    <div class="txn-controls-wrapper">
+        <!-- Search Bar -->
+        <div class="txn-search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="txnSearchInput" placeholder="Caută utilizator...">
+        </div>
+
+        <!-- Filter Buttons (Coins Left, All Middle, Diamonds Right) -->
+        <div class="txn-filter-row">
+            <button class="filter-btn" data-type="COINS">
+                <img src="https://iili.io/fhc1SKQ.png" alt="Coins">
+            </button>
+            
+            <button class="filter-btn active" data-type="ALL">TOATE</button>
+            
+            <button class="filter-btn" data-type="DIAMONDS">
+                <img src="https://iili.io/fv5bmtj.png" alt="Diamonds">
+            </button>
+        </div>
+    </div>
+    
     <div id="txnList" class="txn-container">
-        <p style="color:#aaa; font-family:'Orbitron'">Se încarcă tranzacțiile...</p>
+        <!-- Transactions load here -->
     </div>
 </main>
     
@@ -2372,7 +2456,7 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
             alert("Eroare la salvare: " + e.message);
         }
     };
-
+ 
 
 
 // Define a safe flag variable at the top of your script if not already there, 
@@ -2394,86 +2478,94 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 
 
-// --- LOGICĂ ISTORIC TRANZACȚII (ADD THIS) ---
-        const txnContainer = document.getElementById('txnList');
-        
-        if (txnContainer) {
-            let q;
+const txnContainer = document.getElementById('txnList');
+const searchInput = document.getElementById('txnSearchInput');
+const filterBtns = document.querySelectorAll('.filter-btn');
 
-            // 1. Daca esti OWNER -> Vezi TOT (Global)
-            if (user.email === 'nicaemmanuel433qe@gmail.com') {
-                q = query(
-                    collection(db, "transactions"),
-                    orderBy("timestamp", "desc"),
-                    limit(50)
-                );
-            } 
-            // 2. Daca esti Player -> Vezi DOAR ale tale
-            else {
-                q = query(
-                    collection(db, "transactions"),
-                    where("userId", "==", user.uid),
-                    orderBy("timestamp", "desc"),
-                    limit(30)
-                );
+let currentType = 'ALL';
+let currentSearch = '';
+let unsubscribe = null; // To store the listener
+
+// Function to start the Firebase Listener
+const startTxnListener = () => {
+    // Kill previous listener if exists
+    if (unsubscribe) unsubscribe();
+
+    let q = collection(db, "transactions");
+
+    // 1. Logic for filtering by Type (COINS/DIAMONDS)
+    if (currentType !== 'ALL') {
+        q = query(q, where("type", "==", currentType));
+    }
+
+    // 2. Logic for Owner vs Player
+    if (user.email !== 'nicaemmanuel433qe@gmail.com') {
+        q = query(q, where("userId", "==", user.uid));
+    }
+
+    // 3. Sorting
+    q = query(q, orderBy("timestamp", "desc"), limit(50));
+
+    unsubscribe = onSnapshot(q, (snapshot) => {
+        txnContainer.innerHTML = "";
+        if (snapshot.empty) {
+            txnContainer.innerHTML = "<p style='color:#666;'>Nicio tranzacție găsită.</p>";
+            return;
+        }
+
+        snapshot.forEach((doc) => {
+            const t = doc.data();
+            
+            // Client-side filtering for Username (Search Bar)
+            if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) {
+                return; 
             }
 
-            // Asculta tranzactiile
-            onSnapshot(q, (snapshot) => {
-                // Daca nu exista date
-                if (snapshot.empty) {
-                    txnContainer.innerHTML = "<p style='text-align:center; color:#666; font-family:Orbitron; margin-top:20px;'>Nu există tranzacții.</p>";
-                    return;
-                }
+            const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+            const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
+            const sign = t.amount >= 0 ? "+" : "";
+            const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : "Recent";
 
-                // Curata textul "Se incarca..."
-                txnContainer.innerHTML = ""; 
-
-                snapshot.forEach((doc) => {
-                    const t = doc.data();
-                    
-                    // Configurare Iconita
-                    let iconUrl = "https://iili.io/fhc1SKQ.png"; // Default Coin
-                    if(t.type === "DIAMONDS") iconUrl = "https://iili.io/fv5bmtj.png";
-
-                    // Configurare Culoare (+ / -)
-                    const isPositive = t.amount >= 0;
-                    const sign = isPositive ? "+" : ""; 
-                    const colorClass = isPositive ? "val-plus" : "val-minus";
-
-                    // Configurare Data
-                    let dateStr = "Recent";
-                    if(t.timestamp) {
-                        const d = t.timestamp.toDate();
-                        dateStr = d.toLocaleDateString('ro-RO') + " " + d.toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
-                    }
-
-                    // HTML Template (Bulele)
-                    const row = `
-                        <div class="txn-row">
-                            <div class="txn-left">
-                                <img src="${t.userImage}" class="txn-pfp">
-                                <div class="txn-info-col">
-                                    <span class="txn-username">${t.username}</span>
-                                    <span class="txn-date">${dateStr}</span>
-                                </div>
-                            </div>
-
-                            <div class="txn-mid">
-                                <span class="txn-source-badge">${t.source || "System"}</span>
-                                <span class="txn-desc">${t.description}</span>
-                            </div>
-
-                            <div class="txn-right">
-                                <span class="txn-amount ${colorClass}">${sign}${t.amount}</span>
-                                <img src="${iconUrl}" class="txn-icon">
-                            </div>
+            txnContainer.innerHTML += `
+                <div class="txn-row">
+                    <div class="txn-left">
+                        <img src="${t.userImage}" class="txn-pfp">
+                        <div class="txn-info-col">
+                            <span class="txn-username">${t.username}</span>
+                            <span class="txn-date">${dateStr}</span>
                         </div>
-                    `;
-                    txnContainer.innerHTML += row;
-                });
-            });
-        }
+                    </div>
+                    <div class="txn-mid">
+                        <span class="txn-source-badge">${t.source || "System"}</span>
+                        <span class="txn-desc">${t.description}</span>
+                    </div>
+                    <div class="txn-right">
+                        <span class="txn-amount ${colorClass}">${sign}${t.amount}</span>
+                        <img src="${iconUrl}" class="txn-icon">
+                    </div>
+                </div>`;
+        });
+    });
+};
+
+// Event Listeners for Filters
+filterBtns.forEach(btn => {
+    btn.onclick = () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentType = btn.getAttribute('data-type');
+        startTxnListener();
+    };
+});
+
+// Event Listener for Search
+searchInput.oninput = (e) => {
+    currentSearch = e.target.value;
+    startTxnListener(); // Refresh list with search filter
+};
+
+// Initialize first time
+startTxnListener();
             // 2. Listen for Global Metadata (Notifications)
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
