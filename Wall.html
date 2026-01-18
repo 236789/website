@@ -3,6 +3,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -3924,17 +3925,9 @@ onAuthStateChanged(auth, async (user) => {
         if (userAvatar) userAvatar.src = user.photoURL;
 
 // --- LIVE USER DATA LISTENER (FIXED FOR HEADERS & FRAMES) ---
-// --- LIVE USER DATA LISTENER ---
         onSnapshot(userRef, async (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-
-                // --- LIVE BAN CHECK (NEW) ---
-                // If admin bans this user while they are looking at the chat:
-                if (data.isBanned === true) {
-                    location.reload(); // Reloads page -> Enforces Ban -> Nukes content
-                    return;
-                }
 
                 // 1. Quest & Streak Logic
                 if (typeof resetUserQuests === "function") {
@@ -3946,7 +3939,7 @@ onAuthStateChanged(auth, async (user) => {
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
@@ -5127,59 +5120,47 @@ window.deleteMsg = async function(id) {
 }
     
 window.banIpUser = async function(targetUid, targetName, targetIp) {
-    closeAllMenus();
-    
-    // 1. Permission Check (Owner Only)
-    if(!isOwner) {
-        showToast("Nu ai permisiuni de Owner!", "error");
-        return;
-    }
+        closeAllMenus();
+        
+        // 1. Permission Check (Owner Only)
+        if(!isOwner) return;
+        if(!targetIp || targetIp === 'unknown') { 
+            showToast("Eroare: Nu pot detecta IP-ul."); 
+            return; 
+        }
+        
+        // 2. Ask for Reason (Custom Prompt)
+        const reason = await showCustomPrompt(
+            "BAN IP PERMANENT", 
+            `Banezi IP-ul lui ${targetName}? Scrie motivul:`, 
+            "Ex: Încălcare gravă a regulamentului..."
+        );
+        
+        if(!reason) return; // User clicked Cancel
 
-    // 2. Ask for Reason
-    const reason = await showCustomPrompt(
-        "BAN HAMMER 🔨", 
-        `Banezi permanent pe ${targetName}? Scrie motivul:`, 
-        "Ex: Încălcare gravă a regulamentului..."
-    );
-    
-    if(!reason) return; // User clicked Cancel
+        // 3. Final Confirmation (Custom Danger Alert)
+        const yes = await showCustomConfirm(
+            "CONFIRMARE FINALĂ", 
+            `Ești 100% sigur că vrei să banezi IP-ul ${targetIp}? Această acțiune este permanentă.`, 
+            true // 'true' makes the button Red
+        );
 
-    // 3. Final Confirmation
-    const yes = await showCustomConfirm(
-        "CONFIRMARE FINALĂ", 
-        `Ești 100% sigur? Această acțiune va șterge accesul lui ${targetName} permanent.`, 
-        true 
-    );
-
-    if(yes) {
-        try {
-            // A. BAN THE ACCOUNT (Triggers immediate logout/nuke for them)
-            await updateDoc(doc(db, "accounts", targetUid), { 
-                isBanned: true,
-                banReason: reason 
-            });
-
-            // B. BAN THE IP (Prevents new accounts)
-            if(targetIp && targetIp !== 'unknown') {
+        if(yes) {
+            try {
                 await setDoc(doc(db, "banned_ips", targetIp), { 
                     reason: reason, 
                     bannedAt: serverTimestamp(), 
-                    username: targetName,
-                    originalUid: targetUid
+                    username: targetName 
                 });
+                
+                sendBotMessage(`🚨 ${targetName} a primit BAN PERMANENT pe IP.`);
+                showToast("IP Banat cu succes.", "success");
+            } catch(e) {
+                console.error(e);
+                showToast("Eroare la banare.");
             }
-            
-            // C. Announce in Chat
-            await sendBotMessage(`🚨 **${targetName}** a fost eliminat din comunitate. Motiv: ${reason}`);
-            
-            showToast("Utilizator banat cu succes.", "success");
-
-        } catch(e) {
-            console.error(e);
-            showToast("Eroare la banare: " + e.message);
         }
     }
-}
     
     openEditProfileBtn.onclick = async () => {
         accountModal.classList.remove('active'); editProfileModal.classList.add('active'); 
