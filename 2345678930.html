@@ -1460,6 +1460,34 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+
+/* Password Wall */
+#protectionWall { display: flex; justify-content: center; align-items: center; min-height: 50vh; width: 100%; }
+.lock-card { background: #08101b; border: 1px solid var(--primary); padding: 40px 25px; border-radius: 25px; text-align: center; max-width: 380px; width: 100%; box-shadow: 0 0 40px rgba(41, 243, 255, 0.1); }
+.lock-icon-big { font-size: 50px; color: var(--primary); margin-bottom: 20px; filter: drop-shadow(0 0 10px var(--primary)); }
+.pass-input-wrapper { display: flex; gap: 10px; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
+.pass-input-wrapper input { background: transparent; border: none; color: #fff; padding: 10px; width: 100%; }
+.pass-input-wrapper button { background: var(--primary); border: none; color: #000; width: 45px; border-radius: 8px; cursor: pointer; }
+
+/* Filter Controls */
+.txn-controls-wrapper { max-width: 500px; margin: 0 auto 40px; display: flex; flex-direction: column; gap: 20px; }
+.txn-search-box { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 50px; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+.txn-search-box input { background: transparent; border: none; color: #fff; width: 100%; font-family: 'Poppins'; }
+.txn-filter-row { display: flex; justify-content: center; align-items: center; gap: 15px; }
+.filter-btn { background: rgba(13, 25, 41, 0.8); border: 1px solid rgba(255,255,255,0.1); padding: 10px 25px; border-radius: 12px; cursor: pointer; color: #888; font-family: 'Orbitron'; font-weight: 700; display: flex; align-items: center; justify-content: center; min-width: 90px; }
+.filter-btn img { width: 22px; height: 22px; }
+.filter-btn.active { border-color: var(--primary); background: rgba(41, 243, 255, 0.1); color: var(--primary); box-shadow: 0 0 15px var(--primary-dim); }
+
+/* VISIBLE CYAN TIMESTAMPS */
+.txn-date { 
+    display: block !important; 
+    color: var(--primary) !important; 
+    font-weight: 800 !important; 
+    font-size: 11px !important; 
+    margin-top: 5px; 
+    text-shadow: 0 0 5px rgba(41, 243, 255, 0.4);
+    opacity: 1 !important;
+}
   </style>
 </head>
 <body>
@@ -1709,31 +1737,48 @@
 
 
 <main class="txn-hero">
-    <h1 class="metallic-title-big">ISTORIC TRANZACȚII</h1>
-    
-    <div class="txn-controls-wrapper">
-        <!-- Search Bar -->
-        <div class="txn-search-box">
-            <i class="fas fa-search"></i>
-            <input type="text" id="txnSearchInput" placeholder="Caută utilizator...">
-        </div>
-
-        <!-- Filter Buttons (Coins Left, All Middle, Diamonds Right) -->
-        <div class="txn-filter-row">
-            <button class="filter-btn" data-type="COINS">
-                <img src="https://iili.io/fhc1SKQ.png" alt="Coins">
-            </button>
-            
-            <button class="filter-btn active" data-type="ALL">TOATE</button>
-            
-            <button class="filter-btn" data-type="DIAMONDS">
-                <img src="https://iili.io/fv5bmtj.png" alt="Diamonds">
-            </button>
+    <!-- 1. LOCK SCREEN (Shows first) -->
+    <div id="protectionWall">
+        <div class="lock-card">
+            <i class="fas fa-fingerprint lock-icon-big"></i>
+            <h2>ACCES RESTRICȚIONAT</h2>
+            <p>Introdu parola securizată pentru a vedea activitatea financiară.</p>
+            <div class="pass-input-wrapper">
+                <input type="password" id="txnPassInput" placeholder="Introdu parola...">
+                <button id="verifyPassBtn"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <p id="passError" style="color: #ff4757; font-size: 11px; margin-top: 15px; display: none; font-family: 'Orbitron';">Parolă incorectă!</p>
         </div>
     </div>
-    
-    <div id="txnList" class="txn-container">
-        <!-- Transactions load here -->
+
+    <!-- 2. ACTUAL CONTENT (Hidden initially via CSS) -->
+    <div id="txnContent" style="display: none;">
+        <h1 class="metallic-title-big">ISTORIC TRANZACȚII</h1>
+
+        <div class="txn-controls-wrapper">
+            <!-- Search Bar -->
+            <div class="txn-search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="txnSearchInput" placeholder="Caută utilizator...">
+            </div>
+
+            <!-- Filter Row: Coins (Left) | All (Mid) | Diamonds (Right) -->
+            <div class="txn-filter-row">
+                <button class="filter-btn" data-type="COINS">
+                    <img src="https://iili.io/fhc1SKQ.png" alt="Coins">
+                </button>
+                
+                <button class="filter-btn active" data-type="ALL">TOATE</button>
+                
+                <button class="filter-btn" data-type="DIAMONDS">
+                    <img src="https://iili.io/fv5bmtj.png" alt="Diamonds">
+                </button>
+            </div>
+        </div>
+        
+        <div id="txnList" class="txn-container">
+            <!-- Transactions will appear here -->
+        </div>
     </div>
 </main>
     
@@ -2463,7 +2508,7 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     // or rely on window property to avoid declaration errors.
     window.isAwardingInProgress = false; 
 
-    onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, user => {
         if (user) {
             const userRef = doc(db, "accounts", user.uid);
 
@@ -2476,96 +2521,128 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
+            // --- TRIVIA / TRANSACTION SYSTEM LOGIC ---
+            const txnListContainer = document.getElementById('txnList');
+            const txnSearchInput = document.getElementById('txnSearchInput');
+            const filterBtns = document.querySelectorAll('.filter-btn');
+            const protectionWall = document.getElementById('protectionWall');
+            const txnContent = document.getElementById('txnContent');
+            const verifyPassBtn = document.getElementById('verifyPassBtn');
+            const txnPassInput = document.getElementById('txnPassInput');
 
+            let currentType = 'ALL';
+            let currentSearch = '';
+            let txnUnsubscribe = null;
 
-const txnContainer = document.getElementById('txnList');
-const searchInput = document.getElementById('txnSearchInput');
-const filterBtns = document.querySelectorAll('.filter-btn');
+            // A. Password Protection Logic
+            const checkAccess = async () => {
+                if (sessionStorage.getItem('txn_unlocked') === 'true') {
+                    unlockPage();
+                    return;
+                }
 
-let currentType = 'ALL';
-let currentSearch = '';
-let unsubscribe = null; // To store the listener
+                verifyPassBtn.onclick = async () => {
+                    try {
+                        const secSnap = await getDoc(doc(db, "site_metadata", "transactions"));
+                        if (secSnap.exists() && txnPassInput.value === secSnap.data().view_password) {
+                            sessionStorage.setItem('txn_unlocked', 'true');
+                            unlockPage();
+                        } else {
+                            document.getElementById('passError').style.display = 'block';
+                            txnPassInput.value = "";
+                        }
+                    } catch(e) { console.error("Security fetch error:", e); }
+                };
+            };
 
-// Function to start the Firebase Listener
-const startTxnListener = () => {
-    // Kill previous listener if exists
-    if (unsubscribe) unsubscribe();
+            const unlockPage = () => {
+                if(protectionWall) protectionWall.style.display = 'none';
+                if(txnContent) txnContent.style.display = 'block';
+                startTxnListener();
+            };
 
-    let q = collection(db, "transactions");
+            // B. Filtered Transaction Listener
+            const startTxnListener = () => {
+                if (txnUnsubscribe) txnUnsubscribe();
 
-    // 1. Logic for filtering by Type (COINS/DIAMONDS)
-    if (currentType !== 'ALL') {
-        q = query(q, where("type", "==", currentType));
-    }
+                let q = collection(db, "transactions");
 
-    // 2. Logic for Owner vs Player
-    if (user.email !== 'nicaemmanuel433qe@gmail.com') {
-        q = query(q, where("userId", "==", user.uid));
-    }
+                // Owner sees all, others see only theirs
+                if (user.email !== 'nicaemmanuel433qe@gmail.com') {
+                    q = query(q, where("userId", "==", user.uid));
+                }
 
-    // 3. Sorting
-    q = query(q, orderBy("timestamp", "desc"), limit(50));
+                // Filter by Coin/Diamond type
+                if (currentType !== 'ALL') {
+                    q = query(q, where("type", "==", currentType));
+                }
 
-    unsubscribe = onSnapshot(q, (snapshot) => {
-        txnContainer.innerHTML = "";
-        if (snapshot.empty) {
-            txnContainer.innerHTML = "<p style='color:#666;'>Nicio tranzacție găsită.</p>";
-            return;
-        }
+                q = query(q, orderBy("timestamp", "desc"), limit(60));
 
-        snapshot.forEach((doc) => {
-            const t = doc.data();
-            
-            // Client-side filtering for Username (Search Bar)
-            if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) {
-                return; 
+                txnUnsubscribe = onSnapshot(q, (snapshot) => {
+                    txnListContainer.innerHTML = "";
+                    if (snapshot.empty) {
+                        txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron;'>Nicio tranzacție găsită.</p>";
+                        return;
+                    }
+
+                    snapshot.forEach((doc) => {
+                        const t = doc.data();
+                        
+                        // Search bar filtering
+                        if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) return;
+
+                        const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+                        const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
+                        
+                        // Formatted high-visibility date
+                        const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {
+                            day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
+                        }) : "Recent";
+
+                        txnListContainer.innerHTML += `
+                            <div class="txn-row">
+                                <div class="txn-left">
+                                    <img src="${t.userImage}" class="txn-pfp">
+                                    <div class="txn-info-col">
+                                        <span class="txn-username">${t.username}</span>
+                                        <span class="txn-date"><i class="fas fa-clock"></i> ${dateStr}</span>
+                                    </div>
+                                </div>
+                                <div class="txn-mid">
+                                    <span class="txn-source-badge">${t.source || "System"}</span>
+                                    <span class="txn-desc">${t.description}</span>
+                                </div>
+                                <div class="txn-right">
+                                    <span class="txn-amount ${colorClass}">${t.amount >= 0 ? '+' : ''}${t.amount}</span>
+                                    <img src="${iconUrl}" class="txn-icon">
+                                </div>
+                            </div>`;
+                    });
+                });
+            };
+
+            // C. Setup UI Listeners
+            if(filterBtns) {
+                filterBtns.forEach(btn => {
+                    btn.onclick = () => {
+                        filterBtns.forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        currentType = btn.getAttribute('data-type');
+                        startTxnListener();
+                    };
+                });
             }
 
-            const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
-            const sign = t.amount >= 0 ? "+" : "";
-            const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : "Recent";
+            if(txnSearchInput) {
+                txnSearchInput.oninput = (e) => {
+                    currentSearch = e.target.value;
+                    startTxnListener();
+                };
+            }
 
-            txnContainer.innerHTML += `
-                <div class="txn-row">
-                    <div class="txn-left">
-                        <img src="${t.userImage}" class="txn-pfp">
-                        <div class="txn-info-col">
-                            <span class="txn-username">${t.username}</span>
-                            <span class="txn-date">${dateStr}</span>
-                        </div>
-                    </div>
-                    <div class="txn-mid">
-                        <span class="txn-source-badge">${t.source || "System"}</span>
-                        <span class="txn-desc">${t.description}</span>
-                    </div>
-                    <div class="txn-right">
-                        <span class="txn-amount ${colorClass}">${sign}${t.amount}</span>
-                        <img src="${iconUrl}" class="txn-icon">
-                    </div>
-                </div>`;
-        });
-    });
-};
+            checkAccess(); // Trigger security check
 
-// Event Listeners for Filters
-filterBtns.forEach(btn => {
-    btn.onclick = () => {
-        filterBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentType = btn.getAttribute('data-type');
-        startTxnListener();
-    };
-});
-
-// Event Listener for Search
-searchInput.oninput = (e) => {
-    currentSearch = e.target.value;
-    startTxnListener(); // Refresh list with search filter
-};
-
-// Initialize first time
-startTxnListener();
             // 2. Listen for Global Metadata (Notifications)
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
@@ -2580,39 +2657,28 @@ startTxnListener();
                         await resetUserQuests(userRef, data);
                     }
 
-                    // --- B. 6/6 QUEST COMPLETION REWARD (THE FIRE MODAL) ---
+                    // --- B. 6/6 QUEST COMPLETION REWARD ---
                     const activeIds = data.activeDailyQuests || [];
                     const completedIds = data.completedQuests || [];
                     const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                    // Check if all 6 quests are done and not already awarded for this block
                     if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                         if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            
-                            // Prevent double execution using window variable
                             if (!window.isAwardingInProgress) {
                                 window.isAwardingInProgress = true;
-
                                 const oldStr = data.streak || 0;
-                                
-                                // --- NEW: LOG TRANSACTION FOR DIAMOND REWARD ---
                                 await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-
-                                // Update Firebase: Give +1 Streak and +1 Diamond
                                 await updateDoc(userRef, {
                                     streak: increment(1),
                                     diamonds: increment(1),
                                     lastStreakAwardedBlock: data.lastResetBlock
                                 });
-
-                                // Show the FIRE Modal
                                 const rewardModal = document.getElementById('streakRewardModal');
                                 if (rewardModal) {
                                     document.getElementById('streakOld').innerText = oldStr;
                                     document.getElementById('streakNew').innerText = oldStr + 1;
                                     rewardModal.classList.add('active');
                                 }
-                                
                                 setTimeout(() => { window.isAwardingInProgress = false; }, 3000);
                             }
                         }
@@ -2645,16 +2711,14 @@ startTxnListener();
                         popNameEl.innerText = rawName;
                     }
 
-                    // --- E. STACKED BADGES (Staff + Cosmetic) ---
+                    // --- E. STACKED BADGES ---
                     const popBadgeBox = document.getElementById('popUserBadges');
                     if(popBadgeBox) {
                         let staffHtml = "";
                         const email = data.email || "";
-                        
                         if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
                         else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
                         else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                        else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
                         
                         let cosmeticHtml = "";
                         if(data.equippedBadge) {
@@ -2663,10 +2727,8 @@ startTxnListener();
                         popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
                     }
 
-                    // --- F. DUAL CURRENCY & STREAK UI ---
+                    // --- F. DUAL CURRENCY ---
                     document.getElementById('popUserEmail').innerText = data.email;
-                    
-                    // Use formatCurrency (e.g., 1000 -> 1k)
                     document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                     const diamondEl = document.getElementById('popUserDiamonds');
                     if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
@@ -2674,12 +2736,11 @@ startTxnListener();
                     const streakTxt = document.querySelector('.streak-txt');
                     if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    // --- G. NOTIFICATION BADGE LOGIC ---
+                    // --- G. NOTIFICATION BADGES ---
                     const userVazute = data.lastSeenNewsCount || 0;
                     const noutatiNoi = totalGlobal - userVazute;
                     const heroBadge = document.getElementById('heroNotifBadge');
                     const headerBadge = document.getElementById('headerNotifBadge');
-
                     [heroBadge, headerBadge].forEach(badge => {
                         if (badge) {
                             if (noutatiNoi > 0) {
@@ -2693,15 +2754,11 @@ startTxnListener();
                 });
             });
 
-            updateOnlineStatus(); // Start tracking online presence
+            updateOnlineStatus();
         } else {
-            // LOGGED OUT STATE
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
-            
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-            }
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         } 
     });
 
