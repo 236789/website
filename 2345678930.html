@@ -12,7 +12,7 @@
   </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>istoric KSDA</title>
+  <title>Trivia KSDA</title>
   <meta name="description" content="Pagina noua KSDA">
   <link rel="icon" type="image/png" href="https://iili.io/fXks1Dv.png">
 
@@ -2534,24 +2534,25 @@ onAuthStateChanged(auth, user => {
             let currentSearch = '';
             let txnUnsubscribe = null;
 
-            // A. Password Protection Logic
-            const checkAccess = async () => {
-                if (sessionStorage.getItem('txn_unlocked') === 'true') {
-                    unlockPage();
-                    return;
-                }
-
+            // A. Password Protection Logic (Locks on every refresh)
+            const checkAccess = () => {
+                // sessionStorage removed: always starts locked
                 verifyPassBtn.onclick = async () => {
                     try {
                         const secSnap = await getDoc(doc(db, "site_metadata", "transactions"));
                         if (secSnap.exists() && txnPassInput.value === secSnap.data().view_password) {
-                            sessionStorage.setItem('txn_unlocked', 'true');
+                            // Unlocks for this view only
                             unlockPage();
                         } else {
                             document.getElementById('passError').style.display = 'block';
                             txnPassInput.value = "";
                         }
                     } catch(e) { console.error("Security fetch error:", e); }
+                };
+
+                // Allow Enter key to submit
+                txnPassInput.onkeydown = (e) => {
+                    if (e.key === "Enter") verifyPassBtn.click();
                 };
             };
 
@@ -2582,7 +2583,7 @@ onAuthStateChanged(auth, user => {
                 txnUnsubscribe = onSnapshot(q, (snapshot) => {
                     txnListContainer.innerHTML = "";
                     if (snapshot.empty) {
-                        txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron;'>Nicio tranzacție găsită.</p>";
+                        txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center;'>Nu există tranzacții.</p>";
                         return;
                     }
 
@@ -2641,7 +2642,7 @@ onAuthStateChanged(auth, user => {
                 };
             }
 
-            checkAccess(); // Trigger security check
+            checkAccess(); // Initialize security check
 
             // 2. Listen for Global Metadata (Notifications)
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
@@ -2756,6 +2757,7 @@ onAuthStateChanged(auth, user => {
 
             updateOnlineStatus();
         } else {
+            // LOGGED OUT STATE
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
             if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
