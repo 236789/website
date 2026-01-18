@@ -1826,6 +1826,20 @@ transition: 0.3s;
 </head>
 <body>
 
+
+<!-- BANNED OVERLAY -->
+<div id="bannedOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 0, 0, 0.98); z-index: 99999; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;">
+    <i class="fas fa-ban" style="font-size: 80px; color: #ff4757; margin-bottom: 20px;"></i>
+    <h1 style="font-family: 'Orbitron'; font-size: 32px; color: #ff4757; margin-bottom: 10px;">ACCES INTERZIS</h1>
+    <div style="background: rgba(255, 0, 0, 0.1); border: 1px solid #ff4757; padding: 30px; border-radius: 20px; max-width: 500px; width: 100%;">
+        <span style="color: #888; font-size: 12px; display: block;">Statut Cont:</span>
+        <span style="color: #fff; font-size: 18px; font-weight: 600; margin-bottom: 20px; display: block;">BANAT PERMANENT</span>
+        <span style="color: #888; font-size: 12px; display: block;">Motiv:</span>
+        <span id="globalBanReason" style="color: #fff; font-size: 18px; font-weight: 600; margin-bottom: 20px; display: block;">Încălcare regulament</span>
+        <p style="font-size:12px; color:#999; margin:0;">ID: <span id="globalBanIp">...</span></p>
+    </div>
+</div>
+
 <div class="header-container">
     <header>
         <a href="index.html" class="logo"><img src="https://iili.io/fXvBEiB.png" alt="Logo"></a>
@@ -2191,6 +2205,61 @@ transition: 0.3s;
     const allUsersListEl = document.getElementById('allUsersList');
     const closeAllUsers = document.getElementById('closeAllUsers');
     const searchInput = document.getElementById('searchAllUsers');
+
+
+// --- ULTIMATE BAN SYSTEM ---
+async function checkGlobalBan() {
+    const overlay = document.getElementById('bannedOverlay');
+    const reasonText = document.getElementById('globalBanReason');
+    const ipText = document.getElementById('globalBanIp');
+
+    const hammerBan = (reason, ipOrId) => {
+        console.log("BAN TRIGGERED: ", reason);
+        localStorage.setItem('ksda_perma_ban', 'true');
+        sessionStorage.setItem('isBanned', 'true');
+        
+        // NUKE VISUALS
+        const idsToRemove = ['siteContent', 'wall-container', 'game-container', 'sideMenu', 'header-container', 'main-wrapper', 'podiumContainer', 'topList'];
+        idsToRemove.forEach(id => {
+            const el = document.getElementById(id) || document.querySelector('.' + id);
+            if(el) el.remove();
+        });
+        
+        if(overlay) {
+            overlay.style.display = 'flex';
+            if(reasonText) reasonText.innerText = reason;
+            if(ipText) ipText.innerText = ipOrId;
+        }
+        document.body.style.overflow = 'hidden'; 
+
+        // ANTI-TAMPER
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.onkeydown = function(e) {
+            if(e.keyCode == 123) return false; 
+            if(e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0))) return false;
+            if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+        }
+    };
+
+    if (localStorage.getItem('ksda_perma_ban') === 'true') {
+        hammerBan("Dispozitiv Banat Anterior", "Device-ID");
+        return;
+    }
+
+    try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        const userIP = data.ip;
+        const banRef = doc(db, "banned_ips", userIP);
+        const banSnap = await getDoc(banRef);
+
+        if (banSnap.exists()) {
+            const banData = banSnap.data();
+            hammerBan(banData.reason || "IP Blacklisted", userIP);
+        }
+    } catch (e) { console.error("IP Check Error:", e); }
+}
+checkGlobalBan();
 
 // --- BADGE DATABASE ---
    const BADGES_DB = [
@@ -3420,8 +3489,43 @@ window.openUserProfile = async (uid) => {
 
 // --- AUTH STATE CHANGED (With Count Logic) ---
 // --- AUTH STATE CHANGED ---
+// --- AUTH STATE CHANGED (WITH BAN LOGIC) ---
 onAuthStateChanged(auth, async (user) => {
     if (user) {
+        // --- START BAN LOGIC ---
+        const userRef = doc(db, "accounts", user.uid);
+        const snapCheck = await getDoc(userRef);
+        const isDbBanned = snapCheck.exists() && snapCheck.data().isBanned === true;
+
+        if (isDbBanned) {
+            localStorage.setItem('ksda_perma_ban', 'true');
+            
+            // Remove Elements
+            ['siteContent', 'wall-container', 'sideMenu', '.header-container', 'podiumContainer', 'topList'].forEach(id => {
+                const el = document.getElementById(id) || document.querySelector(id);
+                if(el) el.remove();
+            });
+
+            const overlay = document.getElementById('bannedOverlay');
+            if(overlay) {
+                overlay.style.display = 'flex';
+                if(document.getElementById('globalBanReason')) document.getElementById('globalBanReason').innerText = "Cont Banat Permanent";
+                if(document.getElementById('globalBanIp')) document.getElementById('globalBanIp').innerText = "ID: " + user.uid;
+            }
+            document.body.style.overflow = 'hidden';
+            return;
+        } 
+        else {
+            // UNBAN LOGIC
+            if (localStorage.getItem('ksda_perma_ban') === 'true') {
+                localStorage.removeItem('ksda_perma_ban');
+                sessionStorage.removeItem('isBanned');
+                window.location.reload();
+                return;
+            }
+        }
+        // --- END BAN LOGIC ---
+
         document.getElementById('headerUserImg').src = user.photoURL;
         document.getElementById('headerUserImg').style.display = "block";
         
@@ -3432,12 +3536,16 @@ onAuthStateChanged(auth, async (user) => {
 
         if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-        // NOTE: The user count fetch has been moved OUTSIDE of here 
-        // so it works for people who are not logged in too.
-
         onSnapshot(doc(db, "accounts", user.uid), (uSnap) => {
             if(uSnap.exists()) {
                 const data = uSnap.data();
+                
+                // LIVE BAN CHECK
+                if (data.isBanned === true) {
+                    location.reload(); 
+                    return;
+                }
+
                 document.getElementById('popUserImg').src = data.image;
                 const popFrame = document.getElementById('popUserFrame');
                 if(popFrame) {
@@ -3466,7 +3574,7 @@ onAuthStateChanged(auth, async (user) => {
                 document.getElementById('popUserDiamonds').innerText = formatNumber(data.diamonds || 0);
                 document.querySelector('.streak-txt').innerText = `Daily Streak: ${data.streak || 0}`;
             }
-        });
+        }); 
         setStatusOnline();
     } else {
         document.getElementById('headerLoginText').innerText = "LOGIN";
