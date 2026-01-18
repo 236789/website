@@ -1636,7 +1636,7 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, getDocs, doc, getDoc, updateDoc, onSnapshot, serverTimestamp, arrayUnion, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -2031,6 +2031,7 @@ const TEXTS_DB = [
             if(actionType === 'donate') isDone = (data[field] >= 100);
 
             // IF: Quest is Active AND Not Completed AND Condition Met
+// IF: Quest is Active AND Not Completed AND Condition Met
             if(active.includes(questId) && !completed.includes(questId) && isDone) {
                 // Give Reward
                 await updateDoc(doc(db, "accounts", uid), {
@@ -2038,16 +2039,17 @@ const TEXTS_DB = [
                     completedQuests: arrayUnion(questId)
                 });
                 
-                // Show Popup
+                // --- LOG TRANSACTION (QUEST REWARD) ---
+                await logTransaction(reward, "COINS", `Quest Complete: ${questId}`, "Shop Quests");
+                
+                // ... (restul codului pentru modal rămâne la fel) ...
                 const modal = document.getElementById('rewardModal');
                 const title = modal.querySelector('h2'); 
                 const txt = modal.querySelector('p');
                 const amt = modal.querySelector('.reward-coins-box span');
-                
                 if(title) title.innerText = "🛍️ SHOP QUEST!";
                 if(txt) txt.innerText = "Ai completat misiunea de cumpărături!";
                 if(amt) amt.innerText = reward;
-                
                 modal.classList.add('active');
             }
         } catch(e) { console.error("Quest Check Error:", e); }
@@ -2333,12 +2335,16 @@ window.openAlteShop = async () => {
 
         if(coins < 2500) return alert("Nu ai destui coins!");
 
-        try {
+try {
             await updateDoc(userRef, {
                 username: newName,
                 coins: increment(-2500),
                 lastUsernameChange: serverTimestamp()
             });
+
+            // --- LOG TRANSACTION ---
+            await logTransaction(-2500, "COINS", `Name Change to ${newName}`, "Services");
+
             alert("Nume schimbat!");
             closeModal('nameChangeModal');
             closeModal('alteShopModal');
@@ -2447,17 +2453,18 @@ window.buyStickers = async (currency) => {
     }
 
     try {
-        // Transaction
         await updateDoc(userRef, {
             [fieldToDeduct]: increment(-cost),
-            hasStickerAccess: true // The flag for Firebase
+            hasStickerAccess: true 
         });
 
-        await showCustomAlert("Felicitări! Ai deblocat Stickerele KSDA!", "SUCCES");
-        window.openAlteShop(); // Refresh UI
+        // --- LOG TRANSACTION ---
+        const type = currency === 'diamonds' ? "DIAMONDS" : "COINS";
+        await logTransaction(-cost, type, "Unlock Stickers Feature", "Services");
 
-    } catch (e) {
-        console.error(e);
+        await showCustomAlert("Felicitări! Ai deblocat Stickerele KSDA!", "SUCCES");
+        window.openAlteShop(); 
+} catch (e) {
         await showCustomAlert("A apărut o eroare.", "EROARE");
     }
 };
@@ -2504,22 +2511,22 @@ window.buyGifs = async (currency) => {
         return;
     }
 
-    try {
-        // Perform Transaction
+try {
         await updateDoc(userRef, {
-            [fieldToDeduct]: increment(-cost), // Deduct money
-            hasGifAccess: true                 // Grant permission
+            [fieldToDeduct]: increment(-cost), 
+            hasGifAccess: true                 
         });
 
-        await showCustomAlert("Felicitări! Ai deblocat GIF-urile pe chat!", "SUCCES");
-        
-        // Refresh the Alte Shop UI to show "OWNED"
-        window.openAlteShop();
+        // --- LOG TRANSACTION ---
+        const type = currency === 'diamonds' ? "DIAMONDS" : "COINS";
+        await logTransaction(-cost, type, "Unlock GIFs Feature", "Services");
 
-    } catch (e) {
+        await showCustomAlert("Felicitări! Ai deblocat GIF-urile pe chat!", "SUCCES");
+        window.openAlteShop();
+} catch (e) {
         console.error(e);
         await showCustomAlert("A apărut o eroare.", "EROARE");
-    }
+    } 
 };
 
 window.buyText = async (id, price) => {
@@ -2534,8 +2541,12 @@ window.buyText = async (id, price) => {
         return;
     }
     
-    try {
+try {
         await updateDoc(userRef, { coins: increment(-price), ownedTexts: arrayUnion(id) });
+        
+        // --- LOG TRANSACTION ---
+        await logTransaction(-price, "COINS", `Bought Text Color`, "Text Shop");
+
         await showCustomAlert("Culoare cumpărată!", "SUCCES");
         window.openTextShop();
     } catch(e) { console.error(e); }
@@ -2585,92 +2596,98 @@ window.equipText = async (id, cssClass) => {
         document.getElementById('donationAmountModal').classList.add('active');
     }
 
-window.processDonation = async () => {
-    const amountInput = document.getElementById('donateAmount');
-    const amount = parseInt(amountInput.value);
+// 9. DONATION PROCESS
+    window.processDonation = async () => {
+        const amountInput = document.getElementById('donateAmount');
+        const amount = parseInt(amountInput.value);
 
-    // 1. Verificare sumă și LIMITĂ MAXIMĂ (5.000 conform cerinței)
-    if (!amount || amount < 1) {
-        await showCustomAlert("Suma invalidă!", "EROARE");
-        return;
-    }
-    if (amount > 15000) {
-        await showCustomAlert("Suma maximă permisă pentru o donație este de 15,000 coins!", "LIMITĂ ATINSĂ");
-        return;
-    }
-
-    const myRef = doc(db, "accounts", auth.currentUser.uid);
-    const mySnap = await getDoc(myRef);
-    const myData = mySnap.data();
-
-    // OWNER CHECK
-    const isOwner = auth.currentUser.email === "nicaemmanuel433qe@gmail.com";
-
-    // 2. Verificare Cooldown (1 Oră) - ONLY IF NOT OWNER
-    if (!isOwner && myData.lastDonationTime) {
-        const lastTime = myData.lastDonationTime.toMillis();
-        const now = Date.now();
-        const cooldownTime = 3600000; 
-
-        if (now - lastTime < cooldownTime) {
-            const remainingMs = cooldownTime - (now - lastTime);
-            const remainingMins = Math.ceil(remainingMs / 60000);
-            await showCustomAlert(`Mai ai de așteptat ${remainingMins} minute.`, "COOLDOWN");
+        // 1. Verificare sumă și LIMITĂ MAXIMĂ (15.000 conform cerinței actualizate)
+        if (!amount || amount < 1) {
+            await showCustomAlert("Suma invalidă!", "EROARE");
             return;
         }
-    }
+        if (amount > 15000) {
+            await showCustomAlert("Suma maximă permisă pentru o donație este de 15,000 coins!", "LIMITĂ ATINSĂ");
+            return;
+        }
 
-    // 3. Verificare Balanță
-    if ((myData.coins || 0) < amount) {
-        await showCustomAlert("Nu ai suficienți coins!", "EROARE");
-        return;
-    }
+        const myRef = doc(db, "accounts", auth.currentUser.uid);
+        const mySnap = await getDoc(myRef);
+        const myData = mySnap.data();
 
-    const confirmed = await showCustomConfirm(`Donezi ${amount.toLocaleString()} coins către ${donationTarget.name}?`, "CONFIRMARE DONAȚIE");
-    if (!confirmed) return;
+        // OWNER CHECK
+        const isOwner = auth.currentUser.email === "nicaemmanuel433qe@gmail.com";
 
-    try {
-        // 4. Update Conturi + Salvare timp donație pentru Cooldown
-// ... inside processDonation ...
+        // 2. Verificare Cooldown (1 Oră) - ONLY IF NOT OWNER
+        if (!isOwner && myData.lastDonationTime) {
+            const lastTime = myData.lastDonationTime.toMillis();
+            const now = Date.now();
+            const cooldownTime = 3600000; 
 
-// ... inside processDonation in shop.html ...
+            if (now - lastTime < cooldownTime) {
+                const remainingMs = cooldownTime - (now - lastTime);
+                const remainingMins = Math.ceil(remainingMs / 60000);
+                await showCustomAlert(`Mai ai de așteptat ${remainingMins} minute.`, "COOLDOWN");
+                return;
+            }
+        }
 
-// 4. Update Accounts
-await updateDoc(myRef, { 
-    coins: increment(-amount),
-    lastDonationTime: serverTimestamp(),
-    totalCoinsDonated: increment(amount),
-    
-    // UPDATED: Now saving receiverUid
-    donationHistory: arrayUnion({
-        receiverName: donationTarget.name,
-        receiverUid: donationTarget.id, // <--- ADD THIS LINE
-        amount: amount,
-        timestamp: Date.now()
-    })
-});
-        
-        await updateDoc(doc(db, "accounts", donationTarget.id), { 
-            coins: increment(amount) 
-        });
-        
-        await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
+        // 3. Verificare Balanță
+        if ((myData.coins || 0) < amount) {
+            await showCustomAlert("Nu ai suficienți coins!", "EROARE");
+            return;
+        }
 
-        checkShopQuest('donate', amount);
+        const confirmed = await showCustomConfirm(`Donezi ${amount.toLocaleString()} coins către ${donationTarget.name}?`, "CONFIRMARE DONAȚIE");
+        if (!confirmed) return;
 
-        closeModal('donationAmountModal');
-        amountInput.value = ''; 
+        try {
+            // 4. Update Conturi (Tu pierzi bani)
+            await updateDoc(myRef, { 
+                coins: increment(-amount),
+                lastDonationTime: serverTimestamp(),
+                totalCoinsDonated: increment(amount),
+                donationHistory: arrayUnion({
+                    receiverName: donationTarget.name,
+                    receiverUid: donationTarget.id,
+                    amount: amount,
+                    timestamp: Date.now()
+                })
+            });
+            
+            // Update receiver (El primește bani)
+            await updateDoc(doc(db, "accounts", donationTarget.id), { 
+                coins: increment(amount) 
+            });
 
-        // 5. REÎNCARCĂ MODALUL "ALTE"
-        window.openAlteShop(); 
-        
-    } catch (e) { 
-        console.error(e); 
-        await showCustomAlert("Eroare la procesare.", "EROARE");
-    }
-};
+            // --- LOG 1: SCĂDEM BANII TĂI ---
+            await logTransaction(-amount, "COINS", `Donation sent to ${donationTarget.name}`, "Donations");
 
-window.openBadgeShop = async () => {
+            // --- LOG 2: ADĂUGĂM LOG PENTRU CEL CE PRIMEȘTE ---
+            await addDoc(collection(db, "transactions"), {
+                userId: donationTarget.id,
+                username: donationTarget.name,
+                userImage: "https://iili.io/fhc1SKQ.png",
+                amount: amount,
+                type: "COINS",
+                description: `Received donation from ${auth.currentUser.displayName}`,
+                source: "Donations",
+                timestamp: serverTimestamp()
+            });
+            
+            await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
+            checkShopQuest('donate', amount);
+            closeModal('donationAmountModal');
+            amountInput.value = ''; 
+            window.openAlteShop(); 
+            
+        } catch (e) { 
+            console.error(e); 
+            await showCustomAlert("Eroare la procesare.", "EROARE");
+        }
+    };
+
+    window.openBadgeShop = async () => {
         if(!auth.currentUser) return alert("Loghează-te!");
         const modal = document.getElementById('badgeShopModal');
         const list = document.getElementById('badgeList');
@@ -2709,15 +2726,13 @@ window.openBadgeShop = async () => {
         });
     };
 
-window.buyBadge = async (badgeId, price) => {
-        // REPLACE CONFIRM
+    window.buyBadge = async (badgeId, price) => {
         const confirmed = await showCustomConfirm(`Cumperi insigna pentru ${price} coins?`);
         if(!confirmed) return;
 
         const userRef = doc(db, "accounts", auth.currentUser.uid);
         const userSnap = await getDoc(userRef);
         if((userSnap.data().coins || 0) < price) {
-            // REPLACE ALERT
             await showCustomAlert("Nu ai destule monede!", "EROARE"); 
             return;
         }
@@ -2725,71 +2740,68 @@ window.buyBadge = async (badgeId, price) => {
         try {
             await updateDoc(userRef, { coins: increment(-price), ownedBadges: arrayUnion(badgeId) });
             
-            // REPLACE ALERT
+            // --- LOG TRANSACTION ---
+            await logTransaction(-price, "COINS", `Bought Badge`, "Badge Shop");
+
             await showCustomAlert("Insignă cumpărată cu succes!", "SUCCES");
-            
             checkShopQuest('badge');
             window.openBadgeShop(); 
         } catch(e) { console.error(e); }
     };
 
-window.buyAllItems = async (category) => {
-    if (!auth.currentUser) return showCustomAlert("Loghează-te mai întâi!", "EROARE");
+    window.buyAllItems = async (category) => {
+        if (!auth.currentUser) return showCustomAlert("Loghează-te mai întâi!", "EROARE");
 
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
 
-    let database, ownedField, categoryName;
+        let database, ownedField, categoryName;
 
-    // Configurăm categoria
-    if (category === 'badges') { database = BADGES_DB; ownedField = 'ownedBadges'; categoryName = "BADGES"; }
-    else if (category === 'frames') { database = FRAMES_DB; ownedField = 'ownedFrames'; categoryName = "RAME"; }
-    else if (category === 'banners') { database = BANNERS_DB; ownedField = 'ownedBanners'; categoryName = "BANNERE"; }
-    else if (category === 'texts') { database = TEXTS_DB; ownedField = 'ownedTexts'; categoryName = "TEXT COLORS"; }
+        if (category === 'badges') { database = BADGES_DB; ownedField = 'ownedBadges'; categoryName = "BADGES"; }
+        else if (category === 'frames') { database = FRAMES_DB; ownedField = 'ownedFrames'; categoryName = "RAME"; }
+        else if (category === 'banners') { database = BANNERS_DB; ownedField = 'ownedBanners'; categoryName = "BANNERE"; }
+        else if (category === 'texts') { database = TEXTS_DB; ownedField = 'ownedTexts'; categoryName = "TEXT COLORS"; }
 
-    const ownedIds = userData[ownedField] || [];
-    
-    // Filtrăm doar ce NU are deja utilizatorul
-    const itemsToBuy = database.filter(item => !ownedIds.includes(item.id));
+        const ownedIds = userData[ownedField] || [];
+        const itemsToBuy = database.filter(item => !ownedIds.includes(item.id));
 
-    if (itemsToBuy.length === 0) {
-        return showCustomAlert(`Deții deja toate obiectele din categoria ${categoryName}!`, "INFO");
-    }
+        if (itemsToBuy.length === 0) {
+            return showCustomAlert(`Deții deja toate obiectele din categoria ${categoryName}!`, "INFO");
+        }
 
-    // Calculăm prețul total
-    const totalCost = itemsToBuy.reduce((sum, item) => sum + item.price, 0);
-
-    // Confirmare stilizată (exact cum ai cerut)
-    const confirmed = await showCustomConfirm(`All cost ${totalCost.toLocaleString()} do you want to buy all?`, `CUMPĂRĂ TOT (${categoryName})`);
-    
-    if (!confirmed) return;
-
-    if ((userData.coins || 0) < totalCost) {
-        return showCustomAlert("Nu ai suficienți coins pentru tot pachetul!", "EROARE");
-    }
-
-    try {
-        const newIds = itemsToBuy.map(i => i.id);
+        const totalCost = itemsToBuy.reduce((sum, item) => sum + item.price, 0);
+        const confirmed = await showCustomConfirm(`All cost ${totalCost.toLocaleString()} do you want to buy all?`, `CUMPĂRĂ TOT (${categoryName})`);
         
-        await updateDoc(userRef, {
-            coins: increment(-totalCost),
-            [ownedField]: arrayUnion(...newIds) // Adăugăm toate ID-urile noi deodată
-        });
+        if (!confirmed) return;
 
-        await showCustomAlert(`Felicitări! Ai deblocat tot din ${categoryName}!`, "SUCCES");
-        
-        // Refresh la shop-ul respectiv
-        if (category === 'badges') openBadgeShop();
-        else if (category === 'frames') openFrameShop();
-        else if (category === 'banners') openBannerShop();
-        else if (category === 'texts') openTextShop();
+        if ((userData.coins || 0) < totalCost) {
+            return showCustomAlert("Nu ai suficienți coins pentru tot pachetul!", "EROARE");
+        }
 
-    } catch (e) {
-        console.error(e);
-        showCustomAlert("A apărut o eroare la procesare.", "EROARE");
-    }
-};
+        try {
+            const newIds = itemsToBuy.map(i => i.id);
+            
+            await updateDoc(userRef, {
+                coins: increment(-totalCost),
+                [ownedField]: arrayUnion(...newIds) 
+            });
+
+            // --- LOG TRANSACTION ---
+            await logTransaction(-totalCost, "COINS", `Bundle: Buy All ${categoryName}`, "Shop Bundle");
+
+            await showCustomAlert(`Felicitări! Ai deblocat tot din ${categoryName}!`, "SUCCES");
+            
+            if (category === 'badges') window.openBadgeShop();
+            else if (category === 'frames') window.openFrameShop();
+            else if (category === 'banners') window.openBannerShop();
+            else if (category === 'texts') window.openTextShop();
+
+        } catch (e) {
+            console.error(e);
+            showCustomAlert("A apărut o eroare la procesare.", "EROARE");
+        } 
+    };
 
     // --- INVENTORY LOGIC ---
 window.openInventory = async (type = 'badges') => {
@@ -2957,10 +2969,13 @@ window.buyFrame = async (id, price) => {
             return;
         }
         
-        try {
+try {
             await updateDoc(userRef, { coins: increment(-price), ownedFrames: arrayUnion(id) });
-            await showCustomAlert("Ramă cumpărată!", "SUCCES");
+            
+            // --- LOG TRANSACTION ---
+            await logTransaction(-price, "COINS", `Bought Frame`, "Frame Shop");
 
+            await showCustomAlert("Ramă cumpărată!", "SUCCES");
             checkShopQuest('frame');
             openFrameShop(); 
         } catch(e) { console.error(e); }
@@ -3030,10 +3045,13 @@ window.buyBanner = async (id, price) => {
             return;
         }
         
-        try {
+try {
             await updateDoc(userRef, { coins: increment(-price), ownedBanners: arrayUnion(id) });
-            await showCustomAlert("Banner cumpărat!", "SUCCES");
             
+            // --- LOG TRANSACTION ---
+            await logTransaction(-price, "COINS", `Bought Banner`, "Banner Shop");
+
+            await showCustomAlert("Banner cumpărat!", "SUCCES");
             checkShopQuest('banner');
             window.openBannerShop();
         } catch(e) { console.error(e); }
@@ -3264,7 +3282,7 @@ onAuthStateChanged(auth, async user => {
             if(snap.exists()) {
                 const d = snap.data();
                 
-                // 1. Reset logic
+                // 1. Reset logic (resetare quest-uri zilnice)
                 await resetUserQuests(userRef, d);
 
                 // 2. Quest Master (6/6) Reward logic
@@ -3272,7 +3290,9 @@ onAuthStateChanged(auth, async user => {
                 const completedIds = d.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
+                // Verificăm dacă a terminat toate cele 6 quest-uri
                 if (activeIds.length === 6 && finishedCount === 6 && d.lastResetBlock !== "FORCE_RESET") {
+                    // Verificăm dacă nu a primit deja premiul pentru intervalul curent
                     if (d.lastStreakAwardedBlock !== d.lastResetBlock) {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
@@ -3282,18 +3302,33 @@ onAuthStateChanged(auth, async user => {
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: d.lastResetBlock
                             });
+
+                            // --- LOG TRANSACTION (DIAMOND STREAK) ---
+                            await logTransaction(1, "DIAMONDS", "Streak Bonus: 6/6 Quests", "Daily Streak");
+
                             document.getElementById('streakOld').innerText = oldStr;
                             document.getElementById('streakNew').innerText = oldStr + 1;
                             document.getElementById('streakRewardModal').classList.add('active');
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
-                        }
-                    }
-                }
+                        }   
+  } // <--- ADD THIS (Closes the "if (d.lastStreakAwardedBlock...)" )
+} // <--- ADD THIS (Closes the "if (activeIds.length === 6...)" )
+                            // --- LOG TRANSACTION (DIAMOND STREAK) ---
+                            // Aceasta este linia nouă care salvează tranzacția în istoric
+                            await logTransaction(1, "DIAMONDS", "Streak Bonus: 6/6 Quests", "Daily Streak");
+
+                            // UI Updates (Show Fire Modal)
+                            document.getElementById('streakOld').innerText = oldStr;
+                            document.getElementById('streakNew').innerText = oldStr + 1;
+                            document.getElementById('streakRewardModal').classList.add('active');
+                            
+
 
                 // 3. UI Update (Modal + Shop Hero)
                 const headerText = document.getElementById('headerLoginText');
                 if(headerText) {
                     headerText.innerText = (d.username || "").toUpperCase();
+                    // Adaugă clasa de culoare text dacă este echipată
                     headerText.className = 'login-btn-header ' + (d.equippedText?.cssClass || '');
                 }
 
@@ -3302,8 +3337,9 @@ onAuthStateChanged(auth, async user => {
                 if(shopName) shopName.innerText = d.username || user.displayName;
                 if(shopCoins) shopCoins.innerText = formatCurrency(d.coins || 0);
 
-                // Modal population
+                // Modal population (Account Popup)
                 document.getElementById('popUserImg').src = d.image || user.photoURL;
+                
                 const popName = document.getElementById('popUserName');
                 popName.innerText = d.username;
                 popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
@@ -3315,6 +3351,7 @@ onAuthStateChanged(auth, async user => {
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `STREAK: ${d.streak || 0}`;
                 
+                // Frame Logic
                 const popFrame = document.getElementById('popUserFrame');
                 if(popFrame) {
                     if (d.equippedFrame?.img) {
