@@ -2521,45 +2521,34 @@ onAuthStateChanged(auth, user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
 
-        // 1. UI Updates for Logged In User
+        // 1. UI Updates
         headerLoginText.innerText = "ACCOUNT";
         headerUserImg.src = user.photoURL;
         headerUserImg.style.display = "block";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-        }
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
-        // --- TRIVIA / TRANSACTION SYSTEM LOGIC ---
+        // --- SETUP VARIABLES ---
         const txnListContainer = document.getElementById('txnList');
         const txnSearchInput = document.getElementById('txnSearchInput');
         const filterBtns = document.querySelectorAll('.filter-btn');
-        // Protection Wall Variables REMOVED
-
-// --- ADD THESE MISSING LINES ---
-const dateFilterInput = document.getElementById('txnDateFilter');
-const loadMoreBtn = document.getElementById('loadMoreTxnBtn');
-let currentLimit = 20; 
-// -------------------------------
-
+        const dateFilterInput = document.getElementById('txnDateFilter');
+        const loadMoreBtn = document.getElementById('loadMoreTxnBtn');
+        let currentLimit = 20; 
         let currentType = 'ALL';
         let currentSearch = '';
         let txnUnsubscribe = null;
 
-        // --- PASSWORD LOGIC REMOVED ---
-
-        // B. Filtered Transaction Listener
+        // --- TRANSACTION LISTENER ---
         const startTxnListener = () => {
             if (txnUnsubscribe) txnUnsubscribe();
 
             let q = collection(db, "transactions");
 
-            // 1. User Filter (Show only own data unless Owner)
-            if (user.email !== 'nicaemmanuel433qe@gmail.com') {
-                q = query(q, where("userId", "==", user.uid));
-            }
+            // --- FILTER CHANGE HERE ---
+            // We REMOVED the "if user.email..." check.
+            // Now we do NOT filter by userId, so it shows everyone.
 
-            // 2. Type Filter (Coins vs Diamonds)
+            // 2. Type Filter
             if (currentType !== 'ALL') {
                 q = query(q, where("type", "==", currentType));
             }
@@ -2582,8 +2571,7 @@ let currentLimit = 20;
                     return;
                 }
 
-                if (snapshot.docs.length >= currentLimit) loadMoreBtn.style.display = 'inline-block';
-                else loadMoreBtn.style.display = 'none';
+                loadMoreBtn.style.display = (snapshot.docs.length >= currentLimit) ? 'inline-block' : 'none';
 
                 // --- STACKING LOGIC ---
                 let rawData = [];
@@ -2633,101 +2621,63 @@ let currentLimit = 20;
                         </div>`;
                 });
                 
-                if (html === "") {
-                     txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Niciun utilizator găsit.</p>";
-                } else {
-                     txnListContainer.innerHTML = html;
-                }
+                txnListContainer.innerHTML = html || "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Niciun utilizator găsit.</p>";
 
             }, (error) => {
                 console.error(error);
-                if(error.message.includes("index")) alert("ADMIN: Firebase Index Missing. Check Console.");
+                // If you see this error, you need to create a new index for (timestamp DESC) in Firebase Console
+                if(error.message.includes("index")) alert("ADMIN: Firebase Index Missing. Check Console (F12).");
             });
         };
 
-        // C. Setup UI Listeners
-        if(filterBtns) {
-            filterBtns.forEach(btn => {
-                btn.onclick = () => {
-                    filterBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    currentType = btn.getAttribute('data-type');
-                    startTxnListener();
-                };
-            });
-        }
-
-        // Listener for Date Picker
-        if(dateFilterInput) {
-            dateFilterInput.addEventListener('change', () => {
-                currentLimit = 20;
-                startTxnListener();
-            });
-        }
-
-        // Listener for Load More Button
-        if(loadMoreBtn) {
-            loadMoreBtn.addEventListener('click', () => {
-                currentLimit += 20;
-                startTxnListener();
-            });
-        }
-
-        if(txnSearchInput) {
-            txnSearchInput.oninput = (e) => {
-                currentSearch = e.target.value;
+        // --- LISTENERS ---
+        filterBtns.forEach(btn => {
+            btn.onclick = () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentType = btn.getAttribute('data-type');
                 startTxnListener();
             };
+        });
+
+        if(dateFilterInput) {
+            dateFilterInput.addEventListener('change', () => { currentLimit = 20; startTxnListener(); });
+        }
+        if(loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', () => { currentLimit += 20; startTxnListener(); });
+        }
+        if(txnSearchInput) {
+            txnSearchInput.oninput = (e) => { currentSearch = e.target.value; startTxnListener(); };
         }
 
-        // --- START IMMEDIATELY (NO PASSWORD) ---
+        // START IMMEDIATELY
         startTxnListener(); 
 
-        // 2. Listen for Global Metadata (Notifications)
-        onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-            const totalGlobal = metaSnap.data()?.totalNews || 0;
-
-            // 3. Listen for User Data LIVE
-            onSnapshot(userRef, async (uSnap) => {
-                if(!uSnap.exists()) return;
-                const data = uSnap.data();
-                
-                // Quest Reset & Rewards Logic...
-                await resetUserQuests(userRef, data);
-                // ... (Rest of your Quest/Streak Logic stays the same) ...
-                
-                // UI Updates...
-                document.getElementById('popUserImg').src = data.image || user.photoURL;
-                const popNameEl = document.getElementById('popUserName');
-                if (data.equippedText && data.equippedText.cssClass) {
-                    popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${data.username}</span>`;
-                } else {
-                    popNameEl.innerText = data.username;
-                }
-                
-                // Badges
-                const popBadgeBox = document.getElementById('popUserBadges');
-                if(popBadgeBox) {
-                    // ... (Rest of badge logic) ...
-                }
-
-                // Currency
-                document.getElementById('popUserEmail').innerText = data.email;
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-                
-                // Notifs...
-                // ... (Rest of notification logic) ...
-            });
+        // 2. Listen for User Data
+        onSnapshot(userRef, async (uSnap) => {
+            if(!uSnap.exists()) return;
+            const data = uSnap.data();
+            await resetUserQuests(userRef, data);
+            
+            // Populating Account Modal UI...
+            document.getElementById('popUserImg').src = data.image || user.photoURL;
+            document.getElementById('popUserName').innerText = data.username;
+            document.getElementById('popUserEmail').innerText = data.email;
+            document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+            if(document.getElementById('popUserDiamonds')) {
+                document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+            }
+            const frame = document.getElementById('popUserFrame');
+            if(frame) {
+                if(data.equippedFrame?.img) { frame.src = data.equippedFrame.img; frame.style.display = "block"; }
+                else frame.style.display = "none";
+            }
         });
 
         updateOnlineStatus();
     } else {
-        // LOGGED OUT STATE
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
-        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
     } 
 });
 
