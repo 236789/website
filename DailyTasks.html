@@ -205,23 +205,52 @@
 }
 
 /* 4. Notification Switch Styling */
+/* notification Modal Custom styling */
 .notif-option {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 15px; background: rgba(255, 255, 255, 0.03);
-    border-radius: 15px; margin-bottom: 8px; border: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 280px; /* Matching the width of your other buttons */
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50px; /* Oval look like the buttons */
+    margin-bottom: 10px;
+    transition: 0.3s;
 }
-.switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+
+.notif-option:hover {
+    border-color: #ffd700;
+    background: rgba(255, 215, 0, 0.05);
+}
+
+.notif-option span {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    color: #fff;
+}
+
+/* The Switch Toggle */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 18px;
+}
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider {
-    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    position: absolute; cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
     background-color: #333; transition: .4s; border-radius: 34px;
 }
 .slider:before {
-    position: absolute; content: ""; height: 14px; width: 14px;
+    position: absolute; content: ""; height: 12px; width: 12px;
     left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%;
 }
-input:checked + .slider { background-color: #ffd700; }
-input:checked + .slider:before { transform: translateX(20px); }​
+input:checked + .slider { background-color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+input:checked + .slider:before { transform: translateX(16px); }
 
     @keyframes jumpIn { 0% { transform: scale(0.3) translateY(100px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
     .close-pop { position: absolute; top: 15px; right: 20px; color: #fff; cursor: pointer; font-size: 24px; background: none; border: none; opacity: 0.5; }
@@ -1341,9 +1370,9 @@ input:checked + .slider:before { transform: translateX(20px); }​
         <div class="btn-row-pop">
             <button id="openCosmeticsBtn" class="btn-cosmetics"><i class="fas fa-palette"></i> COSMETICS</button>
             <button id="openEditProfileBtn" class="btn-edit-profile"><i class="fas fa-edit"></i> EDIT PROFILE</button>
-            <button id="openNotifSettingsBtn" class="btn-edit-profile" style="border-color: #ffd700; color: #ffd700;">
-                <i class="fas fa-bell"></i> NOTIFICĂRI
-            </button>
+<button id="openNotifSettingsBtn" class="btn-edit-profile" style="border-color: #ffd700; color: #ffd700;">
+    <i class="fas fa-bell"></i> NOTIFICĂRI
+</button>
         </div>
 
         <div class="currency-wrapper">
@@ -1412,61 +1441,68 @@ input:checked + .slider:before { transform: translateX(20px); }​
     let isAwarding = false;
 
 
-// Reference elements
-const notifModal = document.getElementById('notifSettingsModal');
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
-const saveNotifBtn = document.getElementById('saveNotifBtn');
+const notifModal = document.getElementById('notifSettingsModal');
 
-// Open Notifications and Load Current State
+// This function ensures the toggles match what is in the database
+async function loadNotifSettings() {
+    if (!auth.currentUser) return;
+    
+    try {
+        const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        if (snap.exists()) {
+            const prefs = snap.data().notifPrefs || {};
+            
+            // Set the checkboxes based on Firebase data
+            document.getElementById('n_wall').checked = prefs.wall || false;
+            document.getElementById('n_tasks').checked = prefs.tasks || false;
+            document.getElementById('n_feedback').checked = prefs.feedback || false;
+            document.getElementById('n_top').checked = prefs.top || false;
+            document.getElementById('n_news').checked = prefs.news || false;
+            document.getElementById('n_shop').checked = prefs.shop || false;
+        }
+    } catch (e) {
+        console.error("Error loading notification settings:", e);
+    }
+}
+
+// When button is clicked: Load first, then show modal
 if(openNotifBtn) {
     openNotifBtn.onclick = async () => {
-        accountModal.classList.remove('active');
+        await loadNotifSettings(); // FETCH FROM FIREBASE
+        document.getElementById('accountModal').classList.remove('active');
         notifModal.classList.add('active');
-
-        if (auth.currentUser) {
-            const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            if (snap.exists()) {
-                const prefs = snap.data().notifPrefs || {};
-                document.getElementById('n_wall').checked = prefs.wall || false;
-                document.getElementById('n_tasks').checked = prefs.tasks || false;
-                document.getElementById('n_feedback').checked = prefs.feedback || false;
-                document.getElementById('n_top').checked = prefs.top || false;
-                document.getElementById('n_news').checked = prefs.news || false;
-                document.getElementById('n_shop').checked = prefs.shop || false;
-            }
-        }
     };
 }
 
-// Save Notification Preferences
-if(saveNotifBtn) {
-    saveNotifBtn.onclick = async () => {
-        if (!auth.currentUser) return;
+// Save function remains the same, writing to "notifPrefs"
+document.getElementById('saveNotifBtn').onclick = async () => {
+    if (!auth.currentUser) return;
 
-        const newPrefs = {
-            wall: document.getElementById('n_wall').checked,
-            tasks: document.getElementById('n_tasks').checked,
-            feedback: document.getElementById('n_feedback').checked,
-            top: document.getElementById('n_top').checked,
-            news: document.getElementById('n_news').checked,
-            shop: document.getElementById('n_shop').checked
-        };
-
-        try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                notifPrefs: newPrefs
-            });
-            
-            // Note: Since DailyTasks doesn't have showToast, we use a simple alert or console
-            alert("Setări notificări salvate!"); 
-            notifModal.classList.remove('active');
-            accountModal.classList.add('active');
-        } catch (e) {
-            console.error("Error saving notifs:", e);
-        }
+    const newPrefs = {
+        wall: document.getElementById('n_wall').checked,
+        tasks: document.getElementById('n_tasks').checked,
+        feedback: document.getElementById('n_feedback').checked,
+        top: document.getElementById('n_top').checked,
+        news: document.getElementById('n_news').checked,
+        shop: document.getElementById('n_shop').checked
     };
-}
-// --- TRANSACTION LOGGER FUNCTION ---
+
+    try {
+        await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+            notifPrefs: newPrefs
+        });
+        
+        // Show success (Toast or Alert)
+        if (window.showToast) window.showToast("Preferințe sincronizate!");
+        else alert("Preferințe sincronizate!");
+
+        notifModal.classList.remove('active');
+        document.getElementById('accountModal').classList.add('active');
+    } catch (e) {
+        console.error("Save Error:", e);
+    }
+};
 async function logTransaction(amount, type, desc) {
     if (!auth.currentUser) return;
     try {
