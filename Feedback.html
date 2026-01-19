@@ -192,12 +192,40 @@
 }
 
 /* 3. Horizontal Currencies */
-.currency-wrapper { display: flex; gap: 10px; width: 100%; margin-bottom: 20px; }
+/* Reparație mărime iconițe valută */
+.currency-wrapper { 
+    display: flex; 
+    gap: 10px; 
+    width: 100%; 
+    max-width: 320px; 
+    margin-bottom: 20px; 
+}
+
 .currency-card {
     flex: 1;
-    flex-direction: row !important;
-    gap: 10px;
-    padding: 15px 10px !important;
+    display: flex !important;
+    flex-direction: row !important; /* Iconița lângă text */
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px;
+    padding: 10px !important;
+    background: rgba(5, 11, 20, 0.6);
+    border-radius: 15px;
+    border: 1.5px solid transparent;
+}
+
+.currency-icon {
+    width: 24px !important; /* ACEASTA REPARĂ MĂRIMEA */
+    height: 24px !important;
+    object-fit: contain !important;
+    margin: 0 !important;
+}
+
+.currency-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    color: #fff;
 }
 
 /* 4. Notification Switch Styling */
@@ -1554,6 +1582,24 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
+
+<div id="notifSettingsModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 360px;">
+        <button class="close-pop" onclick="document.getElementById('notifSettingsModal').classList.remove('active'); document.getElementById('accountModal').classList.add('active');">✕</button>
+        <h3 style="font-family:'Orbitron'; color:#ffd700; margin-bottom: 5px;">NOTIFICĂRI</h3>
+        <p style="font-size: 10px; color: var(--text-muted); margin-bottom: 20px;">ALEGE ALERTE EMAIL</p>
+        
+        <div class="notif-option"><span>Wall</span><label class="switch"><input type="checkbox" id="n_wall"><span class="slider"></span></label></div>
+        <div class="notif-option"><span>Daily Tasks</span><label class="switch"><input type="checkbox" id="n_tasks"><span class="slider"></span></label></div>
+        <div class="notif-option"><span>Feedback</span><label class="switch"><input type="checkbox" id="n_feedback"><span class="slider"></span></label></div>
+        <div class="notif-option"><span>Top KSDA</span><label class="switch"><input type="checkbox" id="n_top"><span class="slider"></span></label></div>
+        <div class="notif-option"><span>Noutăți</span><label class="switch"><input type="checkbox" id="n_news"><span class="slider"></span></label></div>
+        <div class="notif-option"><span>Shop</span><label class="switch"><input type="checkbox" id="n_shop"><span class="slider"></span></label></div>
+        
+        <button id="saveNotifBtn" class="btn-save-profile" style="background:#ffd700; width: 100%; color: #000; margin-top: 15px;">SALVEAZĂ</button>
+    </div>
+</div>
+
 <!-- 2. QUEST SUCCESS MODAL (FIRE) -->
 <div id="streakRewardModal" class="reward-modal">
     <div class="modern-pop-card pop-fire">
@@ -1748,39 +1794,39 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
 
 
 
-// --- LOGICĂ NOTIFICĂRI (SINCRONIZATĂ & SIGURĂ) ---
+// --- LOGICĂ SINCRONIZARE NOTIFICĂRI ---
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
 const notifModal = document.getElementById('notifSettingsModal');
 const saveNotifBtn = document.getElementById('saveNotifBtn');
 
-// Funcție pentru încărcarea datelor (Folosește prefixul n_)
-async function loadNotifSettings() {
+// Încarcă setările salvate anterior
+async function syncNotificationToggles() {
     if (!auth.currentUser) return;
     try {
         const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         if (snap.exists()) {
-            const prefs = snap.data().notifPrefs || {};
-            // Setăm checkbox-urile (Asigură-te că ID-urile din HTML sunt n_wall, n_tasks, etc.)
-            if(document.getElementById('n_wall')) document.getElementById('n_wall').checked = prefs.wall || false;
-            if(document.getElementById('n_tasks')) document.getElementById('n_tasks').checked = prefs.tasks || false;
-            if(document.getElementById('n_feedback')) document.getElementById('n_feedback').checked = prefs.feedback || false;
-            if(document.getElementById('n_top')) document.getElementById('n_top').checked = prefs.top || false;
-            if(document.getElementById('n_news')) document.getElementById('n_news').checked = prefs.news || false;
-            if(document.getElementById('n_shop')) document.getElementById('n_shop').checked = prefs.shop || false;
+            const savedPrefs = snap.data().notifPrefs || {};
+            // IDs must match: n_wall, n_tasks, n_feedback, n_top, n_news, n_shop
+            const fields = ['wall', 'tasks', 'feedback', 'top', 'news', 'shop'];
+            fields.forEach(f => {
+                const el = document.getElementById(`n_${f}`);
+                if (el) el.checked = savedPrefs[f] || false;
+            });
+            console.log("Setări sincronizate din Firebase!");
         }
-    } catch (e) { console.error("Eroare la încărcare notificări:", e); }
+    } catch (e) { console.error("Sync Error:", e); }
 }
 
-// Deschiderea modalului (Verificare de siguranță pentru butoane)
+// Buton Deschidere: Sincronizează, apoi arată modalul
 if (openNotifBtn) {
     openNotifBtn.onclick = async () => {
-        await loadNotifSettings();
+        await syncNotificationToggles(); // Întâi citim din DB
         if (document.getElementById('accountModal')) document.getElementById('accountModal').classList.remove('active');
         if (notifModal) notifModal.classList.add('active');
     };
 }
 
-// Salvarea datelor (Verificare de siguranță pentru buton)
+// Buton Salvare: Scrie în DB
 if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
         if (!auth.currentUser) return;
@@ -1794,14 +1840,13 @@ if (saveNotifBtn) {
         };
         try {
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
-            if (window.showToast) window.showToast("Preferințe sincronizate!");
-            else alert("Preferințe sincronizate!");
+            if (window.showToast) window.showToast("Setări salvate pe toate paginile!");
+            else alert("Setări salvate!");
             if (notifModal) notifModal.classList.remove('active');
             if (document.getElementById('accountModal')) document.getElementById('accountModal').classList.add('active');
-        } catch (e) { console.error("Eroare la salvare:", e); }
+        } catch (e) { alert("Eroare la salvare!"); }
     };
 }
-
 // --- TRANSACTION LOGGER FUNCTION ---
 async function logTransaction(amount, type, desc) {
     if (!auth.currentUser) return;
