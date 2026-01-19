@@ -1489,6 +1489,21 @@
     text-shadow: 0 0 5px rgba(41, 243, 255, 0.4);
     opacity: 1 !important;
 }
+
+
+
+.stack-count {
+    background: #7000ff;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-right: 8px;
+    border: 1px solid rgba(255,255,255,0.3);
+    box-shadow: 0 0 10px rgba(112, 0, 255, 0.4);
+    animation: popIn 0.3s ease;
+}
   </style>
 </head>
 <body>
@@ -2585,57 +2600,92 @@ const startTxnListener = () => {
         q = query(q, where("userId", "==", user.uid));
     }
 
-    // 2. Filter by Type (Coins/Diamonds)
+    // 2. Filter by Type
     if (currentType !== 'ALL') {
         q = query(q, where("type", "==", currentType));
     }
 
-    // 3. NEW: Filter by Specific Date
-    // If a date is selected, we filter start/end of that day
+    // 3. Filter by Date
     if (dateFilterInput && dateFilterInput.value) {
         const selectedDate = new Date(dateFilterInput.value);
         const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
         const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
-        
         q = query(q, where("timestamp", ">=", startOfDay), where("timestamp", "<=", endOfDay));
     }
 
-    // 4. Apply Order and Dynamic Limit
-    // We use currentLimit instead of fixed "60"
+    // 4. Order & Limit
     q = query(q, orderBy("timestamp", "desc"), limit(currentLimit));
 
     txnUnsubscribe = onSnapshot(q, (snapshot) => {
-        txnListContainer.innerHTML = "";
-        
         if (snapshot.empty) {
             txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center;'>Nu există tranzacții.</p>";
-            loadMoreBtn.style.display = 'none'; // Hide button if no data
+            loadMoreBtn.style.display = 'none';
             return;
         }
 
-        // Show "Load More" button only if we have enough data to fill the limit
+        // Check if we need to show Load More button
         if (snapshot.docs.length >= currentLimit) {
             loadMoreBtn.style.display = 'inline-block';
         } else {
             loadMoreBtn.style.display = 'none';
         }
 
-        snapshot.forEach((doc) => {
-            const t = doc.data();
-            
-            // Search bar filtering (Client side)
-            if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) return;
+        // --- STAGE 1: RAW DATA EXTRACTION ---
+        let rawTransactions = [];
+        snapshot.forEach(doc => rawTransactions.push(doc.data()));
 
+        // --- STAGE 2: STACKING / GROUPING LOGIC ---
+        let stackedTransactions = [];
+        
+        rawTransactions.forEach((t) => {
+            // Get the last item we added to the stacked list
+            let lastGroup = stackedTransactions[stackedTransactions.length - 1];
+
+            // Check if this transaction is identical to the previous one
+            // We check: User, Source, Amount, and Type
+            if (lastGroup && 
+                lastGroup.userId === t.userId && 
+                lastGroup.source === t.source && 
+                lastGroup.amount === t.amount && 
+                lastGroup.type === t.type) {
+                
+                // It's a duplicate/repeat action! Just increase the count
+                lastGroup.count++;
+                
+                // Optional: Update timestamp to show the most recent time
+                // (Since we loop descending, the first one found is actually the newest)
+            } else {
+                // It's a new unique action. Add it to list.
+                // We add a 'count' property starting at 1
+                t.count = 1;
+                stackedTransactions.push(t);
+            }
+        });
+
+        // --- STAGE 3: FILTERING & RENDERING ---
+        let finalHtml = "";
+        
+        stackedTransactions.forEach(t => {
+            // SEARCH LOGIC: Checks Username OR Source OR Description
+            const term = currentSearch.toLowerCase();
+            const matchesUser = t.username.toLowerCase().includes(term);
+            const matchesSource = (t.source || "").toLowerCase().includes(term);
+            const matchesDesc = (t.description || "").toLowerCase().includes(term);
+
+            if (currentSearch && !matchesUser && !matchesSource && !matchesDesc) return;
+
+            // Prepare UI variables
             const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
             const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
-            
-            // Format Date
             const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {
                 day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
             }) : "Recent";
 
-            // Render HTML
-            txnListContainer.innerHTML += `
+            // Generate "x10" Badge HTML if count > 1
+            const countBadge = t.count > 1 ? `<span class="stack-count">x${t.count}</span>` : '';
+
+            // Build HTML String (Faster than innerHTML +=)
+            finalHtml += `
                 <div class="txn-row">
                     <div class="txn-left">
                         <img src="${t.userImage}" class="txn-pfp">
@@ -2649,18 +2699,22 @@ const startTxnListener = () => {
                         <span class="txn-desc">${t.description}</span>
                     </div>
                     <div class="txn-right">
+                        ${countBadge}
                         <span class="txn-amount ${colorClass}">${t.amount >= 0 ? '+' : ''}${t.amount}</span>
                         <img src="${iconUrl}" class="txn-icon">
                     </div>
                 </div>`;
         });
-    }, (error) => {
-        // IMPORTANT: Firebase usually requires an INDEX for Date + OrderBy
-        // Check your browser console (F12) if this errors. It will give you a link to click.
-        console.error("Error fetching transactions: ", error);
-        if(error.message.includes("index")) {
-            alert("ADMIN: Check Console (F12) to create Firebase Index for Date Filtering.");
+
+        // Update DOM once
+        txnListContainer.innerHTML = finalHtml;
+        
+        if(finalHtml === "") {
+             txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center;'>Niciun rezultat găsit.</p>";
         }
+
+    }, (error) => {
+        console.error("Error:", error);
     });
 };
 
