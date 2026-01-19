@@ -1636,7 +1636,7 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, getDocs, doc, getDoc, updateDoc, onSnapshot, serverTimestamp, arrayUnion, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, orderBy, getDocs, doc, getDoc, updateDoc, onSnapshot, serverTimestamp, arrayUnion, increment,addDoc  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -1651,6 +1651,36 @@ h1, h2, h3, .logo, .btn, .login-btn-header, .pop-user, .streak-txt, .currency-va
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+// --- TRANSACTION HELPER ---
+async function logTransaction(amount, type, source, description, targetUid = null) {
+    if (!auth.currentUser && !targetUid) return;
+    
+    // If targetUid is provided, we log for THAT user (used for Donation Receiver)
+    // Otherwise, we log for the current logged-in user
+    const uid = targetUid || auth.currentUser.uid;
+    
+    try {
+        // We need the user's name/image for the log
+        const userSnap = await getDoc(doc(db, "accounts", uid));
+        const userData = userSnap.data();
+
+        await addDoc(collection(db, "transactions"), {
+            userId: uid,
+            username: userData.username || "User",
+            userImage: userData.image || "https://iili.io/fXvBEiB.png",
+            amount: amount, // Positive = Gain, Negative = Spend
+            type: type,     // "COINS" or "DIAMONDS"
+            source: source, // "Shop", "Donation", "Daily", etc.
+            description: description,
+            timestamp: serverTimestamp()
+        });
+        console.log(`Transaction Logged: ${description} (${amount})`);
+    } catch (e) {
+        console.error("Txn Error:", e);
+    }
+}
 
 
 // --- CUSTOM ALERT SYSTEM ---
@@ -2001,57 +2031,46 @@ const TEXTS_DB = [
 
 
 // --- QUEST CHECKER LOGIC ---
-    async function checkShopQuest(actionType, donationAmount = 0) {
-        if(!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
+async function checkShopQuest(actionType, donationAmount = 0) {
+    if(!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    
+    let questId = ''; let reward = 0; let field = '';
+
+    if(actionType === 'badge') { questId='buy_badge'; reward=1000; field='shopBadgeBought'; }
+    if(actionType === 'banner') { questId='buy_banner'; reward=1500; field='shopBannerBought'; }
+    if(actionType === 'frame') { questId='buy_frame'; reward=1250; field='shopFrameBought'; }
+    if(actionType === 'donate') { questId='donate_100'; reward=300; field='coinsDonatedToday'; }
+
+    try {
+        let incrementValue = (actionType === 'donate') ? donationAmount : 1;
+        await updateDoc(doc(db, "accounts", uid), { [field]: increment(incrementValue) });
+
+        const snap = await getDoc(doc(db, "accounts", uid));
+        const data = snap.data();
+        const active = data.activeDailyQuests || [];
+        const completed = data.completedQuests || [];
         
-        let questId = '';
-        let reward = 0;
-        let field = '';
+        let isDone = (data[field] >= 1);
+        if(actionType === 'donate') isDone = (data[field] >= 100);
 
-        // Map actions to Quests
-        if(actionType === 'badge') { questId='buy_badge'; reward=1000; field='shopBadgeBought'; }
-        if(actionType === 'banner') { questId='buy_banner'; reward=1500; field='shopBannerBought'; }
-        if(actionType === 'frame') { questId='buy_frame'; reward=1250; field='shopFrameBought'; }
-        if(actionType === 'donate') { questId='donate_100'; reward=300; field='coinsDonatedToday'; }
-
-        try {
-            // 1. Increment the specific counter in Firebase
-            let incrementValue = (actionType === 'donate') ? donationAmount : 1;
-            await updateDoc(doc(db, "accounts", uid), { [field]: increment(incrementValue) });
-
-            // 2. Check if we should give the Reward
-            const snap = await getDoc(doc(db, "accounts", uid));
-            const data = snap.data();
-            const active = data.activeDailyQuests || [];
-            const completed = data.completedQuests || [];
+        if(active.includes(questId) && !completed.includes(questId) && isDone) {
+            await updateDoc(doc(db, "accounts", uid), {
+                coins: increment(reward),
+                completedQuests: arrayUnion(questId)
+            });
             
-            // Check condition (Donate needs >= 100 total, others just >= 1)
-            let isDone = (data[field] >= 1);
-            if(actionType === 'donate') isDone = (data[field] >= 100);
+            // --- LOG TRANSACTION ---
+            await logTransaction(reward, "COINS", "Daily", "Quest Reward: " + questId);
 
-            // IF: Quest is Active AND Not Completed AND Condition Met
-            if(active.includes(questId) && !completed.includes(questId) && isDone) {
-                // Give Reward
-                await updateDoc(doc(db, "accounts", uid), {
-                    coins: increment(reward),
-                    completedQuests: arrayUnion(questId)
-                });
-                
-                // Show Popup
-                const modal = document.getElementById('rewardModal');
-                const title = modal.querySelector('h2'); 
-                const txt = modal.querySelector('p');
-                const amt = modal.querySelector('.reward-coins-box span');
-                
-                if(title) title.innerText = "🛍️ SHOP QUEST!";
-                if(txt) txt.innerText = "Ai completat misiunea de cumpărături!";
-                if(amt) amt.innerText = reward;
-                
-                modal.classList.add('active');
-            }
-        } catch(e) { console.error("Quest Check Error:", e); }
-    }
+            const modal = document.getElementById('rewardModal');
+            modal.querySelector('h2').innerText = "🛍️ SHOP QUEST!";
+            modal.querySelector('p').innerText = "Ai completat misiunea!";
+            modal.querySelector('.reward-coins-box span').innerText = reward;
+            modal.classList.add('active');
+        }
+    } catch(e) { console.error("Quest Error:", e); }
+}
 
     // --- BAN CHECK (GLOBAL) ---
     async function checkGlobalBan() {
@@ -2317,33 +2336,37 @@ window.openAlteShop = async () => {
         modal.classList.add('active');
     };
 
-    window.processNameChange = async () => {
-        const input = document.getElementById('newNameInput');
-        const newName = input.value.trim();
-        if(!newName || newName.length < 3) return alert("Introdu un nume valid (min. 3 caractere)!");
-        
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        const coins = userSnap.data().coins || 0;
-        
-        const lastChange = userSnap.data().lastUsernameChange;
-        if (lastChange) {
-            if (Date.now() - lastChange.toDate().getTime() < 7 * 24 * 60 * 60 * 1000) return alert("Nu poți schimba numele încă!");
-        }
+window.processNameChange = async () => {
+    const input = document.getElementById('newNameInput');
+    const newName = input.value.trim();
+    if(!newName || newName.length < 3) return alert("Introdu un nume valid (min. 3 caractere)!");
+    
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const coins = userSnap.data().coins || 0;
+    
+    const lastChange = userSnap.data().lastUsernameChange;
+    if (lastChange) {
+        if (Date.now() - lastChange.toDate().getTime() < 7 * 24 * 60 * 60 * 1000) return alert("Nu poți schimba numele încă!");
+    }
 
-        if(coins < 2500) return alert("Nu ai destui coins!");
+    if(coins < 2500) return alert("Nu ai destui coins!");
 
-        try {
-            await updateDoc(userRef, {
-                username: newName,
-                coins: increment(-2500),
-                lastUsernameChange: serverTimestamp()
-            });
-            alert("Nume schimbat!");
-            closeModal('nameChangeModal');
-            closeModal('alteShopModal');
-        } catch(e) { alert(e.message); }
-    };
+    try {
+        await updateDoc(userRef, {
+            username: newName,
+            coins: increment(-2500),
+            lastUsernameChange: serverTimestamp()
+        });
+        
+        // --- LOG TRANSACTION ---
+        await logTransaction(-2500, "COINS", "Shop", "Changed Username to " + newName);
+        
+        alert("Nume schimbat!");
+        closeModal('nameChangeModal');
+        closeModal('alteShopModal');
+    } catch(e) { alert(e.message); }
+};
 
     // DONATION LOGIC
     let allUsersCache = [];
@@ -2408,119 +2431,58 @@ window.openTextShop = async () => {
 
 window.buyStickers = async (currency) => {
     if (!auth.currentUser) return;
+    let cost = (currency === 'coins') ? 5000 : 10;
+    let currName = (currency === 'coins') ? "COINS" : "DIAMONDS";
+    let field = (currency === 'coins') ? "coins" : "diamonds";
 
-    let cost = 0;
-    let currencyName = "";
-    let fieldToDeduct = "";
-
-    // Determine cost
-    if (currency === 'coins') {
-        cost = 5000;
-        currencyName = "KSDA Coins";
-        fieldToDeduct = "coins";
-    } else if (currency === 'diamonds') {
-        cost = 10; // 10 Diamonds
-        currencyName = "Diamonds";
-        fieldToDeduct = "diamonds";
-    }
-
-    // Confirmation
-    const confirmed = await showCustomConfirm(`Cumperi acces la Stickere pentru ${cost} ${currencyName}?`, "CONFIRMĂ");
+    const confirmed = await showCustomConfirm(`Deblochezi Stickere pentru ${cost} ${currName}?`, "CONFIRMĂ");
     if (!confirmed) return;
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
 
-    // Check ownership
-    if (userData.hasStickerAccess) {
-        await showCustomAlert("Ai deblocat deja Stickerele!", "INFO");
-        window.openAlteShop(); 
-        return;
-    }
-
-    // Check Balance
-    const currentBalance = userData[fieldToDeduct] || 0;
-    if (currentBalance < cost) {
-        await showCustomAlert(`Nu ai destui ${currencyName}!`, "EROARE");
-        return;
-    }
+    if (userSnap.data().hasStickerAccess) return await showCustomAlert("Ai deja Stickere!", "INFO");
+    if ((userSnap.data()[field] || 0) < cost) return await showCustomAlert(`Nu ai destui ${currName}!`, "EROARE");
 
     try {
-        // Transaction
-        await updateDoc(userRef, {
-            [fieldToDeduct]: increment(-cost),
-            hasStickerAccess: true // The flag for Firebase
-        });
+        await updateDoc(userRef, { [field]: increment(-cost), hasStickerAccess: true });
 
-        await showCustomAlert("Felicitări! Ai deblocat Stickerele KSDA!", "SUCCES");
-        window.openAlteShop(); // Refresh UI
+        // --- LOG TRANSACTION ---
+        await logTransaction(-cost, currName, "Shop", "Unlocked Stickers Access");
 
-    } catch (e) {
-        console.error(e);
-        await showCustomAlert("A apărut o eroare.", "EROARE");
-    }
+        await showCustomAlert("Stickere deblocate!", "SUCCES");
+        window.openAlteShop();
+    } catch (e) { console.error(e); }
 };
 
 
 
 window.buyGifs = async (currency) => {
     if (!auth.currentUser) return;
+    let cost = (currency === 'coins') ? 5000 : 3;
+    let currName = (currency === 'coins') ? "COINS" : "DIAMONDS";
+    let field = (currency === 'coins') ? "coins" : "diamonds";
 
-    let cost = 0;
-    let currencyName = "";
-    let fieldToDeduct = "";
-
-    // Determine cost and currency type
-    if (currency === 'coins') {
-        cost = 5000;
-        currencyName = "KSDA Coins";
-        fieldToDeduct = "coins";
-    } else if (currency === 'diamonds') {
-        cost = 3;
-        currencyName = "Diamonds";
-        fieldToDeduct = "diamonds";
-    }
-
-    // Confirmation Alert
-    const confirmed = await showCustomConfirm(`Deblochezi GIF-uri pentru ${cost} ${currencyName}?`, "CONFIRMĂ");
+    const confirmed = await showCustomConfirm(`Deblochezi GIF-uri pentru ${cost} ${currName}?`, "CONFIRMĂ");
     if (!confirmed) return;
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
-
-    // Check if user already owns it (Double check)
-    if (userData.hasGifAccess) {
-        await showCustomAlert("Ai deblocat deja GIF-urile!", "INFO");
-        window.openAlteShop(); // Refresh UI
-        return;
-    }
-
-    // Check Balance
-    const currentBalance = userData[fieldToDeduct] || 0;
-    if (currentBalance < cost) {
-        await showCustomAlert(`Nu ai destui ${currencyName}!`, "EROARE");
-        return;
-    }
+    
+    if (userSnap.data().hasGifAccess) return await showCustomAlert("Ai deja GIF-uri!", "INFO");
+    if ((userSnap.data()[field] || 0) < cost) return await showCustomAlert(`Nu ai destui ${currName}!`, "EROARE");
 
     try {
-        // Perform Transaction
-        await updateDoc(userRef, {
-            [fieldToDeduct]: increment(-cost), // Deduct money
-            hasGifAccess: true                 // Grant permission
-        });
+        await updateDoc(userRef, { [field]: increment(-cost), hasGifAccess: true });
 
-        await showCustomAlert("Felicitări! Ai deblocat GIF-urile pe chat!", "SUCCES");
-        
-        // Refresh the Alte Shop UI to show "OWNED"
+        // --- LOG TRANSACTION ---
+        await logTransaction(-cost, currName, "Shop", "Unlocked GIFs Access");
+
+        await showCustomAlert("GIF-uri deblocate!", "SUCCES");
         window.openAlteShop();
-
-    } catch (e) {
-        console.error(e);
-        await showCustomAlert("A apărut o eroare.", "EROARE");
-    }
+    } catch (e) { console.error(e); }
 };
+
 
 window.buyText = async (id, price) => {
     const confirmed = await showCustomConfirm(`Cumperi culoarea pentru ${price} coins?`);
@@ -2529,13 +2491,14 @@ window.buyText = async (id, price) => {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
     
-    if((userSnap.data().coins || 0) < price) {
-        await showCustomAlert("Nu ai destule monede!", "EROARE");
-        return;
-    }
+    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
     
     try {
         await updateDoc(userRef, { coins: increment(-price), ownedTexts: arrayUnion(id) });
+        
+        // --- LOG TRANSACTION ---
+        await logTransaction(-price, "COINS", "Shop", "Bought Text Color: " + id);
+
         await showCustomAlert("Culoare cumpărată!", "SUCCES");
         window.openTextShop();
     } catch(e) { console.error(e); }
@@ -2589,79 +2552,53 @@ window.processDonation = async () => {
     const amountInput = document.getElementById('donateAmount');
     const amount = parseInt(amountInput.value);
 
-    // 1. Verificare sumă și LIMITĂ MAXIMĂ (5.000 conform cerinței)
-    if (!amount || amount < 1) {
-        await showCustomAlert("Suma invalidă!", "EROARE");
-        return;
-    }
-    if (amount > 15000) {
-        await showCustomAlert("Suma maximă permisă pentru o donație este de 15,000 coins!", "LIMITĂ ATINSĂ");
-        return;
-    }
+    if (!amount || amount < 1) return await showCustomAlert("Suma invalidă!", "EROARE");
+    if (amount > 15000) return await showCustomAlert("Suma maximă permisă este 15,000!", "LIMITĂ ATINSĂ");
 
     const myRef = doc(db, "accounts", auth.currentUser.uid);
     const mySnap = await getDoc(myRef);
     const myData = mySnap.data();
-
-    // OWNER CHECK
     const isOwner = auth.currentUser.email === "nicaemmanuel433qe@gmail.com";
 
-    // 2. Verificare Cooldown (1 Oră) - ONLY IF NOT OWNER
+    // Cooldown Check
     if (!isOwner && myData.lastDonationTime) {
-        const lastTime = myData.lastDonationTime.toMillis();
-        const now = Date.now();
-        const cooldownTime = 3600000; 
-
-        if (now - lastTime < cooldownTime) {
-            const remainingMs = cooldownTime - (now - lastTime);
-            const remainingMins = Math.ceil(remainingMs / 60000);
-            await showCustomAlert(`Mai ai de așteptat ${remainingMins} minute.`, "COOLDOWN");
-            return;
-        }
+        const diff = Date.now() - myData.lastDonationTime.toMillis();
+        if (diff < 3600000) return await showCustomAlert(`Mai ai de așteptat ${Math.ceil((3600000 - diff)/60000)} minute.`, "COOLDOWN");
     }
 
-    // 3. Verificare Balanță
-    if ((myData.coins || 0) < amount) {
-        await showCustomAlert("Nu ai suficienți coins!", "EROARE");
-        return;
-    }
+    if ((myData.coins || 0) < amount) return await showCustomAlert("Nu ai suficienți coins!", "EROARE");
 
-    const confirmed = await showCustomConfirm(`Donezi ${amount.toLocaleString()} coins către ${donationTarget.name}?`, "CONFIRMARE DONAȚIE");
+    const confirmed = await showCustomConfirm(`Donezi ${amount.toLocaleString()} coins către ${donationTarget.name}?`, "CONFIRMARE");
     if (!confirmed) return;
 
     try {
-        // 4. Update Conturi + Salvare timp donație pentru Cooldown
-// ... inside processDonation ...
-
-// ... inside processDonation in shop.html ...
-
-// 4. Update Accounts
-await updateDoc(myRef, { 
-    coins: increment(-amount),
-    lastDonationTime: serverTimestamp(),
-    totalCoinsDonated: increment(amount),
-    
-    // UPDATED: Now saving receiverUid
-    donationHistory: arrayUnion({
-        receiverName: donationTarget.name,
-        receiverUid: donationTarget.id, // <--- ADD THIS LINE
-        amount: amount,
-        timestamp: Date.now()
-    })
-});
-        
-        await updateDoc(doc(db, "accounts", donationTarget.id), { 
-            coins: increment(amount) 
+        // 1. Deduct from Sender
+        await updateDoc(myRef, { 
+            coins: increment(-amount),
+            lastDonationTime: serverTimestamp(),
+            totalCoinsDonated: increment(amount),
+            donationHistory: arrayUnion({
+                receiverName: donationTarget.name,
+                receiverUid: donationTarget.id,
+                amount: amount,
+                timestamp: Date.now()
+            })
         });
         
+        // 2. Add to Receiver
+        await updateDoc(doc(db, "accounts", donationTarget.id), { coins: increment(amount) });
+        
+        // --- LOG TRANSACTIONS (BOTH SIDES) ---
+        // Log for YOU (Sender)
+        await logTransaction(-amount, "COINS", "Donation", `Sent to ${donationTarget.name}`);
+        
+        // Log for HIM (Receiver) - passing his ID
+        await logTransaction(amount, "COINS", "Donation", `Received from ${myData.username}`, donationTarget.id);
+
         await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
-
         checkShopQuest('donate', amount);
-
         closeModal('donationAmountModal');
         amountInput.value = ''; 
-
-        // 5. REÎNCARCĂ MODALUL "ALTE"
         window.openAlteShop(); 
         
     } catch (e) { 
@@ -2946,25 +2883,24 @@ window.openFrameShop = async () => {
 
 
 window.buyFrame = async (id, price) => {
-        const confirmed = await showCustomConfirm(`Cumperi această ramă pentru ${price} coins?`);
-        if(!confirmed) return;
+    const confirmed = await showCustomConfirm(`Cumperi această ramă pentru ${price} coins?`);
+    if(!confirmed) return;
 
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
+    
+    try {
+        await updateDoc(userRef, { coins: increment(-price), ownedFrames: arrayUnion(id) });
         
-        if((userSnap.data().coins || 0) < price) {
-            await showCustomAlert("Nu ai destule monede!", "EROARE");
-            return;
-        }
-        
-        try {
-            await updateDoc(userRef, { coins: increment(-price), ownedFrames: arrayUnion(id) });
-            await showCustomAlert("Ramă cumpărată!", "SUCCES");
+        // --- LOG TRANSACTION ---
+        await logTransaction(-price, "COINS", "Shop", "Bought Frame: " + id);
 
-            checkShopQuest('frame');
-            openFrameShop(); 
-        } catch(e) { console.error(e); }
-    };;
+        await showCustomAlert("Ramă cumpărată!", "SUCCES");
+        checkShopQuest('frame');
+        openFrameShop(); 
+    } catch(e) { console.error(e); }
+};
 
     window.equipFrame = async (id, imgUrl) => {
         try {
@@ -3019,25 +2955,45 @@ window.buyFrame = async (id, price) => {
     };
 
 window.buyBanner = async (id, price) => {
-        const confirmed = await showCustomConfirm(`Cumperi acest banner pentru ${price} coins?`);
-        if(!confirmed) return;
+    const confirmed = await showCustomConfirm(`Cumperi acest banner pentru ${price} coins?`);
+    if(!confirmed) return;
 
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    
+    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
+    
+    try {
+        await updateDoc(userRef, { coins: increment(-price), ownedBanners: arrayUnion(id) });
         
-        if((userSnap.data().coins || 0) < price) {
-            await showCustomAlert("Nu ai destule monede!", "EROARE");
-            return;
-        }
+        // --- LOG TRANSACTION ---
+        await logTransaction(-price, "COINS", "Shop", "Bought Banner: " + id);
+
+        await showCustomAlert("Banner cumpărat!", "SUCCES");
+        checkShopQuest('banner');
+        window.openBannerShop();
+    } catch(e) { console.error(e); }
+};
+
+window.buyBadge = async (badgeId, price) => {
+    const confirmed = await showCustomConfirm(`Cumperi insigna pentru ${price} coins?`);
+    if(!confirmed) return;
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
+    
+    try {
+        await updateDoc(userRef, { coins: increment(-price), ownedBadges: arrayUnion(badgeId) });
         
-        try {
-            await updateDoc(userRef, { coins: increment(-price), ownedBanners: arrayUnion(id) });
-            await showCustomAlert("Banner cumpărat!", "SUCCES");
-            
-            checkShopQuest('banner');
-            window.openBannerShop();
-        } catch(e) { console.error(e); }
-    };
+        // --- LOG TRANSACTION ---
+        await logTransaction(-price, "COINS", "Shop", "Bought Badge: " + badgeId);
+
+        await showCustomAlert("Insignă cumpărată!", "SUCCES");
+        checkShopQuest('badge');
+        window.openBadgeShop(); 
+    } catch(e) { console.error(e); }
+};
 
     // UPDATE INVENTORY LOGIC TO SUPPORT BANNERS
 window.openInventory = async (type = 'badges') => {
@@ -3251,6 +3207,7 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 // --- AUTH & LIVE SNAPSHOT ---
+// --- AUTH & LIVE SNAPSHOT ---
 onAuthStateChanged(auth, async user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
@@ -3277,11 +3234,18 @@ onAuthStateChanged(auth, async user => {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
                             const oldStr = d.streak || 0;
+                            
+                            // A. Update Database
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: d.lastResetBlock
                             });
+
+                            // B. LOG TRANSACTION (NEW)
+                            await logTransaction(1, "DIAMONDS", "Daily", "Streak Bonus 6/6 Quests");
+
+                            // C. Show Animation
                             document.getElementById('streakOld').innerText = oldStr;
                             document.getElementById('streakNew').innerText = oldStr + 1;
                             document.getElementById('streakRewardModal').classList.add('active');
