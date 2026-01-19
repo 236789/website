@@ -202,16 +202,17 @@
 
 /* 4. Notification Switch Styling */
 /* notification Modal Custom styling */
+/* notification Modal Custom styling */
 .notif-option {
     display: flex;
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    max-width: 280px; /* Matching the width of your other buttons */
+    max-width: 280px; 
     padding: 12px 20px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 50px; /* Oval look like the buttons */
+    border-radius: 50px; 
     margin-bottom: 10px;
     transition: 0.3s;
 }
@@ -228,13 +229,7 @@
     color: #fff;
 }
 
-/* The Switch Toggle */
-.switch {
-    position: relative;
-    display: inline-block;
-    width: 34px;
-    height: 18px;
-}
+.switch { position: relative; display: inline-block; width: 34px; height: 18px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider {
     position: absolute; cursor: pointer;
@@ -247,7 +242,7 @@
 }
 input:checked + .slider { background-color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
 input:checked + .slider:before { transform: translateX(16px); }
-    
+
     @keyframes jumpIn { 0% { transform: scale(0.3) translateY(100px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
     .close-pop { position: absolute; top: 15px; right: 20px; color: #fff; cursor: pointer; font-size: 24px; background: none; border: none; opacity: 0.5; }
     .pop-img { width: 90px; height: 90px; border-radius: 50%; border: 2px solid var(--primary); margin-bottom: 12px; }
@@ -1537,9 +1532,9 @@ input:checked + .slider:before { transform: translateX(16px); }
         <div class="btn-row-pop">
             <button id="openCosmeticsBtn" class="btn-cosmetics"><i class="fas fa-palette"></i> COSMETICS</button>
             <button id="openEditProfileBtn" class="btn-edit-profile"><i class="fas fa-edit"></i> EDIT PROFILE</button>
-<button id="openNotifSettingsBtn" class="btn-edit-profile" style="border-color: #ffd700; color: #ffd700;">
-    <i class="fas fa-bell"></i> NOTIFICĂRI
-</button>
+    <button id="openNotifSettingsBtn" class="btn-edit-profile" style="border-color: #ffd700; color: #ffd700;">
+        <i class="fas fa-bell"></i> NOTIFICĂRI
+    </button>
         </div>
 
         <div class="currency-wrapper">
@@ -1558,6 +1553,7 @@ input:checked + .slider:before { transform: translateX(16px); }
         </div>
     </div>
 </div>
+
 <!-- 2. QUEST SUCCESS MODAL (FIRE) -->
 <div id="streakRewardModal" class="reward-modal">
     <div class="modern-pop-card pop-fire">
@@ -1752,55 +1748,59 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
 
 
 
-    const openNotifBtn = document.getElementById('openNotifSettingsBtn');
+// --- LOGICĂ NOTIFICĂRI (SINCRONIZATĂ & SIGURĂ) ---
+const openNotifBtn = document.getElementById('openNotifSettingsBtn');
 const notifModal = document.getElementById('notifSettingsModal');
+const saveNotifBtn = document.getElementById('saveNotifBtn');
 
-// This function ensures the toggles match what is in the database
+// Funcție pentru încărcarea datelor (Folosește prefixul n_)
 async function loadNotifSettings() {
     if (!auth.currentUser) return;
     try {
         const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         if (snap.exists()) {
             const prefs = snap.data().notifPrefs || {};
-            // Set the checkboxes based on Firebase data (n_ IDs)
-            document.getElementById('n_wall').checked = prefs.wall || false;
-            document.getElementById('n_tasks').checked = prefs.tasks || false;
-            document.getElementById('n_feedback').checked = prefs.feedback || false;
-            document.getElementById('n_top').checked = prefs.top || false;
-            document.getElementById('n_news').checked = prefs.news || false;
-            document.getElementById('n_shop').checked = prefs.shop || false;
+            // Setăm checkbox-urile (Asigură-te că ID-urile din HTML sunt n_wall, n_tasks, etc.)
+            if(document.getElementById('n_wall')) document.getElementById('n_wall').checked = prefs.wall || false;
+            if(document.getElementById('n_tasks')) document.getElementById('n_tasks').checked = prefs.tasks || false;
+            if(document.getElementById('n_feedback')) document.getElementById('n_feedback').checked = prefs.feedback || false;
+            if(document.getElementById('n_top')) document.getElementById('n_top').checked = prefs.top || false;
+            if(document.getElementById('n_news')) document.getElementById('n_news').checked = prefs.news || false;
+            if(document.getElementById('n_shop')) document.getElementById('n_shop').checked = prefs.shop || false;
         }
-    } catch (e) { console.error("Load Notif Error:", e); }
+    } catch (e) { console.error("Eroare la încărcare notificări:", e); }
 }
 
-// Button Click: Load from DB first, then show
-if(openNotifBtn) {
+// Deschiderea modalului (Verificare de siguranță pentru butoane)
+if (openNotifBtn) {
     openNotifBtn.onclick = async () => {
-        await loadNotifSettings(); 
-        document.getElementById('accountModal').classList.remove('active');
-        notifModal.classList.add('active');
+        await loadNotifSettings();
+        if (document.getElementById('accountModal')) document.getElementById('accountModal').classList.remove('active');
+        if (notifModal) notifModal.classList.add('active');
     };
 }
 
-// Save function: Writes to "notifPrefs"
-document.getElementById('saveNotifBtn').onclick = async () => {
-    if (!auth.currentUser) return;
-    const newPrefs = {
-        wall: document.getElementById('n_wall').checked,
-        tasks: document.getElementById('n_tasks').checked,
-        feedback: document.getElementById('n_feedback').checked,
-        top: document.getElementById('n_top').checked,
-        news: document.getElementById('n_news').checked,
-        shop: document.getElementById('n_shop').checked
+// Salvarea datelor (Verificare de siguranță pentru buton)
+if (saveNotifBtn) {
+    saveNotifBtn.onclick = async () => {
+        if (!auth.currentUser) return;
+        const newPrefs = {
+            wall: document.getElementById('n_wall')?.checked || false,
+            tasks: document.getElementById('n_tasks')?.checked || false,
+            feedback: document.getElementById('n_feedback')?.checked || false,
+            top: document.getElementById('n_top')?.checked || false,
+            news: document.getElementById('n_news')?.checked || false,
+            shop: document.getElementById('n_shop')?.checked || false
+        };
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
+            if (window.showToast) window.showToast("Preferințe sincronizate!");
+            else alert("Preferințe sincronizate!");
+            if (notifModal) notifModal.classList.remove('active');
+            if (document.getElementById('accountModal')) document.getElementById('accountModal').classList.add('active');
+        } catch (e) { console.error("Eroare la salvare:", e); }
     };
-    try {
-        await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
-        if (window.showToast) window.showToast("Preferințe sincronizate!");
-        else alert("Preferințe sincronizate!");
-        notifModal.classList.remove('active');
-        accountModal.classList.add('active');
-    } catch (e) { console.error("Save Notif Error:", e); }
-};
+}
 
 // --- TRANSACTION LOGGER FUNCTION ---
 async function logTransaction(amount, type, desc) {
