@@ -1874,50 +1874,66 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
 
 
 
-const notifModal = document.getElementById('notifSettingsModal');
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
+const notifModal = document.getElementById('notifSettingsModal');
 
-openNotifBtn.onclick = async () => {
-    accountModal.classList.remove('active');
-    notifModal.classList.add('active');
-
-    // Load existing settings from Firebase
-    if(auth.currentUser) {
+// This function ensures the toggles match what is in the database
+async function loadNotifSettings() {
+    if (!auth.currentUser) return;
+    
+    try {
         const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        if(snap.exists()) {
-            const settings = snap.data().notifSettings || {};
-            document.getElementById('notif_wall').checked = settings.wall || false;
-            document.getElementById('notif_tasks').checked = settings.tasks || false;
-            document.getElementById('notif_feedback').checked = settings.feedback || false;
-            document.getElementById('notif_top').checked = settings.top || false;
-            document.getElementById('notif_news').checked = settings.news || false;
-            document.getElementById('notif_shop').checked = settings.shop || false;
+        if (snap.exists()) {
+            const prefs = snap.data().notifPrefs || {};
+            
+            // Set the checkboxes based on Firebase data
+            document.getElementById('n_wall').checked = prefs.wall || false;
+            document.getElementById('n_tasks').checked = prefs.tasks || false;
+            document.getElementById('n_feedback').checked = prefs.feedback || false;
+            document.getElementById('n_top').checked = prefs.top || false;
+            document.getElementById('n_news').checked = prefs.news || false;
+            document.getElementById('n_shop').checked = prefs.shop || false;
         }
+    } catch (e) {
+        console.error("Error loading notification settings:", e);
     }
-};
+}
 
+// When button is clicked: Load first, then show modal
+if(openNotifBtn) {
+    openNotifBtn.onclick = async () => {
+        await loadNotifSettings(); // FETCH FROM FIREBASE
+        document.getElementById('accountModal').classList.remove('active');
+        notifModal.classList.add('active');
+    };
+}
 
+// Save function remains the same, writing to "notifPrefs"
 document.getElementById('saveNotifBtn').onclick = async () => {
-    if(!auth.currentUser) return;
+    if (!auth.currentUser) return;
 
-    const newSettings = {
-        wall: document.getElementById('notif_wall').checked,
-        tasks: document.getElementById('notif_tasks').checked,
-        feedback: document.getElementById('notif_feedback').checked,
-        top: document.getElementById('notif_top').checked,
-        news: document.getElementById('notif_news').checked,
-        shop: document.getElementById('notif_shop').checked
+    const newPrefs = {
+        wall: document.getElementById('n_wall').checked,
+        tasks: document.getElementById('n_tasks').checked,
+        feedback: document.getElementById('n_feedback').checked,
+        top: document.getElementById('n_top').checked,
+        news: document.getElementById('n_news').checked,
+        shop: document.getElementById('n_shop').checked
     };
 
     try {
         await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-            notifSettings: newSettings
+            notifPrefs: newPrefs
         });
-        window.showToast("Preferințe salvate!");
+        
+        // Show success (Toast or Alert)
+        if (window.showToast) window.showToast("Preferințe sincronizate!");
+        else alert("Preferințe sincronizate!");
+
         notifModal.classList.remove('active');
-        accountModal.classList.add('active');
-    } catch(e) {
-        alert("Eroare la salvare: " + e.message);
+        document.getElementById('accountModal').classList.add('active');
+    } catch (e) {
+        console.error("Save Error:", e);
     }
 };
 
@@ -3132,3 +3148,4 @@ function generateDailyIds() {
 
 
  
+
