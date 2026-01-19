@@ -1665,10 +1665,17 @@
             <img id="popUserFrame" src="" class="pop-frame-overlay" style="display: none;">
         </div>
 
+        <!-- NAME & BADGES -->
         <h3 id="popUserName" class="pop-user">Utilizator</h3>
+        
+        <!-- NEW: Container for Badges (Required for JS to work) -->
+        <div id="popUserBadges" style="display: flex; flex-direction: column; align-items: center; gap: 5px; margin-bottom: 15px; min-height: 20px;">
+            <!-- Badges will appear here automatically via JS -->
+        </div>
+
         <p id="popUserEmail" class="pop-mail">email@exemplu.com</p>
         
-        <!-- NEW BUTTONS ROW -->
+        <!-- BUTTONS ROW (EDIT / COSMETICS) -->
         <div class="btn-row-pop">
             <button id="openEditProfileBtn" class="btn-edit-profile"><i class="fas fa-edit"></i> EDIT</button>
             <button id="openCosmeticsBtn" class="btn-cosmetics">
@@ -1681,7 +1688,7 @@
             <span class="streak-txt">Daily Streak: 0</span>
         </div>
 
-        <!-- NEW DUAL CURRENCY SECTION -->
+        <!-- DUAL CURRENCY SECTION -->
         <div class="currency-wrapper">
             <!-- KSDA COINS CARD -->
             <div class="currency-card card-ksda">
@@ -1699,9 +1706,16 @@
         <div class="pop-btns">
             <a href="DailyTasks.html" class="btn-tasks">
                 <span class="tasks-title"><i class="fas fa-tasks"></i> Daily Tasks</span>
-                <span class="tasks-desc">Completează task-uri, câștigă puncte și schimbă-le pe servicii</span>
+                <span class="tasks-desc">Completează task-uri și câștigă premii</span>
             </a>
-            <button id="popLogoutBtn" class="btn-logout-pop">Log Out</button>
+
+            <!-- NEW: Button to view Transactions -->
+            <button class="btn-tasks" style="border-color: #ffd700; color: #ffd700; margin-top: 10px;" onclick="document.getElementById('accountModal').classList.remove('active'); document.getElementById('protectionWall').scrollIntoView({behavior: 'smooth'});">
+                <span class="tasks-title" style="color:#ffd700;"><i class="fas fa-history"></i> ISTORIC FINANCIAR</span>
+                <span class="tasks-desc" style="color:#ffd700; opacity:0.8;">Vezi logurile tale</span>
+            </button>
+
+            <button id="popLogoutBtn" class="btn-logout-pop" style="margin-top: 20px;">Log Out</button>
         </div>
     </div>
 </div>
@@ -1772,22 +1786,32 @@
         <h1 class="metallic-title-big">ISTORIC TRANZACȚII</h1>
 
 <div class="txn-controls-wrapper">
-    <!-- Existing Search Box -->
+    <!-- 1. Username Search (Kept as requested) -->
     <div class="txn-search-box">
         <i class="fas fa-search"></i>
-        <input type="text" id="txnSearchInput" placeholder="Caută utilizator...">
+        <input type="text" id="txnSearchInput" placeholder="Caută doar nume utilizator...">
     </div>
 
-    <!-- NEW: Date Filter -->
+    <!-- 2. Date Filter -->
     <div class="txn-search-box" style="margin-top: 10px;">
         <i class="fas fa-calendar-alt"></i>
-        <!-- This is the new date picker -->
         <input type="date" id="txnDateFilter" style="background:transparent; border:none; color:#fff; width:100%; font-family:'Poppins';">
     </div>
 
-    <!-- Existing Filter Row ... -->
-    <div class="txn-filter-row">
-       <!-- ... your existing buttons ... -->
+    <!-- 3. NEW: Source Buttons (Page Filters) -->
+    <div id="sourceFilters" class="txn-filter-row" style="margin-top: 15px; flex-wrap: wrap; justify-content: center; gap: 8px;">
+        <button class="filter-btn active" onclick="changeSource('ALL', this)">TOATE</button>
+        <button class="filter-btn" onclick="changeSource('Community Wall', this)">CHAT</button>
+        <button class="filter-btn" onclick="changeSource('Shop', this)">SHOP</button>
+        <button class="filter-btn" onclick="changeSource('Trivia', this)">TRIVIA</button>
+        <button class="filter-btn" onclick="changeSource('Daily', this)">DAILY</button>
+    </div>
+
+    <!-- 4. Type Filters (Coins/Diamonds) -->
+    <div class="txn-filter-row" style="margin-top: 15px;">
+        <button class="filter-btn" data-type="COINS"><img src="https://iili.io/fhc1SKQ.png" width="20"></button>
+        <button class="filter-btn active" data-type="ALL">TOATE</button>
+        <button class="filter-btn" data-type="DIAMONDS"><img src="https://iili.io/fv5bmtj.png" width="20"></button>
     </div>
 </div>
 
@@ -1853,7 +1877,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, updateDoc, collection, query, orderBy, limit, onSnapshot, where, serverTimestamp, increment, arrayUnion, setDoc,  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, updateDoc, collection, query, orderBy, limit, onSnapshot, where, serverTimestamp, increment, arrayUnion, setDoc,getDocs,addDoc  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -2555,6 +2579,7 @@ onAuthStateChanged(auth, user => {
             let currentType = 'ALL';
             let currentSearch = '';
             let txnUnsubscribe = null;
+            let currentSource = 'ALL'; // Default to all pages
 
             // A. Password Protection Logic (Locks on every refresh)
             const checkAccess = () => {
@@ -2595,17 +2620,23 @@ const startTxnListener = () => {
 
     let q = collection(db, "transactions");
 
-    // 1. Filter by User (if not owner)
+    // 1. User Filter
     if (user.email !== 'nicaemmanuel433qe@gmail.com') {
         q = query(q, where("userId", "==", user.uid));
     }
 
-    // 2. Filter by Type
+    // 2. Type Filter
     if (currentType !== 'ALL') {
         q = query(q, where("type", "==", currentType));
     }
 
-    // 3. Filter by Date
+    // 3. Source Filter (The new Buttons)
+    if (currentSource !== 'ALL') {
+        // NOTE: If source is "Community Wall", it filters specifically for that
+        q = query(q, where("source", "==", currentSource));
+    }
+
+    // 4. Date Filter
     if (dateFilterInput && dateFilterInput.value) {
         const selectedDate = new Date(dateFilterInput.value);
         const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
@@ -2613,79 +2644,49 @@ const startTxnListener = () => {
         q = query(q, where("timestamp", ">=", startOfDay), where("timestamp", "<=", endOfDay));
     }
 
-    // 4. Order & Limit
+    // 5. Order & Limit
     q = query(q, orderBy("timestamp", "desc"), limit(currentLimit));
 
     txnUnsubscribe = onSnapshot(q, (snapshot) => {
         if (snapshot.empty) {
-            txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center;'>Nu există tranzacții.</p>";
+            txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Nu există tranzacții pentru filtrele selectate.</p>";
             loadMoreBtn.style.display = 'none';
             return;
         }
 
-        // Check if we need to show Load More button
-        if (snapshot.docs.length >= currentLimit) {
-            loadMoreBtn.style.display = 'inline-block';
-        } else {
-            loadMoreBtn.style.display = 'none';
-        }
+        if (snapshot.docs.length >= currentLimit) loadMoreBtn.style.display = 'inline-block';
+        else loadMoreBtn.style.display = 'none';
 
-        // --- STAGE 1: RAW DATA EXTRACTION ---
-        let rawTransactions = [];
-        snapshot.forEach(doc => rawTransactions.push(doc.data()));
+        // --- STACKING LOGIC START ---
+        let rawData = [];
+        snapshot.forEach(doc => rawData.push(doc.data()));
 
-        // --- STAGE 2: STACKING / GROUPING LOGIC ---
-        let stackedTransactions = [];
-        
-        rawTransactions.forEach((t) => {
-            // Get the last item we added to the stacked list
-            let lastGroup = stackedTransactions[stackedTransactions.length - 1];
-
-            // Check if this transaction is identical to the previous one
-            // We check: User, Source, Amount, and Type
-            if (lastGroup && 
-                lastGroup.userId === t.userId && 
-                lastGroup.source === t.source && 
-                lastGroup.amount === t.amount && 
-                lastGroup.type === t.type) {
-                
-                // It's a duplicate/repeat action! Just increase the count
-                lastGroup.count++;
-                
-                // Optional: Update timestamp to show the most recent time
-                // (Since we loop descending, the first one found is actually the newest)
+        let stackedData = [];
+        rawData.forEach((t) => {
+            let last = stackedData[stackedData.length - 1];
+            // Stack if: Same User, Same Source, Same Amount, Same Type
+            if (last && last.userId === t.userId && last.source === t.source && last.amount === t.amount && last.type === t.type) {
+                last.count++;
             } else {
-                // It's a new unique action. Add it to list.
-                // We add a 'count' property starting at 1
                 t.count = 1;
-                stackedTransactions.push(t);
+                stackedData.push(t);
             }
         });
+        // --- STACKING LOGIC END ---
 
-        // --- STAGE 3: FILTERING & RENDERING ---
-        let finalHtml = "";
-        
-        stackedTransactions.forEach(t => {
-            // SEARCH LOGIC: Checks Username OR Source OR Description
-            const term = currentSearch.toLowerCase();
-            const matchesUser = t.username.toLowerCase().includes(term);
-            const matchesSource = (t.source || "").toLowerCase().includes(term);
-            const matchesDesc = (t.description || "").toLowerCase().includes(term);
+        let html = "";
+        stackedData.forEach(t => {
+            // Username Search Only
+            if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) return;
 
-            if (currentSearch && !matchesUser && !matchesSource && !matchesDesc) return;
-
-            // Prepare UI variables
             const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
             const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
             const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {
                 day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
-            }) : "Recent";
-
-            // Generate "x10" Badge HTML if count > 1
+            }) : "Old";
             const countBadge = t.count > 1 ? `<span class="stack-count">x${t.count}</span>` : '';
 
-            // Build HTML String (Faster than innerHTML +=)
-            finalHtml += `
+            html += `
                 <div class="txn-row">
                     <div class="txn-left">
                         <img src="${t.userImage}" class="txn-pfp">
@@ -2705,16 +2706,10 @@ const startTxnListener = () => {
                     </div>
                 </div>`;
         });
-
-        // Update DOM once
-        txnListContainer.innerHTML = finalHtml;
-        
-        if(finalHtml === "") {
-             txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center;'>Niciun rezultat găsit.</p>";
-        }
-
+        txnListContainer.innerHTML = html;
     }, (error) => {
-        console.error("Error:", error);
+        console.error(error);
+        if(error.message.includes("index")) alert("ADMIN: Deschide consola (F12) și dă click pe link-ul Firebase pentru a crea indexul nou!");
     });
 };
 
@@ -2940,6 +2935,62 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
+
+
+window.changeSource = (source, btnElement) => {
+    // Visual update
+    document.querySelectorAll('#sourceFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    btnElement.classList.add('active');
+    
+    // Logic update
+    currentSource = source;
+    currentLimit = 20; // Reset limit
+    startTxnListener(); // Reload data
+};
+
+
+
+window.submitRecovery = async () => {
+    const email = document.getElementById('recEmail').value;
+    const source = document.getElementById('recSource').value;
+    const type = document.getElementById('recType').value;
+    const amount = parseInt(document.getElementById('recAmount').value);
+    const dateVal = document.getElementById('recDate').value;
+
+    if(!email || !amount || !dateVal) return alert("Completează tot!");
+
+    // 1. Find User by Email
+    const q = query(collection(db, "accounts"), where("email", "==", email));
+    const snap = await getDocs(q);
+
+    if(snap.empty) return alert("Userul nu a fost găsit!");
+    
+    const targetUser = snap.docs[0].data();
+    const targetUid = snap.docs[0].id;
+
+    // 2. Create Custom Date
+    const customDate = new Date(dateVal); // Uses the date you picked
+
+    // 3. Add to Firebase
+    try {
+        await addDoc(collection(db, "transactions"), {
+            userId: targetUid,
+            username: targetUser.username || "User",
+            userImage: targetUser.image || "https://iili.io/fXvBEiB.png",
+            amount: amount,
+            type: type,
+            source: source,
+            description: "Recovered Data",
+            timestamp: customDate // THIS SAVES IT IN THE PAST
+        });
+        alert(`Gata! Adăugat pentru data: ${customDate.toLocaleString()}`);
+    } catch(e) {
+        alert("Eroare: " + e.message);
+    }
+};
+
+// You need to import 'getDocs' and 'addDoc' in your import statement at the top!
+// import { ..., getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
   </script>
 </body>
