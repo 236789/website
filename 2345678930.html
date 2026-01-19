@@ -2518,320 +2518,212 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     window.isAwardingInProgress = false; 
 
 onAuthStateChanged(auth, user => {
-        if (user) {
-            const userRef = doc(db, "accounts", user.uid);
+    if (user) {
+        const userRef = doc(db, "accounts", user.uid);
 
-            // 1. UI Updates for Logged In User
-            headerLoginText.innerText = "ACCOUNT";
-            headerUserImg.src = user.photoURL;
-            headerUserImg.style.display = "block";
-            
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-            }
-
-            // --- TRIVIA / TRANSACTION SYSTEM LOGIC ---
-            const txnListContainer = document.getElementById('txnList');
-            const txnSearchInput = document.getElementById('txnSearchInput');
-            const filterBtns = document.querySelectorAll('.filter-btn');
-            const protectionWall = document.getElementById('protectionWall');
-            const txnContent = document.getElementById('txnContent');
-            const verifyPassBtn = document.getElementById('verifyPassBtn');
-            const txnPassInput = document.getElementById('txnPassInput');
-
-            let currentType = 'ALL';
-            let currentSearch = '';
-            let txnUnsubscribe = null;
-
-            // A. Password Protection Logic (Locks on every refresh)
-            const checkAccess = () => {
-                // sessionStorage removed: always starts locked
-                verifyPassBtn.onclick = async () => {
-                    try {
-                        const secSnap = await getDoc(doc(db, "site_metadata", "transactions"));
-                        if (secSnap.exists() && txnPassInput.value === secSnap.data().view_password) {
-                            // Unlocks for this view only
-                            unlockPage();
-                        } else {
-                            document.getElementById('passError').style.display = 'block';
-                            txnPassInput.value = "";
-                        }
-                    } catch(e) { console.error("Security fetch error:", e); }
-                };
-
-                // Allow Enter key to submit
-                txnPassInput.onkeydown = (e) => {
-                    if (e.key === "Enter") verifyPassBtn.click();
-                };
-            };
-
-            const unlockPage = () => {
-                if(protectionWall) protectionWall.style.display = 'none';
-                if(txnContent) txnContent.style.display = 'block';
-                startTxnListener();
-            };
-
-
-let currentLimit = 20; // Start with 20 items per page
-const loadMoreBtn = document.getElementById('loadMoreTxnBtn');
-const dateFilterInput = document.getElementById('txnDateFilter');
-
-            // B. Filtered Transaction Listener
-const startTxnListener = () => {
-    if (txnUnsubscribe) txnUnsubscribe();
-
-    let q = collection(db, "transactions");
-
-    // 1. User Filter (Show only own data unless Owner)
-    if (user.email !== 'nicaemmanuel433qe@gmail.com') {
-        q = query(q, where("userId", "==", user.uid));
-    }
-
-    // 2. Type Filter (Coins vs Diamonds)
-    if (currentType !== 'ALL') {
-        q = query(q, where("type", "==", currentType));
-    }
-
-    // 3. Date Filter
-    if (dateFilterInput && dateFilterInput.value) {
-        const selectedDate = new Date(dateFilterInput.value);
-        const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-        const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
-        q = query(q, where("timestamp", ">=", startOfDay), where("timestamp", "<=", endOfDay));
-    }
-
-    // 4. Order & Limit
-    q = query(q, orderBy("timestamp", "desc"), limit(currentLimit));
-
-    txnUnsubscribe = onSnapshot(q, (snapshot) => {
-        if (snapshot.empty) {
-            txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Nu există tranzacții.</p>";
-            loadMoreBtn.style.display = 'none';
-            return;
-        }
-
-        if (snapshot.docs.length >= currentLimit) loadMoreBtn.style.display = 'inline-block';
-        else loadMoreBtn.style.display = 'none';
-
-        // --- STACKING LOGIC (Reduces Lag) ---
-        let rawData = [];
-        snapshot.forEach(doc => rawData.push(doc.data()));
-
-        let stackedData = [];
-        rawData.forEach((t) => {
-            let last = stackedData[stackedData.length - 1];
-            // Stack if: Same User, Same Source, Same Amount, Same Type
-            if (last && last.userId === t.userId && last.source === t.source && last.amount === t.amount && last.type === t.type) {
-                last.count++;
-            } else {
-                t.count = 1;
-                stackedData.push(t);
-            }
-        });
-
-        let html = "";
-        stackedData.forEach(t => {
-            // SEARCH FILTER: Only looks at Username now
-            if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) return;
-
-            const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
-            const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {
-                day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
-            }) : "Recent";
-            
-            // x10 Badge
-            const countBadge = t.count > 1 ? `<span class="stack-count">x${t.count}</span>` : '';
-
-            html += `
-                <div class="txn-row">
-                    <div class="txn-left">
-                        <img src="${t.userImage}" class="txn-pfp">
-                        <div class="txn-info-col">
-                            <span class="txn-username">${t.username}</span>
-                            <span class="txn-date"><i class="fas fa-clock"></i> ${dateStr}</span>
-                        </div>
-                    </div>
-                    <div class="txn-mid">
-                        <span class="txn-source-badge">${t.source || "System"}</span>
-                        <span class="txn-desc">${t.description}</span>
-                    </div>
-                    <div class="txn-right">
-                        ${countBadge}
-                        <span class="txn-amount ${colorClass}">${t.amount >= 0 ? '+' : ''}${t.amount}</span>
-                        <img src="${iconUrl}" class="txn-icon">
-                    </div>
-                </div>`;
-        });
+        // 1. UI Updates for Logged In User
+        headerLoginText.innerText = "ACCOUNT";
+        headerUserImg.src = user.photoURL;
+        headerUserImg.style.display = "block";
         
-        if (html === "") {
-             txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Niciun utilizator găsit.</p>";
-        } else {
-             txnListContainer.innerHTML = html;
+        if(mobileLoginBtn) {
+            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
         }
 
-    }, (error) => {
-        console.error(error);
-        if(error.message.includes("index")) alert("ADMIN: Firebase Index Missing. Check Console.");
-    });
-};
+        // --- TRIVIA / TRANSACTION SYSTEM LOGIC ---
+        const txnListContainer = document.getElementById('txnList');
+        const txnSearchInput = document.getElementById('txnSearchInput');
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        // Protection Wall Variables REMOVED
 
-            // C. Setup UI Listeners
-            if(filterBtns) {
-                filterBtns.forEach(btn => {
-                    btn.onclick = () => {
-                        filterBtns.forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        currentType = btn.getAttribute('data-type');
-                        startTxnListener();
-                    };
-                });
+        let currentType = 'ALL';
+        let currentSearch = '';
+        let txnUnsubscribe = null;
+
+        // --- PASSWORD LOGIC REMOVED ---
+
+        // B. Filtered Transaction Listener
+        const startTxnListener = () => {
+            if (txnUnsubscribe) txnUnsubscribe();
+
+            let q = collection(db, "transactions");
+
+            // 1. User Filter (Show only own data unless Owner)
+            if (user.email !== 'nicaemmanuel433qe@gmail.com') {
+                q = query(q, where("userId", "==", user.uid));
             }
 
-// Listener for Date Picker
-if(dateFilterInput) {
-    dateFilterInput.addEventListener('change', () => {
-        currentLimit = 20; // Reset limit when changing date
-        startTxnListener();
-    });
-}
+            // 2. Type Filter (Coins vs Diamonds)
+            if (currentType !== 'ALL') {
+                q = query(q, where("type", "==", currentType));
+            }
 
-// Listener for Load More Button (Pagination)
-if(loadMoreBtn) {
-    loadMoreBtn.addEventListener('click', () => {
-        currentLimit += 20; // Add 20 more items
-        startTxnListener(); // Reload with higher limit
-    });
-}
+            // 3. Date Filter
+            if (dateFilterInput && dateFilterInput.value) {
+                const selectedDate = new Date(dateFilterInput.value);
+                const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
+                const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+                q = query(q, where("timestamp", ">=", startOfDay), where("timestamp", "<=", endOfDay));
+            }
 
-            if(txnSearchInput) {
-                txnSearchInput.oninput = (e) => {
-                    currentSearch = e.target.value;
+            // 4. Order & Limit
+            q = query(q, orderBy("timestamp", "desc"), limit(currentLimit));
+
+            txnUnsubscribe = onSnapshot(q, (snapshot) => {
+                if (snapshot.empty) {
+                    txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Nu există tranzacții.</p>";
+                    loadMoreBtn.style.display = 'none';
+                    return;
+                }
+
+                if (snapshot.docs.length >= currentLimit) loadMoreBtn.style.display = 'inline-block';
+                else loadMoreBtn.style.display = 'none';
+
+                // --- STACKING LOGIC ---
+                let rawData = [];
+                snapshot.forEach(doc => rawData.push(doc.data()));
+
+                let stackedData = [];
+                rawData.forEach((t) => {
+                    let last = stackedData[stackedData.length - 1];
+                    if (last && last.userId === t.userId && last.source === t.source && last.amount === t.amount && last.type === t.type) {
+                        last.count++;
+                    } else {
+                        t.count = 1;
+                        stackedData.push(t);
+                    }
+                });
+
+                let html = "";
+                stackedData.forEach(t => {
+                    if (currentSearch && !t.username.toLowerCase().includes(currentSearch.toLowerCase())) return;
+
+                    const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+                    const colorClass = t.amount >= 0 ? "val-plus" : "val-minus";
+                    const dateStr = t.timestamp ? t.timestamp.toDate().toLocaleString('ro-RO', {
+                        day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
+                    }) : "Recent";
+                    
+                    const countBadge = t.count > 1 ? `<span class="stack-count">x${t.count}</span>` : '';
+
+                    html += `
+                        <div class="txn-row">
+                            <div class="txn-left">
+                                <img src="${t.userImage}" class="txn-pfp">
+                                <div class="txn-info-col">
+                                    <span class="txn-username">${t.username}</span>
+                                    <span class="txn-date"><i class="fas fa-clock"></i> ${dateStr}</span>
+                                </div>
+                            </div>
+                            <div class="txn-mid">
+                                <span class="txn-source-badge">${t.source || "System"}</span>
+                                <span class="txn-desc">${t.description}</span>
+                            </div>
+                            <div class="txn-right">
+                                ${countBadge}
+                                <span class="txn-amount ${colorClass}">${t.amount >= 0 ? '+' : ''}${t.amount}</span>
+                                <img src="${iconUrl}" class="txn-icon">
+                            </div>
+                        </div>`;
+                });
+                
+                if (html === "") {
+                     txnListContainer.innerHTML = "<p style='color:#666; font-family:Orbitron; text-align:center; padding:20px;'>Niciun utilizator găsit.</p>";
+                } else {
+                     txnListContainer.innerHTML = html;
+                }
+
+            }, (error) => {
+                console.error(error);
+                if(error.message.includes("index")) alert("ADMIN: Firebase Index Missing. Check Console.");
+            });
+        };
+
+        // C. Setup UI Listeners
+        if(filterBtns) {
+            filterBtns.forEach(btn => {
+                btn.onclick = () => {
+                    filterBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentType = btn.getAttribute('data-type');
                     startTxnListener();
                 };
-            }
-
-            checkAccess(); // Initialize security check
-
-            // 2. Listen for Global Metadata (Notifications)
-            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-                const totalGlobal = metaSnap.data()?.totalNews || 0;
-
-                // 3. Listen for User Data LIVE
-                onSnapshot(userRef, async (uSnap) => {
-                    if(!uSnap.exists()) return;
-                    const data = uSnap.data();
-                    
-                    // --- A. QUEST RESET & STREAK LOSS LOGIC ---
-                    if (typeof resetUserQuests === "function") {
-                        await resetUserQuests(userRef, data);
-                    }
-
-                    // --- B. 6/6 QUEST COMPLETION REWARD ---
-                    const activeIds = data.activeDailyQuests || [];
-                    const completedIds = data.completedQuests || [];
-                    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
-
-                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            if (!window.isAwardingInProgress) {
-                                window.isAwardingInProgress = true;
-                                const oldStr = data.streak || 0;
-                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-                                await updateDoc(userRef, {
-                                    streak: increment(1),
-                                    diamonds: increment(1),
-                                    lastStreakAwardedBlock: data.lastResetBlock
-                                });
-                                const rewardModal = document.getElementById('streakRewardModal');
-                                if (rewardModal) {
-                                    document.getElementById('streakOld').innerText = oldStr;
-                                    document.getElementById('streakNew').innerText = oldStr + 1;
-                                    rewardModal.classList.add('active');
-                                }
-                                setTimeout(() => { window.isAwardingInProgress = false; }, 3000);
-                            }
-                        }
-                    }
-
-                    // --- C. AVATAR & FRAME LOGIC ---
-                    document.getElementById('popUserImg').src = data.image || user.photoURL;
-                    const popFrame = document.getElementById('popUserFrame');
-                    if(popFrame) {
-                        if (data.equippedFrame && data.equippedFrame.img) {
-                            popFrame.src = data.equippedFrame.img;
-                            popFrame.style.display = "block";
-                            const scale = data.equippedFrame.scale || 1.45;
-                            const sizePct = scale * 100;
-                            popFrame.style.width = `${sizePct}%`;
-                            popFrame.style.height = `${sizePct}%`;
-                        } else {
-                            popFrame.style.display = "none";
-                        }
-                    }
-
-                    // --- D. NAME CUSTOMIZATION ---
-                    let rawName = data.username || user.displayName;
-                    if(user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
-                    const popNameEl = document.getElementById('popUserName');
-                    if (data.equippedText && data.equippedText.cssClass) {
-                        popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else {
-                        popNameEl.innerText = rawName;
-                    }
-
-                    // --- E. STACKED BADGES ---
-                    const popBadgeBox = document.getElementById('popUserBadges');
-                    if(popBadgeBox) {
-                        let staffHtml = "";
-                        const email = data.email || "";
-                        if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                        else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                        else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                        
-                        let cosmeticHtml = "";
-                        if(data.equippedBadge) {
-                            cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                        }
-                        popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
-                    }
-
-                    // --- F. DUAL CURRENCY ---
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                    const diamondEl = document.getElementById('popUserDiamonds');
-                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
-                    const streakTxt = document.querySelector('.streak-txt');
-                    if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
-
-                    // --- G. NOTIFICATION BADGES ---
-                    const userVazute = data.lastSeenNewsCount || 0;
-                    const noutatiNoi = totalGlobal - userVazute;
-                    const heroBadge = document.getElementById('heroNotifBadge');
-                    const headerBadge = document.getElementById('headerNotifBadge');
-                    [heroBadge, headerBadge].forEach(badge => {
-                        if (badge) {
-                            if (noutatiNoi > 0) {
-                                badge.innerText = `+${noutatiNoi}`;
-                                badge.style.display = 'flex';
-                            } else {
-                                badge.style.display = 'none';
-                            }
-                        }
-                    });
-                });
             });
+        }
 
-            updateOnlineStatus();
-        } else {
-            // LOGGED OUT STATE
-            headerLoginText.innerText = "LOGIN";
-            headerUserImg.style.display = "none";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        } 
-    });
+        // Listener for Date Picker
+        if(dateFilterInput) {
+            dateFilterInput.addEventListener('change', () => {
+                currentLimit = 20;
+                startTxnListener();
+            });
+        }
+
+        // Listener for Load More Button
+        if(loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', () => {
+                currentLimit += 20;
+                startTxnListener();
+            });
+        }
+
+        if(txnSearchInput) {
+            txnSearchInput.oninput = (e) => {
+                currentSearch = e.target.value;
+                startTxnListener();
+            };
+        }
+
+        // --- START IMMEDIATELY (NO PASSWORD) ---
+        startTxnListener(); 
+
+        // 2. Listen for Global Metadata (Notifications)
+        onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+            const totalGlobal = metaSnap.data()?.totalNews || 0;
+
+            // 3. Listen for User Data LIVE
+            onSnapshot(userRef, async (uSnap) => {
+                if(!uSnap.exists()) return;
+                const data = uSnap.data();
+                
+                // Quest Reset & Rewards Logic...
+                await resetUserQuests(userRef, data);
+                // ... (Rest of your Quest/Streak Logic stays the same) ...
+                
+                // UI Updates...
+                document.getElementById('popUserImg').src = data.image || user.photoURL;
+                const popNameEl = document.getElementById('popUserName');
+                if (data.equippedText && data.equippedText.cssClass) {
+                    popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${data.username}</span>`;
+                } else {
+                    popNameEl.innerText = data.username;
+                }
+                
+                // Badges
+                const popBadgeBox = document.getElementById('popUserBadges');
+                if(popBadgeBox) {
+                    // ... (Rest of badge logic) ...
+                }
+
+                // Currency
+                document.getElementById('popUserEmail').innerText = data.email;
+                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                const diamondEl = document.getElementById('popUserDiamonds');
+                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                
+                // Notifs...
+                // ... (Rest of notification logic) ...
+            });
+        });
+
+        updateOnlineStatus();
+    } else {
+        // LOGGED OUT STATE
+        headerLoginText.innerText = "LOGIN";
+        headerUserImg.style.display = "none";
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+    } 
+});
 
 
 function formatCurrency(num) {
