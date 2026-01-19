@@ -2091,8 +2091,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, collection, query, orderBy, limit, getDocs, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+import { getFirestore, doc, getDoc, collection, query, orderBy, limit, getDocs, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -2768,156 +2767,192 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 
 
-onAuthStateChanged(auth, user => {
-    if (user) {
-        const userRef = doc(db, "accounts", user.uid);
+// --- CLICKER GAME VARIABLES ---
+    const TIERS = [
+        { level: 1, name: "TIER 1", clickVal: 0.5, price: 0, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%201.png?alt=media&token=76e97042-7690-4c1f-b337-c5b2ba3c346e" },
+        { level: 2, name: "TIER 2", clickVal: 1.0, price: 500, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%202.png?alt=media&token=e2f767f4-1c1c-4786-b238-fd9a589def80" },
+        { level: 3, name: "TIER 3", clickVal: 2.0, price: 1500, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%203.png?alt=media&token=14cd41f2-2b88-46aa-99ef-635be8ee8eed" },
+        { level: 4, name: "TIER 4", clickVal: 4.0, price: 5000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%204.png?alt=media&token=58b81447-8ef5-4fb7-bd52-d6a0e1f2e20c" },
+        { level: 5, name: "TIER 5", clickVal: 8.0, price: 15000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%205.png?alt=media&token=2146b538-87f5-47c2-8177-a3f045bce445" },
+        { level: 6, name: "TIER 6", clickVal: 15.0, price: 50000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%206.png?alt=media&token=e9728e43-621f-424b-b392-09b70a2308bc" },
+        { level: 7, name: "TIER 7", clickVal: 30.0, price: 150000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%207.png?alt=media&token=f15b25fe-b5d8-4674-97e1-0c81f098c92b" },
+        { level: 8, name: "TIER 8", clickVal: 60.0, price: 500000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%208.png?alt=media&token=8bc7870d-0a07-4c7c-956b-5733441d7aa2" },
+        { level: 9, name: "TIER 9", clickVal: 100.0, price: 1000000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%209.png?alt=media&token=038a4064-27fd-4eb2-8bfe-63d2ae8f975d" }
+    ];
 
-        // 1. UI Updates for Logged In User
-        headerLoginText.innerText = "ACCOUNT";
-        headerUserImg.src = user.photoURL;
-        headerUserImg.style.display = "block";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+    let gameState = { tokens: 0, tier: 1, autoLevel: 0, clickHistory: [] };
+    const getAutoRate = (lvl) => lvl * 0.5; 
+    const getAutoPrice = (lvl) => Math.floor(100 * Math.pow(1.5, lvl));
+
+    // --- SETUP GAME ---
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            document.getElementById('gameLoginWall').style.display = 'none';
+            document.getElementById('gameInterface').style.display = 'flex';
+            
+            const snap = await getDoc(doc(db, "accounts", user.uid));
+            if(snap.exists()) {
+                const data = snap.data();
+                gameState.tokens = data.ksdaTokens || 0;
+                gameState.tier = data.ksdaTier || 1;
+                gameState.autoLevel = data.ksdaAutoLevel || 0;
+                
+                // Update Profile Box
+                document.getElementById('gameUserPfp').src = data.image || user.photoURL;
+                document.getElementById('gameUsername').innerText = data.username;
+                
+                updateGameUI();
+                setInterval(gameLoop, 1000);
+            }
+        } else {
+            document.getElementById('gameLoginWall').style.display = 'flex';
+            document.getElementById('gameInterface').style.display = 'none';
         }
+    });
 
+    function updateGameUI() {
+        document.getElementById('tokenDisplay').innerText = formatCurrency(gameState.tokens);
+        document.getElementById('autoDisplay').innerText = getAutoRate(gameState.autoLevel).toFixed(1);
+        
+        const curTier = TIERS.find(t => t.level === gameState.tier) || TIERS[0];
+        document.getElementById('mainCoinImg').src = curTier.img;
+        document.getElementById('currentTierIcon').src = curTier.img;
+    }
 
+    // --- EXPOSE FUNCTIONS TO WINDOW SO BUTTONS WORK ---
+    
+    // 1. The Big Button Click
+    window.handleCoinClick = (e) => {
+        const curTier = TIERS.find(t => t.level === gameState.tier);
+        const amount = curTier.clickVal;
+        gameState.tokens += amount;
+        gameState.clickHistory.push(Date.now());
+        
+        // Floating Text
+        const floater = document.createElement('div');
+        floater.className = 'click-floater';
+        floater.innerText = '+' + amount;
+        const btn = document.getElementById('mainCoinBtn').getBoundingClientRect();
+        floater.style.left = (e.clientX || (btn.left + 100)) + 'px';
+        floater.style.top = (e.clientY || (btn.top + 100)) + 'px';
+        document.body.appendChild(floater);
+        setTimeout(() => floater.remove(), 1000);
 
-        // 2. Listen for Global Metadata (Notifications)
-        onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-            const totalGlobal = metaSnap.data()?.totalNews || 0;
+        updateGameUI();
+    };
+    // Attach to the actual button
+    document.getElementById('mainCoinBtn').onclick = window.handleCoinClick;
 
-            // 3. Listen for User Data LIVE
-            onSnapshot(userRef, async (uSnap) => {
-                if(!uSnap.exists()) return;
-                const data = uSnap.data();
-                
-                // --- A. QUEST RESET & STREAK LOSS LOGIC ---
-                if (typeof resetUserQuests === "function") {
-                    await resetUserQuests(userRef, data);
-                }
+    // 2. Open Shop
+    window.openShopModal = () => {
+        const modal = document.getElementById('shopModal');
+        const price = getAutoPrice(gameState.autoLevel);
+        const nextRate = getAutoRate(gameState.autoLevel + 1);
+        
+        document.getElementById('autoMinerDesc').innerText = `Current: ${getAutoRate(gameState.autoLevel)}/s ➤ Next: ${nextRate}/s`;
+        document.getElementById('autoPrice').innerText = formatCurrency(price);
+        
+        const btn = document.getElementById('buyAutoBtn');
+        if(gameState.tokens < price) { btn.disabled = true; btn.style.opacity = 0.5; }
+        else { btn.disabled = false; btn.style.opacity = 1; }
+        
+        modal.classList.add('active');
+    };
 
-                // --- B. 6/6 QUEST COMPLETION REWARD (THE FIRE MODAL) ---
-                const activeIds = data.activeDailyQuests || [];
-                const completedIds = data.completedQuests || [];
-                const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
+    // 3. Buy Auto Clicker
+    window.buyAutoClicker = () => {
+        const price = getAutoPrice(gameState.autoLevel);
+        if(gameState.tokens >= price) {
+            gameState.tokens -= price;
+            gameState.autoLevel++;
+            updateGameUI();
+            window.openShopModal(); 
+            saveGame();
+        }
+    };
 
-                // Check if all 6 quests are done and not already awarded for this block
-                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                    if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        if (!isAwardingInProgress) {
-                            isAwardingInProgress = true;
+    // 4. Open Upgrades
+    window.openUpgradesModal = () => {
+        const container = document.getElementById('tierContent');
+        const nextLvl = gameState.tier + 1;
+        
+        if (nextLvl > 9) {
+            container.innerHTML = '<p style="text-align:center;color:gold;">MAX LEVEL!</p>';
+        } else {
+            const nextTier = TIERS.find(t => t.level === nextLvl);
+            const canAfford = gameState.tokens >= nextTier.price;
+            container.innerHTML = `
+                <div class="upgrade-row">
+                    <div style="display:flex;align-items:center;">
+                        <img src="${nextTier.img}" class="tier-preview-img">
+                        <div class="upgrade-info">
+                            <h4>${nextTier.name}</h4>
+                            <p>Click: <span style="color:#2ecc71;">+${nextTier.clickVal}</span></p>
+                        </div>
+                    </div>
+                    <button class="buy-btn" onclick="buyNextTier(${nextTier.price})" ${!canAfford ? 'disabled' : ''}>
+                        ${formatCurrency(nextTier.price)} KSDA
+                    </button>
+                </div>`;
+        }
+        document.getElementById('upgradesModal').classList.add('active');
+    };
 
-                            const oldStr = data.streak || 0;
-                            
-                            // Update Firebase: Give +1 Streak and +1 Diamond
-                            await updateDoc(userRef, {
-                                streak: increment(1),
-                                diamonds: increment(1),
-                                lastStreakAwardedBlock: data.lastResetBlock
-                            });
+    // 5. Buy Next Tier
+    window.buyNextTier = (price) => {
+        if(gameState.tokens >= price) {
+            gameState.tokens -= price;
+            gameState.tier++;
+            updateGameUI();
+            document.getElementById('upgradesModal').classList.remove('active');
+            alert("Tier Upgraded!");
+            saveGame();
+        }
+    };
 
-                            // Show the FIRE Modal
-                            const rewardModal = document.getElementById('streakRewardModal');
-                            if (rewardModal) {
-                                document.getElementById('streakOld').innerText = oldStr;
-                                document.getElementById('streakNew').innerText = oldStr + 1;
-                                rewardModal.classList.add('active');
-                            }
-                            
-                            setTimeout(() => { isAwardingInProgress = false; }, 3000);
-                        }
-                    }
-                }
-
-                // --- C. AVATAR & FRAME LOGIC ---
-                document.getElementById('popUserImg').src = data.image || user.photoURL;
-                const popFrame = document.getElementById('popUserFrame');
-                if(popFrame) {
-                    if (data.equippedFrame && data.equippedFrame.img) {
-                        popFrame.src = data.equippedFrame.img;
-                        popFrame.style.display = "block";
-                        const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = scale * 100;
-                        popFrame.style.width = `${sizePct}%`;
-                        popFrame.style.height = `${sizePct}%`;
-                    } else {
-                        popFrame.style.display = "none";
-                    }
-                }
-
-                // --- D. NAME CUSTOMIZATION ---
-                let rawName = data.username || user.displayName;
-                if(user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
-                const popNameEl = document.getElementById('popUserName');
-                if (data.equippedText && data.equippedText.cssClass) {
-                    popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                } else {
-                    popNameEl.innerText = rawName;
-                }
-
-                // --- E. STACKED BADGES (Staff + Cosmetic) ---
-                const popBadgeBox = document.getElementById('popUserBadges');
-                if(popBadgeBox) {
-                    let staffHtml = "";
-                    const email = data.email || "";
-                    
-                    if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                    
-                    let cosmeticHtml = "";
-                    if(data.equippedBadge) {
-                        cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                    }
-                    popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
-                }
-
-                // --- F. DUAL CURRENCY & STREAK UI ---
-                document.getElementById('popUserEmail').innerText = data.email;
-                
-                // Use formatCurrency (e.g., 1000 -> 1k)
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
-                const streakTxt = document.querySelector('.streak-txt');
-                if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
-
-                // --- G. NOTIFICATION BADGE LOGIC ---
-                const userVazute = data.lastSeenNewsCount || 0;
-                const noutatiNoi = totalGlobal - userVazute;
-                const heroBadge = document.getElementById('heroNotifBadge');
-                const headerBadge = document.getElementById('headerNotifBadge');
-
-                [heroBadge, headerBadge].forEach(badge => {
-                    if (badge) {
-                        if (noutatiNoi > 0) {
-                            badge.innerText = `+${noutatiNoi}`;
-                            badge.style.display = 'flex';
-                        } else {
-                            badge.style.display = 'none';
-                        }
-                    }
-                });
-            });
+    // 6. Leaderboard
+    window.openLeaderboard = async () => {
+        const list = document.getElementById('lbList');
+        list.innerHTML = 'Loading...';
+        document.getElementById('lbModal').classList.add('active');
+        
+        const q = query(collection(db, "accounts"), orderBy("ksdaTokens", "desc"), limit(50));
+        const snap = await getDocs(q);
+        list.innerHTML = '';
+        
+        let rank = 1;
+        snap.forEach(d => {
+            const p = d.data();
+            list.innerHTML += `
+                <div class="lobby-player">
+                    <div style="width:30px;font-weight:bold;">#${rank++}</div>
+                    <img src="${p.image}" class="lobby-pfp">
+                    <div style="flex:1;">${p.username}</div>
+                    <div>${formatCurrency(p.ksdaTokens || 0)}</div>
+                </div>`;
         });
+    };
 
-        updateOnlineStatus(); // Start tracking online presence
-    } else {
-        // LOGGED OUT STATE
-        headerLoginText.innerText = "LOGIN";
-        headerUserImg.style.display = "none";
+    // Loop & Save
+    function gameLoop() {
+        if(!auth.currentUser) return;
+        const now = Date.now();
+        gameState.clickHistory = gameState.clickHistory.filter(t => now - t < 1000);
+        document.getElementById('cpsDisplay').innerText = gameState.clickHistory.length;
         
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        }
+        const auto = getAutoRate(gameState.autoLevel);
+        if(auto > 0) { gameState.tokens += auto; updateGameUI(); }
+        saveGame();
+    }
 
-
-    } 
-});
+    async function saveGame() {
+        if(!auth.currentUser) return;
+        await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+            ksdaTokens: gameState.tokens,
+            ksdaTier: gameState.tier,
+            ksdaAutoLevel: gameState.autoLevel
+        });
+    }
 
 
 function formatCurrency(num) {
@@ -2985,310 +3020,6 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
-
-// --- GAME CONFIGURATION ---
-    const TIERS = [
-        { level: 1, name: "TIER 1", clickVal: 0.5, price: 0, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%201.png?alt=media&token=76e97042-7690-4c1f-b337-c5b2ba3c346e" },
-        { level: 2, name: "TIER 2", clickVal: 1.0, price: 500, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%202.png?alt=media&token=e2f767f4-1c1c-4786-b238-fd9a589def80" },
-        { level: 3, name: "TIER 3", clickVal: 2.0, price: 1500, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%203.png?alt=media&token=14cd41f2-2b88-46aa-99ef-635be8ee8eed" },
-        { level: 4, name: "TIER 4", clickVal: 4.0, price: 5000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%204.png?alt=media&token=58b81447-8ef5-4fb7-bd52-d6a0e1f2e20c" },
-        { level: 5, name: "TIER 5", clickVal: 8.0, price: 15000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%205.png?alt=media&token=2146b538-87f5-47c2-8177-a3f045bce445" },
-        { level: 6, name: "TIER 6", clickVal: 15.0, price: 50000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%206.png?alt=media&token=e9728e43-621f-424b-b392-09b70a2308bc" },
-        { level: 7, name: "TIER 7", clickVal: 30.0, price: 150000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%207.png?alt=media&token=f15b25fe-b5d8-4674-97e1-0c81f098c92b" },
-        { level: 8, name: "TIER 8", clickVal: 60.0, price: 500000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%208.png?alt=media&token=8bc7870d-0a07-4c7c-956b-5733441d7aa2" },
-        { level: 9, name: "TIER 9", clickVal: 100.0, price: 1000000, img: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/TIER%209.png?alt=media&token=038a4064-27fd-4eb2-8bfe-63d2ae8f975d" }
-    ];
-
-    // --- GAME STATE ---
-    let gameState = {
-        tokens: 0,
-        tier: 1,
-        autoLevel: 0,
-        clickHistory: [] // To calculate CPS
-    };
-    
-    // Auto Clicker Logic: Level 1 = 0.5/s, Level 2 = 1/s, etc.
-    const getAutoRate = (lvl) => lvl * 0.5; 
-    const getAutoPrice = (lvl) => Math.floor(100 * Math.pow(1.5, lvl));
-
-    // Elements
-    const gameInterface = document.getElementById('gameInterface');
-    const gameLoginWall = document.getElementById('gameLoginWall');
-    const tokenDisplay = document.getElementById('tokenDisplay');
-    const cpsDisplay = document.getElementById('cpsDisplay');
-    const autoDisplay = document.getElementById('autoDisplay');
-    const mainCoinImg = document.getElementById('mainCoinImg');
-    const mainCoinBtn = document.getElementById('mainCoinBtn');
-    const currentTierIcon = document.getElementById('currentTierIcon');
-    const wallLoginBtn = document.getElementById('wallLoginBtn');
-
-    // --- INITIALIZATION ---
-    // Update the Auth State Observer to handle the game UI
-    onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            // Hide Wall, Show Game
-            gameLoginWall.style.display = 'none';
-            gameInterface.style.display = 'flex';
-            
-            // Load User Data
-            const snap = await getDoc(doc(db, "accounts", user.uid));
-            if(snap.exists()) {
-                const data = snap.data();
-                
-                // Set Game State from DB (or default)
-                gameState.tokens = data.ksdaTokens || 0;
-                gameState.tier = data.ksdaTier || 1;
-                gameState.autoLevel = data.ksdaAutoLevel || 0;
-
-                // Update UI Profile
-                document.getElementById('gameUserPfp').src = data.image || user.photoURL;
-                document.getElementById('gameUsername').innerText = data.username;
-                
-                updateGameUI();
-                startGameLoop();
-            }
-        } else {
-            // Show Wall, Hide Game
-            gameLoginWall.style.display = 'flex';
-            gameInterface.style.display = 'none';
-        }
-    });
-
-    // Login Button on Wall
-    if(wallLoginBtn) {
-        wallLoginBtn.onclick = () => {
-             // Reusing your existing login flow
-            if (!auth.currentUser) headerLoginBtn.click(); 
-        };
-    }
-
-    // --- CORE GAME MECHANICS ---
-
-    function updateGameUI() {
-        // Update Token Count (Formatted)
-        tokenDisplay.innerText = formatCurrency(gameState.tokens);
-        
-        // Update Current Tier Image & Icon
-        const currentTierData = TIERS.find(t => t.level === gameState.tier) || TIERS[0];
-        mainCoinImg.src = currentTierData.img;
-        currentTierIcon.src = currentTierData.img;
-
-        // Update Auto Rate UI
-        autoDisplay.innerText = getAutoRate(gameState.autoLevel).toFixed(1);
-    }
-
-    // CLICK HANDLER
-    mainCoinBtn.onclick = (e) => {
-        const currentTierData = TIERS.find(t => t.level === gameState.tier);
-        const amount = currentTierData.clickVal;
-
-        // Add Tokens
-        gameState.tokens += amount;
-        
-        // Track Click for CPS calculation
-        const now = Date.now();
-        gameState.clickHistory.push(now);
-
-        // Floating Number Animation
-        showFloatingText(e, amount);
-
-        // Update UI
-        updateGameUI();
-        
-        // Save (Debounced is better, but simpler here: we will save on loop)
-    };
-
-    function showFloatingText(e, amount) {
-        const floater = document.createElement('div');
-        floater.className = 'click-floater';
-        floater.innerText = '+' + amount;
-        
-        // Position roughly where clicked, or center if triggered by key
-        const rect = mainCoinBtn.getBoundingClientRect();
-        // Add some randomness
-        const randomX = Math.random() * 40 - 20;
-        
-        floater.style.left = (e.clientX ? e.clientX : rect.left + rect.width/2) + randomX + 'px';
-        floater.style.top = (e.clientY ? e.clientY : rect.top + rect.height/2) + 'px';
-        
-        document.body.appendChild(floater);
-        
-        // Remove after animation
-        setTimeout(() => floater.remove(), 1000);
-    }
-
-    // --- GAME LOOP (Runs every 1 second) ---
-    let loopInterval;
-    function startGameLoop() {
-        if(loopInterval) clearInterval(loopInterval);
-        
-        loopInterval = setInterval(() => {
-            if(!auth.currentUser) return;
-
-            // 1. Calculate CPS (remove clicks older than 1s)
-            const now = Date.now();
-            gameState.clickHistory = gameState.clickHistory.filter(t => now - t < 1000);
-            cpsDisplay.innerText = gameState.clickHistory.length;
-
-            // 2. Process Auto Clicker
-            const autoAmount = getAutoRate(gameState.autoLevel);
-            if(autoAmount > 0) {
-                gameState.tokens += autoAmount;
-                updateGameUI();
-            }
-
-            // 3. Save to Firebase (Sync every tick is heavy, but for this demo ok. 
-            // Ideally: only if changed significantly or every 10s)
-            saveProgress();
-
-        }, 1000);
-    }
-
-    async function saveProgress() {
-        try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-                ksdaTokens: gameState.tokens,
-                ksdaTier: gameState.tier,
-                ksdaAutoLevel: gameState.autoLevel
-            });
-        } catch(e) { console.log("Save error", e); }
-    }
-
-    // --- SHOP LOGIC (Auto Clicker) ---
-    window.openShopModal = () => {
-        const modal = document.getElementById('shopModal');
-        const price = getAutoPrice(gameState.autoLevel);
-        const nextRate = getAutoRate(gameState.autoLevel + 1);
-        
-        document.getElementById('autoMinerDesc').innerText = `Current: ${getAutoRate(gameState.autoLevel)}/s ➤ Next: ${nextRate}/s`;
-        document.getElementById('autoPrice').innerText = formatCurrency(price);
-        
-        const btn = document.getElementById('buyAutoBtn');
-        btn.onclick = buyAutoClicker; // Re-bind
-        
-        // Disable button if poor
-        if(gameState.tokens < price) {
-            btn.disabled = true;
-            btn.style.opacity = 0.5;
-        } else {
-            btn.disabled = false;
-            btn.style.opacity = 1;
-        }
-        
-        modal.classList.add('active');
-    };
-
-    window.buyAutoClicker = () => {
-        const price = getAutoPrice(gameState.autoLevel);
-        if(gameState.tokens >= price) {
-            gameState.tokens -= price;
-            gameState.autoLevel++;
-            updateGameUI();
-            window.openShopModal(); // Refresh UI
-            saveProgress();
-        }
-    };
-
-    // --- UPGRADES LOGIC (Tiers) ---
-    window.openUpgradesModal = () => {
-        const modal = document.getElementById('upgradesModal');
-        const container = document.getElementById('tierContent');
-        container.innerHTML = '';
-
-        const nextTierLvl = gameState.tier + 1;
-        
-        if (nextTierLvl > 9) {
-            container.innerHTML = '<p style="text-align:center; color:#ffd700;">AI ATINS NIVELUL MAXIM!</p>';
-        } else {
-            const nextTierData = TIERS.find(t => t.level === nextTierLvl);
-            const canAfford = gameState.tokens >= nextTierData.price;
-
-            container.innerHTML = `
-                <div class="upgrade-row" style="background: rgba(41, 243, 255, 0.05); border-color: var(--primary);">
-                    <div style="display:flex; align-items:center;">
-                        <img src="${nextTierData.img}" class="tier-preview-img">
-                        <div class="upgrade-info">
-                            <h4 style="color:var(--primary); font-size:16px;">${nextTierData.name}</h4>
-                            <p style="color:#fff;">Click Power: <span style="color:#2ecc71;">+${nextTierData.clickVal}</span></p>
-                        </div>
-                    </div>
-                    <button class="buy-btn" ${!canAfford ? 'disabled' : ''} onclick="buyNextTier(${nextTierData.price})">
-                        ${formatCurrency(nextTierData.price)} KSDA
-                    </button>
-                </div>
-            `;
-        }
-        modal.classList.add('active');
-    };
-
-    window.buyNextTier = (price) => {
-        if(gameState.tokens >= price) {
-            gameState.tokens -= price;
-            gameState.tier++;
-            updateGameUI();
-            document.getElementById('upgradesModal').classList.remove('active');
-            saveProgress();
-            
-            // Nice effect
-            alert("TIER UPGRADAT! COIN NOU DEBLOCAT!");
-        }
-    };
-
-    // --- LEADERBOARD LOGIC ---
-    window.openLeaderboard = async () => {
-        const modal = document.getElementById('lbModal');
-        const list = document.getElementById('lbList');
-        list.innerHTML = '<div style="text-align:center; padding:20px;">Se încarcă top mineri...</div>';
-        modal.classList.add('active');
-
-        try {
-             // Query top 50 by tokens
-            const q = query(collection(db, "accounts"), orderBy("ksdaTokens", "desc"), limit(50));
-            const snapshot = await getDocs(q);
-            
-            list.innerHTML = '';
-            
-            if(snapshot.empty) {
-                list.innerHTML = '<div style="text-align:center;">Nimeni nu a minat încă.</div>';
-                return;
-            }
-
-            let rank = 1;
-            snapshot.forEach(docSnap => {
-                const pData = docSnap.data();
-                const pTokens = pData.ksdaTokens || 0;
-                const pTier = pData.ksdaTier || 1;
-                const tierImg = TIERS.find(t => t.level === pTier)?.img || TIERS[0].img;
-                
-                // Color for top 3
-                let rankColor = '#fff';
-                if(rank === 1) rankColor = '#ffd700'; // Gold
-                if(rank === 2) rankColor = '#c0c0c0'; // Silver
-                if(rank === 3) rankColor = '#cd7f32'; // Bronze
-
-                const row = document.createElement('div');
-                row.className = 'lobby-player'; // Reusing your existing style
-                row.innerHTML = `
-                    <div style="color:${rankColor}; font-weight:900; font-size:16px; min-width:25px;">#${rank}</div>
-                    <img src="${pData.image}" class="lobby-pfp">
-                    <div style="flex:1;">
-                        <div class="lobby-name">${pData.username}</div>
-                        <div style="font-size:10px; opacity:0.7;">Tier ${pTier} Miner</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-family:'Orbitron'; color:var(--primary); font-weight:bold;">${formatCurrency(pTokens)}</div>
-                        <img src="${tierImg}" style="width:20px; height:20px; vertical-align:middle;">
-                    </div>
-                `;
-                list.appendChild(row);
-                rank++;
-            });
-
-        } catch(e) {
-            console.error(e);
-            list.innerHTML = '<div style="text-align:center; color:red;">Eroare la încărcare.</div>';
-        }
-    };
 
 
 
