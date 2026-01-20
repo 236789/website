@@ -2787,12 +2787,14 @@ window.showToast = (msg) => {
 
 if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
-        if (!auth.currentUser) return;
+        // 1. Get the current logged-in user correctly
+        const user = auth.currentUser; 
+        if (!user) return;
 
-        // 1. Get the status of the switches
+        // 2. Get the status of the switches
         const wallOn = document.getElementById('n_wall').checked;
         
-        // 2. Save to Firebase (Keep your existing logic for backup)
+        // 3. Save to Firebase (Backup)
         const newPrefs = {
             wall: wallOn,
             tasks: document.getElementById('n_tasks').checked,
@@ -2803,36 +2805,23 @@ if (saveNotifBtn) {
         };
 
         try {
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
+            await updateDoc(doc(db, "accounts", user.uid), { notifPrefs: newPrefs });
             
-            // --- 🔴 NEW: UPDATE ONESIGNAL TAGS ---
-// --- 🔴 START OF NEW CODE: CONNECT & SET DEFAULT TAGS ---
-        if (window.OneSignalDeferred) {
-            window.OneSignalDeferred.push(function(OneSignal) {
-                if (user && user.uid) {
-                    // 1. Link the User ID
-                    OneSignal.login(user.uid);
-                    
-                    // 2. Set Default Tags (Auto-subscribe to Wall)
-                    // We check if the user has tags. If not, we give them defaults.
-                    OneSignal.getTags().then(function(tags) {
-                        if (tags && tags.wall === undefined) {
-                            OneSignal.sendTags({
-                                wall: "true",
-                                replies: "true",
-                                reactions: "true"
-                            });
-                            console.log("Default tags set for user.");
-                        }
-                    });
-                }
-            });
-        }
-        // --- 🔴 END OF NEW CODE ---
-            // -------------------------------------
+            // --- UPDATE ONESIGNAL TAGS ---
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    // Send or Delete the tag based on the switch
+                    if (wallOn) {
+                        OneSignal.sendTag("wall", "true");
+                    } else {
+                        OneSignal.deleteTag("wall");
+                    }
+                });
+            }
+            // -----------------------------
 
             window.showToast("Preferințe salvate și sincronizate!");
-            notifModal.classList.remove('active');
+            document.getElementById('notifSettingsModal').classList.remove('active');
             document.getElementById('accountModal').classList.add('active');
         } catch (e) { 
             console.error(e);
