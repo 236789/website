@@ -1,7 +1,31 @@
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
+
+
+<!-- OneSignal SDK -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(function(OneSignal) {
+    OneSignal.init({
+      appId: "a3ed844c-37a9-423a-9f5d-23a195abf4db",
+    });
+
+    // Marcăm prezența pe pagina de noutăți
+    OneSignal.User.addTag("on_news", "true");
+
+    window.addEventListener("beforeunload", function() {
+        OneSignal.User.addTag("on_news", "false");
+    });
+
+    OneSignal.Notifications.addEventListener('foregroundWillDisplay', function(event) {
+        event.preventDefault(); 
+    });
+  });
+</script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
   <script>
@@ -1287,19 +1311,27 @@ let isAwardingInProgress = false; // Flag global pentru a preveni dublarea feres
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
+        // --- 1. CONECTARE LA ONESIGNAL (DOAR DACĂ USER EXISTĂ) ---
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                OneSignal.login(user.uid);
+                console.log("OneSignal identificat pentru Noutăți:", user.uid);
+            });
+        }
+
         currentUid = user.uid;
         const userRef = doc(db, "accounts", user.uid);
 
-        // UI Header
-        if(headerLoginText) headerLoginText.innerText = "ACCOUNT";
-        if(headerUserImg) {
+        // UI Header Update
+        if (headerLoginText) headerLoginText.innerText = "ACCOUNT";
+        if (headerUserImg) {
             headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
         }
-        if(lockedView) lockedView.style.display = 'none'; 
-        if(chatView) chatView.style.display = 'flex';
+        if (lockedView) lockedView.style.display = 'none'; 
+        if (chatView) chatView.style.display = 'flex';
 
-        // --- LIVE LISTENER PENTRU DATELE UTILIZATORULUI ---
+        // --- 2. LIVE LISTENER PENTRU DATELE UTILIZATORULUI ---
         onSnapshot(userRef, async (uSnap) => {
             if (!uSnap.exists()) return;
             const data = uSnap.data();
@@ -1309,7 +1341,7 @@ onAuthStateChanged(auth, async (user) => {
                 await resetUserQuests(userRef, data);
             }
 
- // B. QUEST VIZITĂ NOUTĂȚI (Trigger doar dacă e activ pe Firebase)
+            // B. QUEST VIZITĂ NOUTĂȚI
             const activeQuests = data.activeDailyQuests || [];
             const completedQuests = data.completedQuests || [];
 
@@ -1319,7 +1351,6 @@ onAuthStateChanged(auth, async (user) => {
                     completedQuests: arrayUnion('visit_news') 
                 });
 
-                // --- LOG TRANSACTION (QUEST) ---
                 await logTransaction(100, "COINS", "Quest: Visit News", "Noutăți");
 
                 if (document.getElementById('rewardModal')) {
@@ -1327,12 +1358,12 @@ onAuthStateChanged(auth, async (user) => {
                 }
             }
 
-            // C. LOGICĂ RECOMPENSĂ FINALĂ: 6/6 QUESTURI
-            const finishedCount = activeQuests.filter(id => data.completedQuests?.includes(id)).length;
+            // C. LOGICĂ RECOMPENSĂ FINALĂ (6/6 QUESTURI)
+            const finishedCount = activeQuests.filter(id => completedQuests.includes(id)).length;
 
             if (activeQuests.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                 if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-if (!isAwardingInProgress) {
+                    if (!isAwardingInProgress) {
                         isAwardingInProgress = true;
                         const oldStr = data.streak || 0;
 
@@ -1342,7 +1373,6 @@ if (!isAwardingInProgress) {
                             lastStreakAwardedBlock: data.lastResetBlock
                         });
 
-                        // --- LOG TRANSACTION (DIAMOND STREAK) ---
                         await logTransaction(1, "DIAMONDS", "Streak Bonus: 6/6 Quests", "Noutăți");
 
                         const streakModal = document.getElementById('streakRewardModal');
@@ -1356,35 +1386,38 @@ if (!isAwardingInProgress) {
                 }
             }
 
-            // D. POPULARE MODAL ACCOUNT (UI)
-            if(document.getElementById('headerLoginText')) {
+            // D. ACTUALIZARE UI MODAL ACCOUNT
+            if (document.getElementById('headerLoginText')) {
                 document.getElementById('headerLoginText').innerText = (data.username || "ACCOUNT").toUpperCase();
             }
-            if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = data.image || user.photoURL;
-            if(document.getElementById('popUserName')) document.getElementById('popUserName').innerText = data.username || user.displayName;
-            if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email || user.email;
+            if (document.getElementById('popUserImg')) document.getElementById('popUserImg').src = data.image || user.photoURL;
+            if (document.getElementById('popUserName')) document.getElementById('popUserName').innerText = data.username || user.displayName;
+            if (document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email || user.email;
             
-            // Valute formatate (1k, 1.5k)
-            if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-            if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+            if (document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+            if (document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
             
             const streakTxt = document.querySelector('.streak-txt');
             if (streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
         });
 
-        // 5. NOTIFICATION ENGINE
+        // --- 3. NOTIFICATION BADGE ENGINE ---
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
             const totalGlobal = metaSnap.data()?.totalNews || 0;
-            const userRefBadge = doc(db, "accounts", user.uid);
-            getDoc(userRefBadge).then(snap => {
-                if(!snap.exists()) return;
+            getDoc(userRef).then(snap => {
+                if (!snap.exists()) return;
                 const userVazute = snap.data()?.lastSeenNewsCount || 0;
                 const noutatiNoi = totalGlobal - userVazute;
-                const hb = document.getElementById('headerNotifBadge');
+                const hb = document.getElementById('badgeNoutati'); // ID-ul corect din HTML-ul tău pentru tab-ul Noutăți
+                
                 if (noutatiNoi > 0) {
-                    if(hb) { hb.innerText = `+${noutatiNoi}`; hb.style.display = 'flex'; }
-                    setTimeout(async () => { await updateDoc(userRefBadge, { lastSeenNewsCount: totalGlobal }); }, 4000);
-                } else if(hb) { hb.style.display = 'none'; }
+                    if (hb) { 
+                        hb.innerText = noutatiNoi; 
+                        hb.style.display = 'flex'; 
+                    }
+                } else if (hb) { 
+                    hb.style.display = 'none'; 
+                }
             });
         });
 
@@ -1393,21 +1426,30 @@ if (!isAwardingInProgress) {
         updateOnlineStatus();
 
     } else {
-        // --- SECȚIUNEA CARE REPARĂ EROAREA TA ---
+        // --- 4. LOGICĂ PENTRU UTILIZATOR DELOGAT ---
         currentUid = null;
-        if(chatView) chatView.style.display = 'none'; 
-        if(lockedView) lockedView.style.display = 'flex';
-        if(headerUserImg) headerUserImg.style.display = "none";
+
+        // Reset OneSignal
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                OneSignal.logout();
+            });
+        }
+
+        if (chatView) chatView.style.display = 'none'; 
+        if (lockedView) lockedView.style.display = 'flex';
+        if (headerUserImg) headerUserImg.style.display = "none";
+        if (headerLoginText) headerLoginText.innerText = "LOGIN";
  
-        // Punem evenimentele de click doar dacă elementele există în pagină
+        // Re-atașare evenimente login
         const loginBtn = document.getElementById('loginBtn');
-        if(loginBtn) loginBtn.onclick = handleLoginFlow;
+        if (loginBtn) loginBtn.onclick = handleLoginFlow;
         
         const headerLogin = document.getElementById('headerLoginBtn');
-        if(headerLogin) headerLogin.onclick = handleLoginFlow;
+        if (headerLogin) headerLogin.onclick = handleLoginFlow;
 
         const mobileLogin = document.getElementById('mobileLoginBtn');
-        if(mobileLogin) mobileLogin.onclick = handleLoginFlow;
+        if (mobileLogin) mobileLogin.onclick = handleLoginFlow;
     }
 });
 
