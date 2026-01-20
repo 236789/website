@@ -2112,6 +2112,63 @@ input:checked + .slider:before { transform: translateX(16px); }
     .btn-tasks:hover { background: var(--primary); color: #000; }
     .btn-logout-pop { background: transparent; border: 1.5px solid #ff4757; color: #ff4757; padding: 10px 25px; border-radius: 12px; font-family: 'Orbitron'; font-weight: 700; cursor: pointer; font-size: 12px; text-transform: uppercase; }
 
+
+
+
+/* FIX: Quantum God Badge visibility */
+.badge-wheel-god {
+    position: relative !important;
+    background: #050b14 !important;
+    color: #fff !important;
+    border: 1.5px solid #29f3ff !important;
+    padding: 3px 12px !important;
+    border-radius: 50px !important;
+    font-family: 'Orbitron', sans-serif !important;
+    font-weight: 900 !important;
+    text-transform: uppercase !important;
+    font-size: 10px !important;
+    box-shadow: 0 0 15px rgba(41, 243, 255, 0.5), inset 0 0 8px #7000ff !important;
+    overflow: hidden !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+    text-shadow: 0 0 5px #29f3ff;
+    vertical-align: middle;
+}
+
+.badge-wheel-god::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -150%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(41, 243, 255, 0.8), transparent);
+    animation: quantumGlobalScan 2.5s infinite linear !important;
+}
+
+/* FIX: Profile Currency Row alignment */
+.view-profile-row {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin: 20px 0;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 15px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.view-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+}
+
+.view-stat-val {
+    font-family: 'Orbitron';
+    font-weight: 900;
+    font-size: 16px;
+    margin-top: 5px;
+}
   </style>
 
 </head>
@@ -4576,105 +4633,79 @@ if(replyData) {
         }
     }
 
-    function startWipeCheck() {
-        if(wipeCheckInterval) clearInterval(wipeCheckInterval);
-        wipeCheckInterval = setInterval(async () => {
-            const timerDocRef = doc(db, "sys_config", "timer");
-            const timerSnap = await getDoc(timerDocRef);
-            const now = Date.now();
-            const twelveHours = 12 * 60 * 60 * 1000;
+// --- FIX: AUTOMATIC WIPE CHECK ---
+function startWipeCheck() {
+    if (wipeCheckInterval) clearInterval(wipeCheckInterval);
+    
+    // Only Admins/Owners should trigger the auto-wipe logic to prevent multi-user bugs
+    if (!isAdmin && !isOwner) return;
 
-            if(!timerSnap.exists()) {
-                await setDoc(timerDocRef, { nextWipe: now + twelveHours });
-            } else {
-                const nextWipe = timerSnap.data().nextWipe;
-                if(now >= nextWipe) {
-                    await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
-                    initiateWipeSequence(false);
-                }
+    wipeCheckInterval = setInterval(async () => {
+        const timerDocRef = doc(db, "sys_config", "timer");
+        const timerSnap = await getDoc(timerDocRef);
+        const now = Date.now();
+        const twelveHours = 12 * 60 * 60 * 1000;
+
+        if (!timerSnap.exists()) {
+            await setDoc(timerDocRef, { nextWipe: now + twelveHours });
+        } else {
+            const nextWipe = timerSnap.data().nextWipe;
+            if (now >= nextWipe) {
+                // Instantly update the next timer so others don't trigger it
+                await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
+                initiateWipeSequence(false);
             }
-        }, 10000);
-    }
+        }
+    }, 30000); // Check every 30 seconds instead of 10 to save performance
+}
 
-    async function sendBotMessage(text) {
-        try {
-            await addDoc(collection(db, "wall_messages"), {
-                text: text,
-                uid: 'kevin-bot',
-                name: 'Kevin-Bot',
-                photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
-                ip: 'server',
-                isBot: true,
-                isAdmin: false,
-                isOwner: false, 
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {},
-                seenBy: []
-            });
-        } catch(e) { console.error("Bot fail", e); }
-    }
-
+// --- FIX: WIPE SEQUENCE ---
 async function initiateWipeSequence(forced) {
     const warningMsg = forced 
         ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
-        : "⚠️ ATENȚIE TUTUROR! ⚠️\nAu trecut 12 ore. Pentru a menține viteza, acest chat va fi curățat în curând.";
+        : "⚠️ CHAT-UL SE VA CURĂȚA AUTOMAT PENTRU OPTIMIZARE.";
     
     await sendBotMessage(warningMsg);
     
-    setTimeout(async () => { await sendBotMessage("⏳ Mesajele vor fi șterse în 20 de secunde."); }, 2000);
-    setTimeout(async () => { await sendBotMessage("⏳ 10 secunde rămase..."); }, 12000);
-    setTimeout(async () => { await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); }, 17000);
+    setTimeout(async () => { await sendBotMessage("⏳ Ștergerea începe în 10 secunde..."); }, 5000);
     
     setTimeout(async () => { 
         try {
-            await wipeAllMessages(); 
-            // Așteptăm o secundă după ștergere înainte de a trimite mesajul de final
-            setTimeout(async () => {
-                await sendBotMessage("✅ Chat curățat cu succes! Mesajele fixate au fost păstrate."); 
-            }, 1000);
+            const deletedCount = await wipeAllMessages(); 
+            await sendBotMessage(`✅ Curățare finalizată! Am șters ${deletedCount} mesaje. Mesajele fixate au fost păstrate.`); 
         } catch (e) {
-            console.error("Eroare la wipe:", e);
-            await sendBotMessage("❌ A apărut o eroare la curățarea chat-ului.");
+            console.error("Wipe error:", e);
+            showToast("Eroare la ștergerea bazei de date.");
         }
-    }, 22000);
+    }, 15000);
 }
 
+// --- FIX: BATCH DELETE LOGIC ---
 async function wipeAllMessages() {
-    const batchSize = 400;
-    let stopWiping = false;
+    let totalDeleted = 0;
+    const q = query(collection(db, "wall_messages"), where("isPinned", "==", false));
+    const snapshot = await getDocs(q);
 
-    // Rulăm bucla până când terminăm sau până când rămân doar mesaje fixate
-    while (!stopWiping) {
-        const q = query(collection(db, "wall_messages"), limit(batchSize));
-        const snapshot = await getDocs(q);
+    if (snapshot.empty) return 0;
 
-        if (snapshot.empty) break;
+    // Firestore allows max 500 operations per batch
+    let batch = writeBatch(db);
+    let count = 0;
 
-        const batch = writeBatch(db);
-        let deletedInThisBatch = 0;
+    for (const docSnap of snapshot.docs) {
+        batch.delete(docSnap.ref);
+        count++;
+        totalDeleted++;
 
-        snapshot.forEach(docSnap => {
-            const data = docSnap.data();
-            // Ștergem DOAR dacă NU este fixat
-            if (data.isPinned !== true) {
-                batch.delete(docSnap.ref);
-                deletedInThisBatch++;
-            }
-        });
-
-        // Dacă am găsit mesaje de șters, trimitem comanda la Firebase
-        if (deletedInThisBatch > 0) {
+        if (count === 450) { // Safety margin
             await batch.commit();
-        } else {
-            // Dacă snapshot-ul nu e gol, dar n-am șters nimic, 
-            // înseamnă că tot ce a rămas în aceste 400 de rezultate sunt mesaje fixate.
-            stopWiping = true; 
+            batch = writeBatch(db);
+            count = 0;
         }
-
-        // Dacă batch-ul a fost mai mic decât limita, înseamnă că am ajuns la capătul bazei de date
-        if (snapshot.size < batchSize) break;
     }
+
+    if (count > 0) await batch.commit();
+    return totalDeleted;
 }
 
     const seenObserver = new IntersectionObserver((entries) => {
@@ -5006,6 +5037,7 @@ function loadMessages() {
                     <div id="menu-${msgId}" class="options-dropdown">
                         
                         ${data.uid !== 'system-alert' ? `
+// Change this line in your loadMessages loop:
 <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')">
     <i class="fas fa-reply"></i> Răspunde
 </button>
@@ -5430,112 +5462,66 @@ window.openUserProfile = async (uid) => {
     const modal = document.getElementById('viewProfileModal');
     modal.classList.add('active');
     
-    // Clear previous data to prevent flickering
-    document.getElementById('viewUserName').innerText = "Se încarcă...";
-    document.getElementById('viewUserStatus').innerHTML = "";
+    // UI Reset
+    document.getElementById('viewUserName').innerText = "Încărcare...";
     document.getElementById('viewUserBadges').innerHTML = "";
-    document.getElementById('viewUserCoins').innerText = "0";
-    document.getElementById('viewUserDiamonds').innerText = "0"; 
-    document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: 0`;
-    document.getElementById('viewUserDonated').innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: 0`;
 
     try {
         const snap = await getDoc(doc(db, "accounts", uid));
-        if(snap.exists()) {
-            const data = snap.data();
-            
-            // 1. Image & Frame
-            const ownerImg = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-            document.getElementById('viewUserImg').src = ownerImg;
+        if(!snap.exists()) return;
+        const data = snap.data();
+        
+        // Image & Frame
+        document.getElementById('viewUserImg').src = data.image || "https://iili.io/fXks1Dv.png";
+        const viewFrame = document.getElementById('viewUserFrame');
+        if (data.equippedFrame?.img) {
+            viewFrame.src = data.equippedFrame.img;
+            viewFrame.style.display = 'block';
+            const sc = data.equippedFrame.scale || 1.45;
+            viewFrame.style.width = (sc * 100) + "%";
+            viewFrame.style.height = (sc * 100) + "%";
+        } else { viewFrame.style.display = 'none'; }
 
-            const viewFrame = document.getElementById('viewUserFrame');
-            if(viewFrame) {
-                if (data.equippedFrame && data.equippedFrame.img) {
-                    viewFrame.src = data.equippedFrame.img;
-                    viewFrame.style.display = 'block';
-                    const scale = data.equippedFrame.scale || 1.45;
-                    viewFrame.style.width = `${scale * 100}%`;
-                    viewFrame.style.height = `${scale * 100}%`;
-                } else { viewFrame.style.display = 'none'; }
+        // Name & Online Status
+        let pName = data.username || "Anonim";
+        if(data.equippedText?.cssClass) pName = `<span class="${data.equippedText.cssClass}">${pName}</span>`;
+        document.getElementById('viewUserName').innerHTML = pName;
+        
+        const isOnline = checkIsOnline(data);
+        document.getElementById('viewUserStatus').innerHTML = isOnline 
+            ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
+
+        // --- FIXED CURRENCIES ---
+        document.getElementById('viewUserCoins').innerText = formatCurrency(data.coins || 0);
+        // Ensure you use 'diamonds' (matching your Firestore field)
+        const diamondEl = document.getElementById('viewUserDiamonds');
+        if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+
+        // --- FIXED BADGES ---
+        const bBox = document.getElementById('viewUserBadges');
+        let bHtml = "";
+        
+        // 1. Staff Check
+        const email = data.email || "";
+        if(email === 'nicaemmanuel433qe@gmail.com') bHtml += `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
+        else if(email === 'kevin.trinity2020@gmail.com') bHtml += `<div><span class="admin-badge">ADMIN</span></div>`;
+
+        // 2. Special Badge Check
+        if (data.equippedBadge) {
+            if (data.equippedBadge.id === 'b_wheel_god') {
+                bHtml += `<div style="margin-top:5px;"><span class="badge-wheel-god"><i class="fas fa-atom"></i> QUANTUM GOD</span></div>`;
+            } else {
+                bHtml += `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; box-shadow:0 0 5px ${data.equippedBadge.color}; border:none;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
             }
-
-            // 2. Online Status
-            let isOnline = (auth.currentUser && auth.currentUser.uid === uid) ? true : checkIsOnline(data);
-            document.getElementById('viewUserStatus').innerHTML = isOnline 
-                ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
-
-            // 3. STREAK
-            const streakVal = data.streak || 0;
-            const streakEl = document.getElementById('viewUserStreak');
-            if(streakEl) {
-                streakEl.innerHTML = `<i class="fas fa-fire"></i> ${streakVal} DAYS STREAK`;
-            }
-
-            // 4. Name & Color
-            let profileName = (data.username || "Anonim");
-            if(data.equippedText && data.equippedText.cssClass) {
-                profileName = `<span class="${data.equippedText.cssClass}">${profileName}</span>`;
-            }
-            document.getElementById('viewUserName').innerHTML = profileName;
-
-            // 5. Badges Logic
-            const badgeBox = document.getElementById('viewUserBadges');
-            if(badgeBox) {
-                let staffHtml = "";
-                const userEmail = data.email || "";
-                if(userEmail === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                else if(userEmail === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                else if(userEmail === 'mary.bughi@gmail.com' || userEmail === 'emmanuel.nica83@gmail.com') staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(userEmail)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-
-                let cosmeticHtml = "";
-                if (data.equippedBadge) {
-                    cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                }
-                badgeBox.innerHTML = staffHtml + cosmeticHtml;
-            }
-            
-            // 6. COINS & DIAMONDS
-            document.getElementById('viewUserCoins').innerText = formatCurrency(data.coins || 0);
-            
-            const diamondEl = document.getElementById('viewUserDiamonds');
-            if(diamondEl) {
-                diamondEl.innerText = formatCurrency(data.diamonds || 0);
-            }
-
-            // 7. Bio
-            document.getElementById('viewUserBio').innerText = data.bio || "Nu există descriere.";
-
-            // 8. FRIENDS INVITED BUTTON (Updated)
-            const invites = data.totalReferrals || 0;
-            const inviteEl = document.getElementById('viewUserInvites');
-            if(inviteEl) {
-                inviteEl.innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${invites}`;
-                // Pass ownerImg here
-                inviteEl.onclick = () => openReferralHistory(uid, profileName, ownerImg);
-            }
-
-            // 9. COINS DONATED BUTTON (Updated)
-            const donated = data.totalCoinsDonated || 0;
-            const donatedEl = document.getElementById('viewUserDonated');
-            if(donatedEl) {
-                let displayDonated = donated;
-                if(donated >= 1000) displayDonated = (donated/1000).toFixed(1) + 'k';
-                
-                donatedEl.innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: ${displayDonated}`;
-                // Pass ownerImg here
-                donatedEl.onclick = () => openDonationHistory(uid, profileName, ownerImg);
-            }
-
-            // 10. Birthdate
-            document.getElementById('viewUserBirth').innerText = data.birthDate ? `🎂 ${data.birthDate}` : "";
-
-            // 11. TikTok
-            const tiktokBtn = document.getElementById('viewUserTikTok');
-            if(data.tiktokLink && data.tiktokLink.startsWith('http')) {
-                tiktokBtn.href = data.tiktokLink; tiktokBtn.style.display = 'inline-flex';
-            } else tiktokBtn.style.display = 'none';
         }
+        bBox.innerHTML = bHtml;
+
+        // Stats & Bio
+        document.getElementById('viewUserBio').innerText = data.bio || "Membru KSDA fără descriere.";
+        document.getElementById('viewUserStreak').innerHTML = `<i class="fas fa-fire"></i> ${data.streak || 0} DAYS STREAK`;
+        document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${data.totalReferrals || 0}`;
+        document.getElementById('viewUserDonated').innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: ${formatCurrency(data.totalCoinsDonated || 0)}`;
+
     } catch(e) { console.error(e); }
 };
 
