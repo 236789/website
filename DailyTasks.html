@@ -2509,21 +2509,33 @@ async function executeSkip(questId, cost, reward) {
 }
 
     // --- 5. AUTH & LOGIC ---
-// --- 5. AUTH & LOGIC (REPARAT) ---
-// --- 5. AUTH & LOGIC (ACTUALIZAT CU OWNER RESET) ---
 onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // --- 1. CONECTARE LA ONESIGNAL (IDENTIFICARE) ---
+            // --- 1. CONECTARE LA ONESIGNAL (O SINGURĂ DATĂ LA LOGIN) ---
             if (window.OneSignalDeferred) {
-                window.OneSignalDeferred.push(function(OneSignal) {
+                window.OneSignalDeferred.push(async function(OneSignal) {
                     OneSignal.login(user.uid);
                     console.log("OneSignal identificat pentru Daily Tasks:", user.uid);
+
+                    // Sincronizăm tag-urile o singură dată la început, nu în buclă live
+                    const userSnap = await getDoc(doc(db, "accounts", user.uid));
+                    if (userSnap.exists()) {
+                        const prefs = userSnap.data().notifPrefs || {};
+                        OneSignal.User.addTags({
+                            "wall": prefs.wall ? "true" : "false",
+                            "tasks": prefs.tasks ? "true" : "false",
+                            "news": prefs.news ? "true" : "false",
+                            "feedback": prefs.feedback ? "true" : "false",
+                            "top": prefs.top ? "true" : "false",
+                            "shop": prefs.shop ? "true" : "false"
+                        });
+                    }
                 });
             }
 
             const userRef = doc(db, "accounts", user.uid);
 
-            // 2. LOGICĂ SPECIALĂ PENTRU OWNER (nicaemmanuel433qe@gmail.com)
+            // 2. LOGICĂ SPECIALĂ PENTRU OWNER
             if (user.email === 'nicaemmanuel433qe@gmail.com') {
                 const adminBtn = document.getElementById('ownerResetBtn');
                 if (adminBtn) {
@@ -2534,8 +2546,7 @@ onAuthStateChanged(auth, async (user) => {
                                 const snap = await getDoc(userRef);
                                 const currentData = snap.data();
                                 const oldStreak = currentData.streak || 0;
-                                const currentCompleted = currentData.completedQuests || [];
-                                const persistentQuests = currentCompleted.filter(id => id === 'social3' || id === 'review');
+                                const persistentQuests = (currentData.completedQuests || []).filter(id => id === 'social3' || id === 'review');
 
                                 await updateDoc(userRef, { 
                                     skipsUsedInBlock: 0,
@@ -2545,7 +2556,6 @@ onAuthStateChanged(auth, async (user) => {
                                     messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
                                     kevinMessagesToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0
                                 });
-
                                 runAdaptiveStreakAnimation(oldStreak);
                             } catch (e) { alert("Eroare Firebase: " + e.message); }
                         }
@@ -2554,32 +2564,21 @@ onAuthStateChanged(auth, async (user) => {
             }
 
             // 3. ACTUALIZARE HEADER UI
-            if(document.getElementById('headerLoginText')) document.getElementById('headerLoginText').innerText = "ACCOUNT";
-            if(document.getElementById('headerUserImg')) {
-                document.getElementById('headerUserImg').src = user.photoURL;
-                document.getElementById('headerUserImg').style.display = "block";
+            const loginTxt = document.getElementById('headerLoginText');
+            const userImg = document.getElementById('headerUserImg');
+            if(loginTxt) loginTxt.innerText = "ACCOUNT";
+            if(userImg) {
+                userImg.src = user.photoURL;
+                userImg.style.display = "block";
             }
 
-            // 4. LISTEN LIVE PENTRU DATELE UTILIZATORULUI
+            // 4. LISTEN LIVE PENTRU DATELE UTILIZATORULUI (DOAR UI)
             window.isAwardingPremiu = false;
             onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
-                // --- SINCRONIZARE AUTOMATĂ TAG-URI ONESIGNAL (TOATE CATEGORIILE) ---
-                if (window.OneSignalDeferred) {
-                    window.OneSignalDeferred.push(function(OneSignal) {
-                        const prefs = data.notifPrefs || {};
-                        OneSignal.User.addTags({
-                            "wall": prefs.wall ? "true" : "false",
-                            "tasks": prefs.tasks ? "true" : "false",
-                            "news": prefs.news ? "true" : "false",
-                            "feedback": prefs.feedback ? "true" : "false",
-                            "top": prefs.top ? "true" : "false",
-                            "shop": prefs.shop ? "true" : "false"
-                        });
-                    });
-                }
+                // ⛔️ NOTĂ: OneSignal.User.addTags A FOST SCOS DE AICI PENTRU A EVITA EROAREA 409 Conflict
                 
                 // A. VERIFICARE/RESETARE QUEST-URI
                 await resetUserQuests(userRef, data);
@@ -2596,16 +2595,17 @@ onAuthStateChanged(auth, async (user) => {
                             const oldStr = data.streak || 0;
 
                             await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
 
-                            document.getElementById('streakOld').innerText = oldStr;
-                            document.getElementById('streakNew').innerText = oldStr + 1;
-                            document.getElementById('streakRewardModal').classList.add('active');
+                            const oldStrEl = document.getElementById('streakOld');
+                            const newStrEl = document.getElementById('streakNew');
+                            if(oldStrEl) oldStrEl.innerText = oldStr;
+                            if(newStrEl) newStrEl.innerText = oldStr + 1;
+                            document.getElementById('streakRewardModal')?.classList.add('active');
                             
                             setTimeout(() => { window.isAwardingPremiu = false; }, 2000);
                         }
@@ -2613,45 +2613,44 @@ onAuthStateChanged(auth, async (user) => {
                 }
 
                 // C. ACTUALIZARE UI MODAL ACCOUNT
-                document.getElementById('popUserImg').src = data.image || user.photoURL;
+                const popImg = document.getElementById('popUserImg');
+                if(popImg) popImg.src = data.image || user.photoURL;
+                
                 const popFrame = document.getElementById('popUserFrame');
-                if (popFrame) {
-                    if (data.equippedFrame && data.equippedFrame.img) {
-                        popFrame.src = data.equippedFrame.img;
-                        popFrame.style.display = "block";
-                        const scale = data.equippedFrame.scale || 1.45;
-                        popFrame.style.width = `${scale * 100}%`;
-                        popFrame.style.height = `${scale * 100}%`;
-                    } else { popFrame.style.display = "none"; }
+                if (popFrame && data.equippedFrame?.img) {
+                    popFrame.src = data.equippedFrame.img;
+                    popFrame.style.display = "block";
+                    const scale = data.equippedFrame.scale || 1.45;
+                    popFrame.style.width = `${scale * 100}%`;
+                    popFrame.style.height = `${scale * 100}%`;
+                } else if(popFrame) {
+                    popFrame.style.display = "none";
                 }
 
                 const nameEl = document.getElementById('popUserName');
-                let rawName = data.username || user.displayName;
-                if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                if(nameEl) {
+                    let rawName = data.username || user.displayName;
+                    if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                    nameEl.innerHTML = (data.equippedText?.cssClass) ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` : rawName;
+                }
 
-                if (data.equippedText && data.equippedText.cssClass) {
-                    nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                } else { nameEl.innerText = rawName; }
-
-                document.getElementById('popUserEmail').innerText = data.email || user.email;
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+                if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email || user.email;
+                if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
                 
                 const streakTxtEl = document.querySelector('.streak-txt');
                 if (streakTxtEl) streakTxtEl.innerText = `Daily Streak: ${data.streak || 0}`;
                 
-                // D. RENDER CARDURI MISIUNI
                 renderQuests(data);
             });
         } else {
-            // --- 5. LOGICĂ PENTRU UTILIZATOR DELOGAT ---
+            // 5. LOGICĂ UTILIZATOR DELOGAT
             if (window.OneSignalDeferred) {
                 window.OneSignalDeferred.push(function(OneSignal) {
                     OneSignal.logout();
                 });
             }
-
-            document.getElementById('headerLoginText').innerText = "LOGIN";
+            if(document.getElementById('headerLoginText')) document.getElementById('headerLoginText').innerText = "LOGIN";
             if(document.getElementById('headerUserImg')) document.getElementById('headerUserImg').style.display = "none";
             const grid = document.getElementById('questGrid');
             if (grid) grid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5; color:#fff; font-family:Orbitron; padding-top:50px;">Loghează-te pentru a vedea task-urile.</p>';
