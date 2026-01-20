@@ -1938,55 +1938,84 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
 
 
 
+// --- NOTIFICATION SETTINGS LOGIC (FIXED) ---
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
 const notifModal = document.getElementById('notifSettingsModal');
+const saveNotifBtn = document.getElementById('saveNotifBtn');
 
-// This function ensures the toggles match what is in the database
+// 1. Load Settings from Database
 async function loadNotifSettings() {
     if (!auth.currentUser) return;
     try {
         const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         if (snap.exists()) {
             const prefs = snap.data().notifPrefs || {};
-            // Set the checkboxes based on Firebase data (n_ IDs)
-            document.getElementById('n_wall').checked = prefs.wall || false;
-            document.getElementById('n_tasks').checked = prefs.tasks || false;
-            document.getElementById('n_feedback').checked = prefs.feedback || false;
-            document.getElementById('n_top').checked = prefs.top || false;
-            document.getElementById('n_news').checked = prefs.news || false;
-            document.getElementById('n_shop').checked = prefs.shop || false;
+            if(document.getElementById('n_wall')) document.getElementById('n_wall').checked = prefs.wall || false;
+            if(document.getElementById('n_tasks')) document.getElementById('n_tasks').checked = prefs.tasks || false;
+            if(document.getElementById('n_feedback')) document.getElementById('n_feedback').checked = prefs.feedback || false;
+            if(document.getElementById('n_top')) document.getElementById('n_top').checked = prefs.top || false;
+            if(document.getElementById('n_news')) document.getElementById('n_news').checked = prefs.news || false;
+            if(document.getElementById('n_shop')) document.getElementById('n_shop').checked = prefs.shop || false;
         }
     } catch (e) { console.error("Load Notif Error:", e); }
 }
 
-// Button Click: Load from DB first, then show
-if(openNotifBtn) {
+// 2. Open Modal Button
+if (openNotifBtn) {
     openNotifBtn.onclick = async () => {
         await loadNotifSettings(); 
-        document.getElementById('accountModal').classList.remove('active');
-        notifModal.classList.add('active');
+        if(document.getElementById('accountModal')) document.getElementById('accountModal').classList.remove('active');
+        if(notifModal) notifModal.classList.add('active');
     };
 }
 
-// Save function: Writes to "notifPrefs"
-document.getElementById('saveNotifBtn').onclick = async () => {
-    if (!auth.currentUser) return;
-    const newPrefs = {
-        wall: document.getElementById('n_wall').checked,
-        tasks: document.getElementById('n_tasks').checked,
-        feedback: document.getElementById('n_feedback').checked,
-        top: document.getElementById('n_top').checked,
-        news: document.getElementById('n_news').checked,
-        shop: document.getElementById('n_shop').checked
+// 3. SAVE BUTTON (With OneSignal Sync)
+if (saveNotifBtn) {
+    saveNotifBtn.onclick = async () => {
+        if (!auth.currentUser) return;
+
+        // A. Get values from switches
+        const newPrefs = {
+            wall: document.getElementById('n_wall').checked,
+            tasks: document.getElementById('n_tasks').checked,
+            feedback: document.getElementById('n_feedback').checked,
+            top: document.getElementById('n_top').checked,
+            news: document.getElementById('n_news').checked,
+            shop: document.getElementById('n_shop').checked
+        };
+
+        try {
+            // B. Save to Firebase Database
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
+
+            // C. Sync to OneSignal IMMEDIATELY (The missing part!)
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    OneSignal.User.addTags({
+                        wall: newPrefs.wall ? "true" : "false",
+                        tasks: newPrefs.tasks ? "true" : "false",
+                        feedback: newPrefs.feedback ? "true" : "false",
+                        top: newPrefs.top ? "true" : "false",
+                        news: newPrefs.news ? "true" : "false",
+                        shop: newPrefs.shop ? "true" : "false"
+                    });
+                    console.log("OneSignal Tags Updated!");
+                });
+            }
+
+            // D. Show Success & Close
+            if (typeof window.showToast === "function") window.showToast("Preferințe sincronizate!");
+            else alert("Preferințe sincronizate!");
+            
+            if(notifModal) notifModal.classList.remove('active');
+            if(document.getElementById('accountModal')) document.getElementById('accountModal').classList.add('active');
+
+        } catch (e) { 
+            console.error("Save Notif Error:", e); 
+            alert("Eroare la salvare!");
+        }
     };
-    try {
-        await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
-        if (window.showToast) window.showToast("Preferințe sincronizate!");
-        else alert("Preferințe sincronizate!");
-        notifModal.classList.remove('active');
-        accountModal.classList.add('active');
-    } catch (e) { console.error("Save Notif Error:", e); }
-};
+}
 
 // --- HELPER: LOG TRANSACTION FUNCTION ---
     async function logTransaction(amount, type, description, source, customUserId = null) {
@@ -3199,6 +3228,7 @@ function generateDailyIds() {
 
 
  
+
 
 
 
