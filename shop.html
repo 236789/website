@@ -1920,26 +1920,84 @@ input:checked + .slider:before { transform: translateX(16px); }
     const provider = new GoogleAuthProvider();
 
 
-
-// --- NOTIFICATIONS ONLY LOGIC ---
+// --- NOTIFICATION SETTINGS LOGIC (FIXED) ---
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
+const notifModal = document.getElementById('notifSettingsModal');
+const saveNotifBtn = document.getElementById('saveNotifBtn');
 
+// 1. Load Settings from Database
+async function loadNotifSettings() {
+    if (!auth.currentUser) return;
+    try {
+        const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        if (snap.exists()) {
+            const prefs = snap.data().notifPrefs || {};
+            if(document.getElementById('n_wall')) document.getElementById('n_wall').checked = prefs.wall || false;
+            if(document.getElementById('n_tasks')) document.getElementById('n_tasks').checked = prefs.tasks || false;
+            if(document.getElementById('n_feedback')) document.getElementById('n_feedback').checked = prefs.feedback || false;
+            if(document.getElementById('n_top')) document.getElementById('n_top').checked = prefs.top || false;
+            if(document.getElementById('n_news')) document.getElementById('n_news').checked = prefs.news || false;
+            if(document.getElementById('n_shop')) document.getElementById('n_shop').checked = prefs.shop || false;
+        }
+    } catch (e) { console.error("Load Notif Error:", e); }
+}
+
+// 2. Open Modal Button
 if (openNotifBtn) {
     openNotifBtn.onclick = async () => {
-        // 1. Sync the UI toggles with Firebase data
-        if(typeof loadNotifSettings === 'function') {
-            await loadNotifSettings();
-        }
-        
-        // 2. Close Account and Open Notif Modal
-        const accModal = document.getElementById('accountModal');
-        const ntModal = document.getElementById('notifSettingsModal');
-        
-        if (accModal) accModal.classList.remove('active');
-        if (ntModal) ntModal.classList.add('active');
+        await loadNotifSettings(); 
+        if(document.getElementById('accountModal')) document.getElementById('accountModal').classList.remove('active');
+        if(notifModal) notifModal.classList.add('active');
     };
-} 
-// --- TRANSACTION HELPER ---
+}
+
+// 3. SAVE BUTTON (With OneSignal Sync)
+if (saveNotifBtn) {
+    saveNotifBtn.onclick = async () => {
+        if (!auth.currentUser) return;
+
+        // A. Get values from switches
+        const newPrefs = {
+            wall: document.getElementById('n_wall').checked,
+            tasks: document.getElementById('n_tasks').checked,
+            feedback: document.getElementById('n_feedback').checked,
+            top: document.getElementById('n_top').checked,
+            news: document.getElementById('n_news').checked,
+            shop: document.getElementById('n_shop').checked
+        };
+
+        try {
+            // B. Save to Firebase Database
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
+
+            // C. Sync to OneSignal IMMEDIATELY (The missing part!)
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    OneSignal.User.addTags({
+                        wall: newPrefs.wall ? "true" : "false",
+                        tasks: newPrefs.tasks ? "true" : "false",
+                        feedback: newPrefs.feedback ? "true" : "false",
+                        top: newPrefs.top ? "true" : "false",
+                        news: newPrefs.news ? "true" : "false",
+                        shop: newPrefs.shop ? "true" : "false"
+                    });
+                    console.log("OneSignal Tags Updated!");
+                });
+            }
+
+            // D. Show Success & Close
+            if (typeof window.showToast === "function") window.showToast("Preferințe sincronizate!");
+            else alert("Preferințe sincronizate!");
+            
+            if(notifModal) notifModal.classList.remove('active');
+            if(document.getElementById('accountModal')) document.getElementById('accountModal').classList.add('active');
+
+        } catch (e) { 
+            console.error("Save Notif Error:", e); 
+            alert("Eroare la salvare!");
+        }
+    };
+}
 
 
 async function loadNotifSettings() {
