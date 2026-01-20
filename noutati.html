@@ -1657,16 +1657,32 @@ let isAwardingInProgress = false; // Flag global pentru a preveni dublarea feres
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // --- 1. CONECTARE LA ONESIGNAL (DOAR DACĂ USER EXISTĂ) ---
-        if (window.OneSignalDeferred) {
-            window.OneSignalDeferred.push(function(OneSignal) {
-                OneSignal.login(user.uid);
-                console.log("OneSignal identificat pentru Noutăți:", user.uid);
-            });
-        }
-
         currentUid = user.uid;
         const userRef = doc(db, "accounts", user.uid);
+
+        // --- 1. SINCRONIZARE ONESIGNAL (RULEAZĂ O SINGURĂ DATĂ LA LOGIN) ---
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(async function(OneSignal) {
+                OneSignal.login(user.uid);
+                console.log("OneSignal identificat:", user.uid);
+
+                try {
+                    // Citim preferințele o singură dată pentru a seta tag-urile
+                    const uSnap = await getDoc(userRef);
+                    if (uSnap.exists()) {
+                        const prefs = uSnap.data().notifPrefs || {};
+                        OneSignal.User.addTags({
+                            "news": prefs.news ? "true" : "false",
+                            "wall": prefs.wall ? "true" : "false",
+                            "tasks": prefs.tasks ? "true" : "false"
+                        });
+                        console.log("OneSignal Tags sincronizate inițial.");
+                    }
+                } catch (e) {
+                    console.error("Eroare sincronizare OneSignal la login:", e);
+                }
+            });
+        }
 
         // UI Header Update
         if (headerLoginText) headerLoginText.innerText = "ACCOUNT";
@@ -1677,7 +1693,7 @@ onAuthStateChanged(auth, async (user) => {
         if (lockedView) lockedView.style.display = 'none'; 
         if (chatView) chatView.style.display = 'flex';
 
-// --- 2. LIVE LISTENER PENTRU DATELE UTILIZATORULUI ---
+        // --- 2. LIVE LISTENER PENTRU DATELE UTILIZATORULUI (DOAR UI ȘI QUESTS) ---
         onSnapshot(userRef, async (uSnap) => {
             if (!uSnap.exists()) return;
             const data = uSnap.data();
@@ -1687,17 +1703,7 @@ onAuthStateChanged(auth, async (user) => {
                 await resetUserQuests(userRef, data);
             }
 
-            // --- SINCRONIZARE TAG-URI ONESIGNAL (CRITICĂ PENTRU NOTIFICĂRI) ---
-            if (window.OneSignalDeferred) {
-                window.OneSignalDeferred.push(function(OneSignal) {
-                    const prefs = data.notifPrefs || {};
-                    OneSignal.User.addTags({
-                        "news": prefs.news ? "true" : "false",
-                        "wall": prefs.wall ? "true" : "false",
-                        "tasks": prefs.tasks ? "true" : "false"
-                    });
-                });
-            }
+            // !!! NOTĂ: OneSignal.User.addTags A FOST SCOS DE AICI PENTRU A EVITA EROAREA 409 !!!
 
             // B. QUEST VIZITĂ NOUTĂȚI
             const activeQuests = data.activeDailyQuests || [];
@@ -1766,7 +1772,7 @@ onAuthStateChanged(auth, async (user) => {
                 if (!snap.exists()) return;
                 const userVazute = snap.data()?.lastSeenNewsCount || 0;
                 const noutatiNoi = totalGlobal - userVazute;
-                const hb = document.getElementById('badgeNoutati'); // ID-ul corect din HTML-ul tău pentru tab-ul Noutăți
+                const hb = document.getElementById('badgeNoutati'); 
                 
                 if (noutatiNoi > 0) {
                     if (hb) { 
@@ -1787,7 +1793,6 @@ onAuthStateChanged(auth, async (user) => {
         // --- 4. LOGICĂ PENTRU UTILIZATOR DELOGAT ---
         currentUid = null;
 
-        // Reset OneSignal
         if (window.OneSignalDeferred) {
             window.OneSignalDeferred.push(function(OneSignal) {
                 OneSignal.logout();
@@ -1799,7 +1804,6 @@ onAuthStateChanged(auth, async (user) => {
         if (headerUserImg) headerUserImg.style.display = "none";
         if (headerLoginText) headerLoginText.innerText = "LOGIN";
  
-        // Re-atașare evenimente login
         const loginBtn = document.getElementById('loginBtn');
         if (loginBtn) loginBtn.onclick = handleLoginFlow;
         
