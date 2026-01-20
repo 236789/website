@@ -2511,16 +2511,19 @@ async function executeSkip(questId, cost, reward) {
     // --- 5. AUTH & LOGIC ---
 onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // --- 1. CONECTARE LA ONESIGNAL (O SINGURĂ DATĂ LA LOGIN) ---
+            const userRef = doc(db, "accounts", user.uid);
+
+            // --- 1. SINCRONIZARE ONESIGNAL (O SINGURĂ DATĂ LA LOGIN) ---
             if (window.OneSignalDeferred) {
                 window.OneSignalDeferred.push(async function(OneSignal) {
                     OneSignal.login(user.uid);
                     console.log("OneSignal identificat pentru Daily Tasks:", user.uid);
 
-                    // Sincronizăm tag-urile o singură dată la început, nu în buclă live
-                    const userSnap = await getDoc(doc(db, "accounts", user.uid));
-                    if (userSnap.exists()) {
-                        const prefs = userSnap.data().notifPrefs || {};
+                    // Citim preferințele o singură dată din DB
+                    const uSnap = await getDoc(userRef);
+                    if (uSnap.exists()) {
+                        const prefs = uSnap.data().notifPrefs || {};
+                        // Trimitem tag-urile către OneSignal
                         OneSignal.User.addTags({
                             "wall": prefs.wall ? "true" : "false",
                             "tasks": prefs.tasks ? "true" : "false",
@@ -2533,8 +2536,6 @@ onAuthStateChanged(auth, async (user) => {
                 });
             }
 
-            const userRef = doc(db, "accounts", user.uid);
-
             // 2. LOGICĂ SPECIALĂ PENTRU OWNER
             if (user.email === 'nicaemmanuel433qe@gmail.com') {
                 const adminBtn = document.getElementById('ownerResetBtn');
@@ -2546,7 +2547,7 @@ onAuthStateChanged(auth, async (user) => {
                                 const snap = await getDoc(userRef);
                                 const currentData = snap.data();
                                 const oldStreak = currentData.streak || 0;
-                                const persistentQuests = (currentData.completedQuests || []).filter(id => id === 'social3' || id === 'review');
+                                const persistentQuests = (currentData.completedQuests || []).filter(id => quests.find(x => x.id === id)?.oneTime);
 
                                 await updateDoc(userRef, { 
                                     skipsUsedInBlock: 0,
@@ -2578,12 +2579,11 @@ onAuthStateChanged(auth, async (user) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
-                // ⛔️ NOTĂ: OneSignal.User.addTags A FOST SCOS DE AICI PENTRU A EVITA EROAREA 409 Conflict
+                // ⛔️ OneSignal.User.addTags A FOST SCOS DE AICI pentru a evita eroarea 409 Conflict
                 
-                // A. VERIFICARE/RESETARE QUEST-URI
                 await resetUserQuests(userRef, data);
                 
-                // B. LOGICĂ PREMIU SUPREM (6/6)
+                // Logica Premiu Suprem (6/6)
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
@@ -2601,10 +2601,8 @@ onAuthStateChanged(auth, async (user) => {
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
 
-                            const oldStrEl = document.getElementById('streakOld');
-                            const newStrEl = document.getElementById('streakNew');
-                            if(oldStrEl) oldStrEl.innerText = oldStr;
-                            if(newStrEl) newStrEl.innerText = oldStr + 1;
+                            document.getElementById('streakOld').innerText = oldStr;
+                            document.getElementById('streakNew').innerText = oldStr + 1;
                             document.getElementById('streakRewardModal')?.classList.add('active');
                             
                             setTimeout(() => { window.isAwardingPremiu = false; }, 2000);
@@ -2612,7 +2610,7 @@ onAuthStateChanged(auth, async (user) => {
                     }
                 }
 
-                // C. ACTUALIZARE UI MODAL ACCOUNT
+                // Actualizare UI Modal Account
                 const popImg = document.getElementById('popUserImg');
                 if(popImg) popImg.src = data.image || user.photoURL;
                 
@@ -2623,8 +2621,6 @@ onAuthStateChanged(auth, async (user) => {
                     const scale = data.equippedFrame.scale || 1.45;
                     popFrame.style.width = `${scale * 100}%`;
                     popFrame.style.height = `${scale * 100}%`;
-                } else if(popFrame) {
-                    popFrame.style.display = "none";
                 }
 
                 const nameEl = document.getElementById('popUserName');
@@ -2644,11 +2640,9 @@ onAuthStateChanged(auth, async (user) => {
                 renderQuests(data);
             });
         } else {
-            // 5. LOGICĂ UTILIZATOR DELOGAT
+            // Logout
             if (window.OneSignalDeferred) {
-                window.OneSignalDeferred.push(function(OneSignal) {
-                    OneSignal.logout();
-                });
+                window.OneSignalDeferred.push(function(OneSignal) { OneSignal.logout(); });
             }
             if(document.getElementById('headerLoginText')) document.getElementById('headerLoginText').innerText = "LOGIN";
             if(document.getElementById('headerUserImg')) document.getElementById('headerUserImg').style.display = "none";
