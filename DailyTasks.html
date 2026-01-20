@@ -2526,38 +2526,37 @@ async function executeSkip(questId, cost, reward) {
     // --- 5. AUTH & LOGIC ---
 // --- 5. AUTH & LOGIC (REPARAT) ---
 // --- 5. AUTH & LOGIC (UPDATED WITH ONESIGNAL SYNC) ---
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        
-        // --- 🔴 START: ONESIGNAL SYNC (FIXED) ---
+// --- 🔴 START: SMART ONESIGNAL SYNC (CONFLICT FIX) ---
         const userRefTag = doc(db, "accounts", user.uid);
         getDoc(userRefTag).then((snap) => {
             if (snap.exists()) {
                 const prefs = snap.data().notifPrefs || {};
                 
                 if (window.OneSignalDeferred) {
-                    window.OneSignalDeferred.push(function(OneSignal) {
-                        // 1. Identify the User
-                        OneSignal.login(user.uid);
+                    window.OneSignalDeferred.push(async function(OneSignal) {
+                        
+                        // 1. SMART CHECK: Only login if we aren't already logged in
+                        // This prevents the "409 Conflict" error
+                        if (OneSignal.User.externalId !== user.uid) {
+                            console.log("OneSignal: Switching User...");
+                            await OneSignal.login(user.uid);
+                        }
 
-                        // 2. WAIT 2 SECONDS before tagging (Prevents 409 Error)
-                        setTimeout(() => {
-                            OneSignal.User.addTags({
-                                wall: prefs.wall ? "true" : "false",
-                                tasks: prefs.tasks ? "true" : "false",
-                                feedback: prefs.feedback ? "true" : "false",
-                                top: prefs.top ? "true" : "false",
-                                news: prefs.news ? "true" : "false",
-                                shop: prefs.shop ? "true" : "false"
-                            });
-                            console.log("OneSignal: Notification Settings Synced!");
-                        }, 2000); // 2000ms delay
+                        // 2. Update Tags (Safe to do now)
+                        OneSignal.User.addTags({
+                            wall: prefs.wall ? "true" : "false",
+                            tasks: prefs.tasks ? "true" : "false",
+                            feedback: prefs.feedback ? "true" : "false",
+                            top: prefs.top ? "true" : "false",
+                            news: prefs.news ? "true" : "false",
+                            shop: prefs.shop ? "true" : "false"
+                        });
+                        console.log("OneSignal: Tags Synced Successfully!");
                     });
                 }
             }
         });
         // --- 🔴 END: ONESIGNAL SYNC ---
-
 
         const userRef = doc(db, "accounts", user.uid);
 
