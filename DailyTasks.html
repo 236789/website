@@ -2529,7 +2529,7 @@ async function executeSkip(questId, cost, reward) {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         
-        // --- 🔴 START: ONESIGNAL SYNC ---
+        // --- 🔴 START: ONESIGNAL SYNC (FIXED) ---
         const userRefTag = doc(db, "accounts", user.uid);
         getDoc(userRefTag).then((snap) => {
             if (snap.exists()) {
@@ -2540,21 +2540,24 @@ onAuthStateChanged(auth, async (user) => {
                         // 1. Identify the User
                         OneSignal.login(user.uid);
 
-                        // 2. Update Tags based on Database Settings
-                        OneSignal.User.addTags({
-                            wall: prefs.wall ? "true" : "false",
-                            tasks: prefs.tasks ? "true" : "false",
-                            feedback: prefs.feedback ? "true" : "false",
-                            top: prefs.top ? "true" : "false",
-                            news: prefs.news ? "true" : "false",
-                            shop: prefs.shop ? "true" : "false"
-                        });
-                        console.log("OneSignal: Notification Settings Synced!");
+                        // 2. WAIT 2 SECONDS before tagging (Prevents 409 Error)
+                        setTimeout(() => {
+                            OneSignal.User.addTags({
+                                wall: prefs.wall ? "true" : "false",
+                                tasks: prefs.tasks ? "true" : "false",
+                                feedback: prefs.feedback ? "true" : "false",
+                                top: prefs.top ? "true" : "false",
+                                news: prefs.news ? "true" : "false",
+                                shop: prefs.shop ? "true" : "false"
+                            });
+                            console.log("OneSignal: Notification Settings Synced!");
+                        }, 2000); // 2000ms delay
                     });
                 }
             }
         });
         // --- 🔴 END: ONESIGNAL SYNC ---
+
 
         const userRef = doc(db, "accounts", user.uid);
 
