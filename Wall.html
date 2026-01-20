@@ -2787,14 +2787,14 @@ window.showToast = (msg) => {
 
 if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
-        // 1. Get the current logged-in user correctly
-        const user = auth.currentUser; 
+        // 1. Get User
+        const user = auth.currentUser;
         if (!user) return;
 
-        // 2. Get the status of the switches
+        // 2. Get Switch Status
         const wallOn = document.getElementById('n_wall').checked;
-        
-        // 3. Save to Firebase (Backup)
+
+        // 3. Save to Firebase
         const newPrefs = {
             wall: wallOn,
             tasks: document.getElementById('n_tasks').checked,
@@ -2807,20 +2807,22 @@ if (saveNotifBtn) {
         try {
             await updateDoc(doc(db, "accounts", user.uid), { notifPrefs: newPrefs });
             
-            // --- UPDATE ONESIGNAL TAGS ---
+            // --- 🔴 FIXED FOR V16 SDK ---
             if (window.OneSignalDeferred) {
                 window.OneSignalDeferred.push(function(OneSignal) {
-                    // Send or Delete the tag based on the switch
                     if (wallOn) {
-                        OneSignal.sendTag("wall", "true");
+                        // NEW SYNTAX:
+                        OneSignal.User.addTag("wall", "true");
                     } else {
-                        OneSignal.deleteTag("wall");
+                        // NEW SYNTAX:
+                        OneSignal.User.removeTag("wall");
                     }
+                    console.log("OneSignal Tags Updated for:", user.uid);
                 });
             }
             // -----------------------------
 
-            window.showToast("Preferințe salvate și sincronizate!");
+            window.showToast("Preferințe salvate!");
             document.getElementById('notifSettingsModal').classList.remove('active');
             document.getElementById('accountModal').classList.add('active');
         } catch (e) { 
