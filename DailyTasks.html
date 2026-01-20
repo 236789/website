@@ -1496,6 +1496,51 @@ if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
         if (!auth.currentUser) return;
 
+        const newPrefs = {
+            wall: document.getElementById('n_wall').checked,
+            tasks: document.getElementById('n_tasks').checked,
+            feedback: document.getElementById('n_feedback').checked,
+            top: document.getElementById('n_top').checked,
+            news: document.getElementById('n_news').checked,
+            shop: document.getElementById('n_shop').checked
+        };
+
+        try {
+            // 1. Save to Database first
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
+
+            // 2. Sync to OneSignal with a SAFETY DELAY (1 second)
+            // This prevents the 409 Conflict if you click too fast after loading
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    setTimeout(() => {
+                        OneSignal.User.addTags({
+                            wall: newPrefs.wall ? "true" : "false",
+                            tasks: newPrefs.tasks ? "true" : "false",
+                            feedback: newPrefs.feedback ? "true" : "false",
+                            top: newPrefs.top ? "true" : "false",
+                            news: newPrefs.news ? "true" : "false",
+                            shop: newPrefs.shop ? "true" : "false"
+                        });
+                        console.log("OneSignal Tags Updated (Safe Mode)!");
+                    }, 1000); 
+                });
+            }
+
+            if (typeof window.showToast === "function") window.showToast("Preferințe sincronizate!");
+            else alert("Preferințe sincronizate!");
+            
+            if(notifModal) notifModal.classList.remove('active');
+            if(document.getElementById('accountModal')) document.getElementById('accountModal').classList.add('active');
+
+        } catch (e) { 
+            console.error("Save Error:", e); 
+        }
+    };
+}
+    saveNotifBtn.onclick = async () => {
+        if (!auth.currentUser) return;
+
         // A. Get values from switches
         const newPrefs = {
             wall: document.getElementById('n_wall').checked,
