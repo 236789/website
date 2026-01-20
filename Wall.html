@@ -2864,8 +2864,10 @@ if (saveNotifBtn) {
         const user = auth.currentUser;
         if (!user) return;
 
+        const wallEnabled = document.getElementById('n_wall').checked;
+
         const newPrefs = {
-            wall: document.getElementById('n_wall').checked,
+            wall: wallEnabled,
             tasks: document.getElementById('n_tasks').checked,
             feedback: document.getElementById('n_feedback').checked,
             top: document.getElementById('n_top').checked,
@@ -2876,17 +2878,21 @@ if (saveNotifBtn) {
         try {
             await updateDoc(doc(db, "accounts", user.uid), { notifPrefs: newPrefs });
             
-            // --- SYNC ONESIGNAL TAGS IN ONE BATCH ---
             if (window.OneSignalDeferred) {
-                window.OneSignalDeferred.push(function(OneSignal) {
-                    // Convert booleans to strings for OneSignal
+                window.OneSignalDeferred.push(async function(OneSignal) {
+                    // 1. Convert prefs to Tags
                     const osTags = {};
                     Object.keys(newPrefs).forEach(key => {
                         osTags[key] = newPrefs[key] ? "true" : "false";
                     });
-                    
-                    // Sending as one object prevents the 409 Conflict error
                     OneSignal.User.addTags(osTags);
+
+                    // 2. IMPORTANT: If they turned Wall ON, trigger the push prompt
+                    // This re-subscribes them if they were deleted from the dashboard
+                    if (wallEnabled) {
+                        console.log("Requesting push permission...");
+                        await OneSignal.Notifications.requestPermission();
+                    }
                 });
             }
 
