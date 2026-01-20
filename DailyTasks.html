@@ -2,6 +2,29 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
+
+<!-- OneSignal SDK -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(function(OneSignal) {
+    OneSignal.init({
+      appId: "a3ed844c-37a9-423a-9f5d-23a195abf4db",
+    });
+
+    // Marcăm prezența pe pagina de Tasks
+    OneSignal.User.addTag("on_tasks", "true");
+
+    window.addEventListener("beforeunload", function() {
+        OneSignal.User.addTag("on_tasks", "false");
+    });
+
+    // Blocăm popup-ul dacă ești deja pe pagină
+    OneSignal.Notifications.addEventListener('foregroundWillDisplay', function(event) {
+        event.preventDefault(); 
+    });
+  });
+</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Daily Tasks — KSDAPromovari</title>
@@ -1453,34 +1476,53 @@ if(openNotifBtn) {
     };
 }
 
-// Save function remains the same, writing to "notifPrefs"
+// Save function: Writes to "notifPrefs"
+// Save function: Sincronizare totală (Firebase + OneSignal)
 document.getElementById('saveNotifBtn').onclick = async () => {
     if (!auth.currentUser) return;
 
+    // Citim toate valorile din interfață
+    const wallOn = document.getElementById('n_wall').checked;
+    const tasksOn = document.getElementById('n_tasks').checked;
+    const newsOn = document.getElementById('n_news').checked;
+    const feedbackOn = document.getElementById('n_feedback').checked;
+    const topOn = document.getElementById('n_top').checked;
+    const shopOn = document.getElementById('n_shop').checked;
+
     const newPrefs = {
-        wall: document.getElementById('n_wall').checked,
-        tasks: document.getElementById('n_tasks').checked,
-        feedback: document.getElementById('n_feedback').checked,
-        top: document.getElementById('n_top').checked,
-        news: document.getElementById('n_news').checked,
-        shop: document.getElementById('n_shop').checked
+        wall: wallOn,
+        tasks: tasksOn,
+        news: newsOn,
+        feedback: feedbackOn,
+        top: topOn,
+        shop: shopOn
     };
 
     try {
-        await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
-            notifPrefs: newPrefs
-        });
+        // 1. Salvăm obiectul complet în Firebase
+        await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
         
-        // Show success (Toast or Alert)
-        if (window.showToast) window.showToast("Preferințe sincronizate!");
-        else alert("Preferințe sincronizate!");
-
-        notifModal.classList.remove('active');
+        // 2. Trimitem TOATE tag-urile către OneSignal
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                OneSignal.User.addTags({
+                    "wall": wallOn ? "true" : "false",
+                    "tasks": tasksOn ? "true" : "false",
+                    "news": newsOn ? "true" : "false",
+                    "feedback": feedbackOn ? "true" : "false",
+                    "top": topOn ? "true" : "false",
+                    "shop": shopOn ? "true" : "false"
+                });
+            });
+        }
+ 
+        alert("Preferințe salvate!");
+        document.getElementById('notifSettingsModal').classList.remove('active');
         document.getElementById('accountModal').classList.add('active');
-    } catch (e) {
-        console.error("Save Error:", e);
-    }
+    } catch (e) { console.error("Save Notif Error:", e); }
 };
+
+
 async function logTransaction(amount, type, desc) {
     if (!auth.currentUser) return;
     try {
@@ -2469,104 +2511,108 @@ async function executeSkip(questId, cost, reward) {
     // --- 5. AUTH & LOGIC ---
 // --- 5. AUTH & LOGIC (REPARAT) ---
 // --- 5. AUTH & LOGIC (ACTUALIZAT CU OWNER RESET) ---
-    onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
         if (user) {
+            // --- 1. CONECTARE LA ONESIGNAL (IDENTIFICARE) ---
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    OneSignal.login(user.uid);
+                    console.log("OneSignal identificat pentru Daily Tasks:", user.uid);
+                });
+            }
+
             const userRef = doc(db, "accounts", user.uid);
 
-            // 1. Logica specială pentru OWNER (nicaemmanuel433qe@gmail.com)
+            // 2. LOGICĂ SPECIALĂ PENTRU OWNER (nicaemmanuel433qe@gmail.com)
             if (user.email === 'nicaemmanuel433qe@gmail.com') {
                 const adminBtn = document.getElementById('ownerResetBtn');
                 if (adminBtn) {
                     adminBtn.style.display = 'inline-block';
-adminBtn.onclick = async () => {
-    if (confirm("👑 Majestatea Ta, vrei să resetezi REAL streak-ul la 0 și să vezi animația?")) {
-        try {
-            const snap = await getDoc(userRef);
-            const currentData = snap.data();
-            const oldStreak = currentData.streak || 0;
-            const currentCompleted = currentData.completedQuests || [];
-            
-            // Păstrăm quest-urile permanente
-            const persistentQuests = currentCompleted.filter(id => id === 'social3' || id === 'review');
+                    adminBtn.onclick = async () => {
+                        if (confirm("👑 Majestatea Ta, vrei să resetezi REAL streak-ul la 0 și să vezi animația?")) {
+                            try {
+                                const snap = await getDoc(userRef);
+                                const currentData = snap.data();
+                                const oldStreak = currentData.streak || 0;
+                                const currentCompleted = currentData.completedQuests || [];
+                                const persistentQuests = currentCompleted.filter(id => id === 'social3' || id === 'review');
 
-            // 1. UPDATE REAL ÎN FIREBASE (Forțăm streak 0 și block fals)
-            await updateDoc(userRef, { 
-                skipsUsedInBlock: 0,
-                streak: 0,
-                lastResetBlock: "SIMULARE_RESET", 
-                completedQuests: persistentQuests,
-                // Resetăm counters
-                messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
-                kevinMessagesToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0
-            });
+                                await updateDoc(userRef, { 
+                                    skipsUsedInBlock: 0,
+                                    streak: 0,
+                                    lastResetBlock: "SIMULARE_RESET", 
+                                    completedQuests: persistentQuests,
+                                    messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
+                                    kevinMessagesToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0
+                                });
 
-            // 2. PORNEȘTE ANIMAȚIA VIZUALĂ (Folosind valoarea veche pe care am salvat-o)
-            runAdaptiveStreakAnimation(oldStreak);
-
-        } catch (e) { alert("Eroare Firebase: " + e.message); }
-    }
-};
+                                runAdaptiveStreakAnimation(oldStreak);
+                            } catch (e) { alert("Eroare Firebase: " + e.message); }
+                        }
+                    };
                 }
             }
 
-            // 2. Actualizăm interfața de Header
-            document.getElementById('headerLoginText').innerText = "ACCOUNT";
-            document.getElementById('headerUserImg').src = user.photoURL;
-            document.getElementById('headerUserImg').style.display = "block";
+            // 3. ACTUALIZARE HEADER UI
+            if(document.getElementById('headerLoginText')) document.getElementById('headerLoginText').innerText = "ACCOUNT";
+            if(document.getElementById('headerUserImg')) {
+                document.getElementById('headerUserImg').src = user.photoURL;
+                document.getElementById('headerUserImg').style.display = "block";
+            }
 
-            // 3. Ascultăm datele în timp real
-// Variabilă globală în script pentru a preveni declanșarea dublă a ferestrei
+            // 4. LISTEN LIVE PENTRU DATELE UTILIZATORULUI
             window.isAwardingPremiu = false;
-onSnapshot(userRef, async (snap) => {
+            onSnapshot(userRef, async (snap) => {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 
-                // 1. Verificăm/Resetăm quest-urile (Logica de streak pierdut)
+                // --- SINCRONIZARE AUTOMATĂ TAG-URI ONESIGNAL (TOATE CATEGORIILE) ---
+                if (window.OneSignalDeferred) {
+                    window.OneSignalDeferred.push(function(OneSignal) {
+                        const prefs = data.notifPrefs || {};
+                        OneSignal.User.addTags({
+                            "wall": prefs.wall ? "true" : "false",
+                            "tasks": prefs.tasks ? "true" : "false",
+                            "news": prefs.news ? "true" : "false",
+                            "feedback": prefs.feedback ? "true" : "false",
+                            "top": prefs.top ? "true" : "false",
+                            "shop": prefs.shop ? "true" : "false"
+                        });
+                    });
+                }
+                
+                // A. VERIFICARE/RESETARE QUEST-URI
                 await resetUserQuests(userRef, data);
                 
-                // --- LOGICĂ PREMIU SUPREM (6/6) REPARATĂ ---
+                // B. LOGICĂ PREMIU SUPREM (6/6)
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
-                // Numărăm doar dacă misiunile terminate se află în lista de misiuni active
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // CONDIȚII SIGURANȚĂ:
-                // - Să aibă 6 quest-uri active
-                // - Să fie toate 6 gata
-                // - Să nu fi primit deja premiul pe acest bloc
-                // - Să NU fie în modul "FORCE_RESET" (repară bug-ul cu diamantul primit la reset)
                 if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        
                         if (!window.isAwardingPremiu) {
                             window.isAwardingPremiu = true;
-
                             const oldStr = data.streak || 0;
-                            const newStr = oldStr + 1;
 
-                            // --- NEW: LOG TRANSACTION FOR DIAMOND REWARD ---
                             await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
 
-                            // Update REAL în Firebase
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
 
-                            // Afișăm Pop-up-ul Premium
                             document.getElementById('streakOld').innerText = oldStr;
-                            document.getElementById('streakNew').innerText = newStr;
+                            document.getElementById('streakNew').innerText = oldStr + 1;
                             document.getElementById('streakRewardModal').classList.add('active');
                             
-                            // Deblocăm după 2 secunde pentru siguranță
                             setTimeout(() => { window.isAwardingPremiu = false; }, 2000);
                         }
                     }
                 }
 
-                // --- POPULARE MODAL ACCOUNT ---
-                // Imagine & Ramă
+                // C. ACTUALIZARE UI MODAL ACCOUNT
                 document.getElementById('popUserImg').src = data.image || user.photoURL;
                 const popFrame = document.getElementById('popUserFrame');
                 if (popFrame) {
@@ -2576,38 +2622,37 @@ onSnapshot(userRef, async (snap) => {
                         const scale = data.equippedFrame.scale || 1.45;
                         popFrame.style.width = `${scale * 100}%`;
                         popFrame.style.height = `${scale * 100}%`;
-                    } else {
-                        popFrame.style.display = "none";
-                    }
+                    } else { popFrame.style.display = "none"; }
                 }
 
-                // Nume (Lost Soul Protection & Colored Text)
                 const nameEl = document.getElementById('popUserName');
                 let rawName = data.username || user.displayName;
                 if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
 
                 if (data.equippedText && data.equippedText.cssClass) {
                     nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                } else {
-                    nameEl.innerText = rawName;
-                }
+                } else { nameEl.innerText = rawName; }
 
-                // Valută dublă (FORMATATĂ 1k, 10k)
                 document.getElementById('popUserEmail').innerText = data.email || user.email;
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
                 
-                // Update Streak Text în Modal
                 const streakTxtEl = document.querySelector('.streak-txt');
                 if (streakTxtEl) streakTxtEl.innerText = `Daily Streak: ${data.streak || 0}`;
                 
-                // Randăm cardurile de misiuni pe ecran
+                // D. RENDER CARDURI MISIUNI
                 renderQuests(data);
             });
         } else {
-            // Reset interfață dacă utilizatorul se deloghează
+            // --- 5. LOGICĂ PENTRU UTILIZATOR DELOGAT ---
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    OneSignal.logout();
+                });
+            }
+
             document.getElementById('headerLoginText').innerText = "LOGIN";
-            document.getElementById('headerUserImg').style.display = "none";
+            if(document.getElementById('headerUserImg')) document.getElementById('headerUserImg').style.display = "none";
             const grid = document.getElementById('questGrid');
             if (grid) grid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5; color:#fff; font-family:Orbitron; padding-top:50px;">Loghează-te pentru a vedea task-urile.</p>';
         }
