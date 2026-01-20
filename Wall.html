@@ -4631,7 +4631,7 @@ if(replyData) {
 function startWipeCheck() {
     if (wipeCheckInterval) clearInterval(wipeCheckInterval);
     
-    // Only Admins/Owners should trigger the auto-wipe logic to prevent multi-user bugs
+    // Doar un Admin/Owner activ ar trebui să ruleze verificarea pentru a evita mesaje bot multiple
     if (!isAdmin && !isOwner) return;
 
     wipeCheckInterval = setInterval(async () => {
@@ -4645,81 +4645,102 @@ function startWipeCheck() {
         } else {
             const nextWipe = timerSnap.data().nextWipe;
             if (now >= nextWipe) {
-                // Instantly update the next timer so others don't trigger it
+                // Actualizăm timpul imediat pentru a preveni declanșarea dublă
                 await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
                 initiateWipeSequence(false);
             }
         }
-    }, 30000); // Check every 30 seconds instead of 10 to save performance
+    }, 30000); 
 }
 
-// --- FIX: WIPE SEQUENCE ---
+// --- FIX: WIPE SEQUENCE (20s -> 10s -> 5s -> Done) ---
 async function initiateWipeSequence(forced) {
-    const warningMsg = forced 
+    // Mesaj 1
+    const warningHeader = forced 
         ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
-        : "⚠️ CHAT-UL SE VA CURĂȚA AUTOMAT PENTRU OPTIMIZARE.";
+        : "⚠️ OPTIMIZARE AUTOMATĂ: Curățarea periodică a mesajelor.";
     
-    await sendBotMessage(warningMsg);
+    await sendBotMessage(warningHeader);
     
-    setTimeout(async () => { await sendBotMessage("⏳ Ștergerea începe în 10 secunde..."); }, 5000);
+    // Mesaj 2 (Imediat după antet)
+    setTimeout(async () => { 
+        await sendBotMessage("⏳ Ștergerea începe în 20 secunde..."); 
+    }, 1000);
+
+    // Mesaj 3 (După 10 secunde)
+    setTimeout(async () => { 
+        await sendBotMessage("⏳ 10 secunde rămase..."); 
+    }, 10000);
+
+    // Mesaj 4 (După 15 secunde)
+    setTimeout(async () => { 
+        await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); 
+    }, 15000);
     
+    // Mesajul 5 + Ștergerea (După 20 secunde)
     setTimeout(async () => { 
         try {
             const deletedCount = await wipeAllMessages(); 
-            await sendBotMessage(`✅ Curățare finalizată! Am șters ${deletedCount} mesaje. Mesajele fixate au fost păstrate.`); 
+            await sendBotMessage(`✅ Chat curățat cu succes! Am eliminat ${deletedCount} mesaje. Mesajele fixate au fost păstrate.`); 
         } catch (e) {
             console.error("Wipe error:", e);
             showToast("Eroare la ștergerea bazei de date.");
         }
-    }, 15000);
+    }, 20000);
 }
 
-// --- FIX: BATCH DELETE LOGIC ---
+// --- FIX: BATCH DELETE LOGIC (Evită eroarea de Index) ---
 async function wipeAllMessages() {
     let totalDeleted = 0;
-    const q = query(collection(db, "wall_messages"), where("isPinned", "==", false));
+    
+    // Luăm ultimele 500 de mesaje fără filtru WHERE (ca să nu ceară index manual)
+    const q = query(collection(db, "wall_messages"), limit(500));
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) return 0;
 
-    // Firestore allows max 500 operations per batch
     let batch = writeBatch(db);
     let count = 0;
 
-    for (const docSnap of snapshot.docs) {
-        batch.delete(docSnap.ref);
-        count++;
-        totalDeleted++;
-
-        if (count === 450) { // Safety margin
-            await batch.commit();
-            batch = writeBatch(db);
-            count = 0;
+    snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        
+        // Filtrăm în cod: Ștergem doar dacă NU este pinned și NU este un mesaj de la sistem/bot trimis recent
+        if (data.isPinned !== true) {
+            batch.delete(docSnap.ref);
+            count++;
+            totalDeleted++;
         }
-    }
+    });
 
-    if (count > 0) await batch.commit();
+    if (count > 0) {
+        await batch.commit();
+    }
+    
     return totalDeleted;
 }
-    async function sendBotMessage(text) {
-        try {
-            await addDoc(collection(db, "wall_messages"), {
-                text: text,
-                uid: 'kevin-bot',
-                name: 'Kevin-Bot',
-                photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
-                ip: 'server',
-                isBot: true,
-                isAdmin: false,
-                isOwner: false, 
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {},
-                seenBy: []
-            });
-        } catch(e) { console.error("Bot fail", e); }
-    }
 
+// --- BOT MESSAGE SENDER ---
+async function sendBotMessage(text) {
+    try {
+        await addDoc(collection(db, "wall_messages"), {
+            text: text,
+            uid: 'kevin-bot',
+            name: 'Kevin-Bot',
+            photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
+            ip: 'server',
+            isBot: true,
+            isAdmin: false,
+            isOwner: false, 
+            createdAt: serverTimestamp(),
+            isDeleted: false,
+            reactions: {},
+            seenBy: []
+        });
+    } catch(e) { 
+        console.error("Bot fail", e); 
+    }
+}
 
 
     const seenObserver = new IntersectionObserver((entries) => {
