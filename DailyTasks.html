@@ -2529,7 +2529,7 @@ async function executeSkip(questId, cost, reward) {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         
-// --- 🔴 START: SUPER SAFE SYNC (FIXED) ---
+// --- 🔴 START: SILENT SYNC (NO ERRORS) ---
         const userRefTag = doc(db, "accounts", user.uid);
         getDoc(userRefTag).then((snap) => {
             if (snap.exists()) {
@@ -2538,35 +2538,39 @@ onAuthStateChanged(auth, async (user) => {
                 if (window.OneSignalDeferred) {
                     window.OneSignalDeferred.push(async function(OneSignal) {
                         
-                        // 1. Define Tags
-                        const myTags = {
-                            wall: prefs.wall ? "true" : "false",
-                            tasks: prefs.tasks ? "true" : "false",
-                            feedback: prefs.feedback ? "true" : "false",
-                            top: prefs.top ? "true" : "false",
-                            news: prefs.news ? "true" : "false",
-                            shop: prefs.shop ? "true" : "false"
-                        };
+                        // 1. Check if we are already logged in as this user
+                        const currentId = OneSignal.User.externalId;
 
-                        // 2. Check Login Status
-                        if (OneSignal.User.externalId !== user.uid) {
+                        if (currentId === user.uid) {
+                            // SCENARIO A: Already logged in.
+                            // DO NOTHING. This prevents the 409 Conflict.
+                            console.log("OneSignal: User linked. Skipping tag update to prevent errors.");
+                        } else {
+                            // SCENARIO B: First time login or different user.
+                            // We MUST login and tag here, but we accept it might error once.
                             console.log("OneSignal: Logging in new user...");
                             await OneSignal.login(user.uid);
-                        } else {
-                            console.log("OneSignal: User already logged in.");
-                        }
+                            
+                            // Define Tags
+                            const myTags = {
+                                wall: prefs.wall ? "true" : "false",
+                                tasks: prefs.tasks ? "true" : "false",
+                                feedback: prefs.feedback ? "true" : "false",
+                                top: prefs.top ? "true" : "false",
+                                news: prefs.news ? "true" : "false",
+                                shop: prefs.shop ? "true" : "false"
+                            };
 
-                        // 3. THE FIX: ALWAYS WAIT 3 SECONDS BEFORE TAGGING
-                        // This prevents the 409 Conflict even if the user is already logged in.
-                        setTimeout(() => {
-                            console.log("OneSignal: Sending tags now...");
-                            OneSignal.User.addTags(myTags);
-                        }, 3000); 
+                            // Add tags after a delay only for NEW logins
+                            setTimeout(() => {
+                                OneSignal.User.addTags(myTags);
+                            }, 3000);
+                        }
                     });
                 }
             }
         });
-        // --- 🔴 END: SUPER SAFE SYNC ---
+        // --- 🔴 END: SILENT SYNC ---
         const userRef = doc(db, "accounts", user.uid);
 
         // 1. Logica specială pentru OWNER
