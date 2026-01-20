@@ -4627,64 +4627,69 @@ if(replyData) {
 
 
 
-// --- 1. VERIFICARE AUTOMATĂ (DOAR ADMIN/OWNER) ---
+// --- 1. VERIFICARE AUTOMATĂ OPTIMIZATĂ ---
+let isWipeInProgress = false; // Siguranță locală pentru a nu rula de două ori pe același browser
+
 function startWipeCheck() {
     if (wipeCheckInterval) clearInterval(wipeCheckInterval);
     if (!isAdmin && !isOwner) return;
 
     wipeCheckInterval = setInterval(async () => {
+        if (isWipeInProgress) return; // Dacă deja curățăm, nu mai verificăm
+
         const timerDocRef = doc(db, "sys_config", "timer");
         const timerSnap = await getDoc(timerDocRef);
         const now = Date.now();
         const twelveHours = 12 * 60 * 60 * 1000;
 
         if (!timerSnap.exists()) {
-            await setDoc(timerDocRef, { nextWipe: now + twelveHours });
+            await setDoc(timerDocRef, { nextWipe: now + twelveHours, lastTriggeredBy: "" });
         } else {
-            const nextWipe = timerSnap.data().nextWipe;
-            if (now >= nextWipe) {
-                await updateDoc(timerDocRef, { nextWipe: now + twelveHours });
+            const data = timerSnap.data();
+            // Verificăm dacă a trecut timpul ȘI dacă nu a fost deja declanșat de alt admin în ultimele 2 minute
+            if (now >= data.nextWipe) {
+                isWipeInProgress = true;
+                
+                // Actualizăm baza de date IMEDIAT pentru ca alți admini să vadă că procesul a început
+                await updateDoc(timerDocRef, { 
+                    nextWipe: now + twelveHours,
+                    lastTriggeredAt: now 
+                });
+
                 initiateWipeSequence(false);
             }
         }
     }, 30000); 
 }
 
-// --- 2. SECVENȚA EXACTĂ DE MESAJE (20s -> 10s -> 5s -> Done) ---
+// --- 2. SECVENȚA DE MESAJE (DOAR O SINGURĂ VERSIUNE DE TEXT) ---
 async function initiateWipeSequence(forced) {
-    // Mesaj 1: Header-ul
     const msg1 = forced 
         ? "⚠️ UN ADMINISTRATOR A FORȚAT RESETAREA CHATULUI."
         : "⚠️ OPTIMIZARE AUTOMATĂ: Curățarea periodică a mesajelor.";
+    
     await sendBotMessage(msg1);
     
-    // Mesaj 2: Start numărătoare (după 1 secundă)
     setTimeout(async () => { 
         await sendBotMessage("⏳ Ștergerea începe în 20 secunde..."); 
-    }, 1000);
+    }, 2000);
 
-    // Mesaj 3: 10 secunde (după 10 secunde de la start)
     setTimeout(async () => { 
-        await sendBotMessage("⏳ 10 secunde rămase..."); 
-    }, 10000);
-
-    // Mesaj 4: 5 secunde (după 15 secunde de la start)
-    setTimeout(async () => { 
-        await sendBotMessage("🔥 5 secunde! Pregătiți-vă de reset!"); 
+        await sendBotMessage("🔥 5 secunde până la reset!"); 
     }, 15000);
     
-    // Mesajul 5: Finalizarea ștergerii (după 20 secunde)
     setTimeout(async () => { 
         try {
             const deletedCount = await wipeAllMessages(); 
+            // FOLOSEȘTE DOAR ACEST MESAJ (șterge-l pe celălalt dacă mai există în cod)
             await sendBotMessage(`✅ Chat curățat cu succes! Am eliminat ${deletedCount} mesaje. Mesajele fixate au fost păstrate.`); 
+            isWipeInProgress = false; // Resetăm siguranța la final
         } catch (e) {
             console.error("Wipe error:", e);
-            showToast("Eroare la ștergere.");
+            isWipeInProgress = false;
         }
     }, 20000);
 }
-
 // --- 3. ȘTERGEREA EFECTIVĂ (BATCH) ---
 async function wipeAllMessages() {
     let totalDeleted = 0;
