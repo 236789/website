@@ -2856,14 +2856,11 @@ window.showToast = (msg) => {
 
 if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
-        // 1. Get User
         const user = auth.currentUser;
         if (!user) return;
 
-        // 2. Get Switch Status
         const wallOn = document.getElementById('n_wall').checked;
 
-        // 3. Save to Firebase
         const newPrefs = {
             wall: wallOn,
             tasks: document.getElementById('n_tasks').checked,
@@ -2876,22 +2873,16 @@ if (saveNotifBtn) {
         try {
             await updateDoc(doc(db, "accounts", user.uid), { notifPrefs: newPrefs });
             
-            // --- 🔴 FIXED FOR V16 SDK ---
+            // --- 🔴 RE-SYNC ONESIGNAL TAGS ---
             if (window.OneSignalDeferred) {
                 window.OneSignalDeferred.push(function(OneSignal) {
-                    if (wallOn) {
-                        // NEW SYNTAX:
-                        OneSignal.User.addTag("wall", "true");
-                    } else {
-                        // NEW SYNTAX:
-                        OneSignal.User.removeTag("wall");
-                    }
-                    console.log("OneSignal Tags Updated for:", user.uid);
+                    // We use addTag for both. Setting it to "false" is more reliable than removing it.
+                    OneSignal.User.addTag("wall", wallOn ? "true" : "false");
+                    console.log("OneSignal Wall Tag set to:", wallOn);
                 });
             }
-            // -----------------------------
 
-            window.showToast("Preferințe salvate!");
+            window.showToast("Preferințe salvate!", "success");
             document.getElementById('notifSettingsModal').classList.remove('active');
             document.getElementById('accountModal').classList.add('active');
         } catch (e) { 
@@ -4633,6 +4624,9 @@ if(replyData) {
         }
     }
 
+
+
+
 // --- FIX: AUTOMATIC WIPE CHECK ---
 function startWipeCheck() {
     if (wipeCheckInterval) clearInterval(wipeCheckInterval);
@@ -4707,6 +4701,26 @@ async function wipeAllMessages() {
     if (count > 0) await batch.commit();
     return totalDeleted;
 }
+    async function sendBotMessage(text) {
+        try {
+            await addDoc(collection(db, "wall_messages"), {
+                text: text,
+                uid: 'kevin-bot',
+                name: 'Kevin-Bot',
+                photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
+                ip: 'server',
+                isBot: true,
+                isAdmin: false,
+                isOwner: false, 
+                createdAt: serverTimestamp(),
+                isDeleted: false,
+                reactions: {},
+                seenBy: []
+            });
+        } catch(e) { console.error("Bot fail", e); }
+    }
+
+
 
     const seenObserver = new IntersectionObserver((entries) => {
         entries.forEach(async entry => {
@@ -5037,7 +5051,6 @@ function loadMessages() {
                     <div id="menu-${msgId}" class="options-dropdown">
                         
                         ${data.uid !== 'system-alert' ? `
-// Change this line in your loadMessages loop:
 <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')">
     <i class="fas fa-reply"></i> Răspunde
 </button>
