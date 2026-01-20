@@ -2508,64 +2508,119 @@ async function executeSkip(questId, cost, reward) {
     }
 }
 
-function sendOneSignal(targets, title, message, excludeId, customUrl, tagKey) {
-  return new Promise((resolve, reject) => {
-    const ONESIGNAL_APP_ID = "a3ed844c-37a9-423a-9f5d-23a195abf4db";
-    const ONESIGNAL_API_KEY = "os_v2_app_upwyitbxvfbdvh25eoqzlk7u3me4qjzpr4iedgehj6wv2pws5dx6no6gbbdscf3sgllanx34qdfdkgug4a2lzvpul57t5vdsvsirncy";
+onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            const userRef = doc(db, "accounts", user.uid);
 
-    const payload = {
-      app_id: ONESIGNAL_APP_ID,
-      headings: { en: title },
-      contents: { en: message },
-      url: customUrl || "https://ksdaart.com/Wall.html",
-      small_icon: "https://iili.io/fXks1Dv.png"
-      // ȘTERS: included_segments (crea conflicte cu filtrele)
-    };
+            // --- 1. SINCRONIZARE ONESIGNAL (O SINGURĂ DATĂ LA LOGIN) ---
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(async function(OneSignal) {
+                    OneSignal.login(user.uid);
+                    console.log("OneSignal identificat pentru Daily Tasks:", user.uid);
 
-    let filters = [];
-    const finalTag = tagKey || "wall";
+                    try {
+                        // Citim preferințele o singură dată pentru a seta tag-urile inițiale
+                        const snap = await getDoc(userRef);
+                        if (snap.exists()) {
+                            const prefs = snap.data().notifPrefs || {};
+                            OneSignal.User.addTags({
+                                "wall": prefs.wall ? "true" : "false",
+                                "tasks": prefs.tasks ? "true" : "false",
+                                "news": prefs.news ? "true" : "false",
+                                "feedback": prefs.feedback ? "true" : "false",
+                                "top": prefs.top ? "true" : "false",
+                                "shop": prefs.shop ? "true" : "false"
+                            });
+                            console.log("OneSignal Tags sincronizate la startul sesiunii.");
+                        }
+                    } catch (e) { console.error("Eroare OneSignal Tags:", e); }
+                });
+            }
 
-    if (targets === "ALL") {
-        // Trimite tuturor care au tag-ul corespunzător true
-        filters.push({ field: "tag", key: finalTag, relation: "=", value: "true" });
-        if (excludeId) {
-            filters.push({ operator: "AND" });
-            filters.push({ field: "external_id", relation: "!=", value: excludeId });
+            // 2. LOGICĂ SPECIALĂ PENTRU OWNER (Rămâne neschimbată)
+            if (user.email === 'nicaemmanuel433qe@gmail.com') {
+                const adminBtn = document.getElementById('ownerResetBtn');
+                if (adminBtn) {
+                    adminBtn.style.display = 'inline-block';
+                    adminBtn.onclick = async () => {
+                        if (confirm("👑 Resetezi streak-ul?")) {
+                            try {
+                                const snap = await getDoc(userRef);
+                                const oldStr = snap.data().streak || 0;
+                                await updateDoc(userRef, { streak: 0, lastResetBlock: "FORCE_RESET" });
+                                runAdaptiveStreakAnimation(oldStr);
+                            } catch (e) { console.error(e); }
+                        }
+                    };
+                }
+            }
+
+            // 3. ACTUALIZARE HEADER UI
+            if(document.getElementById('headerLoginText')) document.getElementById('headerLoginText').innerText = "ACCOUNT";
+            if(document.getElementById('headerUserImg')) {
+                document.getElementById('headerUserImg').src = user.photoURL;
+                document.getElementById('headerUserImg').style.display = "block";
+            }
+
+            // 4. LISTEN LIVE PENTRU DATELE UTILIZATORULUI (DOAR PENTRU UI)
+            window.isAwardingPremiu = false;
+            onSnapshot(userRef, async (snap) => {
+                if (!snap.exists()) return;
+                const data = snap.data();
+                
+                // ⛔️ AM ȘTERS OneSignal.User.addTags DE AICI! 
+                // Asta elimină eroarea 409 Conflict.
+
+                // A. VERIFICARE/RESETARE QUEST-URI
+                await resetUserQuests(userRef, data);
+                
+                // B. LOGICĂ PREMIU SUPREM (6/6)
+                const activeIds = data.activeDailyQuests || [];
+                const completedIds = data.completedQuests || [];
+                const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
+
+                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                    if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+                        if (!window.isAwardingPremiu) {
+                            window.isAwardingPremiu = true;
+                            const oldStr = data.streak || 0;
+                            await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
+                            await updateDoc(userRef, {
+                                streak: increment(1),
+                                diamonds: increment(1),
+                                lastStreakAwardedBlock: data.lastResetBlock
+                            });
+                            document.getElementById('streakOld').innerText = oldStr;
+                            document.getElementById('streakNew').innerText = oldStr + 1;
+                            document.getElementById('streakRewardModal')?.classList.add('active');
+                            setTimeout(() => { window.isAwardingPremiu = false; }, 2000);
+                        }
+                    }
+                }
+
+                // C. ACTUALIZARE UI MODAL ACCOUNT
+                if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = data.image || user.photoURL;
+                if(document.getElementById('popUserName')) document.getElementById('popUserName').innerText = data.username || user.displayName;
+                if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+                
+                const streakTxtEl = document.querySelector('.streak-txt');
+                if (streakTxtEl) streakTxtEl.innerText = `Daily Streak: ${data.streak || 0}`;
+                
+                // D. RENDER CARDURI MISIUNI
+                renderQuests(data);
+            });
+        } else {
+            // Logout
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) { OneSignal.logout(); });
+            }
+            document.getElementById('headerLoginText').innerText = "LOGIN";
+            if(document.getElementById('headerUserImg')) document.getElementById('headerUserImg').style.display = "none";
+            const grid = document.getElementById('questGrid');
+            if (grid) grid.innerHTML = '<p style="text-align:center; width:100%; opacity:0.5; color:#fff; font-family:Orbitron; padding-top:50px;">Loghează-te pentru a vedea task-urile.</p>';
         }
-    } else {
-        // Trimite unui singur user (Reply/Reaction)
-        // Eliminăm verificarea tag-ului la mesaje directe pentru a asigura livrarea
-        filters.push({ field: "external_id", relation: "=", value: targets[0] });
-    }
-
-    // BLOCAJ: Nu trimite dacă este pe pagină (respectiv on_wall sau on_news)
-    const presenceTag = (finalTag === "news") ? "on_news" : "on_wall";
-    filters.push({ operator: "AND" });
-    filters.push({ field: "tag", key: presenceTag, relation: "!=", value: "true" });
-
-    payload.filters = filters;
-
-    const options = {
-      host: "onesignal.com",
-      port: 443,
-      path: "/api/v1/notifications",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Authorization": `Basic ${ONESIGNAL_API_KEY}`
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.on("data", (d) => { body += d; });
-      res.on("end", () => { resolve(JSON.parse(body)); });
     });
-    req.on("error", (e) => reject(e));
-    req.write(JSON.stringify(payload));
-    req.end();
-  });
-}
 
     // Handle Login/Modals
     const handleLogin = async () => {
