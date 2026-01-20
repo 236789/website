@@ -2785,24 +2785,53 @@ window.showToast = (msg) => {
     setTimeout(() => { toast.remove(); }, 3000);
 };
 
-// --- LOGICĂ SALVARE (SINCRONIZATĂ) ---
 if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
         if (!auth.currentUser) return;
+
+        // 1. Get the status of the switches
+        const wallOn = document.getElementById('n_wall').checked;
+        
+        // 2. Save to Firebase (Keep your existing logic for backup)
         const newPrefs = {
-            wall: document.getElementById('n_wall')?.checked || false,
-            tasks: document.getElementById('n_tasks')?.checked || false,
-            feedback: document.getElementById('n_feedback')?.checked || false,
-            top: document.getElementById('n_top')?.checked || false,
-            news: document.getElementById('n_news')?.checked || false,
-            shop: document.getElementById('n_shop')?.checked || false
+            wall: wallOn,
+            tasks: document.getElementById('n_tasks').checked,
+            feedback: document.getElementById('n_feedback').checked,
+            top: document.getElementById('n_top').checked,
+            news: document.getElementById('n_news').checked,
+            shop: document.getElementById('n_shop').checked
         };
+
         try {
             await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
             
-            // Folosim noul Toast în loc de Alert
-            window.showToast("Preferințe sincronizate!");
-            
+            // --- 🔴 NEW: UPDATE ONESIGNAL TAGS ---
+// --- 🔴 START OF NEW CODE: CONNECT & SET DEFAULT TAGS ---
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                if (user && user.uid) {
+                    // 1. Link the User ID
+                    OneSignal.login(user.uid);
+                    
+                    // 2. Set Default Tags (Auto-subscribe to Wall)
+                    // We check if the user has tags. If not, we give them defaults.
+                    OneSignal.getTags().then(function(tags) {
+                        if (tags && tags.wall === undefined) {
+                            OneSignal.sendTags({
+                                wall: "true",
+                                replies: "true",
+                                reactions: "true"
+                            });
+                            console.log("Default tags set for user.");
+                        }
+                    });
+                }
+            });
+        }
+        // --- 🔴 END OF NEW CODE ---
+            // -------------------------------------
+
+            window.showToast("Preferințe salvate și sincronizate!");
             notifModal.classList.remove('active');
             document.getElementById('accountModal').classList.add('active');
         } catch (e) { 
