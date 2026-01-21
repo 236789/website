@@ -2962,6 +2962,7 @@ window.equipText = async (id, cssClass) => {
         closeModal('donationListModal');
         document.getElementById('donationAmountModal').classList.add('active');
     }
+
 window.processDonation = async () => {
     const amountInput = document.getElementById('donateAmount');
     const amount = parseInt(amountInput.value);
@@ -3002,34 +3003,34 @@ window.processDonation = async () => {
         // 2. Add to Receiver
         await updateDoc(doc(db, "accounts", donationTarget.id), { coins: increment(amount) });
         
-        // --- LOG TRANSACTIONS (BOTH SIDES) ---
+        // --- LOG TRANSACTIONS ---
         await logTransaction(-amount, "COINS", "Donation", `Sent to ${donationTarget.name}`);
         await logTransaction(amount, "COINS", "Donation", `Received from ${myData.username}`, donationTarget.id);
 
-        // --- NEW: KEVIN BOT RICH ALERT (5000+ COINS) ---
-        if (amount >= 5000) {
-            try {
-                const botMsg = `🚨 ALERTĂ BOGĂTAȘ! 💸\n\nIncredibil! ${myData.username || "Un membru"} tocmai a donat suma colosală de ${amount.toLocaleString()} Coins către ${donationTarget.name}! Respect maxim! 👑🚀`;
 
-                await addDoc(collection(db, "wall_messages"), {
-                    text: botMsg,
-                    uid: 'kevin-bot',
-                    name: 'Kevin-Bot',
-                    photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
-                    ip: 'server',
-                    isBot: true,
-                    isAdmin: false,
-                    isOwner: false,
-                    createdAt: serverTimestamp(),
-                    isDeleted: false,
-                    reactions: {},
-                    seenBy: []
+        // ============================================================
+        // 🔥 RICH ALERT LOGIC (KEVIN BOT) 🔥
+        // ============================================================
+        if (amount > 5000) {
+            try {
+                // This adds a message directly to the Wall chat collection
+                await addDoc(collection(db, "messages"), {
+                    text: `🚨 ALERTĂ BOGĂTAȘ DETECTAT! 🚨\n\nUtilizatorul ${myData.username} a donat ${amount} coins către ${donationTarget.name}! 💸\nRESPECT MAXIM!`,
+                    uid: "kevin-bot-official", // Fake UID for the bot
+                    displayName: "Kevin Bot",
+                    photoURL: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
+                    timestamp: serverTimestamp(),
+                    // Optional: If your wall supports special banner classes
+                    cssClass: "bubble-gold", 
+                    isSpecial: true
                 });
-            } catch (botErr) {
-                console.error("Kevin Bot fail:", botErr);
+                console.log("Kevin Bot Alert Sent!");
+            } catch (botError) {
+                console.error("Failed to send bot alert:", botError);
             }
         }
-        // --- END BOT ALERT ---
+        // ============================================================
+
 
         await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
         checkShopQuest('donate', amount);
@@ -3042,7 +3043,6 @@ window.processDonation = async () => {
         await showCustomAlert("Eroare la procesare.", "EROARE");
     }
 };
-
 
 window.openBadgeShop = async () => {
         if(!auth.currentUser) return alert("Loghează-te!");
