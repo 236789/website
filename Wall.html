@@ -658,9 +658,65 @@ input:checked + .slider:before { transform: translateX(16px); }
     .btn-edit-profile:hover { background: var(--primary); color: #000; }
 
     /* --- PROFILE VIEW STYLES --- */
-    .view-profile-row { display: flex; justify-content: space-around; margin: 15px 0; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 15px; }
-    .view-stat { display: flex; flex-direction: column; align-items: center; }
-    .view-stat-val { font-weight: 800; font-size: 14px; color: #fff; }
+   /* --- FIX VIEW PROFILE CURRENCIES (MATCHING IMAGE) --- */
+
+/* The Container for the two cards */
+.view-profile-row {
+    display: flex !important;
+    gap: 15px !important;
+    justify-content: center !important;
+    width: 100% !important;
+    margin: 15px 0 25px 0 !important;
+    background: transparent !important; /* Removes old background */
+    padding: 0 !important;
+    border: none !important;
+}
+
+/* The Individual Card (Coin/Diamond) */
+.view-stat {
+    flex: 1 !important;
+    background: #050b14 !important;
+    border-radius: 25px !important;
+    padding: 15px 10px !important;
+    display: flex !important;
+    flex-direction: column !important; /* Forces Icon Top / Text Bottom */
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1.5px solid transparent !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+}
+
+/* Specific Style for First Card (Coins) */
+.view-stat:first-child {
+    border-color: #ffd700 !important;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.2), inset 0 0 10px rgba(255, 215, 0, 0.1) !important;
+    animation: goldGlow 3s infinite alternate !important;
+}
+
+/* Specific Style for Second Card (Diamonds) */
+.view-stat:nth-child(2) {
+    border-color: #00ff88 !important;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.2), inset 0 0 10px rgba(0, 255, 136, 0.1) !important;
+    animation: emeraldGlow 3s infinite alternate-reverse !important;
+}
+
+/* The Value Text inside */
+.view-stat-val {
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 19px !important;
+    font-weight: 900 !important;
+    color: #fff !important;
+    margin-top: 5px !important;
+}
+
+/* Icons inside the stats */
+.view-stat img, .view-stat i {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 28px !important; /* For the streak fire icon if used here */
+    object-fit: contain !important;
+    margin-bottom: 2px !important;
+}
     .view-stat-lbl { font-size: 9px; color: #aaa; text-transform: uppercase; }
     .tiktok-btn { background: #00f2ea; color: #000; text-decoration: none; padding: 8px 20px; border-radius: 50px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 12px; }
     .view-bio { font-size: 12px; color: #ddd; font-style: italic; margin: 15px 0; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 10px; }
@@ -2245,6 +2301,12 @@ input:checked + .slider:before { transform: translateX(16px); }
     0% { transform: scale(2); opacity: 0; }
     50% { transform: scale(0.9); opacity: 1; }
     100% { transform: scale(1); opacity: 1; }
+}
+
+
+/* --- FIX POPUP LAYERING --- */
+#referralHistoryModal, #donationHistoryModal {
+    z-index: 13000 !important; /* Higher than Profile Modal (12000) */
 }
   </style>
 
@@ -5611,10 +5673,12 @@ window.openUserProfile = async (uid) => {
         if(!snap.exists()) return;
         const data = snap.data();
         
-        // Image & Frame
-        document.getElementById('viewUserImg').src = data.image || "https://iili.io/fXks1Dv.png";
+        // 1. Image & Frame
+        const ownerImg = data.image || "https://iili.io/fXks1Dv.png";
+        document.getElementById('viewUserImg').src = ownerImg;
+        
         const viewFrame = document.getElementById('viewUserFrame');
-        if (data.equippedFrame?.img) {
+        if (data.equippedFrame && data.equippedFrame.img) {
             viewFrame.src = data.equippedFrame.img;
             viewFrame.style.display = 'block';
             const sc = data.equippedFrame.scale || 1.45;
@@ -5622,31 +5686,54 @@ window.openUserProfile = async (uid) => {
             viewFrame.style.height = (sc * 100) + "%";
         } else { viewFrame.style.display = 'none'; }
 
-        // Name & Online Status
+        // 2. Name & Online Status
         let pName = data.username || "Anonim";
-        if(data.equippedText?.cssClass) pName = `<span class="${data.equippedText.cssClass}">${pName}</span>`;
+        if(data.equippedText && data.equippedText.cssClass) {
+            pName = `<span class="${data.equippedText.cssClass}">${pName}</span>`;
+        }
         document.getElementById('viewUserName').innerHTML = pName;
         
         const isOnline = checkIsOnline(data);
         document.getElementById('viewUserStatus').innerHTML = isOnline 
             ? '<span style="color:#00ff88;">● ONLINE</span>' : '<span style="color:#555;">● OFFLINE</span>';
 
-        // --- FIXED CURRENCIES ---
+        // 3. Stats (Currencies & Streak)
         document.getElementById('viewUserCoins').innerText = formatCurrency(data.coins || 0);
-        // Ensure you use 'diamonds' (matching your Firestore field)
-        const diamondEl = document.getElementById('viewUserDiamonds');
-        if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+        document.getElementById('viewUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+        document.getElementById('viewUserStreak').innerHTML = `<i class="fas fa-fire"></i> ${data.streak || 0} DAYS STREAK`;
 
-        // --- FIXED BADGES ---
+        // 4. Bio
+        document.getElementById('viewUserBio').innerText = data.bio || "Membru KSDA fără descriere.";
+
+        // --- 5. INTERACTIVE STATS BUTTONS (FIXED) ---
+        const invites = data.totalReferrals || 0;
+        const inviteEl = document.getElementById('viewUserInvites');
+        inviteEl.innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${invites}`;
+        inviteEl.onclick = () => {
+            // Ensure History Modal is on top of Profile Modal
+            const histModal = document.getElementById('referralHistoryModal');
+            if(histModal) histModal.style.zIndex = "13000";
+            openReferralHistory(uid, pName, ownerImg);
+        };
+
+        const donated = data.totalCoinsDonated || 0;
+        const donatedEl = document.getElementById('viewUserDonated');
+        let displayDonated = formatCurrency(donated);
+        donatedEl.innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: ${displayDonated}`;
+        donatedEl.onclick = () => {
+            const histModal = document.getElementById('donationHistoryModal');
+            if(histModal) histModal.style.zIndex = "13000";
+            openDonationHistory(uid, pName, ownerImg);
+        };
+
+        // 6. Badges (Staff & Cosmetics)
         const bBox = document.getElementById('viewUserBadges');
         let bHtml = "";
         
-        // 1. Staff Check
         const email = data.email || "";
         if(email === 'nicaemmanuel433qe@gmail.com') bHtml += `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
         else if(email === 'kevin.trinity2020@gmail.com') bHtml += `<div><span class="admin-badge">ADMIN</span></div>`;
 
-        // 2. Special Badge Check
         if (data.equippedBadge) {
             if (data.equippedBadge.id === 'b_wheel_god') {
                 bHtml += `<div style="margin-top:5px;"><span class="badge-wheel-god"><i class="fas fa-atom"></i> QUANTUM GOD</span></div>`;
@@ -5655,12 +5742,6 @@ window.openUserProfile = async (uid) => {
             }
         }
         bBox.innerHTML = bHtml;
-
-        // Stats & Bio
-        document.getElementById('viewUserBio').innerText = data.bio || "Membru KSDA fără descriere.";
-        document.getElementById('viewUserStreak').innerHTML = `<i class="fas fa-fire"></i> ${data.streak || 0} DAYS STREAK`;
-        document.getElementById('viewUserInvites').innerHTML = `<i class="fas fa-user-plus"></i> Friends Invited: ${data.totalReferrals || 0}`;
-        document.getElementById('viewUserDonated').innerHTML = `<i class="fas fa-hand-holding-usd"></i> Coins Donated: ${formatCurrency(data.totalCoinsDonated || 0)}`;
 
     } catch(e) { console.error(e); }
 };
