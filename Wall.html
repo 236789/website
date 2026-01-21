@@ -8,20 +8,36 @@
 <html lang="ro">
 <head>
 
- <!-- OneSignal Engine -->
-  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-  <script>
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(function(OneSignal) {
-      OneSignal.init({
-        appId: "66b82a40-8d9f-40d6-b2d4-725b2c32cd4a", // Your Correct ID
-        safari_web_id: "web.onesignal.auto.62a04992-e924-4258-8064-560c4d6dc347",
-        notifyButton: {
-          enable: true, /* Shows the bell icon */
-        },
-      });
-      // WE DELETED THE FIREBASE CODE HERE BECAUSE IT IS ALREADY HANDLED AT THE BOTTOM
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(function(OneSignal) {
+    OneSignal.init({
+      appId: "a3ed844c-37a9-423a-9f5d-23a195abf4db",
     });
+
+    // Mark user as ACTIVE and ensure they have the notification preference enabled
+    // Doing this in one "addTags" call prevents 409 Conflicts
+    OneSignal.User.addTags({
+        "on_wall": "true",
+        "wall": "true" 
+    });
+    console.log("OneSignal: Tags Synced (on_wall=true)");
+
+    // Fix for the "Stuck on Wall" issue: 
+    // Use the visibilitychange API instead of beforeunload, it is much more reliable
+    document.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === 'hidden') {
+            OneSignal.User.addTag("on_wall", "false");
+        } else {
+            OneSignal.User.addTag("on_wall", "true");
+        }
+    });
+
+    OneSignal.Notifications.addEventListener('foregroundWillDisplay', function(event) {
+        event.preventDefault(); 
+        console.log("OneSignal: Notificare blocată (tab activ).");
+    });
+  });
 </script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
@@ -2843,14 +2859,15 @@ window.showToast = (msg) => {
     setTimeout(() => { toast.remove(); }, 3000);
 };
 
-// --- FIXED SAVE BUTTON (3 SECOND SAFETY DELAY) ---
 if (saveNotifBtn) {
     saveNotifBtn.onclick = async () => {
-        if (!auth.currentUser) return;
+        const user = auth.currentUser;
+        if (!user) return;
 
-        // 1. Get settings from switches
+        const wallEnabled = document.getElementById('n_wall').checked;
+
         const newPrefs = {
-            wall: document.getElementById('n_wall').checked,
+            wall: wallEnabled,
             tasks: document.getElementById('n_tasks').checked,
             feedback: document.getElementById('n_feedback').checked,
             top: document.getElementById('n_top').checked,
@@ -2859,37 +2876,32 @@ if (saveNotifBtn) {
         };
 
         try {
-            // 2. Save to Database (Instant)
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { notifPrefs: newPrefs });
-
-            // 3. Sync to OneSignal (delayed to prevent 409 Error)
+            await updateDoc(doc(db, "accounts", user.uid), { notifPrefs: newPrefs });
+            
             if (window.OneSignalDeferred) {
-                window.OneSignalDeferred.push(function(OneSignal) {
-                    console.log("Saving tags in 3 seconds...");
-                    setTimeout(() => {
-                        OneSignal.User.addTags({
-                            wall: newPrefs.wall ? "true" : "false",
-                            tasks: newPrefs.tasks ? "true" : "false",
-                            feedback: newPrefs.feedback ? "true" : "false",
-                            top: newPrefs.top ? "true" : "false",
-                            news: newPrefs.news ? "true" : "false",
-                            shop: newPrefs.shop ? "true" : "false"
-                        });
-                        console.log("OneSignal Tags Updated Successfully!");
-                    }, 3000); // 3000ms = 3 Seconds
+                window.OneSignalDeferred.push(async function(OneSignal) {
+                    // 1. Convert prefs to Tags
+                    const osTags = {};
+                    Object.keys(newPrefs).forEach(key => {
+                        osTags[key] = newPrefs[key] ? "true" : "false";
+                    });
+                    OneSignal.User.addTags(osTags);
+
+                    // 2. IMPORTANT: If they turned Wall ON, trigger the push prompt
+                    // This re-subscribes them if they were deleted from the dashboard
+                    if (wallEnabled) {
+                        console.log("Requesting push permission...");
+                        await OneSignal.Notifications.requestPermission();
+                    }
                 });
             }
 
-            // 4. UI Feedback
-            if (typeof window.showToast === "function") window.showToast("Setări salvate!");
-            else alert("Setări salvate!");
-            
-            // Close Modals
-            if (typeof notifModal !== 'undefined') notifModal.classList.remove('active');
-            if (document.getElementById('accountModal')) document.getElementById('accountModal').classList.add('active');
-
+            window.showToast("Preferințe salvate!", "success");
+            document.getElementById('notifSettingsModal').classList.remove('active');
+            document.getElementById('accountModal').classList.add('active');
         } catch (e) { 
-            console.error("Save Error:", e); 
+            console.error(e);
+            window.showToast("Eroare la salvare!"); 
         }
     };
 }
@@ -3575,8 +3587,8 @@ async function handleLoginFlow() {
         try {
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
-         const ip = userIP || "unknown";
-         const userRef = doc(db, "accounts", user.uid);
+            const ip = await getIP();
+            const userRef = doc(db, "accounts", user.uid);
             const snap = await getDoc(userRef);
 
             if(!snap.exists()) {
@@ -4103,227 +4115,242 @@ function renderOnlineList() {
     // AUTH STATE
 let isAwardingInProgress = false;
 
-// --- 5. AUTH & LOGIC (WALL PAGE UPDATED) ---
-// --- HELPER: FIX FOR 'formatNumber is not defined' ERROR ---
-    function formatNumber(num) {
-        if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-        if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-        return num;
-    }
-
-    // --- 5. AUTH & LOGIC (WALL PAGE UPDATED) ---
-    onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            
-            // --- 🔴 START: ONESIGNAL SILENT SYNC ---
-            const userRefTag = doc(db, "accounts", user.uid);
-            getDoc(userRefTag).then((snap) => {
-                if (snap.exists()) {
-                    const prefs = snap.data().notifPrefs || {};
-                    if (window.OneSignalDeferred) {
-                        window.OneSignalDeferred.push(async function(OneSignal) {
-                            // Check if already logged in to prevent 409 Conflict
-                            const currentId = OneSignal.User.externalId;
-                            if (currentId === user.uid) {
-                                console.log("OneSignal: User already linked. Skipping auto-tag.");
-                            } else {
-                                console.log("OneSignal: Linking new user...");
-                                await OneSignal.login(user.uid);
-                                // Only tag on NEW login, with delay
-                                setTimeout(() => {
-                                    OneSignal.User.addTags({
-                                        wall: prefs.wall ? "true" : "false",
-                                        tasks: prefs.tasks ? "true" : "false",
-                                        feedback: prefs.feedback ? "true" : "false",
-                                        top: prefs.top ? "true" : "false",
-                                        news: prefs.news ? "true" : "false",
-                                        shop: prefs.shop ? "true" : "false"
-                                    });
-                                }, 5000);
-                            }
-                        });
-                    }
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        
+        // --- 🔴 START OF NEW CODE: CONNECT TO ONESIGNAL ---
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                if (user && user.uid) {
+                    OneSignal.login(user.uid);
+                    console.log("OneSignal Linked to User:", user.uid);
                 }
             });
-            // --- 🔴 END: ONESIGNAL SILENT SYNC ---
+        }
+        // --- 🔴 END OF NEW CODE ---
 
-            const userRef = doc(db, "accounts", user.uid);
-            const ip = userIP || "unknown";
+        const userRef = doc(db, "accounts", user.uid);
+        const ip = userIP || "unknown";
 
-            // Initialize Account if missing
-            getDoc(userRef).then((snap) => {
-                if (!snap.exists()) {
-                    setDoc(userRef, {
-                        uid: user.uid,
-                        username: user.displayName,
-                        email: user.email,
-                        image: user.photoURL,
-                        coins: 250, diamonds: 0, streak: 0,
-                        ip: ip, joinedAt: new Date(),
-                        messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
-                        completedQuests: [], ownedBadges: [], equippedBadge: null
-                    });
-                } else {
-                    updateDoc(userRef, { ip: ip, image: user.photoURL });
-                }
-            });
-
-            // UI Updates
-            if (headerLoginText) headerLoginText.innerText = "ACCOUNT";
-            if (headerUserImg) {
-                headerUserImg.src = user.photoURL;
-                headerUserImg.style.display = "block";
-            }
-            if (mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-
-            // Role Checks
-            isOwner = (user.email === 'nicaemmanuel433qe@gmail.com');
-            isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
-            isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
-            isHelper = ['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(user.email);
-
-            // Staff Buttons
-            const imgBtn = document.getElementById('imgBtn');
-            const pollBtn = document.getElementById('pollBtn');
-            const resetBtn = document.getElementById('resetChatBtn');
-
-            if (isOwner || isAdmin || isMod || isHelper) {
-                if(imgBtn) imgBtn.style.display = 'flex';
-                if(pollBtn) pollBtn.style.display = 'flex';
+        // Initial check and creation of account if new
+        getDoc(userRef).then((snap) => {
+            if (!snap.exists()) {
+                setDoc(userRef, {
+                    uid: user.uid,
+                    username: user.displayName,
+                    email: user.email,
+                    image: user.photoURL,
+                    coins: 250,
+                    diamonds: 0, 
+                    streak: 0,
+                    ip: ip,
+                    joinedAt: new Date(),
+                    messagesSentToday: 0,
+                    wallRepliesToday: 0,
+                    wallReactionsToday: 0,
+                    wallLongMsgSent: false,
+                    completedQuests: [],
+                    ownedBadges: [],
+                    equippedBadge: null
+                });
             } else {
-                if(imgBtn) imgBtn.style.display = 'none';
-                if(pollBtn) pollBtn.style.display = 'none';
+                updateDoc(userRef, { ip: ip, image: user.photoURL });
             }
+        });
 
-            if (resetBtn) {
-                if (isOwner || isAdmin) {
-                    resetBtn.style.display = 'flex';
-                    resetBtn.onclick = async () => {
-                        const confirmed = await showCustomConfirm("RESET CHAT", "⚠️ ATENȚIE! Această acțiune va șterge TOATE mesajele.", true);
-                        if(confirmed) { initiateWipeSequence(true); showToast("Resetare inițiată...", "success"); }
-                    };
-                } else { resetBtn.style.display = 'none'; }
+        if (headerLoginText) headerLoginText.innerText = "ACCOUNT";
+        if (headerUserImg) {
+            headerUserImg.src = user.photoURL;
+            headerUserImg.style.display = "block";
+        }
+
+        if (mobileLoginBtn) {
+            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+        }
+
+        // --- ROLE IDENTIFICATION ---
+        isOwner = (user.email === 'nicaemmanuel433qe@gmail.com');
+        isAdmin = (user.email === 'kevin.trinity2020@gmail.com' || isOwner);
+        isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
+        isHelper = ['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(user.email);
+
+        // --- STAFF BUTTONS VISIBILITY (Cu Null Checks pentru a repara eroarea) ---
+        const imgBtn = document.getElementById('imgBtn');
+        const pollBtn = document.getElementById('pollBtn');
+        const resetBtn = document.getElementById('resetChatBtn');
+
+        if (isOwner || isAdmin || isMod || isHelper) {
+            if(imgBtn) imgBtn.style.display = 'flex';
+            if(pollBtn) pollBtn.style.display = 'flex';
+        } else {
+            if(imgBtn) imgBtn.style.display = 'none';
+            if(pollBtn) pollBtn.style.display = 'none';
+        }
+
+        if (resetBtn) {
+            if (isOwner || isAdmin) {
+                resetBtn.style.display = 'flex';
+                resetBtn.onclick = async () => {
+                    const confirmed = await showCustomConfirm(
+                        "RESET CHAT", 
+                        "⚠️ ATENȚIE! Această acțiune va șterge TOATE mesajele pentru toată lumea. Începe numărătoarea inversă?", 
+                        true
+                    );
+                    if(confirmed) {
+                        initiateWipeSequence(true); 
+                        showToast("Resetare inițiată...", "success");
+                    }
+                };
+            } else {
+                resetBtn.style.display = 'none';
             }
+        }
 
-            // Ban Check
-            if (userIP) {
-                const banRef = doc(db, "banned_ips", userIP);
-                const banSnap = await getDoc(banRef);
-                if (banSnap.exists()) {
-                    const banData = banSnap.data();
-                    lockedView.style.display = 'none'; chatView.style.display = 'none'; bannedView.style.display = 'flex';
-                    banReasonText.textContent = banData.reason || "Nespecificat";
-                    banIpDisplay.textContent = userIP;
-                    return;
+        // Global Ban Check
+        if (userIP) {
+            const banRef = doc(db, "banned_ips", userIP);
+            const banSnap = await getDoc(banRef);
+            if (banSnap.exists()) {
+                const banData = banSnap.data();
+                lockedView.style.display = 'none'; chatView.style.display = 'none'; bannedView.style.display = 'flex';
+                banReasonText.textContent = banData.reason || "Nespecificat";
+                banIpDisplay.textContent = userIP;
+                return;
+            }
+        }
+
+        currentUid = user.uid;
+        lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
+        if (userAvatar) userAvatar.src = user.photoURL;
+
+// --- LIVE USER DATA LISTENER (FIXED FOR HEADERS & FRAMES) ---
+        onSnapshot(userRef, async (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+
+                // 1. Quest & Streak Logic
+                if (typeof resetUserQuests === "function") {
+                    await resetUserQuests(userRef, data);
                 }
-            }
 
-            // Show Chat
-            currentUid = user.uid;
-            lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
-            if (userAvatar) userAvatar.src = user.photoURL;
+                // Streak Reward Completion (6/6 Quests)
+                const activeIds = data.activeDailyQuests || [];
+                const completedIds = data.completedQuests || [];
+                const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-            // Live Listener for User Data (Quests, Header Name, Frames)
-            onSnapshot(userRef, async (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                    if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+                        if (!isAwardingInProgress) {
+                            isAwardingInProgress = true;
+                            const oldStr = data.streak || 0;
+                            
+                            // --- LOG TRANSACTION (+1 Diamond) ---
+                            await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
 
-                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
-
-                    // Streak Reward Logic (6/6)
-                    const activeIds = data.activeDailyQuests || [];
-                    const completedIds = data.completedQuests || [];
-                    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
-
-                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            if (!isAwardingInProgress) {
-                                isAwardingInProgress = true;
-                                const oldStr = data.streak || 0;
-                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-                                await updateDoc(userRef, {
-                                    streak: increment(1),
-                                    diamonds: increment(1),
-                                    lastStreakAwardedBlock: data.lastResetBlock
-                                });
-                                if (document.getElementById('streakRewardModal')) {
-                                    document.getElementById('streakOld').innerText = oldStr;
-                                    document.getElementById('streakNew').innerText = oldStr + 1;
-                                    document.getElementById('streakRewardModal').classList.add('active');
-                                }
-                                setTimeout(() => { isAwardingInProgress = false; }, 3000);
+                            await updateDoc(userRef, {
+                                streak: increment(1),
+                                diamonds: increment(1),
+                                lastStreakAwardedBlock: data.lastResetBlock
+                            });
+                            if (document.getElementById('streakRewardModal')) {
+                                document.getElementById('streakOld').innerText = oldStr;
+                                document.getElementById('streakNew').innerText = oldStr + 1;
+                                document.getElementById('streakRewardModal').classList.add('active');
                             }
+                            setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
+                }
 
-                    // Avatar & Frame Sync
-                    const userPic = data.image || user.photoURL;
-                    if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = userPic;
-                    if(userAvatar) userAvatar.src = userPic;
+                // 2. AVATAR & FRAME SYNC (Updates both Account Modal AND Chat Header)
+                const userPic = data.image || user.photoURL;
+                if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = userPic;
+                if(userAvatar) userAvatar.src = userPic; // Updates Header PFP
 
-                    const popFrame = document.getElementById('popUserFrame');
-                    const headFrame = document.getElementById('userHeaderFrame');
-                    if (data.equippedFrame && data.equippedFrame.img) {
-                        const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = (scale * 100) + '%';
-                        [popFrame, headFrame].forEach(f => {
-                            if(f) { f.src = data.equippedFrame.img; f.style.display = 'block'; f.style.width = sizePct; f.style.height = sizePct; }
-                        });
-                    } else {
-                        if(popFrame) popFrame.style.display = 'none';
-                        if(headFrame) headFrame.style.display = 'none';
-                    }
+                const popFrame = document.getElementById('popUserFrame');
+                const headFrame = document.getElementById('userHeaderFrame'); // Header Frame
 
-                    // Name Coloring & Stats
-                    let rawName = data.username || "Anonim";
-                    if (isOwner) rawName = "Lost Soul";
-                    let coloredNameHtml = (data.equippedText && data.equippedText.cssClass) ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` : rawName;
-
-                    if(document.getElementById('popUserName')) document.getElementById('popUserName').innerHTML = coloredNameHtml;
-                    if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email;
+                if (data.equippedFrame && data.equippedFrame.img) {
+                    const scale = data.equippedFrame.scale || 1.45;
+                    const sizePct = (scale * 100) + '%';
                     
-                    // --- FIX: formatNumber IS NOW DEFINED ABOVE ---
-                    if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatNumber(data.coins || 0);
-                    if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatNumber(data.diamonds || 0);
-                    
-                    const streakTxt = document.querySelector('.streak-txt');
-                    if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
+                    // Apply to both frame elements
+                    [popFrame, headFrame].forEach(f => {
+                        if(f) {
+                            f.src = data.equippedFrame.img;
+                            f.style.display = 'block';
+                            f.style.width = sizePct;
+                            f.style.height = sizePct;
+                        }
+                    });
+                } else {
+                    if(popFrame) popFrame.style.display = 'none';
+                    if(headFrame) headFrame.style.display = 'none';
+                }
 
-                    // Header Banner & Badges
-                    const chatHeaderBar = document.getElementById('chatHeaderBar');
-                    if (chatHeaderBar) {
-                        chatHeaderBar.className = 'chat-header';
-                        if (data.equippedBanner && data.equippedBanner.cssClass) chatHeaderBar.classList.add(data.equippedBanner.cssClass);
-                    }
+                // 3. NAME & TEXT COLORING
+                let rawName = data.username || "Anonim";
+                if (isOwner) rawName = "Lost Soul";
+                
+                // Apply custom text color if equipped
+                let coloredNameHtml = (data.equippedText && data.equippedText.cssClass) 
+                    ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` 
+                    : rawName;
 
-                    if(userName) {
-                        let headerStaffBadge = "";
-                        if (isOwner) headerStaffBadge = ` <span class="owner-badge"><i class="fas fa-crown"></i> Website Owner</span>`;
-                        else if (isAdmin) headerStaffBadge = ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
-                        else if (isMod) headerStaffBadge = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
-                        else if (isHelper) headerStaffBadge = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
-                        
-                        userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
+                // Update Name in Account Modal
+                if(document.getElementById('popUserName')) document.getElementById('popUserName').innerHTML = coloredNameHtml;
+                
+                // Update Currencies & Email
+                if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email;
+                if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+                
+                const streakTxt = document.querySelector('.streak-txt');
+                if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
+
+                // 4. HEADER BANNER LOGIC (Fix for alignment)
+                const chatHeaderBar = document.getElementById('chatHeaderBar');
+                if (chatHeaderBar) {
+                    // Reset class to base and add banner if exists
+                    chatHeaderBar.className = 'chat-header';
+                    if (data.equippedBanner && data.equippedBanner.cssClass) {
+                        chatHeaderBar.classList.add(data.equippedBanner.cssClass);
                     }
                 }
-            });
 
-            loadMessages();
-            listenForTypers();
-            startWipeCheck();
-            checkMuteStatus();
-            resetIdleTimer();
-            listenOnlineUsers();
-            listenForPinned();
+               // 5. HEADER STAFF BADGES & COSMETIC BADGES
+                if(userName) {
+                    let headerStaffBadge = "";
+                    if (isOwner) {
+                        headerStaffBadge = ` <span class="owner-badge"><i class="fas fa-crown"></i> Website Owner</span>`;
+                    } else if (isAdmin) {
+                        headerStaffBadge = ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                    } else if (isMod) {
+                        headerStaffBadge = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
+                    } else if (isHelper) {
+                        headerStaffBadge = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
+                    }
+                    // Final assembly: Colored Name + Staff Rank + Item Badge
+                    userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
+                }
+            }
+        });
 
-        } else {
-            // LOGOUT STATE
-            if(headerLoginText) headerLoginText.innerText = "LOGIN";
-            if(headerUserImg) headerUserImg.style.display = "none";
-            currentUid = null; isOwner = false; isAdmin = false; isMod = false; isHelper = false;
-            chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
-        }
-    });
+        loadMessages();
+        listenForTypers();
+        startWipeCheck();
+        checkMuteStatus();
+        resetIdleTimer();
+        listenOnlineUsers();
+        listenForPinned(); // ACTIVARE LISTENER MESAJ FIXAT
+
+    } else {
+        if(headerLoginText) headerLoginText.innerText = "LOGIN";
+        if(headerUserImg) headerUserImg.style.display = "none";
+        currentUid = null; isOwner = false; isAdmin = false; isMod = false; isHelper = false;
+        chatView.style.display = 'none'; bannedView.style.display = 'none'; lockedView.style.display = 'flex';
+    }
+});
 
     function checkMuteStatus() {
         if(!currentUid) return;
