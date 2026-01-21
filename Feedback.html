@@ -1514,6 +1514,19 @@ input:checked + .slider:before { transform: translateX(16px); }
         justify-content: center;
     }
 }
+
+
+/* --- CUSTOM ALERT MODAL STYLES --- */
+.custom-alert-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 20000; display: none; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
+.custom-alert-card { background: #08101b; border: 1px solid var(--primary); width: 90%; max-width: 350px; border-radius: 20px; padding: 25px; text-align: center; box-shadow: 0 0 30px rgba(41, 243, 255, 0.2); animation: jumpIn 0.3s forwards; }
+.alert-title { font-family: 'Orbitron'; color: var(--primary); font-size: 18px; margin-bottom: 10px; text-transform: uppercase; }
+.alert-btns { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+.alert-btn { padding: 10px 25px; border-radius: 50px; border: none; font-weight: 700; cursor: pointer; font-family: 'Orbitron'; font-size: 12px; transition: 0.3s; }
+.btn-yes { background: var(--primary); color: #000; }
+.btn-yes:hover { transform: scale(1.05); box-shadow: 0 0 15px var(--primary); }
+.btn-no { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.btn-danger { background: #ff4757; color: #fff; }
+.btn-danger:hover { box-shadow: 0 0 15px #ff4757; }
   </style>
 </head>
 <body>
@@ -1646,6 +1659,19 @@ input:checked + .slider:before { transform: translateX(16px); }
 </div>
 
 
+
+<!-- CUSTOM ALERT MODAL -->
+<div id="customAlertModal" class="custom-alert-overlay">
+    <div class="custom-alert-card">
+        <div id="customAlertIcon" style="font-size: 40px; margin-bottom: 15px;">⚠️</div>
+        <h3 id="customAlertTitle" class="alert-title">CONFIRMARE</h3>
+        <p id="customAlertText" style="font-size:13px; color:#ccc; margin-bottom:20px;">Esti sigur?</p>
+        <div class="alert-btns">
+            <button id="customAlertCancel" class="alert-btn btn-no">ANULEAZĂ</button>
+            <button id="customAlertConfirm" class="alert-btn btn-yes">CONFIRMĂ</button>
+        </div>
+    </div>
+</div>
 <!-- REFERRAL HISTORY MODAL -->
 <div id="referralHistoryModal" class="account-modal-overlay" style="z-index: 13000;">
     <div class="account-card" style="max-width: 400px;">
@@ -3315,84 +3341,132 @@ function appendReviewCard(data, prepend = false) {
 
     // --- ACTIONS ---
 
-// --- SMART TOGGLE APPROVE FUNCTION ---
-    window.toggleApproveFeedback = async (id, currentStatus, text, name, photo, email, uid, btnElement) => {
-        // 1. PREVENT SPAM: Disable button immediately
-        if(btnElement) {
-            btnElement.disabled = true;
-            btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
+// --- 1. LOGICA MODALULUI CUSTOM (PROMISE BASED) ---
+const alertModal = document.getElementById('customAlertModal');
+const alertTitle = document.getElementById('customAlertTitle');
+const alertText = document.getElementById('customAlertText');
+const alertIcon = document.getElementById('customAlertIcon');
+const btnConfirm = document.getElementById('customAlertConfirm');
+const btnCancel = document.getElementById('customAlertCancel');
+
+window.showCustomConfirm = (title, message, isDanger = false) => {
+    return new Promise((resolve) => {
+        alertTitle.innerText = title; 
+        alertText.innerText = message;
+        alertIcon.innerText = isDanger ? '🗑️' : '⚠️';
+        btnConfirm.className = isDanger ? 'alert-btn btn-danger' : 'alert-btn btn-yes';
+        btnConfirm.innerText = isDanger ? 'ȘTERGE' : 'CONFIRMĂ';
+        alertModal.style.display = 'flex';
+        
+        const cleanup = () => { 
+            alertModal.style.display = 'none'; 
+            btnConfirm.onclick = null; 
+            btnCancel.onclick = null; 
+        };
+        
+        btnConfirm.onclick = () => { cleanup(); resolve(true); };
+        btnCancel.onclick = () => { cleanup(); resolve(false); };
+    });
+};
+
+// --- 2. ACTIONS UPDATED (FĂRĂ REFRESH) ---
+
+// DELETE FEEDBACK
+window.deleteFeedback = async (id) => {
+    const confirmed = await showCustomConfirm("ȘTERGE FEEDBACK", "Sigur vrei să ștergi acest feedback definitiv?", true);
+    if(!confirmed) return;
+
+    try {
+        await deleteDoc(doc(db, "feedbacks", id));
+        // Găsim cardul în pagină și îl ștergem vizual
+        const card = document.querySelector(`[onclick*="deleteFeedback('${id}')"]`).closest('.review-card');
+        if(card) {
+            card.style.transform = "scale(0.8)";
+            card.style.opacity = "0";
+            setTimeout(() => card.remove(), 300);
         }
+    } catch(e) { alert("Eroare: " + e.message); }
+};
 
-        try {
-            if (currentStatus === true) {
-                // --- CASE A: ALREADY APPROVED -> REMOVE IT ---
-                if(!confirm("Ești sigur că vrei să scoți statusul de 'Aprobat'?")) {
-                    if(btnElement) {
-                        btnElement.disabled = false;
-                        btnElement.innerHTML = '<i class="fas fa-times"></i> SCOATE';
-                    }
-                    return;
-                }
-
-                // Remove the Green Border (isApproved = false)
-                await updateDoc(doc(db, "feedbacks", id), {
-                    isApproved: false
-                });
-                
-                // Note: We don't delete from Todo List automatically because we don't have the ID link, 
-                // but this stops the "Approved" visual on the wall.
-
-            } else {
-                // --- CASE B: NOT APPROVED -> APPROVE IT ---
-                
-                // 1. Add to Todo List (Roadmap)
-                await addDoc(collection(db, "todo_list"), {
-                    text: text,
-                    uid: uid,
-                    name: name,
-                    photo: photo,
-                    email: email,
-                    isDone: false,
-                    createdAt: serverTimestamp()
-                });
-
-                // 2. Mark Feedback as Approved (Green Border)
-                await updateDoc(doc(db, "feedbacks", id), {
-                    isApproved: true
-                });
+// PIN / UNPIN FEEDBACK
+window.togglePin = async (id, currentStatus) => {
+    // Nu mai cerem confirmare pentru Pin (e o acțiune reversibilă rapidă)
+    try {
+        await updateDoc(doc(db, "feedbacks", id), { isPinned: !currentStatus });
+        
+        // În loc de refresh, schimbăm clasa și butonul local
+        const btn = document.querySelector(`[onclick*="togglePin('${id}'"]`);
+        const card = btn.closest('.review-card');
+        
+        if (!currentStatus) {
+            card.classList.add('pinned-post');
+            // Adăugăm badge-ul de pinned dacă nu există
+            if(!card.querySelector('.pinned-badge')) {
+                card.insertAdjacentHTML('afterbegin', '<div class="pinned-badge"><i class="fas fa-thumbtack"></i> PINNED</div>');
             }
-
-            // Reload to show changes
-            location.reload();
-
-        } catch(e) {
-            alert("Eroare: " + e.message);
-            if(btnElement) btnElement.disabled = false; // Re-enable if error
+            btn.innerHTML = '<i class="fas fa-thumbtack"></i> UNPIN';
+            btn.classList.add('pinned-active');
+            btn.setAttribute("onclick", `togglePin('${id}', true)`);
+        } else {
+            card.classList.remove('pinned-post');
+            const badge = card.querySelector('.pinned-badge');
+            if(badge) badge.remove();
+            btn.innerHTML = '<i class="fas fa-thumbtack"></i> PIN';
+            btn.classList.remove('pinned-active');
+            btn.setAttribute("onclick", `togglePin('${id}', false)`);
         }
-    };
+    } catch(e) { alert("Eroare: " + e.message); }
+};
 
-    // 0. Toggle PIN (New)
-    window.togglePin = async (id, currentStatus) => {
-        try {
-            await updateDoc(doc(db, "feedbacks", id), {
-                isPinned: !currentStatus
+// APPROVE / REMOVE APPROVAL
+window.toggleApproveFeedback = async (id, currentStatus, text, name, photo, email, uid, btnElement) => {
+    const actionTitle = currentStatus ? "SCOATE APROBARE" : "APROBĂ IDEEA";
+    const actionMsg = currentStatus ? "Sigur vrei să scoți această idee din lista celor aprobate?" : "Vrei să aprobi această idee și să o adaugi în Roadmap?";
+    
+    const confirmed = await showCustomConfirm(actionTitle, actionMsg);
+    if(!confirmed) return;
+
+    // Blocăm butonul temporar
+    btnElement.disabled = true;
+    btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    try {
+        const card = btnElement.closest('.review-card');
+
+        if (currentStatus === true) {
+            // SCOATE APROBAREA
+            await updateDoc(doc(db, "feedbacks", id), { isApproved: false });
+            
+            card.classList.remove('approved-post');
+            const badge = card.querySelector('.approved-badge');
+            if(badge) badge.remove();
+
+            btnElement.innerHTML = '<i class="fas fa-check"></i> APROBĂ';
+            btnElement.style.background = ""; // Reset to default CSS
+            btnElement.style.color = "";
+            btnElement.setAttribute("onclick", `toggleApproveFeedback('${id}', false, '${text}', '${name}', '${photo}', '${email}', '${uid}', this)`);
+        } else {
+            // APROBĂ
+            await addDoc(collection(db, "todo_list"), {
+                text: text, uid: uid, name: name, photo: photo, email: email, isDone: false, createdAt: serverTimestamp()
             });
-            alert(currentStatus ? "Post Unpinned!" : "Post Pinned!");
-            location.reload(); // Simplest way to re-sort
-        } catch(e) {
-            alert("Eroare: " + e.message);
-        }
-    }
 
-    // 0. Global Delete
-    window.deleteFeedback = async (id) => {
-        if(!confirm("Sigur vrei să ștergi feedback-ul?")) return;
-        try {
-            await deleteDoc(doc(db, "feedbacks", id));
-            alert("Feedback șters!");
-            location.reload();
-        } catch(e) { alert("Eroare: " + e.message); }
-    };
+            await updateDoc(doc(db, "feedbacks", id), { isApproved: true });
+
+            card.classList.add('approved-post');
+            card.insertAdjacentHTML('afterbegin', '<div class="approved-badge"><i class="fas fa-check-circle"></i> LUAT ÎN CONSIDERARE</div>');
+
+            btnElement.innerHTML = '<i class="fas fa-times"></i> SCOATE';
+            btnElement.style.background = "#2ecc71";
+            btnElement.style.color = "#000";
+            btnElement.setAttribute("onclick", `toggleApproveFeedback('${id}', true, null, null, null, null, null, this)`);
+        }
+    } catch(e) { 
+        alert("Eroare: " + e.message); 
+    } finally {
+        btnElement.disabled = false;
+    }
+};
 
     // 1. Send Feedback (UPDATED WITH QUEST LOGIC & EMAIL & PIN FIELD)
 // 1. Send Feedback (FULL CORRECTED FUNCTION)
