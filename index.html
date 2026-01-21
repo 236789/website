@@ -2631,15 +2631,15 @@ async function handleLoginFlow() {
             const userRef = doc(db, "accounts", user.uid);
             const snap = await getDoc(userRef);
 
-if(!snap.exists()) {
+            if (!snap.exists()) {
                 // --- NEW USER DETECTED ---
-                
+
                 // 1. Check for Referral
                 let baseCoins = 250;
                 let referralBonus = 1000;
                 let startingCoins = baseCoins;
-                
-                let referrerId = sessionStorage.getItem('referrerUid'); 
+
+                let referrerId = sessionStorage.getItem('referrerUid');
                 let hasReferred = false;
 
                 // Validate Referral (Cannot refer self)
@@ -2655,18 +2655,41 @@ if(!snap.exists()) {
                     email: user.email,
                     image: user.photoURL,
                     coins: startingCoins,
-                    diamonds: 0, 
+                    diamonds: 0,
                     streak: 0,
                     joinedAt: serverTimestamp(),
                     totalReferrals: 0,
                     ip: ip,
-                    kevinMessagesToday: 0, 
+                    kevinMessagesToday: 0,
                     completedQuests: []
                 });
 
                 // --- TRANSACTION LOG 1: WELCOME BONUS (250) ---
                 // Se loghează pentru userul curent
                 await logTransaction(baseCoins, "COINS", "Welcome Bonus", "Acasă");
+
+                // --- NEW: KEVIN BOT WELCOME MESSAGE ON WALL ---
+                try {
+                    const welcomeMsg = `🎉 BUN VENIT, ${user.displayName || "Membru Nou"}! 🌟\n\nSalutare și bine ai venit în familia KSDA! Ne bucurăm enorm să te avem alături de noi. Aici arta întâlnește comunitatea! Nu uita să verifici regulamentul, să îți iei daily rewards și să te distrezi pe chat! 🚀`;
+
+                    await addDoc(collection(db, "wall_messages"), {
+                        text: welcomeMsg,
+                        uid: 'kevin-bot',
+                        name: 'Kevin-Bot',
+                        photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
+                        ip: 'server',
+                        isBot: true,
+                        isAdmin: false,
+                        isOwner: false,
+                        createdAt: serverTimestamp(),
+                        isDeleted: false,
+                        reactions: {},
+                        seenBy: []
+                    });
+                } catch (e) {
+                    console.error("Bot welcome failed:", e);
+                }
+                // --- END BOT WELCOME ---
 
                 // 3. Handle Referral Rewards
                 if (hasReferred) {
@@ -2675,15 +2698,15 @@ if(!snap.exists()) {
                         await logTransaction(referralBonus, "COINS", "Referral Bonus (Invited)", "Referral Acasă");
 
                         const inviterRef = doc(db, "accounts", referrerId);
-                        
+
                         // Citim datele inviter-ului pentru a-i putea loga numele in tranzactie
                         const inviterSnap = await getDoc(inviterRef);
 
-                        await updateDoc(inviterRef, { 
-                            coins: increment(1000),          
-                            pendingReferrals: increment(1),  
-                            totalReferrals: increment(1),     
-                            
+                        await updateDoc(inviterRef, {
+                            coins: increment(1000),
+                            pendingReferrals: increment(1),
+                            totalReferrals: increment(1),
+
                             // Save friend to list
                             referralHistory: arrayUnion({
                                 name: user.displayName || "User Nou",
@@ -2708,27 +2731,36 @@ if(!snap.exists()) {
                             });
                         }
 
-                    } catch(e) { console.error("Referral error:", e); }
+                    } catch (e) {
+                        console.error("Referral error:", e);
+                    }
 
                     // Show Popup to NEW USER
                     const refModal = document.getElementById('referralRewardModal');
-                    if(refModal) {
+                    if (refModal) {
                         document.getElementById('referralText').innerText = "Ai fost invitat! Ai primit 1000 Coins bonus.";
                         refModal.classList.add('active');
                     }
                 } else {
                     // Normal Welcome
-                    if(document.getElementById('rewardModal')) {
+                    if (document.getElementById('rewardModal')) {
                         document.getElementById('rewardModal').classList.add('active');
                     }
                 }
 
             } else {
                 // Existing User - Just update IP/Photo
-                await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
+                await setDoc(userRef, {
+                    ip: ip,
+                    image: user.photoURL
+                }, {
+                    merge: true
+                });
             }
-            updateOnlineStatus(); 
-        } catch(e) { console.error(e); }
+            updateOnlineStatus();
+        } catch (e) {
+            console.error(e);
+        }
     }
 
     headerLoginBtn.onclick = () => {
@@ -3236,4 +3268,3 @@ function generateDailyIds() {
   </script>
 </body>
 </html>```
-
