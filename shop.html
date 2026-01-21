@@ -2962,6 +2962,88 @@ window.equipText = async (id, cssClass) => {
         closeModal('donationListModal');
         document.getElementById('donationAmountModal').classList.add('active');
     }
+window.processDonation = async () => {
+    const amountInput = document.getElementById('donateAmount');
+    const amount = parseInt(amountInput.value);
+
+    if (!amount || amount < 1) return await showCustomAlert("Suma invalidă!", "EROARE");
+    if (amount > 15000) return await showCustomAlert("Suma maximă permisă este 15,000!", "LIMITĂ ATINSĂ");
+
+    const myRef = doc(db, "accounts", auth.currentUser.uid);
+    const mySnap = await getDoc(myRef);
+    const myData = mySnap.data();
+    const isOwner = auth.currentUser.email === "nicaemmanuel433qe@gmail.com";
+
+    // Cooldown Check
+    if (!isOwner && myData.lastDonationTime) {
+        const diff = Date.now() - myData.lastDonationTime.toMillis();
+        if (diff < 3600000) return await showCustomAlert(`Mai ai de așteptat ${Math.ceil((3600000 - diff)/60000)} minute.`, "COOLDOWN");
+    }
+
+    if ((myData.coins || 0) < amount) return await showCustomAlert("Nu ai suficienți coins!", "EROARE");
+
+    const confirmed = await showCustomConfirm(`Donezi ${amount.toLocaleString()} coins către ${donationTarget.name}?`, "CONFIRMARE");
+    if (!confirmed) return;
+
+    try {
+        // 1. Deduct from Sender
+        await updateDoc(myRef, { 
+            coins: increment(-amount),
+            lastDonationTime: serverTimestamp(),
+            totalCoinsDonated: increment(amount),
+            donationHistory: arrayUnion({
+                receiverName: donationTarget.name,
+                receiverUid: donationTarget.id,
+                amount: amount,
+                timestamp: Date.now()
+            })
+        });
+        
+        // 2. Add to Receiver
+        await updateDoc(doc(db, "accounts", donationTarget.id), { coins: increment(amount) });
+        
+        // --- LOG TRANSACTIONS (BOTH SIDES) ---
+        await logTransaction(-amount, "COINS", "Donation", `Sent to ${donationTarget.name}`);
+        await logTransaction(amount, "COINS", "Donation", `Received from ${myData.username}`, donationTarget.id);
+
+        // --- NEW: KEVIN BOT RICH ALERT (5000+ COINS) ---
+        if (amount >= 5000) {
+            try {
+                const botMsg = `🚨 ALERTĂ BOGĂTAȘ! 💸\n\nIncredibil! ${myData.username || "Un membru"} tocmai a donat suma colosală de ${amount.toLocaleString()} Coins către ${donationTarget.name}! Respect maxim! 👑🚀`;
+
+                await addDoc(collection(db, "wall_messages"), {
+                    text: botMsg,
+                    uid: 'kevin-bot',
+                    name: 'Kevin-Bot',
+                    photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
+                    ip: 'server',
+                    isBot: true,
+                    isAdmin: false,
+                    isOwner: false,
+                    createdAt: serverTimestamp(),
+                    isDeleted: false,
+                    reactions: {},
+                    seenBy: []
+                });
+            } catch (botErr) {
+                console.error("Kevin Bot fail:", botErr);
+            }
+        }
+        // --- END BOT ALERT ---
+
+        await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
+        checkShopQuest('donate', amount);
+        closeModal('donationAmountModal');
+        amountInput.value = ''; 
+        window.openAlteShop(); 
+        
+    } catch (e) { 
+        console.error(e); 
+        await showCustomAlert("Eroare la procesare.", "EROARE");
+    }
+};
+
+
 
 window.processDonation = async () => {
     const amountInput = document.getElementById('donateAmount');
