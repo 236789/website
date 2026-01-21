@@ -1338,10 +1338,10 @@
     border-radius: 18px;
     padding: 20px;
     position: relative;
-    border-left: 3px solid #2ecc71; /* Verde pentru aprobat */
+    /* CHANGED: Default Left Border is now Yellow */
+    border-left: 3px solid #ffd700; 
     animation: fadeIn 0.5s ease;
 }
-
 /* Stil pentru REALIZAT (Verde Complet) */
 .review-card.completed-card {
     border: 2px solid #00ff88 !important;
@@ -1351,12 +1351,23 @@
 
 /* Badges */
 .approved-badge {
-    background: #2ecc71; color: #000;
-    font-family: 'Orbitron'; font-weight: 900; font-size: 10px;
-    padding: 4px 8px; border-radius: 6px;
-    display: inline-flex; align-items: center; gap: 4px;
-    margin-bottom: 10px; margin-top: -5px; width: fit-content;
+    background: #ffd700; /* Yellow Background */
+    color: #000; /* Black Text */
+    font-family: 'Orbitron'; 
+    font-weight: 900; 
+    font-size: 10px;
+    padding: 5px 10px; 
+    border-radius: 6px;
+    display: inline-flex; 
+    align-items: center; 
+    gap: 6px;
+    margin-bottom: 10px; 
+    margin-top: -5px; 
+    width: fit-content;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); /* Yellow Glow */
+    border: 1px solid #000; /* Thin black border for contrast */
 }
+
 
 .realizat-badge {
     background: #00ff88; color: #000;
@@ -1394,6 +1405,40 @@
 .mod-badge { background: #fff; color: #27ae60; border: 1px solid #27ae60; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 900; font-family: 'Orbitron'; }
 .helper-badge { background: #fff; color: #ff8c00; border: 1px solid #ff8c00; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 900; font-family: 'Orbitron'; }
 .cosmetic-badge { padding: 2px 6px; border-radius: 4px; font-family: 'Orbitron'; font-size: 8px; font-weight: 800; text-transform: uppercase; border: 1px solid currentColor; }
+
+
+/* --- STIL PENTRU CARD ANULAT (ROȘU) --- */
+.review-card.cancelled-card {
+    border: 2px solid #ff4757 !important;
+    border-left: 2px solid #ff4757 !important;
+    background: rgba(255, 71, 87, 0.05) !important;
+    box-shadow: 0 0 15px rgba(255, 71, 87, 0.15) !important;
+    opacity: 0.8; /* Puțin mai șters pentru că e anulat */
+}
+
+/* Badge Anulat */
+.cancelled-badge {
+    background: #ff4757; color: #fff;
+    font-family: 'Orbitron'; font-weight: 900; font-size: 10px;
+    padding: 5px 10px; border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-bottom: 10px; margin-top: -5px; width: fit-content;
+    box-shadow: 0 0 10px #ff4757;
+}
+
+/* Buton Roșu pentru Owner */
+.owner-cancel-btn {
+    background: rgba(255, 71, 87, 0.1);
+    border: 1px solid #ff4757;
+    color: #ff4757;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Orbitron'; font-size: 9px; font-weight: 800;
+    transition: 0.3s;
+    margin-left: 5px;
+}
+.owner-cancel-btn:hover { background: #ff4757; color: #fff; box-shadow: 0 0 10px #ff4757; }
   </style>
 </head>
 <body>
@@ -2408,14 +2453,30 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         }
     }
 
-    // 2. Afiseaza Cardul
+// 2. Afiseaza Cardul
+// 2. Afiseaza Cardul (UPDATED cu status ANULAT)
     function renderApprovedCard(id, data, container) {
         // A. Clase CSS & Cosmetice
         let cardClass = 'review-card';
         if (data.equippedBanner && data.equippedBanner.cssClass) cardClass += ` ${data.equippedBanner.cssClass}`;
         
-        // Daca e completat, adauga clasa verde
-        if (data.isCompleted) cardClass += ' completed-card';
+        // --- LOGICA CULORI STATUS ---
+        let statusBadge = '';
+        
+        if (data.isCancelled) {
+            // ROȘU - ANULAT
+            cardClass += ' cancelled-card';
+            statusBadge = '<div class="cancelled-badge"><i class="fas fa-times-circle"></i> ANULAT</div>';
+        } 
+        else if (data.isCompleted) {
+            // VERDE - REALIZAT
+            cardClass += ' completed-card';
+            statusBadge = '<div class="realizat-badge"><i class="fas fa-check-circle"></i> REALIZAT</div>';
+        } 
+        else {
+            // GALBEN - ÎN LUCRU (Default)
+            statusBadge = '<div class="approved-badge"><i class="fas fa-hard-hat"></i> ÎN LUCRU</div>';
+        }
 
         // B. Frame (Rama)
         let frameHtml = '';
@@ -2444,13 +2505,22 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
             cosmetic = `<span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span>`;
         }
 
-        // E. BUTON OWNER (Doar tu il vezi)
+        // E. BUTOANE OWNER (Doar tu le vezi)
         let ownerBtn = '';
         if (auth.currentUser && auth.currentUser.email === 'nicaemmanuel433qe@gmail.com') {
-            if (!data.isCompleted) {
-                ownerBtn = `<button class="owner-action-btn" onclick="markAsRealizat('${id}', true)">✅ MARCHEAZĂ REALIZAT</button>`;
-            } else {
-                ownerBtn = `<button class="owner-action-btn" style="border-color:#aaa; color:#aaa;" onclick="markAsRealizat('${id}', false)">↩️ RESETEAZĂ</button>`;
+            
+            // Dacă e ÎN LUCRU (nici completat, nici anulat) -> Arată ambele butoane
+            if (!data.isCompleted && !data.isCancelled) {
+                ownerBtn = `
+                    <div style="margin-left:auto; display:flex; gap:5px;">
+                        <button class="owner-action-btn" onclick="updateStatus('${id}', 'completed')">✅ GATA</button>
+                        <button class="owner-cancel-btn" onclick="updateStatus('${id}', 'cancelled')">❌ ANULEAZĂ</button>
+                    </div>
+                `;
+            } 
+            // Dacă e GATA sau ANULAT -> Arată buton de Reset
+            else {
+                ownerBtn = `<button class="owner-action-btn" style="border-color:#aaa; color:#aaa; margin-left:auto;" onclick="updateStatus('${id}', 'reset')">↩️ RESETEAZĂ</button>`;
             }
         }
 
@@ -2458,7 +2528,7 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         const div = document.createElement('div');
         div.className = cardClass;
         div.innerHTML = `
-            ${data.isCompleted ? '<div class="realizat-badge"><i class="fas fa-check-circle"></i> REALIZAT</div>' : '<div class="approved-badge"><i class="fas fa-clock"></i> ÎN LUCRU</div>'}
+            ${statusBadge}
             
             <div class="review-header">
                 <div class="profile-frame-wrapper" style="width:45px; height:45px; margin:0;">
@@ -2478,13 +2548,29 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     }
 
     // 3. Functia de marcare (Globala)
-    window.markAsRealizat = async (id, status) => {
-        if(!confirm(status ? "Marchezi ca REALIZAT? (Se va face verde)" : "Resetezi statusul?")) return;
+// 3. Functia de update status (Owner only)
+    window.updateStatus = async (id, type) => {
+        let updates = {};
+        let confirmMsg = "";
+
+        if (type === 'completed') {
+            confirmMsg = "Marchezi ca REALIZAT (Verde)?";
+            updates = { isCompleted: true, isCancelled: false };
+        } 
+        else if (type === 'cancelled') {
+            confirmMsg = "Ești sigur că ANULEZI ideea (Roșu)?";
+            updates = { isCompleted: false, isCancelled: true };
+        } 
+        else if (type === 'reset') {
+            confirmMsg = "Resetezi la 'În Lucru' (Galben)?";
+            updates = { isCompleted: false, isCancelled: false };
+        }
+
+        if(!confirm(confirmMsg)) return;
+
         try {
-            await updateDoc(doc(db, "feedbacks", id), {
-                isCompleted: status
-            });
-            loadApprovedFeedbacks(); // Refresh
+            await updateDoc(doc(db, "feedbacks", id), updates);
+            loadApprovedFeedbacks(); // Refresh la listă
         } catch(e) {
             alert("Eroare: " + e.message);
         }
