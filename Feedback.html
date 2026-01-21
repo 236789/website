@@ -118,6 +118,27 @@
         display: inline-flex; align-items: center; gap: 4px;
     }
 
+
+
+/* APPROVED POST STYLE (Green) */
+    .review-card.approved-post {
+        border: 2px solid #2ecc71 !important; /* Green Border */
+        background: rgba(46, 204, 113, 0.05);
+        box-shadow: 0 0 20px rgba(46, 204, 113, 0.2);
+    }
+    .approved-badge {
+        background: #2ecc71; /* Green Background */
+        color: #000; 
+        font-family: 'Orbitron'; 
+        font-weight: 900;
+        font-size: 10px; 
+        padding: 2px 6px; 
+        border-radius: 4px; 
+        margin-right: 8px;
+        display: inline-flex; 
+        align-items: center; 
+        gap: 4px;
+    }
     /* Card Staff Backgrounds */
     .review-card.owner-post { background: linear-gradient(135deg, #0044ff 0%, #29f3ff 100%) !important; border: 2px solid #ffffff !important; box-shadow: 0 0 25px rgba(41, 243, 255, 0.3) !important; }
     .review-card.admin-post { background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; border: 2px solid #ffffff !important; box-shadow: 0 0 20px rgba(255, 0, 0, 0.4) !important; }
@@ -3002,6 +3023,11 @@ function appendReviewCard(data, prepend = false) {
             cardClass += ' pinned-post';
         }
 
+        // --- APPROVED LOGIC (GREEN OUTLINE) ---
+        if (data.isApproved) {
+            cardClass += ' approved-post';
+        }
+
         const displayName = isOwner ? "Lost Soul" : data.name;
 
         // Action Buttons
@@ -3009,9 +3035,9 @@ function appendReviewCard(data, prepend = false) {
         if (canManage) {
             actionButtons += `
                 <div class="card-actions-top">
-<button class="btn-action-staff approve" onclick="approveToTodo('${data.id}', '${data.text.replace(/'/g, "\\'")}', '${data.name}', '${data.photo}', '${data.email}', '${data.uid}')">
-    <i class="fas fa-check"></i> APROBĂ
-</button>
+                    <button class="btn-action-staff approve" onclick="approveToTodo('${data.id}', '${data.text.replace(/'/g, "\\'")}', '${data.name}', '${data.photo}', '${data.email}', '${data.uid}')">
+                        <i class="fas fa-check"></i> APROBĂ
+                    </button>
                     <button class="btn-action-staff pin ${data.isPinned ? 'pinned-active' : ''}" onclick="togglePin('${data.id}', ${data.isPinned})">
                         ${data.isPinned ? '<i class="fas fa-thumbtack"></i> UNPIN' : '<i class="fas fa-thumbtack"></i> PIN'}
                     </button>
@@ -3041,8 +3067,12 @@ function appendReviewCard(data, prepend = false) {
 
         const card = document.createElement('div');
         card.className = cardClass;
+        
+        // ADDED THE APPROVED BADGE HTML BELOW
         card.innerHTML = `
             ${data.isPinned ? '<div class="pinned-badge"><i class="fas fa-thumbtack"></i> PINNED</div>' : ''}
+            ${data.isApproved ? '<div class="approved-badge"><i class="fas fa-check-circle"></i> LUAT ÎN CONSIDERARE</div>' : ''}
+            
             <div class="review-header">
                 <div class="pfp-wrapper">
                     <img src="${data.photo}" class="rev-pfp-inner">
@@ -3050,7 +3080,7 @@ function appendReviewCard(data, prepend = false) {
                 </div>
                 <div class="rev-info">
                     <div class="rev-name">
-<span class="${data.equippedText ? data.equippedText.cssClass : ''}">${displayName}</span> ${badge} ${cosmetic}
+                        <span class="${data.equippedText ? data.equippedText.cssClass : ''}">${displayName}</span> ${badge} ${cosmetic}
                         <!-- NEW PROFILE BUTTON -->
                         <button class="view-profile-btn" onclick="openUserProfile('${data.uid}')"><i class="fas fa-user"></i></button>
                     </div>
@@ -3082,23 +3112,32 @@ function appendReviewCard(data, prepend = false) {
     // --- ACTIONS ---
 
     // APPROVE TO TODO LIST (NEW)
-window.approveToTodo = async (id, text, authorName, authorPhoto, authorEmail, authorUid) => {
-    if(!confirm("Sigur vrei să aprobi acest feedback și să îl adaugi în Roadmap?")) return;
-    try {
-        await addDoc(collection(db, "todo_list"), {
-            text: text,
-            uid: authorUid, // Folosim UID-ul original (ex: al lui Kevin)
-            name: authorName, // Folosim numele original (ex: Kevin)
-            photo: authorPhoto, // Poza originală
-            email: authorEmail, // Email-ul original
-            isDone: false,
-            createdAt: serverTimestamp()
-        });
-        alert("Sarcina a fost adăugată cu succes în Roadmap!");
-    } catch(e) {
-        alert("Eroare la aprobare: " + e.message);
-    }
-};
+// APPROVE TO TODO LIST + MARK AS APPROVED
+    window.approveToTodo = async (id, text, authorName, authorPhoto, authorEmail, authorUid) => {
+        if(!confirm("Sigur vrei să aprobi acest feedback? Va fi marcat ca 'Luat în considerare' și adăugat la Roadmap.")) return;
+        try {
+            // 1. Add to Todo List (Roadmap)
+            await addDoc(collection(db, "todo_list"), {
+                text: text,
+                uid: authorUid,
+                name: authorName,
+                photo: authorPhoto,
+                email: authorEmail,
+                isDone: false,
+                createdAt: serverTimestamp()
+            });
+
+            // 2. NEW: Mark the Feedback as Approved (Green style)
+            await updateDoc(doc(db, "feedbacks", id), {
+                isApproved: true
+            });
+
+            alert("Feedback aprobat cu succes!");
+            location.reload(); // Reload to show the green outline
+        } catch(e) {
+            alert("Eroare la aprobare: " + e.message);
+        }
+    };
 
     // 0. Toggle PIN (New)
     window.togglePin = async (id, currentStatus) => {
