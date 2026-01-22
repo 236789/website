@@ -2026,6 +2026,47 @@ input:checked + .slider:before { transform: translateX(24px); }
     transition: 0.2s;
 }
 .win-btn-black:hover { transform: scale(1.05); background: #222; }
+
+
+.multi-spin-wrapper {
+    display: flex;
+    gap: 8px;
+    margin-top: 15px;
+    justify-content: center;
+    align-items: center;
+}
+
+#multiSpinCount {
+    width: 60px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid var(--secondary);
+    border-radius: 10px;
+    color: #fff;
+    padding: 8px;
+    text-align: center;
+    font-family: 'Orbitron';
+    font-weight: 700;
+}
+
+.btn-multi-cyber {
+    background: transparent;
+    border: 2px solid var(--secondary);
+    color: var(--secondary);
+    padding: 8px 15px;
+    border-radius: 12px;
+    font-family: 'Orbitron';
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: 0.3s;
+    text-shadow: 0 0 10px var(--secondary);
+}
+
+.btn-multi-cyber:hover {
+    background: var(--secondary);
+    color: #fff;
+    box-shadow: 0 0 20px var(--secondary);
+}
 </style>
 </head>
 <body>
@@ -2420,6 +2461,14 @@ input:checked + .slider:before { transform: translateX(24px); }
                 SPIN -1 <img src="https://iili.io/fv5bmtj.png" width="22" style="vertical-align: middle;">
             </span>
         </button>
+
+<!-- MULTI-SPIN SECTION -->
+<div class="multi-spin-wrapper">
+    <input type="number" id="multiSpinCount" min="1" max="100" value="1" placeholder="Nr.">
+    <button id="btnMultiSpin" class="btn-multi-cyber">
+        <i class="fas fa-bolt"></i> MULTI-SPIN
+    </button>
+</div>
     </div>
 
     <!-- 6. REWARDS INFO MODAL (Nested here for scoping) -->
@@ -2613,6 +2662,66 @@ let eventSelectedUser = null; // Stores the full user object of the chosen winne
 let eventParticipants = []; // Stores UIDs
 let lastProcessedSpinTime = 0; // Tracks the last spin to prevent re-spinning on refresh
 let currentSpinAdminId = null; // FIX: Stores which admin started the spin
+
+
+
+let isMultiSpinActive = false;
+let spinsRemaining = 0;
+
+document.getElementById('btnMultiSpin').onclick = async () => {
+    if (isSpinning || isMultiSpinActive) return;
+
+    const count = parseInt(document.getElementById('multiSpinCount').value);
+    if (isNaN(count) || count <= 0) return alert("Introdu un număr valid!");
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const currentDiamonds = userSnap.data().diamonds || 0;
+    
+    const totalCost = count * 1; // Presupunem că 1 spin = 1 diamant
+
+    if (currentDiamonds < totalCost) {
+        return alert("Nu ai destule diamante pentru " + count + " rotiri!");
+    }
+
+    // 1. Luăm toate diamantele o singură dată la început
+    await updateDoc(userRef, {
+        diamonds: increment(-totalCost)
+    });
+    
+    await logTransaction(totalCost, "DIAMONDS", `Multi-Spin x${count}`, "Wheel");
+
+    // 2. Pornim procesul automat
+    isMultiSpinActive = true;
+    spinsRemaining = count;
+    runNextAutoSpin();
+};
+
+async function runNextAutoSpin() {
+    if (spinsRemaining <= 0) {
+        isMultiSpinActive = false;
+        alert("S-au terminat rotirile automate!");
+        return;
+    }
+
+    spinsRemaining--;
+    
+    // Trigger la funcția ta existentă de Spin
+    // Notă: Presupunem că funcția ta se numește startSpin()
+    await startSpin(); 
+
+    // Așteptăm ca roata să se oprească și să apară modalul
+    // Apoi închidem modalul automat după 2 secunde și trecem la următoarea rotire
+    setTimeout(() => {
+        const resultModal = document.getElementById('wheelResultModal'); // ID-ul modalului tău de premiu
+        if (resultModal) resultModal.classList.remove('active');
+        
+        // Mică pauză între rotiri pentru a nu bloca browserul
+        setTimeout(() => {
+            runNextAutoSpin();
+        }, 500);
+    }, 4500); // Ajustează acest timp în funcție de cât durează animația roții tale + timpul de vizualizare
+}
 
 
 // 1. OPEN JACKPOT HISTORY (With Icons)
