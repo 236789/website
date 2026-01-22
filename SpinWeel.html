@@ -2748,105 +2748,179 @@ function pickRewardIndex() {
 // query, orderBy, limit, getDocs
  
 // --- MODIFIED REWARD LOGIC ---
+// --- FIXED FINALIZE SPIN (VISUALS, SOUNDS & LOGS) ---
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
     
-    // Determine Target
+    // 1. Determine Target User (Who receives the reward?)
     let targetUid = auth.currentUser.uid;
     let targetName = "Jucător";
+    let targetPhoto = auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png";
     
     if (isEventModeActive && eventSelectedUser) {
         targetUid = eventSelectedUser.uid;
         targetName = eventSelectedUser.username;
+        targetPhoto = eventSelectedUser.image;
     } else if (!isEventModeActive) {
-        // Normal Mode: Target is Me
+        // Normal Mode: Fetch fresh name just in case
         const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        if(uSnap.exists()) targetName = uSnap.data().username;
+        if(uSnap.exists()) {
+            const d = uSnap.data();
+            targetName = d.username;
+            targetPhoto = d.image;
+        }
     }
 
+    // 2. Setup Modal Elements
     const modal = document.getElementById('questRewardModal');
-    
-    // --- 1. POPUP LOGIC (WHO SEES IT?) ---
-    // If Event Mode: Only Winner sees popup. Admin sees "Success" (optional, simplified here).
-    // If Normal Mode: Only I see popup.
-    
+    const titleText = modal.querySelector('h2');
+    const msgP = modal.querySelector('.reward-card p:nth-of-type(1)');
+    const rewardBox = modal.querySelector('.reward-coins-box'); // We will inject HTML here directly
+    const coinsLabel = modal.querySelector('p:nth-of-type(2)'); // The label below the box
+
+    // 3. LOGIC: WHO SEES THE POPUP?
+    // Normal Mode: I see it.
+    // Event Mode: Only the Winner sees it. Admin sees nothing (or console log).
     const shouldShowPopup = (!isEventModeActive) || (isEventModeActive && auth.currentUser.uid === targetUid);
 
-    if (shouldShowPopup) {
-        const amountText = modal.querySelector('.reward-coins-box span');
-        const coinsLabel = modal.querySelector('p'); 
-        const titleText = modal.querySelector('h2');
-        const iconImg = modal.querySelector('.reward-coins-box img');
-        const msgP = modal.querySelector('.reward-card p:nth-of-type(1)');
+    // --- HANDLE REWARD TYPES (SOUNDS & VISUALS) ---
+    
+    // A. XP (FAIL)
+    if (reward.type === "xp") {
+        if (shouldShowPopup) {
+            audioFail.src = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/downer_noise.mp3?alt=media&token=efef799f-4f30-4e98-83ac-96456449b0b4";
+            audioFail.volume = 0.6;
+            audioFail.play().catch(()=>{});
 
-        // Play Sound
-        if((reward.type === 'diamonds' && reward.val >= 10) || reward.type === 'coins' && reward.val >= 2500) {
-             audioJackpot.currentTime=0; audioJackpot.play();
-        } else {
-             audioReward.currentTime=0; audioReward.play();
+            titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
+            msgP.innerText = "Nu ai câștigat nimic material.";
+            rewardBox.innerHTML = `<span style="font-size: 40px; color:#aaa; font-weight:900;">EXPERIENȚĂ</span>`;
+            coinsLabel.innerText = "DATA VIITOARE!";
+            modal.classList.add('active');
         }
-        launchConfetti();
+        // No DB updates for XP
+        return;
+    }
+
+    // B. JACKPOT ITEMS (Badge/Banner) OR CURRENCY
+    const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || 
+                      (reward.type === 'coins' && reward.val >= 2500) || 
+                      reward.type === 'badge' || 
+                      reward.type === 'banner';
+
+    if (shouldShowPopup) {
+        // Play Sound
+        if (isJackpot) {
+            audioJackpot.currentTime = 0; audioJackpot.play().catch(()=>{});
+            launchConfetti();
+        } else {
+            audioReward.currentTime = 0; audioReward.play().catch(()=>{});
+            launchConfetti();
+        }
 
         titleText.innerHTML = `<span style="font-size: 24px;">🎉</span> FELICITĂRI!`;
-        msgP.innerText = `Ai câștigat la roată:`;
-        
-        if (reward.type === "coins") {
-            amountText.innerText = reward.label;
+        msgP.innerText = "Ai câștigat la roată:";
+
+        // Render Specific Content
+        if (reward.type === "badge") {
+            // Show Quantum God Badge
+            rewardBox.innerHTML = `
+                <div style="transform: scale(1.5); margin: 20px 0;">
+                    <span class="badge-wheel-god">
+                        <i class="fas fa-bolt"></i> WHEEL GOD
+                    </span>
+                </div>`;
+            coinsLabel.innerText = "BADGE EXCLUSIV";
+        } 
+        else if (reward.type === "banner") {
+            // Show Banner Preview
+            rewardBox.innerHTML = `
+                <div class="bubble-jackpot" style="width:200px; padding:10px; font-size:12px;">
+                    ULTRA JACKPOT
+                </div>`;
+            coinsLabel.innerText = "BANNER EXCLUSIV";
+        }
+        else if (reward.type === "coins") {
+            rewardBox.innerHTML = `<img src="https://iili.io/fhc1SKQ.png" style="width: 50px;"> <span>${reward.label}</span>`;
             coinsLabel.innerText = "KSDA COINS";
-            iconImg.src = "https://iili.io/fhc1SKQ.png";
         } 
         else if (reward.type === "diamonds") {
-            amountText.innerText = reward.label;
+            rewardBox.innerHTML = `<img src="https://iili.io/fv5bmtj.png" style="width: 50px;"> <span>${reward.label}</span>`;
             coinsLabel.innerText = "DIAMANTE";
-            iconImg.src = "https://iili.io/fv5bmtj.png";
         }
-        else {
-            amountText.innerText = "ITEM";
-            coinsLabel.innerText = reward.label;
-            iconImg.src = "https://iili.io/fXvBEiB.png";
-        }
+
         modal.classList.add('active');
     }
 
-    // --- 2. DATABASE WRITE LOGIC (WHO WRITES IT?) ---
-    // In Event Mode, only ADMIN writes to DB to give rewards.
-    // In Normal Mode, the USER writes their own reward.
-    
+    // --- 4. DATABASE UPDATES (Who writes?) ---
+    // Event Mode: Admin writes. Normal Mode: User writes.
     const shouldWriteToDB = (isEventModeActive && isAdmin) || (!isEventModeActive);
 
     if (shouldWriteToDB) {
         const userRef = doc(db, "accounts", targetUid);
-        
+        let logDesc = "Spin Reward";
+
+        // Update Balance / Inventory
         if (reward.type === "coins") {
+            logDesc = `Won ${reward.val} Coins`;
             await updateDoc(userRef, { 
                 coins: increment(reward.val), 
                 "wheelStats.coins": increment(reward.val) 
             });
         } 
         else if (reward.type === "diamonds") {
+            logDesc = `Won ${reward.val} Diamonds`;
             await updateDoc(userRef, { 
                 diamonds: increment(reward.val), 
                 "wheelStats.diamonds": increment(reward.val) 
             });
         }
         else if (reward.type === "badge") {
+            logDesc = "Won Quantum Badge";
             await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
         }
         else if (reward.type === "banner") {
+            logDesc = "Won Jackpot Banner";
             await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
         }
 
-        // Log Jackpot
-        if((reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b')) {
-             try {
+        // --- LOG TRANSACTION (Fix: Manually add to 'transactions' for Target User) ---
+        // We use addDoc directly because 'logTransaction' helper might use auth.currentUser (Admin)
+        try {
+            await addDoc(collection(db, "transactions"), {
+                userId: targetUid,
+                username: targetName,
+                userImage: targetPhoto,
+                amount: (typeof reward.val === 'number') ? reward.val : 1,
+                type: reward.type.toUpperCase(),
+                source: "Spin Wheel",
+                description: isEventModeActive ? "Event Reward (Admin Spin)" : "Wheel Spin Reward",
+                timestamp: serverTimestamp()
+            });
+        } catch(e) { console.error("Tx Log Error", e); }
+
+        // --- LOG JACKPOT HISTORY (Fix: Ensure it runs for Event Mode too) ---
+        if (isJackpot) {
+            try {
+                // 1. History Log
+                await addDoc(collection(db, "wheel_jackpot_history"), {
+                    username: targetName,
+                    userPhoto: targetPhoto,
+                    rewardLabel: reward.label,
+                    rewardType: reward.type,
+                    timestamp: serverTimestamp()
+                });
+                
+                // 2. Chat Alert
                 await addDoc(collection(db, "wall_messages"), {
                     text: `🚨 JACKPOT! ${targetName} a câștigat ${reward.label}!`, 
                     uid: 'system-alert', name: 'SYSTEM',
-                    photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp()
+                    photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp(),
+                    isDeleted: false, reactions: {}, seenBy: []
                 });
-            } catch(e) {}
+            } catch(e) { console.error("Jackpot Log Error", e); }
         }
     }
 }
