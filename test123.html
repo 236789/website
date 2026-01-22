@@ -3362,14 +3362,11 @@ async function finalizeSpin(idx) {
     let targetUserObj = null; 
     
     if (isEventModeActive && eventSelectedUser) {
-        // In Event Mode, the target is the person the Admin picked
         targetUid = eventSelectedUser.uid;
         targetName = eventSelectedUser.username;
         targetPhoto = eventSelectedUser.image;
         targetUserObj = eventSelectedUser;
-        console.log("Event Mode Result: Targeting Winner ->", targetName);
     } else if (!isEventModeActive) {
-        // In Normal Mode, the target is the person currently logged in
         const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         if(uSnap.exists()) {
             const d = uSnap.data();
@@ -3379,10 +3376,28 @@ async function finalizeSpin(idx) {
         }
     }
 
-    // 2. UI Logic: Who sees what?
     const isMeTarget = auth.currentUser.uid === targetUid;
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
+    // --- OPTIMISTIC UI UPDATE (INSTANT) ---
+    // Dacă eu sunt cel care primește premiul, actualizăm vizual cifrele înainte de baza de date
+    if (isMeTarget) {
+        if (reward.type === "coins") {
+            const coinsEl = document.getElementById('wheelStatsCoins');
+            if (coinsEl) {
+                const currentCoins = targetUserObj ? (targetUserObj.coins || 0) : 0;
+                coinsEl.innerText = formatCurrency(currentCoins + reward.val);
+            }
+        } else if (reward.type === "diamonds") {
+            const diaEl = document.getElementById('wheelStatsDiamonds');
+            if (diaEl) {
+                const currentDia = targetUserObj ? (targetUserObj.diamonds || 0) : 0;
+                diaEl.innerText = currentDia + reward.val;
+            }
+        }
+    }
+
+    // 2. UI Logic: Who sees what?
     const shouldShowUserPopup = (!isEventModeActive) || (isEventModeActive && isMeTarget);
     const shouldShowAdminPopup = isEventModeActive && isAdmin && !isMeTarget;
 
@@ -3407,10 +3422,9 @@ async function finalizeSpin(idx) {
         rewardIconHtml = `<span style="font-size: 30px;">📉</span>`;
     }
 
-    // --- POPUPS (VISUALS ONLY) ---
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
-    // 1. User Popup (Shown to the Winner)
+    // 1. User Popup
     if (shouldShowUserPopup) {
         const modal = document.getElementById('questRewardModal');
         const titleText = modal.querySelector('h2');
@@ -3439,7 +3453,7 @@ async function finalizeSpin(idx) {
         modal.classList.add('active');
     }
 
-    // 2. Admin/Public Popup (Shown to the Admin watching the win)
+    // 2. Admin/Public Popup
     if (shouldShowAdminPopup) {
         const adminModal = document.getElementById('adminSpinResultModal');
         const admImg = document.getElementById('adminSpinUserImg');
@@ -3473,22 +3487,17 @@ async function finalizeSpin(idx) {
     if (reward.type === "xp") return;
 
     let shouldWriteToDB = false;
-
     if (isEventModeActive) {
-        // ONLY the Admin who initiated the spin performs the database write
         if (auth.currentUser.uid === currentSpinAdminId) {
             shouldWriteToDB = true;
-            console.log("Admin writing reward to Winner's account...");
         }
     } else {
-        // Normal mode: Everyone writes for themselves
         shouldWriteToDB = true;
     }
 
     if (shouldWriteToDB) {
         const userRef = doc(db, "accounts", targetUid);
         
-        // Update both the main balance AND the Wheel Statistics for the leaderboard
         if (reward.type === "coins") {
             await updateDoc(userRef, { 
                 coins: increment(reward.val), 
@@ -3508,7 +3517,6 @@ async function finalizeSpin(idx) {
             await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
         }
 
-        // Log the transaction
         try {
             await addDoc(collection(db, "transactions"), {
                 userId: targetUid, 
@@ -3522,7 +3530,6 @@ async function finalizeSpin(idx) {
             });
         } catch(e) { console.error("Transaction Log Error:", e); }
 
-        // Handle Jackpot Histories
         const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
         if (isJackpot) {
             try {
