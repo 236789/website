@@ -1652,15 +1652,16 @@ input:checked + .slider:before { transform: translateX(24px); }
 @keyframes pulseGold { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
 /* --- UPDATED PARTICIPANTS MODAL --- */
+/* --- UPDATED PARTICIPANTS MODAL --- */
 .participants-modal {
     position: fixed;
     top: 50%; 
-    right: 15%; /* Closer to the center/wheel */
-    transform: translateY(-50%); /* Perfectly centered vertically */
-    width: 400px; /* Bigger width */
-    height: 600px; /* Taller */
+    right: 20px; /* Pushed to the edge so it doesn't cover the wheel */
+    transform: translateY(-50%); 
+    width: 350px; /* Slightly slimmer to fit better */
+    height: 600px; 
     background: rgba(5, 11, 20, 0.98);
-    border: 2px solid var(--primary); /* Thicker border */
+    border: 2px solid var(--primary); 
     border-radius: 25px;
     padding: 20px;
     z-index: 15000;
@@ -1679,7 +1680,7 @@ input:checked + .slider:before { transform: translateX(24px); }
 
 /* Rich Participant Item */
 .part-item {
-    display: flex; align-items: center; gap: 15px;
+    display: flex; align-items: center; gap: 12px;
     padding: 12px; 
     border-bottom: 1px solid rgba(255,255,255,0.1);
     cursor: pointer; transition: 0.2s;
@@ -1692,9 +1693,9 @@ input:checked + .slider:before { transform: translateX(24px); }
 .part-item:hover { background: rgba(41, 243, 255, 0.1); transform: translateX(-5px); }
 .part-item.selected-user { border: 2px solid #ffd700; background: rgba(255, 215, 0, 0.1); }
 
-/* Mini Frame Logic for List */
+/* Mini Frame Logic */
 .mini-frame-wrapper {
-    position: relative; width: 50px; height: 50px; flex-shrink: 0;
+    position: relative; width: 45px; height: 45px; flex-shrink: 0;
     display: flex; justify-content: center; align-items: center;
 }
 .mini-user-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
@@ -1703,7 +1704,7 @@ input:checked + .slider:before { transform: translateX(24px); }
 /* Mini Banner Background */
 .part-item-banner-bg {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    opacity: 0.15; z-index: 0; pointer-events: none; background-size: cover; background-position: center;
+    opacity: 0.2; z-index: 0; pointer-events: none; background-size: cover; background-position: center;
 }
 </style>
 </head>
@@ -4038,8 +4039,8 @@ window.joinWheelEvent = async () => {
     await updateDoc(doc(db, "site_metadata", "wheel_event"), { participants: arrayUnion(auth.currentUser.uid) });
 };
 
-// --- PARTICIPANTS LIST LOGIC (REAL-TIME & RICH UI) ---
-let participantsUnsub = null; // To stop listening when closed
+// --- PARTICIPANTS LIST LOGIC (FIXED BADGES) ---
+let participantsUnsub = null; 
 
 window.openParticipantsList = () => {
     const modal = document.getElementById('participantsModal');
@@ -4047,10 +4048,8 @@ window.openParticipantsList = () => {
     modal.classList.add('active');
     list.innerHTML = '<div style="text-align:center; padding:20px; color:#888;">Se conectează la lista live...</div>';
 
-    // Stop previous listener if any
     if (participantsUnsub) participantsUnsub();
 
-    // LISTEN LIVE to the participants array
     participantsUnsub = onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
@@ -4062,51 +4061,52 @@ window.openParticipantsList = () => {
             return;
         }
 
-        // We fetch user data for everyone in the list
-        // Note: Doing this inside a snapshot might cause flickering if not handled carefully,
-        // but it ensures we see the latest cosmetics.
-        
-        // Build HTML string first
         let htmlContent = '';
 
         for (const uid of participants) {
-            // Fetch User Data
             const uSnap = await getDoc(doc(db, "accounts", uid));
             if (!uSnap.exists()) continue;
             const uData = uSnap.data();
 
-            // 1. FRAME Logic
+            // 1. FRAME
             let frameHtml = `<img src="${uData.image || 'https://iili.io/fXks1Dv.png'}" class="mini-user-img">`;
             if (uData.equippedFrame && uData.equippedFrame.img) {
                 frameHtml += `<img src="${uData.equippedFrame.img}" class="mini-frame-overlay">`;
             }
 
-            // 2. NAME/TEXT Logic
+            // 2. NAME/TEXT
             let nameHtml = `<span style="font-weight:700; font-size:14px; color:#fff;">${uData.username}</span>`;
             if (uData.equippedText && uData.equippedText.cssClass) {
                 nameHtml = `<span class="${uData.equippedText.cssClass}" style="font-weight:900; font-size:15px;">${uData.username}</span>`;
             }
 
-            // 3. BADGE Logic
+            // 3. BADGE (FIXED LOGIC)
             let badgeHtml = '';
             if (uData.equippedBadge) {
-                badgeHtml = `<i class="fas ${uData.equippedBadge.icon}" style="color:${uData.equippedBadge.color.includes('gradient') ? '#fff' : uData.equippedBadge.color}; margin-left:5px; font-size:12px;" title="${uData.equippedBadge.text}"></i>`;
+                // Try to find the fresh definition in BADGES_DB
+                // This fixes issues where the saved badge data in the user profile is old/incomplete
+                const dbBadge = BADGES_DB.find(b => b.id === uData.equippedBadge.id);
+                const badgeData = dbBadge || uData.equippedBadge; // Fallback if not found
+
+                // Handle Gradient Colors for Icons
+                let style = "";
+                if(badgeData.color && badgeData.color.includes('gradient')) {
+                    style = `background:${badgeData.color}; -webkit-background-clip: text; -webkit-text-fill-color: transparent;`;
+                } else {
+                    style = `color:${badgeData.color || '#fff'};`;
+                }
+
+                badgeHtml = `<i class="fas ${badgeData.icon}" style="${style} margin-left:6px; font-size:12px;" title="${badgeData.text}"></i>`;
             }
 
-            // 4. BANNER Logic (Background)
-            let bannerStyle = '';
+            // 4. BANNER
             let bannerClass = '';
-            if (uData.equippedBanner) {
-                // If it's a CSS class banner
-                bannerClass = uData.equippedBanner.cssClass;
-            }
+            if (uData.equippedBanner) bannerClass = uData.equippedBanner.cssClass;
 
-            // Check if this user is currently selected
             const isSelected = (uid === currentSelected) ? 'selected-user' : '';
 
             htmlContent += `
             <div class="part-item ${isSelected} ${bannerClass}" onclick="selectEventUser('${uid}', '${uData.username}')">
-                <!-- Banner Background Layer -->
                 ${bannerClass ? `<div class="part-item-banner-bg"></div>` : ''}
                 
                 <div class="mini-frame-wrapper">
@@ -4114,11 +4114,13 @@ window.openParticipantsList = () => {
                 </div>
                 
                 <div style="z-index:1; display:flex; flex-direction:column;">
-                    <div>${nameHtml} ${badgeHtml}</div>
-                    <div style="font-size:10px; color:#aaa;">Diamante: ${uData.diamonds || 0}</div>
+                    <div style="display:flex; align-items:center;">${nameHtml} ${badgeHtml}</div>
+                    <div style="font-size:10px; color:#aaa; margin-top:2px;">
+                        Diamante: <span style="color:#00ffcc; font-weight:700;">${uData.diamonds || 0}</span>
+                    </div>
                 </div>
 
-                ${isSelected ? '<div style="margin-left:auto; color:#ffd700; font-weight:900;">SELECTED</div>' : ''}
+                ${isSelected ? '<div style="margin-left:auto; color:#ffd700; font-weight:900; font-size:10px;">SELECTED</div>' : ''}
             </div>`;
         }
 
