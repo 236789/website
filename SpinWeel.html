@@ -2195,6 +2195,7 @@ const ADMIN_EMAILS = ['nicaemmanuel433qe@gmail.com', 'kevin.trinity2020@gmail.co
 let isEventModeActive = false;
 let eventSelectedUser = null; // Stores the full user object of the chosen winner
 let eventParticipants = []; // Stores UIDs
+let lastProcessedSpinTime = 0; // Tracks the last spin to prevent re-spinning on refresh
 
 
 
@@ -2612,20 +2613,20 @@ window.toggleRewardsModal = (show) => {
 };
 
 // Updated Physics Engine for Perfect Landing
-async function startSpin() {
+// --- MODIFIED ANIMATION (ACCEPTS TARGET) ---
+async function startSpin(forcedIndex = null) {
     if (isSpinning) return;
     isSpinning = true;
 
-    const rewardIdx = pickRewardIndex();
+    // Use forced index (Event Mode) or random (Normal Mode)
+    const rewardIdx = (forcedIndex !== null) ? forcedIndex : pickRewardIndex();
     const sliceWidth = 360 / 12;
     
-    // The trick: Calculate the exact rotation needed to put the middle 
-    // of the chosen slice at the 270-degree mark (top).
     const currentRotationDeg = (rotation * 180 / Math.PI) % 360;
     const targetMidAngle = (rewardIdx * sliceWidth) + (sliceWidth / 2);
     const landingRotation = (360 - targetMidAngle + 270) % 360;
     
-    const extraSpins = 360 * 8; // 8 full spins for excitement
+    const extraSpins = 360 * 8; 
     const totalTargetRotation = extraSpins + landingRotation;
     
     const startTime = performance.now();
@@ -2634,10 +2635,7 @@ async function startSpin() {
     function animate(currentTime) {
         let elapsed = currentTime - startTime;
         let progress = Math.min(elapsed / duration, 1);
-        
-        // Next-level easing (Cubic Out)
         let ease = 1 - Math.pow(1 - progress, 4);
-        
         let currentDeg = (totalTargetRotation * ease);
         rotation = currentDeg * (Math.PI / 180);
         
@@ -2654,6 +2652,7 @@ async function startSpin() {
 
 // Funcție unică de pornire Spin (Corectată)
 // --- MODIFIED ATTEMPT SPIN ---
+// --- MODIFIED ATTEMPT SPIN (SYNC TRIGGER) ---
 async function attemptSpin(isFreeAttempt) {
     if (isSpinning) return;
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
@@ -2662,54 +2661,50 @@ async function attemptSpin(isFreeAttempt) {
     const snap = await getDoc(userRef);
     const data = snap.data();
     
-    // --- EVENT MODE LOGIC START ---
+    // --- EVENT MODE LOGIC ---
     if (isEventModeActive) {
-        // 1. Check if Admin
-        if (!ADMIN_EMAILS.includes(auth.currentUser.email)) {
-            return alert("Doar adminul poate învârti în timpul evenimentului!");
-        }
-        // 2. Check if User Selected
-        if (!eventSelectedUser) {
-            return alert("Alege un participant mai întâi!");
-        }
-
-        // 3. Admin Pays (-1 Diamond)
-        if ((data.diamonds || 0) < 1) {
-            return alert("Adminule, nu ai diamante pentru spin!");
-        }
-
-        // Deduct from Admin
+        if (!ADMIN_EMAILS.includes(auth.currentUser.email)) return alert("Doar adminul poate învârti!");
+        if (!eventSelectedUser) return alert("Alege un participant!");
+        
+        // 1. Check if Admin has diamonds
+        if ((data.diamonds || 0) < 1) return alert("Adminule, nu ai diamante!");
+        
+        // 2. Admin pays immediately
         await logTransaction(-1, "DIAMONDS", `Event Spin for ${eventSelectedUser.username}`);
         await updateDoc(userRef, { diamonds: increment(-1) });
 
-        // Start Spin
-        audioSpin.currentTime = 0;
-        audioSpin.play().catch(()=>{});
-        startSpin();
-        return; // Exit function, don't run normal logic
-    }
-    // --- EVENT MODE LOGIC END ---
+        // 3. Calculate Result LOCALLY (Admin decides fate)
+        const resultIdx = pickRewardIndex();
 
-    // ... (Keep your existing Normal Mode logic below) ...
+        // 4. Update Database to Trigger Everyone else
+        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
+            spinAction: {
+                index: resultIdx,
+                timestamp: Date.now(),
+                adminId: auth.currentUser.uid
+            }
+        });
+
+        // The onSnapshot listener will catch this and start the animation for the Admin too.
+        return; 
+    }
+
+    // --- NORMAL MODE LOGIC ---
     const now = Date.now();
     let lastSpinTime = 0;
-    if (data.lastWheelSpin) {
-        lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
-    }
-    const freeAvailable = (now - lastSpinTime) >= (12 * 60 * 60 * 1000);
-
+    if (data.lastWheelSpin) lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
+    
     if (isFreeAttempt) {
-        if (!freeAvailable) return alert("Free Spin nu este disponibil.");
+        if ((now - lastSpinTime) < (12 * 60 * 60 * 1000)) return alert("Free Spin nu este disponibil.");
         await updateDoc(userRef, { lastWheelSpin: serverTimestamp() });
     } else {
         if ((data.diamonds || 0) < 1) return alert("Nu ai destule diamante!");
-        await logTransaction(-1, "DIAMONDS", "Spin Cost");
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    audioSpin.currentTime = 0;
-    audioSpin.play().catch(()=>{});
-    startSpin();
+    // In normal mode, we just spin locally
+    audioSpin.currentTime = 0; audioSpin.play().catch(()=>{});
+    startSpin(null);
 }
 
 document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
@@ -2752,249 +2747,228 @@ function pickRewardIndex() {
 // Add these imports to your top import line if missing: 
 // query, orderBy, limit, getDocs
  
-// --- MODIFIED FINALIZE SPIN ---
+// --- MODIFIED REWARD LOGIC ---
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
+    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
     
-    // Determine who gets the reward
+    // Determine Target
     let targetUid = auth.currentUser.uid;
-    let targetName = "Un utilizator"; // Fallback
+    let targetName = "Jucător";
     
-    if (isEventModeActive) {
-        // In event mode, the selected user gets the reward
-        if(eventSelectedUser) {
-            targetUid = eventSelectedUser.uid;
-            targetName = eventSelectedUser.username;
-        } else {
-            console.error("No selected user in event mode finalize!");
-            return;
-        }
-    } 
-
-    const userRef = doc(db, "accounts", targetUid);
-    
-    // Fetch target user data fresh to check duplicates/badges
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.exists() ? userSnap.data() : {};
-    
-    if(!isEventModeActive) {
-         // Normal mode name logic
-         targetName = userData.username || auth.currentUser.displayName;
+    if (isEventModeActive && eventSelectedUser) {
+        targetUid = eventSelectedUser.uid;
+        targetName = eventSelectedUser.username;
+    } else if (!isEventModeActive) {
+        // Normal Mode: Target is Me
+        const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        if(uSnap.exists()) targetName = uSnap.data().username;
     }
-    const userPhoto = userData.image || "https://iili.io/fXks1Dv.png";
 
-    // Setup Modal Elements
     const modal = document.getElementById('questRewardModal');
-    const amountText = modal.querySelector('.reward-coins-box span');
-    const coinsLabel = modal.querySelector('p'); 
-    const titleText = modal.querySelector('h2');
-    const iconImg = modal.querySelector('.reward-coins-box img');
-    const msgP = modal.querySelector('.reward-card p:nth-of-type(1)'); // "Felicitari..." paragraph
-
-    // --- LOGIC: DUPLICATES ---
-    let isDuplicate = false;
-    if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) isDuplicate = true;
-    if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) isDuplicate = true;
-
-    if (isDuplicate) {
-        audioReward.currentTime = 0; audioReward.play();
-        titleText.innerHTML = `<span style="font-size: 24px;">😅</span> UPS!`;
-        msgP.innerText = `Deja deții acest item! ${targetName} primește consolare:`;
-        amountText.innerText = "5000";
-        coinsLabel.innerText = "KSDA COINS";
-        iconImg.src = "https://iili.io/fhc1SKQ.png";
-        
-        await updateDoc(userRef, { coins: increment(5000), "wheelStats.coins": increment(5000) });
-        modal.classList.add('active');
-        return;
-    }
-
-    // --- REWARD DISTRIBUTION ---
-    // Handle XP separately (Normal mode only, or if accidentally triggered)
-    if (reward.type === "xp") {
-        audioFail.currentTime = 0; audioFail.play();
-        titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
-        amountText.innerText = "EXPERIENȚĂ";
-        coinsLabel.innerText = "DATA VIITOARE!";
-        msgP.innerText = "Nu ai câștigat nimic material.";
-        iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png";
-        modal.classList.add('active');
-        return;
-    }
-
-    // Standard Rewards
-    let isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type === 'badge' || reward.type === 'banner';
     
-    if (isJackpot) {
-        audioJackpot.currentTime = 0; audioJackpot.play(); launchConfetti();
-    } else {
-        audioReward.currentTime = 0; audioReward.play(); launchConfetti();
+    // --- 1. POPUP LOGIC (WHO SEES IT?) ---
+    // If Event Mode: Only Winner sees popup. Admin sees "Success" (optional, simplified here).
+    // If Normal Mode: Only I see popup.
+    
+    const shouldShowPopup = (!isEventModeActive) || (isEventModeActive && auth.currentUser.uid === targetUid);
+
+    if (shouldShowPopup) {
+        const amountText = modal.querySelector('.reward-coins-box span');
+        const coinsLabel = modal.querySelector('p'); 
+        const titleText = modal.querySelector('h2');
+        const iconImg = modal.querySelector('.reward-coins-box img');
+        const msgP = modal.querySelector('.reward-card p:nth-of-type(1)');
+
+        // Play Sound
+        if((reward.type === 'diamonds' && reward.val >= 10) || reward.type === 'coins' && reward.val >= 2500) {
+             audioJackpot.currentTime=0; audioJackpot.play();
+        } else {
+             audioReward.currentTime=0; audioReward.play();
+        }
+        launchConfetti();
+
+        titleText.innerHTML = `<span style="font-size: 24px;">🎉</span> FELICITĂRI!`;
+        msgP.innerText = `Ai câștigat la roată:`;
+        
+        if (reward.type === "coins") {
+            amountText.innerText = reward.label;
+            coinsLabel.innerText = "KSDA COINS";
+            iconImg.src = "https://iili.io/fhc1SKQ.png";
+        } 
+        else if (reward.type === "diamonds") {
+            amountText.innerText = reward.label;
+            coinsLabel.innerText = "DIAMANTE";
+            iconImg.src = "https://iili.io/fv5bmtj.png";
+        }
+        else {
+            amountText.innerText = "ITEM";
+            coinsLabel.innerText = reward.label;
+            iconImg.src = "https://iili.io/fXvBEiB.png";
+        }
+        modal.classList.add('active');
     }
 
-    titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> CÂȘTIGĂTOR!`;
-    msgP.innerText = `${targetName} a câștigat:`;
+    // --- 2. DATABASE WRITE LOGIC (WHO WRITES IT?) ---
+    // In Event Mode, only ADMIN writes to DB to give rewards.
+    // In Normal Mode, the USER writes their own reward.
+    
+    const shouldWriteToDB = (isEventModeActive && isAdmin) || (!isEventModeActive);
 
-    // Database Updates
-    if (reward.type === "coins") {
-        amountText.innerText = reward.label;
-        coinsLabel.innerText = "KSDA COINS";
-        iconImg.src = "https://iili.io/fhc1SKQ.png";
-        await updateDoc(userRef, { coins: increment(reward.val), "wheelStats.coins": increment(reward.val) });
-        // Log explicitly for the target user if possible, or just log generically
-    } 
-    else if (reward.type === "diamonds") {
-        amountText.innerText = reward.label;
-        coinsLabel.innerText = "DIAMANTE";
-        iconImg.src = "https://iili.io/fv5bmtj.png";
-        await updateDoc(userRef, { diamonds: increment(reward.val), "wheelStats.diamonds": increment(reward.val) });
-    }
-    else if (reward.type === "badge") {
-        amountText.innerText = "BADGE";
-        coinsLabel.innerText = reward.label;
-        iconImg.src = "https://iili.io/fXvBEiB.png";
-        await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
-    }
-    else if (reward.type === "banner") {
-        amountText.innerText = "BANNER";
-        coinsLabel.innerText = reward.label;
-        iconImg.src = "https://iili.io/fXvBEiB.png";
-        await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
-    }
-
-    // Show Modal
-    modal.classList.add('active');
-
-    // Jackpot Log & Chat Alert
-    if (isJackpot) {
-        try {
-            await addDoc(collection(db, "wheel_jackpot_history"), {
-                username: targetName,
-                userPhoto: userPhoto,
-                rewardLabel: reward.label,
-                rewardType: reward.type,
-                timestamp: serverTimestamp()
+    if (shouldWriteToDB) {
+        const userRef = doc(db, "accounts", targetUid);
+        
+        if (reward.type === "coins") {
+            await updateDoc(userRef, { 
+                coins: increment(reward.val), 
+                "wheelStats.coins": increment(reward.val) 
             });
-            
-            await addDoc(collection(db, "wall_messages"), {
-                text: `🚨 EVENT JACKPOT! ${targetName} a câștigat ${reward.label}!`, 
-                uid: 'system-alert', name: 'SYSTEM',
-                photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp(),
-                isDeleted: false, reactions: {}, seenBy: []
+        } 
+        else if (reward.type === "diamonds") {
+            await updateDoc(userRef, { 
+                diamonds: increment(reward.val), 
+                "wheelStats.diamonds": increment(reward.val) 
             });
-        } catch(e) {}
+        }
+        else if (reward.type === "badge") {
+            await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
+        }
+        else if (reward.type === "banner") {
+            await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
+        }
+
+        // Log Jackpot
+        if((reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b')) {
+             try {
+                await addDoc(collection(db, "wall_messages"), {
+                    text: `🚨 JACKPOT! ${targetName} a câștigat ${reward.label}!`, 
+                    uid: 'system-alert', name: 'SYSTEM',
+                    photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp()
+                });
+            } catch(e) {}
+        }
     }
 }
 
  
 
 // --- AUTH STATE CHANGED & REAL-TIME LOGIC ---
+// --- MAIN AUTH & REAL-TIME LOGIC ---
 onAuthStateChanged(auth, user => {
     if (user) {
-        // 1. UI Toggle (Show Game, Hide Wall)
+        // UI Toggle (Show Game, Hide Wall)
         const wheelWall = document.getElementById('wheelLoginWall');
         const wheelGame = document.getElementById('wheelGameContainer');
         if (wheelWall) wheelWall.style.display = 'none';
         if (wheelGame) wheelGame.style.display = 'flex';
 
         drawWheel();
-
-        // Variables for Timer logic
         let lastSpinTime = 0; 
 
-        // --- A. LISTEN TO SITE METADATA (EVENT MODE) ---
-        // This controls the "Event Mode" state for everyone
+        // --- 1. LISTEN TO EVENT METADATA (Controls everything: Sync, Spin, Switch) ---
         onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
-            const data = snap.exists() ? snap.data() : { isActive: false, selectedUserId: null, participants: [] };
+            const data = snap.exists() ? snap.data() : { isActive: false, selectedUserId: null, participants: [], spinAction: null };
             
-            // Global Variables Update
             isEventModeActive = data.isActive;
             eventParticipants = data.participants || [];
             const selectedId = data.selectedUserId;
+            const spinAction = data.spinAction;
 
-            // 1. Update Admin Toggle Switch
+            // --- A. SYNCED SPIN TRIGGER ---
+            // If the database says "Spin happened at X time", we check if we've seen it yet.
+            if (spinAction && spinAction.timestamp) {
+                if (spinAction.timestamp > lastProcessedSpinTime) {
+                    lastProcessedSpinTime = spinAction.timestamp;
+                    
+                    // Only spin if the event happened recently (last 5 seconds)
+                    // This prevents spinning when you refresh the page hours later.
+                    if (Date.now() - spinAction.timestamp < 5000) {
+                        console.log("SYNC: Starting Spin to index", spinAction.index);
+                        
+                        // Play Sound for everyone
+                        audioSpin.currentTime = 0; 
+                        audioSpin.play().catch(()=>{});
+                        
+                        // Start Animation forcing the result
+                        startSpin(spinAction.index);
+                    }
+                }
+            }
+
+            // --- B. UI UPDATES ---
             const toggle = document.getElementById('eventModeToggle');
             if(toggle) toggle.checked = isEventModeActive;
 
-            // 2. Wheel Visuals (XP vs Coins)
+            // Swap Rewards Visuals
             if(isEventModeActive) {
-                // Event Mode: Replace XP with 500 Coins (Pink)
                 REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
             } else {
-                // Normal Mode: Restore XP
                 REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
             }
-            drawWheel();
+            // Only redraw if not currently spinning to avoid glitching the animation
+            if(!isSpinning) drawWheel();
 
-            // 3. UI Controls (Buttons & Admin Panel)
+            // Handle Buttons & Admin Panel
             const controlsDiv = document.querySelector('.controls-container'); 
             const eventDiv = document.getElementById('eventActionContainer');
             const joinBtn = document.getElementById('btnJoinEvent');
             const statusTxt = document.getElementById('eventStatusText');
             const adminPanel = document.getElementById('adminEventPanel');
-
             const isAdmin = ADMIN_EMAILS.includes(user.email);
             
-            // Show/Hide Admin Panel
             if(adminPanel) adminPanel.style.display = isAdmin ? 'flex' : 'none';
 
             if (isEventModeActive) {
-                // --- EVENT IS ON ---
-                
-                // Button Logic
+                // EVENT ON
                 if (isAdmin) {
-                    // Admin only sees spin buttons if a user is selected
                     controlsDiv.style.display = selectedId ? 'flex' : 'none';
                     if(eventDiv) eventDiv.style.display = 'none';
                 } else {
-                    // Normal Users see Join UI
                     controlsDiv.style.display = 'none';
                     if(eventDiv) eventDiv.style.display = 'flex';
                     
                     if(eventParticipants.includes(user.uid)) {
                         joinBtn.style.display = 'none';
-                        statusTxt.innerHTML = `<span style="color:#00ffcc"><i class="fas fa-check"></i> ÎNSCRIS!</span> Așteaptă adminul.`;
+                        statusTxt.innerHTML = `<span style="color:#00ffcc">✅ ÎNSCRIS!</span> Așteaptă extragerea.`;
                     } else {
                         joinBtn.style.display = 'block';
                         statusTxt.innerText = "Înscrie-te pentru a fi ales!";
                     }
                 }
 
-                // Stats Pill Logic (Show SELECTED User, not Logged in User)
+                // Stats Pill Logic
                 const pfp = document.getElementById('wheelStatsPfp');
                 const name = document.getElementById('wheelStatsName');
                 const dia = document.getElementById('wheelStatsDiamonds');
                 const pill = document.querySelector('.wheel-stats-pill');
 
                 if (selectedId) {
-                    // Fetch Selected User Data
-                    // Note: In a real app, optimize this to not read every time metadata changes
-                    // but for this scale, it's fine.
                     try {
-                        const selSnap = await getDoc(doc(db, "accounts", selectedId));
-                        if(selSnap.exists()) {
-                            eventSelectedUser = selSnap.data();
-                            
+                        // Fetch selected user details if not cached or different
+                        if (!eventSelectedUser || eventSelectedUser.uid !== selectedId) {
+                            const selSnap = await getDoc(doc(db, "accounts", selectedId));
+                            if(selSnap.exists()) eventSelectedUser = selSnap.data();
+                        }
+                        
+                        if (eventSelectedUser) {
                             pfp.src = eventSelectedUser.image || "https://iili.io/fXks1Dv.png";
                             name.innerText = eventSelectedUser.username || "Winner";
                             dia.innerText = eventSelectedUser.diamonds || 0;
-                            
-                            // Visual Cue that it's a special user
-                            pill.style.boxShadow = "0 0 20px #ff00ff"; 
+                            pill.style.boxShadow = "0 0 20px #ff00ff";
                             pill.style.borderColor = "#ff00ff";
                         }
-                    } catch(e) { console.error("Error loading selected user", e); }
+                    } catch(e) {}
                 } else {
-                    // No user selected yet
                     pfp.src = "https://iili.io/fXks1Dv.png";
                     dia.innerText = "-";
                     pill.style.boxShadow = "none";
-                    pill.style.borderColor = "#333";
-
+                    pill.style.borderColor = "var(--primary)";
+                    
                     if(isAdmin) {
                         name.innerText = "ALEGE UN PARTICIPANT";
                         name.style.color = "#ffd700";
-                        name.onclick = window.openParticipantsList; // Make clickable for admin
+                        name.onclick = window.openParticipantsList;
                         name.style.cursor = "pointer";
                     } else {
                         name.innerText = "Așteptare extragere...";
@@ -3005,97 +2979,60 @@ onAuthStateChanged(auth, user => {
                 }
 
             } else {
-                // --- EVENT IS OFF (Normal Mode) ---
+                // EVENT OFF
                 controlsDiv.style.display = 'flex';
                 if(eventDiv) eventDiv.style.display = 'none';
                 
-                // Reset Pill Styles
                 const pill = document.querySelector('.wheel-stats-pill');
                 if(pill) {
                     pill.style.boxShadow = "0 0 15px rgba(41, 243, 255, 0.15)";
                     pill.style.borderColor = "var(--primary)";
                 }
                 const name = document.getElementById('wheelStatsName');
-                if(name) {
-                    name.onclick = null;
-                    name.style.cursor = "default";
-                    name.style.color = "#fff";
-                }
+                if(name) { name.onclick = null; name.style.cursor = "default"; name.style.color = "#fff"; }
             }
         });
 
-        // --- B. LISTEN TO CURRENT USER (Standard Stats) ---
-        const userRef = doc(db, "accounts", user.uid);
-        onSnapshot(userRef, (docSnap) => {
+        // --- 2. STANDARD USER LISTENER (Timer & Local Stats) ---
+        onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-
-                // ONLY update the visual stats pill if Event Mode is OFF
-                // If Event Mode is ON, the metadata listener above handles the visual stats
+                // Only update pill locally if event is OFF
                 if (!isEventModeActive) {
-                    const wheelPfp = document.getElementById('wheelStatsPfp');
-                    const wheelName = document.getElementById('wheelStatsName');
-                    const wheelDia = document.getElementById('wheelStatsDiamonds');
-                    
-                    if (wheelPfp) wheelPfp.src = data.image || user.photoURL;
-                    if (wheelName) wheelName.innerText = data.username || user.displayName || "Gamer";
-                    if (wheelDia) wheelDia.innerText = data.diamonds || 0;
+                    document.getElementById('wheelStatsPfp').src = data.image || user.photoURL;
+                    document.getElementById('wheelStatsName').innerText = data.username || user.displayName;
+                    document.getElementById('wheelStatsDiamonds').innerText = data.diamonds || 0;
                 }
-
-                // ALWAYS update the timer data regardless of mode
+                // Timer
                 if (data.lastWheelSpin) {
                     lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
                 }
             }
         });
         
-        // --- C. TIMER LOOP (Calculations) ---
+        // --- 3. TIMER LOOP ---
         const timerInterval = setInterval(() => {
-            if (!auth.currentUser) {
-                clearInterval(timerInterval);
-                return;
-            }
-
-            // Calculate difference
+            if (!auth.currentUser) { clearInterval(timerInterval); return; }
             const diff = (12 * 60 * 60 * 1000) - (Date.now() - lastSpinTime);
-            
             const freeBtn = document.getElementById('freeSpinBtn');
-
             if (freeBtn) {
-                // If Event Mode is Active, we might want to hide the timer text or change it,
-                // but usually, we just hide the whole button via the metadata listener.
-                // We keep this running so it's ready when event mode turns off.
-                
                 const btnTop = freeBtn.querySelector('.btn-top');
-                
                 if (diff <= 0) {
-                    // --- AVAILABLE STATE ---
                     if (btnTop) btnTop.innerText = "FREE SPIN";
-                    
-                    freeBtn.style.pointerEvents = "auto"; 
-                    freeBtn.style.opacity = "1";
-                    freeBtn.style.filter = "none";
+                    freeBtn.style.pointerEvents = "auto"; freeBtn.style.opacity = "1"; freeBtn.style.filter = "none";
                 } else {
-                    // --- COOLDOWN STATE ---
                     const h = Math.floor(diff / 3600000);
                     const m = Math.floor((diff % 3600000) / 60000);
-                    const s = Math.floor((diff % 60000) / 1000);
-                    
-                    if (btnTop) btnTop.innerText = `${h}h ${m}m ${s}s`;
-                    
-                    freeBtn.style.pointerEvents = "none"; 
-                    freeBtn.style.opacity = "0.7";
-                    freeBtn.style.filter = "grayscale(0.8)";
+                    if (btnTop) btnTop.innerText = `${h}h ${m}m`;
+                    freeBtn.style.pointerEvents = "none"; freeBtn.style.opacity = "0.7"; freeBtn.style.filter = "grayscale(0.8)";
                 }
             }
         }, 1000);
 
     } else {
-        // LOGGED OUT STATE
-        const wheelWall = document.getElementById('wheelLoginWall');
-        const wheelGame = document.getElementById('wheelGameContainer');
-        if (wheelWall) wheelWall.style.display = 'flex';
-        if (wheelGame) wheelGame.style.display = 'none';
+        // Logged Out
+        document.getElementById('wheelLoginWall').style.display = 'flex';
+        document.getElementById('wheelGameContainer').style.display = 'none';
     }
 });
 
