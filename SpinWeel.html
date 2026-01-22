@@ -2855,6 +2855,7 @@ async function finalizeSpin(idx) {
 
 // --- AUTH STATE CHANGED & REAL-TIME LOGIC ---
 // --- MAIN AUTH & REAL-TIME LOGIC ---
+// --- MAIN AUTH & REAL-TIME LOGIC ---
 onAuthStateChanged(auth, user => {
     if (user) {
         // UI Toggle (Show Game, Hide Wall)
@@ -2865,8 +2866,12 @@ onAuthStateChanged(auth, user => {
 
         drawWheel();
         let lastSpinTime = 0; 
+        
+        // --- NEW: Variables to track the "Selected User" Real-time Listener ---
+        let selectedUserUnsub = null;
+        let currentSelectedId = null;
 
-        // --- 1. LISTEN TO EVENT METADATA (Controls everything: Sync, Spin, Switch) ---
+        // --- 1. LISTEN TO EVENT METADATA (Controls everything) ---
         onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
             const data = snap.exists() ? snap.data() : { isActive: false, selectedUserId: null, participants: [], spinAction: null };
             
@@ -2875,41 +2880,96 @@ onAuthStateChanged(auth, user => {
             const selectedId = data.selectedUserId;
             const spinAction = data.spinAction;
 
-            // --- A. SYNCED SPIN TRIGGER ---
-            // If the database says "Spin happened at X time", we check if we've seen it yet.
+            // --- A. REAL-TIME SELECTED USER LISTENER ---
+            // This ensures the diamond count updates INSTANTLY for everyone when it changes
+            if (isEventModeActive) {
+                if (selectedId !== currentSelectedId) {
+                    currentSelectedId = selectedId;
+                    
+                    // 1. Stop listening to previous user (if any)
+                    if (selectedUserUnsub) {
+                        selectedUserUnsub();
+                        selectedUserUnsub = null;
+                    }
+
+                    // 2. Start listening to NEW user (if exists)
+                    if (selectedId) {
+                        selectedUserUnsub = onSnapshot(doc(db, "accounts", selectedId), (uSnap) => {
+                            if (uSnap.exists()) {
+                                const uData = uSnap.data();
+                                eventSelectedUser = { uid: uSnap.id, ...uData }; // Update Global var
+                                
+                                // UPDATE PILL UI INSTANTLY
+                                document.getElementById('wheelStatsPfp').src = uData.image || "https://iili.io/fXks1Dv.png";
+                                document.getElementById('wheelStatsName').innerText = uData.username || "Winner";
+                                document.getElementById('wheelStatsDiamonds').innerText = uData.diamonds || 0;
+                                
+                                const pill = document.querySelector('.wheel-stats-pill');
+                                if(pill) {
+                                    pill.style.boxShadow = "0 0 20px #ff00ff";
+                                    pill.style.borderColor = "#ff00ff";
+                                }
+                            }
+                        });
+                    } else {
+                        // Event active, but NO user selected yet
+                        eventSelectedUser = null;
+                        document.getElementById('wheelStatsPfp').src = "https://iili.io/fXks1Dv.png";
+                        document.getElementById('wheelStatsDiamonds').innerText = "-";
+                        const pill = document.querySelector('.wheel-stats-pill');
+                        if(pill) {
+                            pill.style.boxShadow = "none";
+                            pill.style.borderColor = "var(--primary)";
+                        }
+                        
+                        const nameEl = document.getElementById('wheelStatsName');
+                        const isAdmin = ADMIN_EMAILS.includes(user.email);
+                        if(isAdmin) {
+                            nameEl.innerText = "ALEGE UN PARTICIPANT";
+                            nameEl.style.color = "#ffd700";
+                            nameEl.onclick = window.openParticipantsList;
+                            nameEl.style.cursor = "pointer";
+                        } else {
+                            nameEl.innerText = "Așteptare extragere...";
+                            nameEl.style.color = "#888";
+                            nameEl.onclick = null;
+                            nameEl.style.cursor = "default";
+                        }
+                    }
+                }
+            } else {
+                // Event Mode turned OFF - Clean up listener
+                if (selectedUserUnsub) {
+                    selectedUserUnsub();
+                    selectedUserUnsub = null;
+                }
+                currentSelectedId = null;
+            }
+
+            // --- B. SYNCED SPIN TRIGGER ---
             if (spinAction && spinAction.timestamp) {
                 if (spinAction.timestamp > lastProcessedSpinTime) {
                     lastProcessedSpinTime = spinAction.timestamp;
-                    
-                    // Only spin if the event happened recently (last 5 seconds)
-                    // This prevents spinning when you refresh the page hours later.
                     if (Date.now() - spinAction.timestamp < 5000) {
                         console.log("SYNC: Starting Spin to index", spinAction.index);
-                        
-                        // Play Sound for everyone
                         audioSpin.currentTime = 0; 
                         audioSpin.play().catch(()=>{});
-                        
-                        // Start Animation forcing the result
                         startSpin(spinAction.index);
                     }
                 }
             }
 
-            // --- B. UI UPDATES ---
+            // --- C. UI UPDATES ---
             const toggle = document.getElementById('eventModeToggle');
             if(toggle) toggle.checked = isEventModeActive;
 
-            // Swap Rewards Visuals
             if(isEventModeActive) {
                 REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
             } else {
                 REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
             }
-            // Only redraw if not currently spinning to avoid glitching the animation
             if(!isSpinning) drawWheel();
 
-            // Handle Buttons & Admin Panel
             const controlsDiv = document.querySelector('.controls-container'); 
             const eventDiv = document.getElementById('eventActionContainer');
             const joinBtn = document.getElementById('btnJoinEvent');
@@ -2936,48 +2996,6 @@ onAuthStateChanged(auth, user => {
                         statusTxt.innerText = "Înscrie-te pentru a fi ales!";
                     }
                 }
-
-                // Stats Pill Logic
-                const pfp = document.getElementById('wheelStatsPfp');
-                const name = document.getElementById('wheelStatsName');
-                const dia = document.getElementById('wheelStatsDiamonds');
-                const pill = document.querySelector('.wheel-stats-pill');
-
-                if (selectedId) {
-                    try {
-                        // Fetch selected user details if not cached or different
-                        if (!eventSelectedUser || eventSelectedUser.uid !== selectedId) {
-                            const selSnap = await getDoc(doc(db, "accounts", selectedId));
-                            if(selSnap.exists()) eventSelectedUser = selSnap.data();
-                        }
-                        
-                        if (eventSelectedUser) {
-                            pfp.src = eventSelectedUser.image || "https://iili.io/fXks1Dv.png";
-                            name.innerText = eventSelectedUser.username || "Winner";
-                            dia.innerText = eventSelectedUser.diamonds || 0;
-                            pill.style.boxShadow = "0 0 20px #ff00ff";
-                            pill.style.borderColor = "#ff00ff";
-                        }
-                    } catch(e) {}
-                } else {
-                    pfp.src = "https://iili.io/fXks1Dv.png";
-                    dia.innerText = "-";
-                    pill.style.boxShadow = "none";
-                    pill.style.borderColor = "var(--primary)";
-                    
-                    if(isAdmin) {
-                        name.innerText = "ALEGE UN PARTICIPANT";
-                        name.style.color = "#ffd700";
-                        name.onclick = window.openParticipantsList;
-                        name.style.cursor = "pointer";
-                    } else {
-                        name.innerText = "Așteptare extragere...";
-                        name.style.color = "#888";
-                        name.onclick = null;
-                        name.style.cursor = "default";
-                    }
-                }
-
             } else {
                 // EVENT OFF
                 controlsDiv.style.display = 'flex';
