@@ -3959,6 +3959,48 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
+
+
+// --- ADMIN HELPERS ---
+document.getElementById('eventModeToggle').addEventListener('change', async (e) => {
+    if(!ADMIN_EMAILS.includes(auth.currentUser.email)) return;
+    await setDoc(doc(db, "site_metadata", "wheel_event"), { isActive: e.target.checked }, { merge: true });
+});
+
+window.joinWheelEvent = async () => {
+    if(!auth.currentUser) return;
+    await updateDoc(doc(db, "site_metadata", "wheel_event"), { participants: arrayUnion(auth.currentUser.uid) });
+};
+
+window.openParticipantsList = async () => {
+    const list = document.getElementById('participantsListContent');
+    document.getElementById('participantsModal').classList.add('active');
+    list.innerHTML = "Se încarcă...";
+    
+    if(eventParticipants.length === 0) { list.innerHTML = "Nimeni înscris."; return; }
+    list.innerHTML = "";
+    
+    for(const uid of eventParticipants) {
+        const uSnap = await getDoc(doc(db, "accounts", uid));
+        if(uSnap.exists()) {
+            const uData = uSnap.data();
+            const div = document.createElement('div');
+            div.className = 'part-item';
+            div.innerHTML = `<img src="${uData.image}" style="width:30px; height:30px; border-radius:50%;"> <span style="color:#fff; font-size:12px;">${uData.username}</span>`;
+            div.onclick = async () => {
+                if(confirm(`Selectezi pe ${uData.username}?`)) {
+                    await updateDoc(doc(db, "site_metadata", "wheel_event"), { selectedUserId: uid });
+                    document.getElementById('participantsModal').classList.remove('active');
+                }
+            };
+            list.appendChild(div);
+        }
+    }
+};
+
+window.resetEventData = async () => {
+    if(confirm("Resetezi lista?")) await updateDoc(doc(db, "site_metadata", "wheel_event"), { participants: [], selectedUserId: null });
+};
   </script>
 </body>
 </html>
