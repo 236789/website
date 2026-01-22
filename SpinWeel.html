@@ -1297,57 +1297,54 @@
 #flyingDiamond { position: fixed; width: 55px; z-index: 40000; pointer-events: none; display: none; }
 
 
-
-/* Stilul Butoanelor Albastre (SPIN) */
 .btn-spin-blue {
-    background: #0d62cc; /* Partea de jos (umbra) */
+    background: #0d62cc; 
     border-radius: 12px;
     border: none;
     padding: 0;
     cursor: pointer;
-    outline-offset: 4px;
-    transition: filter 250ms;
+    display: inline-block;
+    height: fit-content; /* Force it to only be as tall as the text */
+    text-decoration: none;
+    overflow: visible; /* Ensures the top part doesn't get cut off */
 }
+
 .btn-spin-blue .btn-top {
-    display: block;
-    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    /* Reduce this if they are too wide */
+    min-width: 140px; 
+    /* Adjust padding to control the actual size */
+    padding: 12px 20px; 
     border-radius: 12px;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 900;
-    background: #2196f3; /* Culoarea de sus */
+    background: #2196f3;
     color: white;
-    transform: translateY(-4px);
-    transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
-    font-family: 'Poppins', sans-serif;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-}
-
-/* Stilul Butonului Gri (AUTO) */
-.btn-auto-grey {
-    background: #37474f;
-    border-radius: 12px;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-}
-.btn-auto-grey .btn-top {
-    display: block;
-    padding: 12px 24px;
-    border-radius: 12px;
-    font-size: 16px;
-    font-weight: 900;
-    background: #546e7a;
-    color: white;
-    transform: translateY(-4px);
-    transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+    /* Reduce the lift slightly so the 'basement' isn't so thick */
+    transform: translateY(-4px); 
+    transition: transform 200ms;
     font-family: 'Poppins', sans-serif;
 }
+/* 3. The Gem Icon Fix */
+.btn-spin-blue .btn-top img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    display: block; /* Removes the bottom "baseline" gap */
+}
 
-.btn-spin-blue:active .btn-top, .btn-auto-grey:active .btn-top {
-    transform: translateY(-1px);
+/* 4. Smooth Interaction */
+.btn-spin-blue:hover .btn-top {
+    transform: translateY(-8px); /* Lift slightly more on hover */
+}
+
+.btn-spin-blue:active .btn-top {
+    transform: translateY(-2px); /* Sink down when clicked */
     transition: transform 34ms;
 }
-
 /* Beculețele de pe margine */
 .wheel-container-styled {
     position: relative;
@@ -2144,6 +2141,18 @@ input:checked + .slider:before { transform: translateX(24px); }
     from { transform: scale(1); opacity: 0.9; box-shadow: 0 0 10px rgba(41, 243, 255, 0.2); }
     to { transform: scale(1.05); opacity: 1; box-shadow: 0 0 25px rgba(41, 243, 255, 0.5); }
 }
+
+
+.controls-container {
+    margin-top: 30px;
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    /* ADD THIS LINE BELOW */
+    align-items: flex-end; 
+}
 </style>
 </head>
 <body>
@@ -2550,20 +2559,29 @@ input:checked + .slider:before { transform: translateX(24px); }
         </button>
 
         <!-- Buton 2: Spin for 1 Diamond -->
-        <button id="paidSpinBtn" class="btn-spin-blue">
-            <span class="btn-top">
-                SPIN -1 <img src="https://iili.io/fv5bmtj.png" width="22" style="vertical-align: middle;">
-            </span>
-        </button>
+<button id="paidSpinBtn" class="btn-spin-blue">
+    <span class="btn-top">
+        SPIN -1 <img src="https://iili.io/fv5bmtj.png">
+    </span>
+</button>
 
 <!-- MULTI-SPIN SECTION -->
-<div class="multi-spin-wrapper">
-    <input type="number" id="multiSpinCount" min="1" max="100" value="1" placeholder="Nr.">
-    <button id="btnMultiSpin" class="btn-multi-cyber">
-        <i class="fas fa-bolt"></i> MULTI-SPIN
+<!-- MULTI-SPIN SECTION CU VITEZĂ -->
+<div class="multi-spin-wrapper" style="flex-direction: column; gap: 10px;">
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="number" id="multiSpinCount" min="1" max="100" value="1" style="width: 70px;">
+        
+        <select id="multiSpinSpeed" style="background: rgba(0,0,0,0.6); border: 2px solid var(--secondary); color: #fff; border-radius: 10px; padding: 7px; font-family: 'Orbitron'; font-size: 11px;">
+            <option value="1">Viteză x1</option>
+            <option value="2">Viteză x2</option>
+            <option value="4">Viteză x4</option>
+        </select>
+    </div>
+    
+    <button id="btnMultiSpin" class="btn-multi-cyber" style="width: 100%;">
+        <i class="fas fa-bolt"></i> PORNEȘTE MULTI-SPIN
     </button>
 </div>
-    </div>
 
     <!-- 6. REWARDS INFO MODAL (Nested here for scoping) -->
     <div id="rewardsInfoModal" class="reward-modal">
@@ -2799,25 +2817,32 @@ async function runNextAutoSpin() {
         return;
     }
 
+    // Luăm viteza pentru a calcula cât timp stăm cu pop-up-ul deschis
+    const speed = parseFloat(document.getElementById('multiSpinSpeed')?.value || 1);
+
     document.getElementById('autoSpinStatus').style.display = 'flex'; 
     document.getElementById('spinsLeftCount').innerText = spinsRemaining;
     spinsRemaining--;
 
     await startSpin(); 
 
-    // Așteptăm să se termine rotația (4-5 secunde)
-    setTimeout(() => {
-        // --- FIX: ÎNCHIDEM MODALUL DE PREMIU ---
-        const resultModal = document.getElementById('questRewardModal'); 
-        if (resultModal) {
-            resultModal.classList.remove('active'); // Această linie îl închide
-        }
+    // Timpul total de așteptare (durata animației + timpul de afișare premiu)
+    // Dacă viteza e x2, animația durează 2.5s, deci punem un delay de ~3.5s total
+    const waitTime = (5000 / speed) + 1200; 
 
-        // Trecem la următoarea rotire
+    setTimeout(() => {
+        // --- FIX: ÎNCHIDEM TOATE MODALELE POSIBILE ---
+        const userRewardModal = document.getElementById('questRewardModal'); 
+        const adminRewardModal = document.getElementById('adminSpinResultModal');
+        
+        if (userRewardModal) userRewardModal.classList.remove('active');
+        if (adminRewardModal) adminRewardModal.classList.remove('active');
+
+        // Mică pauză între rotiri (mai scurtă la viteză mare)
         setTimeout(() => {
             runNextAutoSpin();
-        }, 500); // Pauză scurtă între rotiri
-    }, 5500); 
+        }, 300 / speed); 
+    }, waitTime); 
 }
  
 // Asigură-te că în onSnapshot (unde se încarcă datele userului) pui și monedele:
@@ -3244,38 +3269,35 @@ window.toggleRewardsModal = (show) => {
 
 // Updated Physics Engine for Perfect Landing
 // --- MODIFIED ANIMATION (ACCEPTS TARGET) ---
+// --- MODIFICARE ÎN startSpin ---
 async function startSpin(forcedIndex = null) {
     if (isSpinning) return;
     isSpinning = true;
 
-    // Use forced index (Event Mode) or random (Normal Mode)
+    // Citim viteza selectată (default 1)
+    const speedMultiplier = parseFloat(document.getElementById('multiSpinSpeed')?.value || 1);
+    
     const rewardIdx = (forcedIndex !== null) ? forcedIndex : pickRewardIndex();
     const sliceWidth = 360 / 12;
-    
-    const currentRotationDeg = (rotation * 180 / Math.PI) % 360;
-    const targetMidAngle = (rewardIdx * sliceWidth) + (sliceWidth / 2);
-    const landingRotation = (360 - targetMidAngle + 270) % 360;
+    const landingRotation = (360 - (rewardIdx * sliceWidth + sliceWidth / 2) + 270) % 360;
     
     const extraSpins = 360 * 8; 
     const totalTargetRotation = extraSpins + landingRotation;
     
     const startTime = performance.now();
-    const duration = 5000; 
+    
+    // FIX VITEZĂ: Împărțim durata la multiplicator (ex: 5000 / 2 = 2.5 secunde)
+    const duration = 5000 / speedMultiplier; 
 
     function animate(currentTime) {
         let elapsed = currentTime - startTime;
         let progress = Math.min(elapsed / duration, 1);
         let ease = 1 - Math.pow(1 - progress, 4);
-        let currentDeg = (totalTargetRotation * ease);
-        rotation = currentDeg * (Math.PI / 180);
+        rotation = (totalTargetRotation * ease) * (Math.PI / 180);
         
         drawWheel();
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            finalizeSpin(rewardIdx);
-        }
+        if (progress < 1) requestAnimationFrame(animate);
+        else finalizeSpin(rewardIdx);
     }
     requestAnimationFrame(animate);
 }
