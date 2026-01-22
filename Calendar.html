@@ -2499,7 +2499,15 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 
 
-
+const GIFT_IMAGES = {
+    1: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FSmall%20Prezent%20.png?alt=media&token=1aec74ff-fee8-4db9-ac90-ffe214e77bf7",
+    2: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FSmall%20Prezent%20.png?alt=media&token=1aec74ff-fee8-4db9-ac90-ffe214e77bf7",
+    3: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FMedium%20pressent%20.png?alt=media&token=16826e88-eb21-4456-bd7a-a7d54e36f4c0",
+    4: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FMedium%20pressent%20.png?alt=media&token=16826e88-eb21-4456-bd7a-a7d54e36f4c0",
+    5: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FLarge%20pressent%20.png?alt=media&token=49e80f38-a580-4c91-8bcb-edad26c84001",
+    6: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FBig%20Pressent.png?alt=media&token=01f5360e-a024-4af6-bd72-5dbca1783ae8",
+    7: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2FMega%20Pressents%20.png?alt=media&token=7fa3c0c2-e471-4eb2-b326-56d1789803ae8"
+};
 
 
 // --- CONFIGURATION ---
@@ -2541,43 +2549,43 @@ function renderDailyCalendar(userData) {
     const MYSTERY_ICON = "https://cdn-icons-png.flaticon.com/512/4213/4213650.png"; 
     const MEGA_MYSTERY_ICON = "https://cdn-icons-png.flaticon.com/512/6951/6951167.png"; 
 
-    REWARDS.forEach((reward, index) => {
-        const dayNum = index + 1;
-        const isMega = dayNum === 7;
-        let cardClass = '', contentHtml = '', dataAttr = '', overlayHtml = '';
+REWARDS.forEach((reward, index) => {
+    const dayNum = index + 1;
+    const currentGiftIcon = GIFT_IMAGES[dayNum]; // Pick the specific icon
+    const isMega = dayNum === 7;
+    let cardClass = '', contentHtml = '', dataAttr = '', overlayHtml = '';
 
-        if (index < currentDayIndex) {
-            // PAST
-            cardClass = 'claimed';
-            contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div>`;
-        } 
-        else if (index === currentDayIndex) {
-            // PRESENT
-            if (isClaimable) {
-                cardClass = 'ready';
-                // FIX: WE USE DATA ATTRIBUTES INSTEAD OF ONCLICK
-                dataAttr = `data-val="${reward.val}" data-type="${reward.type}"`;
-                contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">OPEN ME</div>`;
-            } else {
-                cardClass = 'locked';
-                contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">???</div><div class="cooldown-text"><i class="fas fa-clock"></i> ${timeLeftText}</div>`;
-            }
-        } 
-        else {
-            // FUTURE
+    if (index < currentDayIndex) {
+        // PAST
+        cardClass = 'claimed';
+        contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div>`;
+    } 
+    else if (index === currentDayIndex) {
+        // PRESENT (READY TO OPEN)
+        if (isClaimable) {
+            cardClass = 'ready';
+            // Add day number to data attributes so the click listener knows which icon to show
+            dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
+            contentHtml = `<img src="${currentGiftIcon}" class="reward-img"><div class="mystery-text">OPEN ME</div>`;
+        } else {
             cardClass = 'locked';
-            overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
-            contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">???</div>`;
+            contentHtml = `<img src="${currentGiftIcon}" class="reward-img" style="filter: grayscale(1); opacity: 0.5;"><div class="mystery-text">???</div><div class="cooldown-text"><i class="fas fa-clock"></i> ${timeLeftText}</div>`;
         }
+    } 
+    else {
+        // FUTURE
+        cardClass = 'locked';
+        overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
+        contentHtml = `<img src="${currentGiftIcon}" class="reward-img"><div class="mystery-text">???</div>`;
+    }
 
-        // Note: dataAttr is only added to the ready card
-        grid.innerHTML += `
-            <div class="day-card ${isMega ? 'mega-day' : ''} ${cardClass}" ${dataAttr}>
-                ${overlayHtml}
-                <div class="day-label">DAY ${dayNum}</div>
-                ${contentHtml}
-            </div>`;
-    });
+    grid.innerHTML += `
+        <div class="day-card ${isMega ? 'mega-day' : ''} ${cardClass}" ${dataAttr}>
+            ${overlayHtml}
+            <div class="day-label">DAY ${dayNum}</div>
+            ${contentHtml}
+        </div>`;
+});
 }
 
 // --- 2. GIFT OPENING LOGIC (EVENT LISTENER FIX) ---
@@ -2585,23 +2593,31 @@ let pendingReward = { val: 0, type: '' };
 let taps = 0;
 
 // 1. ADD CLICK LISTENER TO THE GRID (This catches the click 100%)
-// Reliable Click Listener (Replaces the old setTimeout block)
+
+
 document.addEventListener('click', function (e) {
     const card = e.target.closest('.day-card.ready');
     if (card) {
         const val = card.getAttribute('data-val');
         const type = card.getAttribute('data-type');
+        const day = card.getAttribute('data-day'); // Get the day number
         
-        // If the attributes exist, open the modal
         if (val !== null && type !== null) {
-            openGiftModal(parseInt(val), type);
+            openGiftModal(parseInt(val), type, parseInt(day));
         }
     }
 });
 
-function openGiftModal(val, type) {
+function openGiftModal(val, type, dayNum) {
     pendingReward = { val, type };
     taps = 0;
+    
+    // Update the image inside the Tap-to-Open modal to match the day
+    const modalGiftImg = document.querySelector('#giftBox img');
+    if(modalGiftImg) {
+        modalGiftImg.src = GIFT_IMAGES[dayNum];
+    }
+
     document.getElementById('tapCount').innerText = '0';
     document.getElementById('giftOpeningModal').style.display = 'flex';
 }
