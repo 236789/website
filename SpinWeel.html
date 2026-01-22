@@ -1651,29 +1651,60 @@ input:checked + .slider:before { transform: translateX(24px); }
 }
 @keyframes pulseGold { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-/* Far Away Modal for Participants (Side Screen) */
+/* --- UPDATED PARTICIPANTS MODAL --- */
 .participants-modal {
     position: fixed;
-    top: 100px; right: 20px; /* Far from wheel */
-    width: 250px;
-    background: rgba(5, 11, 20, 0.95);
-    border: 1px solid var(--primary);
-    border-radius: 15px;
-    padding: 15px;
+    top: 50%; 
+    right: 15%; /* Closer to the center/wheel */
+    transform: translateY(-50%); /* Perfectly centered vertically */
+    width: 400px; /* Bigger width */
+    height: 600px; /* Taller */
+    background: rgba(5, 11, 20, 0.98);
+    border: 2px solid var(--primary); /* Thicker border */
+    border-radius: 25px;
+    padding: 20px;
     z-index: 15000;
     display: none;
     flex-direction: column;
-    max-height: 70vh;
-    box-shadow: -5px 5px 20px rgba(0,0,0,0.5);
+    box-shadow: -10px 0 40px rgba(41, 243, 255, 0.2);
+    animation: slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-.participants-modal.active { display: flex; }
-.part-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);
-    cursor: pointer; transition: 0.2s;
-}
-.part-item:hover { background: rgba(41, 243, 255, 0.1); }
 
+@keyframes slideInRight {
+    from { opacity: 0; transform: translate(50px, -50%); }
+    to { opacity: 1; transform: translate(0, -50%); }
+}
+
+.participants-modal.active { display: flex; }
+
+/* Rich Participant Item */
+.part-item {
+    display: flex; align-items: center; gap: 15px;
+    padding: 12px; 
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer; transition: 0.2s;
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    position: relative;
+    overflow: hidden;
+}
+.part-item:hover { background: rgba(41, 243, 255, 0.1); transform: translateX(-5px); }
+.part-item.selected-user { border: 2px solid #ffd700; background: rgba(255, 215, 0, 0.1); }
+
+/* Mini Frame Logic for List */
+.mini-frame-wrapper {
+    position: relative; width: 50px; height: 50px; flex-shrink: 0;
+    display: flex; justify-content: center; align-items: center;
+}
+.mini-user-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.mini-frame-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 145%; height: 145%; pointer-events: none; z-index: 2; }
+
+/* Mini Banner Background */
+.part-item-banner-bg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0.15; z-index: 0; pointer-events: none; background-size: cover; background-position: center;
+}
 </style>
 </head>
 <body>
@@ -2003,12 +2034,18 @@ input:checked + .slider:before { transform: translateX(24px); }
 </div>
 
 <!-- SIDE PARTICIPANTS MODAL -->
+<!-- UPDATE THIS DIV IN YOUR HTML -->
 <div id="participantsModal" class="participants-modal">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h4 style="margin:0; font-family:'Orbitron'; color:var(--primary);">PARTICIPANȚI</h4>
-        <button onclick="document.getElementById('participantsModal').classList.remove('active')" style="background:none; border:none; color:#fff; cursor:pointer;">✕</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; z-index: 2;">
+        <h3 style="margin:0; font-family:'Orbitron'; color:var(--primary); font-size: 20px;">
+            <i class="fas fa-users"></i> PARTICIPANȚI
+        </h3>
+        <!-- Changed onclick to closeParticipantsList() -->
+        <button onclick="closeParticipantsList()" style="background:none; border:none; color:#fff; cursor:pointer; font-size: 20px;">✕</button>
     </div>
-    <div id="participantsListContent" style="overflow-y: auto; flex:1;"></div>
+    <div id="participantsListContent" style="overflow-y: auto; flex:1; padding-right: 5px; z-index: 2;">
+        <!-- Users loaded here -->
+    </div>
 </div>
 
 <!-- SOUND TOGGLE BUTTON (Bottom Left) -->
@@ -4001,29 +4038,116 @@ window.joinWheelEvent = async () => {
     await updateDoc(doc(db, "site_metadata", "wheel_event"), { participants: arrayUnion(auth.currentUser.uid) });
 };
 
-window.openParticipantsList = async () => {
+// --- PARTICIPANTS LIST LOGIC (REAL-TIME & RICH UI) ---
+let participantsUnsub = null; // To stop listening when closed
+
+window.openParticipantsList = () => {
+    const modal = document.getElementById('participantsModal');
     const list = document.getElementById('participantsListContent');
-    document.getElementById('participantsModal').classList.add('active');
-    list.innerHTML = "Se încarcă...";
-    
-    if(eventParticipants.length === 0) { list.innerHTML = "Nimeni înscris."; return; }
-    list.innerHTML = "";
-    
-    for(const uid of eventParticipants) {
-        const uSnap = await getDoc(doc(db, "accounts", uid));
-        if(uSnap.exists()) {
-            const uData = uSnap.data();
-            const div = document.createElement('div');
-            div.className = 'part-item';
-            div.innerHTML = `<img src="${uData.image}" style="width:30px; height:30px; border-radius:50%;"> <span style="color:#fff; font-size:12px;">${uData.username}</span>`;
-            div.onclick = async () => {
-                if(confirm(`Selectezi pe ${uData.username}?`)) {
-                    await updateDoc(doc(db, "site_metadata", "wheel_event"), { selectedUserId: uid });
-                    document.getElementById('participantsModal').classList.remove('active');
-                }
-            };
-            list.appendChild(div);
+    modal.classList.add('active');
+    list.innerHTML = '<div style="text-align:center; padding:20px; color:#888;">Se conectează la lista live...</div>';
+
+    // Stop previous listener if any
+    if (participantsUnsub) participantsUnsub();
+
+    // LISTEN LIVE to the participants array
+    participantsUnsub = onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const participants = data.participants || [];
+        const currentSelected = data.selectedUserId;
+
+        if (participants.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Niciun participant înscris.</div>';
+            return;
         }
+
+        // We fetch user data for everyone in the list
+        // Note: Doing this inside a snapshot might cause flickering if not handled carefully,
+        // but it ensures we see the latest cosmetics.
+        
+        // Build HTML string first
+        let htmlContent = '';
+
+        for (const uid of participants) {
+            // Fetch User Data
+            const uSnap = await getDoc(doc(db, "accounts", uid));
+            if (!uSnap.exists()) continue;
+            const uData = uSnap.data();
+
+            // 1. FRAME Logic
+            let frameHtml = `<img src="${uData.image || 'https://iili.io/fXks1Dv.png'}" class="mini-user-img">`;
+            if (uData.equippedFrame && uData.equippedFrame.img) {
+                frameHtml += `<img src="${uData.equippedFrame.img}" class="mini-frame-overlay">`;
+            }
+
+            // 2. NAME/TEXT Logic
+            let nameHtml = `<span style="font-weight:700; font-size:14px; color:#fff;">${uData.username}</span>`;
+            if (uData.equippedText && uData.equippedText.cssClass) {
+                nameHtml = `<span class="${uData.equippedText.cssClass}" style="font-weight:900; font-size:15px;">${uData.username}</span>`;
+            }
+
+            // 3. BADGE Logic
+            let badgeHtml = '';
+            if (uData.equippedBadge) {
+                badgeHtml = `<i class="fas ${uData.equippedBadge.icon}" style="color:${uData.equippedBadge.color.includes('gradient') ? '#fff' : uData.equippedBadge.color}; margin-left:5px; font-size:12px;" title="${uData.equippedBadge.text}"></i>`;
+            }
+
+            // 4. BANNER Logic (Background)
+            let bannerStyle = '';
+            let bannerClass = '';
+            if (uData.equippedBanner) {
+                // If it's a CSS class banner
+                bannerClass = uData.equippedBanner.cssClass;
+            }
+
+            // Check if this user is currently selected
+            const isSelected = (uid === currentSelected) ? 'selected-user' : '';
+
+            htmlContent += `
+            <div class="part-item ${isSelected} ${bannerClass}" onclick="selectEventUser('${uid}', '${uData.username}')">
+                <!-- Banner Background Layer -->
+                ${bannerClass ? `<div class="part-item-banner-bg"></div>` : ''}
+                
+                <div class="mini-frame-wrapper">
+                    ${frameHtml}
+                </div>
+                
+                <div style="z-index:1; display:flex; flex-direction:column;">
+                    <div>${nameHtml} ${badgeHtml}</div>
+                    <div style="font-size:10px; color:#aaa;">Diamante: ${uData.diamonds || 0}</div>
+                </div>
+
+                ${isSelected ? '<div style="margin-left:auto; color:#ffd700; font-weight:900;">SELECTED</div>' : ''}
+            </div>`;
+        }
+
+        list.innerHTML = htmlContent;
+    });
+};
+
+window.closeParticipantsList = () => {
+    document.getElementById('participantsModal').classList.remove('active');
+    if (participantsUnsub) {
+        participantsUnsub(); // Stop listening to save resources
+        participantsUnsub = null;
+    }
+};
+
+window.selectEventUser = async (uid, name) => {
+    // 1. Confirm
+    if(!confirm(`Selectezi pe ${name}?`)) return;
+
+    // 2. Update DB
+    try {
+        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
+            selectedUserId: uid
+        });
+        // 3. DO NOT CLOSE MODAL (As requested)
+        // The onSnapshot listener above will trigger again because 'selectedUserId' changed,
+        // re-rendering the list and applying the 'selected-user' class/border to the new person automatically.
+    } catch(e) {
+        alert("Eroare: " + e.message);
     }
 };
 
