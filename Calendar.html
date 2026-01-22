@@ -1441,23 +1441,74 @@
 /* Mystery Text */
 /* Mystery & Open Text */
 /* Fix 1: Smaller text to fit on one line */
+/* Restoring the Neon Glow */
 .mystery-text {
-    font-size: 14px !important; /* Smaller size */
-    white-space: nowrap;        /* Force one line */
+    font-family: 'Orbitron';
+    font-weight: 900;
+    font-size: 14px !important;
+    white-space: nowrap;
+    color: #fff;
+    text-shadow: 0 0 10px var(--primary), 0 0 20px var(--primary); /* Neon Glow */
+    letter-spacing: 2px;
     margin-top: 15px;
 }
 
-/* Fix 2: Larger Mega present */
-.mega-day .reward-img {
-    width: 180px !important; /* Much bigger */
-    height: auto !important;
+.ready .mystery-text {
+    animation: neonPulse 1.5s infinite alternate;
 }
 
-/* Fix 3: Tap hint spacing and centering */
-#giftOpeningModal .tap-hint {
-    margin-top: 50px; /* Moves it down from the box */
-    font-size: 20px;
-    letter-spacing: 2px;
+@keyframes neonPulse {
+    from { text-shadow: 0 0 10px var(--primary), 0 0 20px var(--primary); transform: scale(1); }
+    to { text-shadow: 0 0 15px var(--primary), 0 0 30px var(--primary), 0 0 40px var(--primary); transform: scale(1.05); }
+}
+
+/* Fixing Modal Centering and Spacing */
+#giftOpeningModal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 30000;
+    display: none; 
+    flex-direction: column;
+    align-items: center; /* Horizontally centered */
+    justify-content: center; /* Vertically centered */
+}
+
+.gift-box-container {
+    width: 250px;
+    height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gift-box-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.tap-hint {
+    font-family: 'Orbitron';
+    color: var(--primary);
+    font-size: 22px;
+    text-shadow: 0 0 10px var(--primary);
+    margin-top: 40px; /* Specific gap below image */
+    text-align: center;
+}
+
+/* Admin Button Styling */
+.admin-power-btn {
+    background: #ff00ff;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-family: 'Orbitron';
+    font-weight: 900;
+    margin-bottom: 20px;
+    cursor: pointer;
+    box-shadow: 0 0 15px #ff00ff;
 }
 
 /* Fix 4: Cooldown badge styling */
@@ -2554,6 +2605,12 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     };
 
 
+const tapSound = new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Pressents%2Fpop-402324.mp3?alt=media&token=c1bbb531-56b3-4cb3-af64-1228fb07781f");
+const surpriseSound = new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Pressents%2Fmale-curiously-saying-surprise-319528.mp3?alt=media&token=ba63f78d-0f6a-4f9e-8c20-224c709007c7");
+
+// Create a state for admin override
+let adminForceUnlock = false;
+
 
 const GIFT_IMAGES = {
     1: "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Pressents%2FSmall%20Prezent%20_upscayl_5x_upscayl-standard-4x.png?alt=media&token=f3ea1639-294b-4558-a084-b21daa3f26d6",
@@ -2592,86 +2649,73 @@ function renderDailyCalendar(userData) {
     if(!grid) return;
     grid.innerHTML = '';
 
+    const isAdmin = userData.email === 'nicaemmanuel433qe@gmail.com';
+    
+    // Add Admin Unlock Button if user is you
+    if (isAdmin && !adminForceUnlock) {
+        const adminBtn = document.createElement('button');
+        adminBtn.className = 'admin-power-btn';
+        adminBtn.innerText = "ADMIN: FORCE UNLOCK ALL";
+        adminBtn.onclick = () => {
+            adminForceUnlock = true;
+            renderDailyCalendar(userData); // Re-render with unlocks
+        };
+        grid.parentNode.insertBefore(adminBtn, grid);
+    }
+
     const now = Date.now();
     const lastClaim = userData.lastDailyClaim ? userData.lastDailyClaim.toMillis() : 0;
     let currentDayIndex = userData.dailyStreakIndex || 0; 
     const hoursSinceLast = (now - lastClaim) / (1000 * 60 * 60);
 
-    // ADMIN BYPASS
-    const isAdmin = userData.email === 'nicaemmanuel433qe@gmail.com';
-
-    // Streak Reset Check (If inactive for 48h, start over)
+    // Streak Reset
     if (lastClaim > 0 && hoursSinceLast > 48) { currentDayIndex = 0; }
-
-    const isCurrentDayClaimable = hoursSinceLast >= 24 || lastClaim === 0 || isAdmin;
 
     REWARDS.forEach((reward, index) => {
         const dayNum = index + 1;
         const currentGiftIcon = GIFT_IMAGES[dayNum];
         const currentLabel = GIFT_LABELS[dayNum];
         const isMega = dayNum === 7;
+        const isCurrentDay = index === currentDayIndex;
+        const isPast = index < currentDayIndex;
         
         let cardClass = '', contentHtml = '', dataAttr = '', overlayHtml = '';
 
-        if (index < currentDayIndex) {
-            // --- STATE: CLAIMED (PAST) ---
+        // Determine if this specific card should be ready
+        let isReady = false;
+        if (adminForceUnlock) isReady = true;
+        else if (isCurrentDay && (hoursSinceLast >= 24 || lastClaim === 0)) isReady = true;
+
+        if (isPast && !adminForceUnlock) {
             cardClass = 'claimed';
-            contentHtml = `
-                <img src="${reward.img}" class="reward-img">
-                <div class="reward-amount">+${reward.val}</div>
-            `;
+            contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div>`;
         } 
-        else if (index === currentDayIndex) {
-            // --- STATE: CURRENT DAY ---
-            if (isCurrentDayClaimable) {
-                cardClass = 'ready';
-                dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
-                contentHtml = `
-                    <img src="${currentGiftIcon}" class="reward-img">
-                    <div class="mystery-text">OPEN ME</div>
-                `;
-            } else {
-                // WAITING FOR 24H COOLDOWN
-                const msRemaining = (24 * 60 * 60 * 1000) - (now - lastClaim);
-                const hrs = Math.floor(msRemaining / (1000 * 60 * 60));
-                const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
-                
-                cardClass = 'locked';
-                contentHtml = `
-                    <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.5);">
-                    <div class="mystery-text">${currentLabel}</div>
-                    <div class="cooldown-text"><i class="fas fa-clock"></i> ${hrs}h ${mins}m</div>
-                `;
-            }
+        else if (isReady) {
+            cardClass = 'ready';
+            dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
+            contentHtml = `<img src="${currentGiftIcon}" class="reward-img"><div class="mystery-text">OPEN ME</div>`;
         } 
         else {
-            // --- STATE: FUTURE DAYS ---
-            if (isAdmin) {
-                // Admin can claim future days too
-                cardClass = 'ready';
-                dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
-                contentHtml = `
-                    <img src="${currentGiftIcon}" class="reward-img">
-                    <div class="mystery-text">ADMIN UNLOCK</div>
-                `;
+            cardClass = 'locked';
+            overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
+            
+            // Calculate time for future/waiting days
+            let timerText = "";
+            if (isCurrentDay) {
+                const msRem = (24 * 60 * 60 * 1000) - (now - lastClaim);
+                const h = Math.floor(msRem / (1000 * 60 * 60));
+                const m = Math.floor((msRem % (1000 * 60 * 60)) / (1000 * 60));
+                timerText = `${h}h ${m}m`;
             } else {
-                // Standard Logic: Calculate how many days away this is
-                const daysToWait = index - currentDayIndex;
-                const msSinceLast = now - lastClaim;
-                const msToNextDay = (24 * 60 * 60 * 1000) - msSinceLast;
-                const totalMsWait = (daysToWait * 24 * 60 * 60 * 1000) + (lastClaim === 0 ? 0 : msToNextDay);
-                
-                const totalDaysWait = Math.floor(totalMsWait / (24 * 60 * 60 * 1000));
-                const totalHrsWait = Math.floor((totalMsWait % (24 * 60 * 60 * 1000)) / (1000 * 60 * 60));
-
-                cardClass = 'locked';
-                overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
-                contentHtml = `
-                    <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.3);">
-                    <div class="mystery-text">${currentLabel}</div>
-                    <div class="cooldown-text">in ${totalDaysWait > 0 ? totalDaysWait + 'd ' : ''}${totalHrsWait}h</div>
-                `;
+                const daysOut = index - currentDayIndex;
+                timerText = `in ${daysOut}d`;
             }
+
+            contentHtml = `
+                <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.3);">
+                <div class="mystery-text">${currentLabel}</div>
+                <div class="cooldown-text">${timerText}</div>
+            `;
         }
 
         grid.innerHTML += `
@@ -2721,27 +2765,42 @@ function openGiftModal(val, type, dayNum) {
 // MAKE TAP FUNCTION GLOBAL FOR THE HTML ONCLICK
 window.handleGiftTap = async () => {
     const box = document.getElementById('giftBox');
-    taps++;
-    document.getElementById('tapCount').innerText = taps;
     
-    // Animation
+    // 1. SOUND LOGIC: Play the POP sound
+    // We reset currentTime to 0 so the sound triggers even if you click faster than the file duration
+    if (typeof tapSound !== 'undefined') {
+        tapSound.currentTime = 0; 
+        tapSound.play().catch(e => console.log("Audio interaction blocked"));
+    }
+
+    taps++;
+    
+    // Update the counter text
+    const tapCounterEl = document.getElementById('tapCount');
+    if (tapCounterEl) tapCounterEl.innerText = taps;
+    
+    // 2. ANIMATION: Restart the shake
     box.classList.remove('shaking');
-    void box.offsetWidth; // trigger reflow
+    void box.offsetWidth; // trigger reflow to allow animation to restart
     box.classList.add('shaking');
 
-    // Shrink Effect
+    // 3. SHRINK EFFECT: Box gets smaller as you "crush" it
     const scale = 1 - (taps * 0.05);
     box.style.transform = `scale(${scale > 0.5 ? scale : 0.5})`;
 
+    // 4. FINISH LOGIC
     if (taps >= 10) {
-        box.style.display = 'none';
+        // Hide modal immediately so user can't click more
         document.getElementById('giftOpeningModal').style.display = 'none';
         
-        await claimDailyReward(pendingReward.val, pendingReward.type);
+        // This function should contain the 'Surprise' sound trigger inside it
+        await claimDailyReward(pendingReward.val, pendingReward.type); 
         
-        // Reset box for next time
-        box.style.display = 'block';
+        // RESET FOR THE NEXT TIME
+        taps = 0;
         box.style.transform = 'scale(1)';
+        box.classList.remove('shaking');
+        if (tapCounterEl) tapCounterEl.innerText = '0';
     }
 };
 
