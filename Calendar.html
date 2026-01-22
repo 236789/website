@@ -1440,18 +1440,38 @@
 }
 /* Mystery Text */
 /* Mystery & Open Text */
+/* Fix 1: Smaller text to fit on one line */
 .mystery-text {
-    font-family: 'Orbitron';
-    font-weight: 900;
-    font-size: 24px;
-    color: #fff;
-    text-shadow: 0 0 10px var(--primary), 0 0 20px var(--primary);
-    letter-spacing: 2px;
-    margin-top: 10px;
+    font-size: 14px !important; /* Smaller size */
+    white-space: nowrap;        /* Force one line */
+    margin-top: 15px;
 }
 
-.ready .mystery-text {
-    animation: neonPulse 1.5s infinite alternate;
+/* Fix 2: Larger Mega present */
+.mega-day .reward-img {
+    width: 180px !important; /* Much bigger */
+    height: auto !important;
+}
+
+/* Fix 3: Tap hint spacing and centering */
+#giftOpeningModal .tap-hint {
+    margin-top: 50px; /* Moves it down from the box */
+    font-size: 20px;
+    letter-spacing: 2px;
+}
+
+/* Fix 4: Cooldown badge styling */
+.cooldown-text {
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: rgba(255, 71, 87, 0.2);
+    border: 1px solid #ff4757;
+    color: #fff;
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 
 @keyframes neonPulse {
@@ -2567,7 +2587,6 @@ const REWARDS = [
     { day: 7, val: 1000, type: 'MEGA', img: 'https://cdn-icons-png.flaticon.com/512/6951/6951167.png' } // Mega Box
 ];
 
-// --- 1. RENDER CALENDAR (FIXED - NO INLINE ONCLICK) ---
 function renderDailyCalendar(userData) {
     const grid = document.getElementById('rewardsGrid');
     if(!grid) return;
@@ -2578,19 +2597,13 @@ function renderDailyCalendar(userData) {
     let currentDayIndex = userData.dailyStreakIndex || 0; 
     const hoursSinceLast = (now - lastClaim) / (1000 * 60 * 60);
 
-    // Streak Reset Check (48h window)
+    // ADMIN BYPASS
+    const isAdmin = userData.email === 'nicaemmanuel433qe@gmail.com';
+
+    // Streak Reset Check (If inactive for 48h, start over)
     if (lastClaim > 0 && hoursSinceLast > 48) { currentDayIndex = 0; }
 
-    const isClaimable = hoursSinceLast >= 24 || lastClaim === 0;
-    
-    // Timer Logic for the "Wait" state
-    let timeLeftText = "";
-    if (!isClaimable) {
-        const msRemaining = (24 * 60 * 60 * 1000) - (now - lastClaim);
-        const hrs = Math.floor(msRemaining / (1000 * 60 * 60));
-        const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
-        timeLeftText = `${hrs}h ${mins}m`;
-    }
+    const isCurrentDayClaimable = hoursSinceLast >= 24 || lastClaim === 0 || isAdmin;
 
     REWARDS.forEach((reward, index) => {
         const dayNum = index + 1;
@@ -2610,8 +2623,7 @@ function renderDailyCalendar(userData) {
         } 
         else if (index === currentDayIndex) {
             // --- STATE: CURRENT DAY ---
-            if (isClaimable) {
-                // READY TO OPEN
+            if (isCurrentDayClaimable) {
                 cardClass = 'ready';
                 dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
                 contentHtml = `
@@ -2619,23 +2631,47 @@ function renderDailyCalendar(userData) {
                     <div class="mystery-text">OPEN ME</div>
                 `;
             } else {
-                // WAITING FOR COOLDOWN
+                // WAITING FOR 24H COOLDOWN
+                const msRemaining = (24 * 60 * 60 * 1000) - (now - lastClaim);
+                const hrs = Math.floor(msRemaining / (1000 * 60 * 60));
+                const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
+                
                 cardClass = 'locked';
                 contentHtml = `
                     <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.5);">
                     <div class="mystery-text">${currentLabel}</div>
-                    <div class="cooldown-text"><i class="fas fa-clock"></i> ${timeLeftText}</div>
+                    <div class="cooldown-text"><i class="fas fa-clock"></i> ${hrs}h ${mins}m</div>
                 `;
             }
         } 
         else {
-            // --- STATE: LOCKED (FUTURE) ---
-            cardClass = 'locked';
-            overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
-            contentHtml = `
-                <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.3);">
-                <div class="mystery-text">${currentLabel}</div>
-            `;
+            // --- STATE: FUTURE DAYS ---
+            if (isAdmin) {
+                // Admin can claim future days too
+                cardClass = 'ready';
+                dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
+                contentHtml = `
+                    <img src="${currentGiftIcon}" class="reward-img">
+                    <div class="mystery-text">ADMIN UNLOCK</div>
+                `;
+            } else {
+                // Standard Logic: Calculate how many days away this is
+                const daysToWait = index - currentDayIndex;
+                const msSinceLast = now - lastClaim;
+                const msToNextDay = (24 * 60 * 60 * 1000) - msSinceLast;
+                const totalMsWait = (daysToWait * 24 * 60 * 60 * 1000) + (lastClaim === 0 ? 0 : msToNextDay);
+                
+                const totalDaysWait = Math.floor(totalMsWait / (24 * 60 * 60 * 1000));
+                const totalHrsWait = Math.floor((totalMsWait % (24 * 60 * 60 * 1000)) / (1000 * 60 * 60));
+
+                cardClass = 'locked';
+                overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
+                contentHtml = `
+                    <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.3);">
+                    <div class="mystery-text">${currentLabel}</div>
+                    <div class="cooldown-text">in ${totalDaysWait > 0 ? totalDaysWait + 'd ' : ''}${totalHrsWait}h</div>
+                `;
+            }
         }
 
         grid.innerHTML += `
@@ -2646,7 +2682,6 @@ function renderDailyCalendar(userData) {
             </div>`;
     });
 }
-
 // --- 2. GIFT OPENING LOGIC (EVENT LISTENER FIX) ---
 let pendingReward = { val: 0, type: '' };
 let taps = 0;
@@ -2710,20 +2745,22 @@ window.handleGiftTap = async () => {
     }
 };
 
-// --- 3. FIREBASE WRITE LOGIC ---
 async function claimDailyReward(amount, type) {
     if(!auth.currentUser) return;
     const userRef = doc(db, "accounts", auth.currentUser.uid);
 
     try {
-        // Reset streak if Day 7 claimed
         const userSnap = await getDoc(userRef);
-        let nextDayIndex = (userSnap.data().dailyStreakIndex || 0) + 1;
-        if (nextDayIndex >= 7) nextDayIndex = 0; // Loop back after 7 days
+        const userData = userSnap.data();
+        let nextDayIndex = (userData.dailyStreakIndex || 0) + 1;
+        
+        // RESTART CALENDAR IF DAY 7 IS CLAIMED
+        if (nextDayIndex >= 7) {
+            nextDayIndex = 0; 
+        }
 
-        // Update DB
         const updatePayload = {
-            lastDailyClaim: serverTimestamp(), // SERVER TIME (Anti-cheat)
+            lastDailyClaim: serverTimestamp(),
             dailyStreakIndex: nextDayIndex
         };
 
@@ -2732,22 +2769,17 @@ async function claimDailyReward(amount, type) {
 
         await updateDoc(userRef, updatePayload);
 
-        // Show Success Modal (Reuse your existing Reward Modal)
+        // UI Feedback
         const modal = document.getElementById('questRewardModal');
         if(modal) {
-            modal.querySelector('h2').innerText = "DAILY CLAIMED!";
-            modal.querySelector('p').innerText = `Ai primit ${amount} ${type}!`;
+            modal.querySelector('h2').innerText = "CLAIMED!";
+            modal.querySelector('p').innerText = `You received ${amount} ${type}!`;
             modal.querySelector('.reward-coins-box span').innerText = amount;
             modal.classList.add('active');
         }
 
-        // Confetti effect (Simple JS call if you have library, or just rely on modal pop)
-        // refresh calendar
-        renderDailyCalendar({ ...userSnap.data(), dailyStreakIndex: nextDayIndex, lastDailyClaim: { toMillis: () => Date.now() } });
-
     } catch(e) {
-        console.error("Claim Error:", e);
-        alert("Eroare la revendicare: " + e.message);
+        console.error("Error:", e);
     }
 }
 
