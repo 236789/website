@@ -2798,23 +2798,25 @@ async function runNextAutoSpin() {
         return;
     }
 
-    document.getElementById('autoSpinStatus').style.display = 'flex'; // Afișăm contorul
+    document.getElementById('autoSpinStatus').style.display = 'flex'; 
     document.getElementById('spinsLeftCount').innerText = spinsRemaining;
     spinsRemaining--;
 
     await startSpin(); 
 
-    // --- AUTO CLOSE LOGIC (Folosind ID-ul corect) ---
+    // Așteptăm să se termine rotația (4-5 secunde)
     setTimeout(() => {
-        const resultModal = document.getElementById('questRewardModal'); // <--- ID CORECTAT
+        // --- FIX: ÎNCHIDEM MODALUL DE PREMIU ---
+        const resultModal = document.getElementById('questRewardModal'); 
         if (resultModal) {
-            resultModal.classList.remove('active'); 
+            resultModal.classList.remove('active'); // Această linie îl închide
         }
 
+        // Trecem la următoarea rotire
         setTimeout(() => {
             runNextAutoSpin();
-        }, 300); 
-    }, 5500); // 4s animația + 1.5s vizualizare
+        }, 500); // Pauză scurtă între rotiri
+    }, 5500); 
 }
  
 // Asigură-te că în onSnapshot (unde se încarcă datele userului) pui și monedele:
@@ -3576,71 +3578,59 @@ async function finalizeSpin(idx) {
  
 
 // --- AUTH STATE CHANGED & REAL-TIME LOGIC ---
-// --- MAIN AUTH & REAL-TIME LOGIC ---
-// --- MAIN AUTH & REAL-TIME LOGIC ---
-// --- HELPER: RENDER FULL COSMETICS IN PILL ---
-// --- HELPER: RENDER FULL COSMETICS IN PILL (FIXED) ---
 function updatePillVisuals(user, isDefault = false) {
     const pfp = document.getElementById('wheelStatsPfp');
     const name = document.getElementById('wheelStatsName');
     const dia = document.getElementById('wheelStatsDiamonds');
+    const coins = document.getElementById('wheelStatsCoins'); // Referință nouă
     const frame = document.getElementById('wheelStatsFrame');
     const bannerBg = document.getElementById('pillBannerBg');
     const pill = document.querySelector('.wheel-stats-pill');
 
-    // 1. CLEAR PREVIOUS CLASSES FIRST (Important!)
     bannerBg.className = "pill-banner-layer"; 
-    bannerBg.style = ""; // Clear inline styles if any
+    bannerBg.style = ""; 
 
     if (isDefault || !user) {
-        // Reset to "No User" state
         pfp.src = "https://iili.io/fXks1Dv.png";
         name.innerText = "Așteptare...";
-        name.className = "wheel-stats-name"; 
         dia.innerText = "-";
+        coins.innerText = "-"; // Reset monede
         frame.style.display = "none";
-        pill.style.boxShadow = "none";
-        pill.style.borderColor = "var(--primary)";
         return;
     }
 
-    // 2. Basic Info
+    // Info de bază
     pfp.src = user.image || "https://iili.io/fXks1Dv.png";
     dia.innerText = user.diamonds || 0;
+    
+    // --- FIX: AICI PUNEM MONEDELE UTILIZATORULUI DIN PARAMETRU ---
+    if (coins) coins.innerText = formatCurrency(user.coins || 0);
 
-    // 3. Custom Name Color (Text)
+    // Custom Name
     if (user.equippedText && user.equippedText.cssClass) {
-        // We use innerHTML to apply the span with class
         name.innerHTML = `<span class="${user.equippedText.cssClass}">${user.username}</span>`;
     } else {
         name.innerText = user.username || "Jucător";
-        // Reset class to base to remove any lingering text effects
         name.className = "wheel-stats-name";
     }
 
-    // 4. Frame
-    if (user.equippedFrame && user.equippedFrame.img) {
+    // Frame & Banner
+    if (user.equippedFrame?.img) {
         frame.src = user.equippedFrame.img;
         frame.style.display = "block";
-    } else {
-        frame.style.display = "none";
-    }
+    } else { frame.style.display = "none"; }
 
-    // 5. Banner (Background) - ROBUST FIX
-    if (user.equippedBanner && user.equippedBanner.cssClass) {
-        // Force the class addition space separated
+    if (user.equippedBanner?.cssClass) {
         bannerBg.classList.add(user.equippedBanner.cssClass);
     } 
 
-    // 6. Glow (If Event Winner)
+    // Glow special pentru Winner
     if (isEventModeActive && eventSelectedUser && user.uid === eventSelectedUser.uid) {
         pill.style.boxShadow = "0 0 25px #ff00ff";
         pill.style.borderColor = "#ff00ff";
-        pill.style.background = "#1a0b2e"; // Darker bg for contrast
     } else {
         pill.style.boxShadow = "0 0 15px rgba(41, 243, 255, 0.15)";
         pill.style.borderColor = "var(--primary)";
-        pill.style.background = "#08101b";
     }
 }
 
@@ -3671,12 +3661,12 @@ onAuthStateChanged(auth, user => {
             const toggle = document.getElementById('eventModeToggle');
             if(toggle) toggle.checked = isEventModeActive;
 
-            // Update Rewards
+            // Update Rewards logic (Normal vs Event)
             if(isEventModeActive) REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
             else REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
             if(!isSpinning) drawWheel();
 
-            // Handle Admin Panel Visibility
+            // Handle Admin UI
             const isAdmin = ADMIN_EMAILS.includes(user.email);
             const adminPanel = document.getElementById('adminPanelLeft');
             const controlsDiv = document.querySelector('.controls-container'); 
@@ -3686,16 +3676,13 @@ onAuthStateChanged(auth, user => {
 
             if(adminPanel) adminPanel.style.display = isAdmin ? 'flex' : 'none';
 
-            // --- EVENT MODE LOGIC ---
             if (isEventModeActive) {
-                // UI Controls
                 if (isAdmin) {
                     controlsDiv.style.display = selectedId ? 'flex' : 'none';
                     if(eventDiv) eventDiv.style.display = 'none';
                 } else {
                     controlsDiv.style.display = 'none';
                     if(eventDiv) eventDiv.style.display = 'flex';
-                    
                     if(eventParticipants.includes(user.uid)) {
                         joinBtn.style.display = 'none';
                         statusTxt.innerHTML = `<span style="color:#00ffcc">✅ ÎNSCRIS!</span> Așteaptă extragerea.`;
@@ -3705,7 +3692,7 @@ onAuthStateChanged(auth, user => {
                     }
                 }
 
-                // --- REAL-TIME SELECTED USER (WITH COSMETICS) ---
+                // --- LIVE SELECTED USER LISTENER ---
                 if (selectedId !== currentSelectedId) {
                     currentSelectedId = selectedId;
                     if (selectedUserUnsub) { selectedUserUnsub(); selectedUserUnsub = null; }
@@ -3715,16 +3702,15 @@ onAuthStateChanged(auth, user => {
                             if (uSnap.exists()) {
                                 const uData = uSnap.data();
                                 eventSelectedUser = { uid: uSnap.id, ...uData };
-                                // RENDER FULL COSMETICS
+                                // ACEASTA VA ACTUALIZA PILL-UL CU DATELE JUCĂTORULUI ALES
                                 updatePillVisuals(eventSelectedUser);
                             }
                         });
                     } else {
-                        // No user selected
                         eventSelectedUser = null;
-                        updatePillVisuals(null, true); // Render Default
+                        updatePillVisuals(null, true);
                         const nameEl = document.getElementById('wheelStatsName');
-                        if(isAdmin) {
+                        if(isAdmin && nameEl) {
                             nameEl.innerText = "ALEGE UN PARTICIPANT";
                             nameEl.style.color = "#ffd700";
                             nameEl.style.cursor = "pointer";
@@ -3733,68 +3719,52 @@ onAuthStateChanged(auth, user => {
                     }
                 }
             } else {
-                // --- NORMAL MODE ---
+                // NORMAL MODE: Cleanup event listeners
                 if (selectedUserUnsub) { selectedUserUnsub(); selectedUserUnsub = null; }
                 currentSelectedId = null;
-
                 controlsDiv.style.display = 'flex';
                 if(eventDiv) eventDiv.style.display = 'none';
-                
-                // Normal mode will be handled by the User Listener below
-                // Just reset onclick
                 const nameEl = document.getElementById('wheelStatsName');
                 if(nameEl) { nameEl.onclick = null; nameEl.style.cursor = "default"; }
             }
 
-            // Sync Spin
-// Sync Spin
-if (spinAction && spinAction.timestamp) {
-    if (spinAction.timestamp > lastProcessedSpinTime) {
-        lastProcessedSpinTime = spinAction.timestamp;
-        
-        // ADD THIS LINE BELOW:
-        currentSpinAdminId = spinAction.adminId; 
-
-        if (Date.now() - spinAction.timestamp < 5000) {
-            console.log("SYNC SPIN");
-            audioSpin.currentTime = 0; audioSpin.play().catch(()=>{});
-            startSpin(spinAction.index);
-        }
-    }
-}
+            // Sync Spin across all clients
+            if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
+                lastProcessedSpinTime = spinAction.timestamp;
+                currentSpinAdminId = spinAction.adminId; 
+                if (Date.now() - spinAction.timestamp < 5000) {
+                    audioSpin.currentTime = 0; audioSpin.play().catch(()=>{});
+                    startSpin(spinAction.index);
+                }
+            }
         });
 
-// --- 2. CURRENT USER LISTENER (Normal Mode Stats & Timer) ---
+        // --- 2. CURRENT USER LISTENER (MY DATA) ---
         onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 
-                // If Event Mode is OFF, show MY cosmetics
+                // --- FIX: ACTUALIZĂM PILL-UL DOAR DACĂ NU SUNTEM ÎN EVENT MODE ---
+                // Dacă suntem în Event Mode, Pill-ul este controlat de "Event Selected User" de mai sus
                 if (!isEventModeActive) {
                     updatePillVisuals(data);
+                    
+                    // Actualizare monede și diamante DOAR în mod normal
+                    const coinsEl = document.getElementById('wheelStatsCoins');
+                    if (coinsEl) coinsEl.innerText = formatCurrency(data.coins || 0);
+                    
+                    const diamondsEl = document.getElementById('wheelStatsDiamonds');
+                    if (diamondsEl) diamondsEl.innerText = data.diamonds || 0;
                 }
 
-                // --- FIX: ACTUALIZARE MONEDE ---
-                const coinsEl = document.getElementById('wheelStatsCoins');
-                if (coinsEl) {
-                    // Folosim formatCurrency ca să arate 100k în loc de 100000
-                    coinsEl.innerText = formatCurrency(data.coins || 0);
-                }
-
-                // Asigurăm și actualizarea diamantelor în caz că nu e prinsă de updatePillVisuals
-                const diamondsEl = document.getElementById('wheelStatsDiamonds');
-                if (diamondsEl) {
-                    diamondsEl.innerText = data.diamonds || 0;
-                }
-
-                // Timer logic
+                // Timerul este mereu personal, deci îl procesăm oricum
                 if (data.lastWheelSpin) {
                     lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
                 }
             }
         });
         
-        // --- 3. TIMER LOOP ---
+        // --- 3. FREE SPIN TIMER LOOP ---
         const timerInterval = setInterval(() => {
             if (!auth.currentUser) { clearInterval(timerInterval); return; }
             const diff = (12 * 60 * 60 * 1000) - (Date.now() - lastSpinTime);
