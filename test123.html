@@ -2067,6 +2067,22 @@ input:checked + .slider:before { transform: translateX(24px); }
     color: #fff;
     box-shadow: 0 0 20px var(--secondary);
 }
+
+
+.currency-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: 'Orbitron';
+    font-size: 14px;
+    color: #ffd700;
+}
+.user-info-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
 </style>
 </head>
 <body>
@@ -2416,24 +2432,40 @@ input:checked + .slider:before { transform: translateX(24px); }
     </div>
 
 <!-- UPDATED STATS PILL (Insert this where the old pill was) -->
-<div class="wheel-stats-pill">
-    <!-- Banner Layer -->
-    <div id="pillBannerBg" class="pill-banner-layer"></div>
-    
-    <!-- Content Layer -->
-    <div class="pill-content-layer">
-        <div class="pill-avatar-wrapper">
-            <img id="wheelStatsPfp" src="" class="pill-user-img">
-            <img id="wheelStatsFrame" src="" class="pill-frame-overlay" style="display:none;">
-        </div>
+<!-- UPDATED STATS PILL (Dual Currency + Banner Support) -->
+<div class="wheel-stats-container">
+    <div class="wheel-stats-pill">
+        <!-- Banner Layer -->
+        <div id="pillBannerBg" class="pill-banner-layer"></div>
         
-        <div class="wheel-stats-info">
-            <span id="wheelStatsName" class="wheel-stats-name">Loading...</span>
-            <div class="wheel-stats-val-box">
-                <img src="https://iili.io/fv5bmtj.png" class="wheel-stats-icon"> 
-                <span id="wheelStatsDiamonds">0</span>
+        <!-- Content Layer -->
+        <div class="pill-content-layer">
+            <div class="pill-avatar-wrapper">
+                <img id="wheelStatsPfp" src="" class="pill-user-img">
+                <img id="wheelStatsFrame" src="" class="pill-frame-overlay" style="display:none;">
+            </div>
+            
+            <div class="wheel-stats-info">
+                <span id="wheelStatsName" class="wheel-stats-name">Loading...</span>
+                
+                <!-- DUAL CURRENCY ROW -->
+                <div class="wheel-stats-currencies">
+                    <div class="val-item">
+                        <img src="https://iili.io/fv5bmtj.png" class="wheel-stats-icon"> 
+                        <span id="wheelStatsDiamonds">0</span>
+                    </div>
+                    <div class="val-item">
+                        <img src="https://iili.io/fhc1SKQ.png" class="wheel-stats-icon"> 
+                        <span id="wheelStatsCoins">0</span>
+                    </div>
+                </div>
             </div>
         </div>
+    </div>
+
+    <!-- AUTO SPIN COUNTER (Apare sub pill când e activ) -->
+    <div id="autoSpinStatus" class="auto-spin-counter" style="display: none;">
+        <i class="fas fa-sync-alt fa-spin"></i> ROTIRI RĂMASE: <span id="spinsLeftCount">0</span>
     </div>
 </div>
     <!-- 3. REWARDS BUTTON -->
@@ -2665,64 +2697,71 @@ let currentSpinAdminId = null; // FIX: Stores which admin started the spin
 
 
 
+// Variabile globale pentru starea auto-spin
 let isMultiSpinActive = false;
 let spinsRemaining = 0;
 
+// Update la funcția butonului de Multi-Spin
 document.getElementById('btnMultiSpin').onclick = async () => {
     if (isSpinning || isMultiSpinActive) return;
 
     const count = parseInt(document.getElementById('multiSpinCount').value);
-    if (isNaN(count) || count <= 0) return alert("Introdu un număr valid!");
+    if (isNaN(count) || count <= 0) return;
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
     const currentDiamonds = userSnap.data().diamonds || 0;
     
-    const totalCost = count * 1; // Presupunem că 1 spin = 1 diamant
-
-    if (currentDiamonds < totalCost) {
-        return alert("Nu ai destule diamante pentru " + count + " rotiri!");
+    if (currentDiamonds < count) {
+        alert("Nu ai destule diamante!");
+        return;
     }
 
-    // 1. Luăm toate diamantele o singură dată la început
-    await updateDoc(userRef, {
-        diamonds: increment(-totalCost)
-    });
+    // Luăm diamantele
+    await updateDoc(userRef, { diamonds: increment(-count) });
     
-    await logTransaction(totalCost, "DIAMONDS", `Multi-Spin x${count}`, "Wheel");
-
-    // 2. Pornim procesul automat
+    // Activăm interfața de status
     isMultiSpinActive = true;
     spinsRemaining = count;
+    
+    document.getElementById('autoSpinStatus').style.display = 'block';
+    document.getElementById('spinsLeftCount').innerText = spinsRemaining;
+
     runNextAutoSpin();
 };
 
 async function runNextAutoSpin() {
     if (spinsRemaining <= 0) {
         isMultiSpinActive = false;
-        alert("S-au terminat rotirile automate!");
+        document.getElementById('autoSpinStatus').style.display = 'none';
+        // Opțional: alert("Toate rotirile au fost finalizate!");
         return;
     }
 
+    // Actualizăm textul cu numărul rămas
+    document.getElementById('spinsLeftCount').innerText = spinsRemaining;
     spinsRemaining--;
-    
-    // Trigger la funcția ta existentă de Spin
-    // Notă: Presupunem că funcția ta se numește startSpin()
+
+    // Pornim învârtirea roții (funcția ta existentă)
     await startSpin(); 
 
-    // Așteptăm ca roata să se oprească și să apară modalul
-    // Apoi închidem modalul automat după 2 secunde și trecem la următoarea rotire
+    // LOGICA DE AUTO-CLOSE
+    // Așteptăm să se termine animația (ex: 4 secunde) + 1.5 secunde să vadă premiul
     setTimeout(() => {
-        const resultModal = document.getElementById('wheelResultModal'); // ID-ul modalului tău de premiu
-        if (resultModal) resultModal.classList.remove('active');
-        
-        // Mică pauză între rotiri pentru a nu bloca browserul
+        const resultModal = document.getElementById('wheelResultModal'); 
+        if (resultModal) {
+            resultModal.classList.remove('active'); // ÎNCHIDE AUTOMAT POPUP-UL
+        }
+
+        // Trecem la următoarea rotire după o scurtă pauză
         setTimeout(() => {
             runNextAutoSpin();
-        }, 500);
-    }, 4500); // Ajustează acest timp în funcție de cât durează animația roții tale + timpul de vizualizare
+        }, 300); 
+    }, 5500); // 4000ms a nimația + 1500ms vizualizare premiu
 }
-
+ 
+// Asigură-te că în onSnapshot (unde se încarcă datele userului) pui și monedele:
+// document.getElementById('userCoinsCount').innerText = data.coins;
 
 // 1. OPEN JACKPOT HISTORY (With Icons)
     window.openJackpotHistory = async () => {
