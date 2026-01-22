@@ -1611,6 +1611,69 @@
     100% { left: 150%; transform: translateX(-50%); opacity: 0; } /* Fly out right */
 }
 
+
+
+/* --- EVENT MODE STYLES --- */
+.admin-event-panel {
+    display: none; /* Hidden by default */
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 0, 0, 0.1);
+    border: 1px solid #ff4757;
+    padding: 15px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    width: 100%;
+    max-width: 500px;
+}
+
+.event-switch-label {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    font-family: 'Orbitron'; font-weight: 700; color: #ff4757;
+}
+
+/* The actual toggle switch */
+.switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 34px; }
+.slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: #ff4757; }
+input:checked + .slider:before { transform: translateX(24px); }
+
+/* Event Participation Buttons */
+.btn-event-action {
+    background: #ffd700; color: #000;
+    font-family: 'Orbitron'; font-weight: 900;
+    border: none; padding: 15px 40px; border-radius: 50px;
+    font-size: 16px; cursor: pointer;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+    animation: pulseGold 2s infinite;
+}
+@keyframes pulseGold { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+/* Far Away Modal for Participants (Side Screen) */
+.participants-modal {
+    position: fixed;
+    top: 100px; right: 20px; /* Far from wheel */
+    width: 250px;
+    background: rgba(5, 11, 20, 0.95);
+    border: 1px solid var(--primary);
+    border-radius: 15px;
+    padding: 15px;
+    z-index: 15000;
+    display: none;
+    flex-direction: column;
+    max-height: 70vh;
+    box-shadow: -5px 5px 20px rgba(0,0,0,0.5);
+}
+.participants-modal.active { display: flex; }
+.part-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer; transition: 0.2s;
+}
+.part-item:hover { background: rgba(41, 243, 255, 0.1); }
+
 </style>
 </head>
 <body>
@@ -2097,7 +2160,11 @@ async function logTransaction(amount, type, desc) {
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
 
 
-
+// --- EVENT MODE VARIABLES ---
+const ADMIN_EMAILS = ['nicaemmanuel433qe@gmail.com', 'kevin.trinity2020@gmail.com'];
+let isEventModeActive = false;
+let eventSelectedUser = null; // Stores the full user object of the chosen winner
+let eventParticipants = []; // Stores UIDs
 
 
 
@@ -2556,59 +2623,62 @@ async function startSpin() {
 }
 
 // Funcție unică de pornire Spin (Corectată)
-// Funcție unică de pornire Spin (Corectată)
+// --- MODIFIED ATTEMPT SPIN ---
 async function attemptSpin(isFreeAttempt) {
-    // 1. Verificăm dacă roata se învârte deja pentru a preveni spam-ul
     if (isSpinning) return;
-
-    if (!auth.currentUser) {
-        alert("Trebuie să fii logat!");
-        return;
-    }
+    if (!auth.currentUser) return alert("Trebuie să fii logat!");
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const snap = await getDoc(userRef);
     const data = snap.data();
-    if (!data) return;
+    
+    // --- EVENT MODE LOGIC START ---
+    if (isEventModeActive) {
+        // 1. Check if Admin
+        if (!ADMIN_EMAILS.includes(auth.currentUser.email)) {
+            return alert("Doar adminul poate învârti în timpul evenimentului!");
+        }
+        // 2. Check if User Selected
+        if (!eventSelectedUser) {
+            return alert("Alege un participant mai întâi!");
+        }
 
+        // 3. Admin Pays (-1 Diamond)
+        if ((data.diamonds || 0) < 1) {
+            return alert("Adminule, nu ai diamante pentru spin!");
+        }
+
+        // Deduct from Admin
+        await logTransaction(-1, "DIAMONDS", `Event Spin for ${eventSelectedUser.username}`);
+        await updateDoc(userRef, { diamonds: increment(-1) });
+
+        // Start Spin
+        audioSpin.currentTime = 0;
+        audioSpin.play().catch(()=>{});
+        startSpin();
+        return; // Exit function, don't run normal logic
+    }
+    // --- EVENT MODE LOGIC END ---
+
+    // ... (Keep your existing Normal Mode logic below) ...
     const now = Date.now();
     let lastSpinTime = 0;
- 
-    // 2. Logica Safe pentru calculul timpului
     if (data.lastWheelSpin) {
         lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
     }
-
     const freeAvailable = (now - lastSpinTime) >= (12 * 60 * 60 * 1000);
 
-    // 3. Verificăm condițiile de plată/gratis
     if (isFreeAttempt) {
-        if (!freeAvailable) {
-            alert("Free Spin-ul nu este încă disponibil! Uită-te la cronometru.");
-            return;
-        }
-        // Actualizăm timpul de spin gratis în DB
+        if (!freeAvailable) return alert("Free Spin nu este disponibil.");
         await updateDoc(userRef, { lastWheelSpin: serverTimestamp() });
     } else {
-        // Spin plătit cu 1 Diamant
-        if ((data.diamonds || 0) < 1) {
-            alert("Nu ai destule diamante pentru un spin extra!");
-            const autoTxt = document.getElementById('autoText');
-            if (autoTxt) autoTxt.innerHTML = '<i class="fas fa-play"></i> AUTO: OFF';
-            return;
-        }
-        // Scădem diamantul în DB
-// --- LOG TRANSACTION (-1 Diamond) ---
+        if ((data.diamonds || 0) < 1) return alert("Nu ai destule diamante!");
         await logTransaction(-1, "DIAMONDS", "Spin Cost");
+        await updateDoc(userRef, { diamonds: increment(-1) });
+    }
 
-        // Scădem diamantul în DB
-        await updateDoc(userRef, { diamonds: increment(-1) });    }
-
-    // 4. Dacă totul e OK, pornim sunetul și animația
-    audioSpin.volume = 0.5;
     audioSpin.currentTime = 0;
-    audioSpin.play().catch(e => console.log("Audio play failed", e));
-    
+    audioSpin.play().catch(()=>{});
     startSpin();
 }
 
@@ -2652,170 +2722,143 @@ function pickRewardIndex() {
 // Add these imports to your top import line if missing: 
 // query, orderBy, limit, getDocs
  
+// --- MODIFIED FINALIZE SPIN ---
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const modal = document.getElementById('questRewardModal');
     
+    // Determine who gets the reward
+    let targetUid = auth.currentUser.uid;
+    let targetName = "Un utilizator"; // Fallback
+    
+    if (isEventModeActive) {
+        // In event mode, the selected user gets the reward
+        if(eventSelectedUser) {
+            targetUid = eventSelectedUser.uid;
+            targetName = eventSelectedUser.username;
+        } else {
+            console.error("No selected user in event mode finalize!");
+            return;
+        }
+    } 
+
+    const userRef = doc(db, "accounts", targetUid);
+    
+    // Fetch target user data fresh to check duplicates/badges
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.exists() ? userSnap.data() : {};
+    
+    if(!isEventModeActive) {
+         // Normal mode name logic
+         targetName = userData.username || auth.currentUser.displayName;
+    }
+    const userPhoto = userData.image || "https://iili.io/fXks1Dv.png";
+
+    // Setup Modal Elements
+    const modal = document.getElementById('questRewardModal');
     const amountText = modal.querySelector('.reward-coins-box span');
     const coinsLabel = modal.querySelector('p'); 
     const titleText = modal.querySelector('h2');
     const iconImg = modal.querySelector('.reward-coins-box img');
+    const msgP = modal.querySelector('.reward-card p:nth-of-type(1)'); // "Felicitari..." paragraph
 
-    // Fetch user
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.exists() ? userSnap.data() : {};
-    const correctName = userData.username || auth.currentUser.displayName || "Un utilizator";
-    const userPhoto = userData.image || auth.currentUser.photoURL;
-
-    // --- CHECK DUPLICATES ---
+    // --- LOGIC: DUPLICATES ---
     let isDuplicate = false;
     if (reward.type === 'badge' && userData.ownedBadges && userData.ownedBadges.includes(reward.val)) isDuplicate = true;
     if (reward.type === 'banner' && userData.ownedBanners && userData.ownedBanners.includes(reward.val)) isDuplicate = true;
 
     if (isDuplicate) {
-        audioReward.currentTime = 0;
-        audioReward.play(); // Play normal reward sound for duplicate compensation
-
+        audioReward.currentTime = 0; audioReward.play();
         titleText.innerHTML = `<span style="font-size: 24px;">😅</span> UPS!`;
-        modal.querySelector('p').innerText = "Deja deții acest item! Premiu de consolare:";
+        msgP.innerText = `Deja deții acest item! ${targetName} primește consolare:`;
         amountText.innerText = "5000";
         coinsLabel.innerText = "KSDA COINS";
         iconImg.src = "https://iili.io/fhc1SKQ.png";
         
-        // Update Coins & Wheel Stats
-        await updateDoc(userRef, { 
-            coins: increment(5000),
-            "wheelStats.coins": increment(5000) 
-        });
-        
+        await updateDoc(userRef, { coins: increment(5000), "wheelStats.coins": increment(5000) });
         modal.classList.add('active');
-        return; 
+        return;
     }
 
-    // --- DISPLAY REWARD & SOUNDS ---
+    // --- REWARD DISTRIBUTION ---
+    // Handle XP separately (Normal mode only, or if accidentally triggered)
     if (reward.type === "xp") {
-        // PLAY FAIL SOUND
-        audioFail.volume = 0.6;
-        audioFail.currentTime = 0;
-        audioFail.play();
-
+        audioFail.currentTime = 0; audioFail.play();
         titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
-        amountText.style.fontSize = "26px"; 
-        amountText.style.letterSpacing = "1px"; 
         amountText.innerText = "EXPERIENȚĂ";
         coinsLabel.innerText = "DATA VIITOARE!";
-        modal.querySelector('p').innerText = "Nu ai câștigat nimic material, dar ai acumulat experiență de viață!";
-        iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png"; 
-    } 
-    else {
-        // WINNING LOGIC - DETERMINE SOUND TYPE
-        let isJackpotSound = false;
-        if (reward.type === 'badge' || reward.type === 'banner') isJackpotSound = true;
-        if (reward.type === 'diamonds' && reward.val >= 10) isJackpotSound = true; // 10 Diamonds or more
-        if (reward.type === 'coins' && reward.val >= 2500) isJackpotSound = true; // 2.5k Coins or more
-
-        if (isJackpotSound) {
-            audioJackpot.volume = 0.5;
-            audioJackpot.currentTime = 0;
-            audioJackpot.play();
-            launchConfetti(); // Heavy confetti
-        } else {
-            audioReward.volume = 0.5;
-            audioReward.currentTime = 0;
-            audioReward.play();
-            launchConfetti(); // Normal confetti
-        }
-
-        amountText.style.fontSize = ""; 
-        amountText.style.letterSpacing = "";
-        
-        titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> AI CÂȘTIGAT!`;
-        modal.querySelector('p').innerText = "Felicitări! Ai completat un spin.";
-
- // --- DATABASE UPDATES & STAT TRACKING ---
-        let logDesc = "Spin Wheel Reward";
-        
-        // Define what is considered a "Jackpot" for logging purposes
-        if (reward.val >= 2500 && reward.type === 'coins') logDesc = "JACKPOT REWARD";
-        if (reward.val >= 10 && reward.type === 'diamonds') logDesc = "JACKPOT REWARD";
-
-        if (reward.type === "coins") {
-            amountText.innerText = reward.label;
-            coinsLabel.innerText = "KSDA COINS";
-            iconImg.src = "https://iili.io/fhc1SKQ.png";
-            
-            // --- LOG TRANSACTION (COINS) ---
-            await logTransaction(reward.val, "COINS", logDesc);
-
-            await updateDoc(userRef, { 
-                coins: increment(reward.val),
-                "wheelStats.coins": increment(reward.val) 
-            });
-        } 
-        else if (reward.type === "diamonds") {
-            amountText.innerText = reward.label;
-            coinsLabel.innerText = "DIAMANTE";
-            iconImg.src = "https://iili.io/fv5bmtj.png";
-
-            // --- LOG TRANSACTION (DIAMONDS) ---
-            await logTransaction(reward.val, "DIAMONDS", logDesc);
-
-            await updateDoc(userRef, { 
-                diamonds: increment(reward.val),
-                "wheelStats.diamonds": increment(reward.val) 
-            });
-        }
-        else if (reward.type === "badge") {
-            amountText.innerText = "BADGE";
-            coinsLabel.innerText = reward.label;
-            iconImg.src = "https://iili.io/fXvBEiB.png";
-            await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
-        }
-        else if (reward.type === "banner") {
-            amountText.innerText = "BANNER";
-            coinsLabel.innerText = reward.label;
-            iconImg.src = "https://iili.io/fXvBEiB.png";
-            await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
-        }
+        msgP.innerText = "Nu ai câștigat nimic material.";
+        iconImg.src = "https://cdn-icons-png.flaticon.com/512/616/616490.png";
+        modal.classList.add('active');
+        return;
     }
 
+    // Standard Rewards
+    let isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type === 'badge' || reward.type === 'banner';
+    
+    if (isJackpot) {
+        audioJackpot.currentTime = 0; audioJackpot.play(); launchConfetti();
+    } else {
+        audioReward.currentTime = 0; audioReward.play(); launchConfetti();
+    }
+
+    titleText.innerHTML = `<span style="font-size: 24px;">🎰</span> CÂȘTIGĂTOR!`;
+    msgP.innerText = `${targetName} a câștigat:`;
+
+    // Database Updates
+    if (reward.type === "coins") {
+        amountText.innerText = reward.label;
+        coinsLabel.innerText = "KSDA COINS";
+        iconImg.src = "https://iili.io/fhc1SKQ.png";
+        await updateDoc(userRef, { coins: increment(reward.val), "wheelStats.coins": increment(reward.val) });
+        // Log explicitly for the target user if possible, or just log generically
+    } 
+    else if (reward.type === "diamonds") {
+        amountText.innerText = reward.label;
+        coinsLabel.innerText = "DIAMANTE";
+        iconImg.src = "https://iili.io/fv5bmtj.png";
+        await updateDoc(userRef, { diamonds: increment(reward.val), "wheelStats.diamonds": increment(reward.val) });
+    }
+    else if (reward.type === "badge") {
+        amountText.innerText = "BADGE";
+        coinsLabel.innerText = reward.label;
+        iconImg.src = "https://iili.io/fXvBEiB.png";
+        await updateDoc(userRef, { ownedBadges: arrayUnion(reward.val) });
+    }
+    else if (reward.type === "banner") {
+        amountText.innerText = "BANNER";
+        coinsLabel.innerText = reward.label;
+        iconImg.src = "https://iili.io/fXvBEiB.png";
+        await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
+    }
+
+    // Show Modal
     modal.classList.add('active');
 
-    // --- JACKPOT LOGIC (LOGGING & ALERT) ---
-    let isJackpot = false;
-    if (reward.type === 'badge' || reward.type === 'banner') isJackpot = true;
-    if (reward.type === 'diamonds' && reward.val === 10) isJackpot = true;
-    if (reward.type === 'coins' && reward.val === 2500) isJackpot = true;
-
+    // Jackpot Log & Chat Alert
     if (isJackpot) {
-        // 1. Log to Database for "Jackpot History"
         try {
             await addDoc(collection(db, "wheel_jackpot_history"), {
-                username: correctName,
+                username: targetName,
                 userPhoto: userPhoto,
                 rewardLabel: reward.label,
                 rewardType: reward.type,
                 timestamp: serverTimestamp()
             });
-        } catch(e) { console.log("Log error", e); }
-
-        // 2. Announce in Chat
-        try {
-            let alertText = `🚨 JACKPOT! ${correctName} a câștigat ${reward.label} la roata norocului!`;
+            
             await addDoc(collection(db, "wall_messages"), {
-                text: alertText, uid: 'system-alert', name: 'SYSTEM',
+                text: `🚨 EVENT JACKPOT! ${targetName} a câștigat ${reward.label}!`, 
+                uid: 'system-alert', name: 'SYSTEM',
                 photo: 'https://iili.io/fXvBEiB.png', isBot: true, createdAt: serverTimestamp(),
                 isDeleted: false, reactions: {}, seenBy: []
             });
-        } catch (e) {}
+        } catch(e) {}
     }
 }
 
  
 
-// --- AUTH UI SYNC ---
+// --- AUTH STATE CHANGED & REAL-TIME LOGIC ---
 onAuthStateChanged(auth, user => {
     if (user) {
         // 1. UI Toggle (Show Game, Hide Wall)
@@ -2826,52 +2869,180 @@ onAuthStateChanged(auth, user => {
 
         drawWheel();
 
-        // 2. REAL-TIME LISTENER (Efficient)
-        // This updates the Bubble AND gets the time for the loop
+        // Variables for Timer logic
         let lastSpinTime = 0; 
 
+        // --- A. LISTEN TO SITE METADATA (EVENT MODE) ---
+        // This controls the "Event Mode" state for everyone
+        onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
+            const data = snap.exists() ? snap.data() : { isActive: false, selectedUserId: null, participants: [] };
+            
+            // Global Variables Update
+            isEventModeActive = data.isActive;
+            eventParticipants = data.participants || [];
+            const selectedId = data.selectedUserId;
+
+            // 1. Update Admin Toggle Switch
+            const toggle = document.getElementById('eventModeToggle');
+            if(toggle) toggle.checked = isEventModeActive;
+
+            // 2. Wheel Visuals (XP vs Coins)
+            if(isEventModeActive) {
+                // Event Mode: Replace XP with 500 Coins (Pink)
+                REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
+            } else {
+                // Normal Mode: Restore XP
+                REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
+            }
+            drawWheel();
+
+            // 3. UI Controls (Buttons & Admin Panel)
+            const controlsDiv = document.querySelector('.controls-container'); 
+            const eventDiv = document.getElementById('eventActionContainer');
+            const joinBtn = document.getElementById('btnJoinEvent');
+            const statusTxt = document.getElementById('eventStatusText');
+            const adminPanel = document.getElementById('adminEventPanel');
+
+            const isAdmin = ADMIN_EMAILS.includes(user.email);
+            
+            // Show/Hide Admin Panel
+            if(adminPanel) adminPanel.style.display = isAdmin ? 'flex' : 'none';
+
+            if (isEventModeActive) {
+                // --- EVENT IS ON ---
+                
+                // Button Logic
+                if (isAdmin) {
+                    // Admin only sees spin buttons if a user is selected
+                    controlsDiv.style.display = selectedId ? 'flex' : 'none';
+                    if(eventDiv) eventDiv.style.display = 'none';
+                } else {
+                    // Normal Users see Join UI
+                    controlsDiv.style.display = 'none';
+                    if(eventDiv) eventDiv.style.display = 'flex';
+                    
+                    if(eventParticipants.includes(user.uid)) {
+                        joinBtn.style.display = 'none';
+                        statusTxt.innerHTML = `<span style="color:#00ffcc"><i class="fas fa-check"></i> ÎNSCRIS!</span> Așteaptă adminul.`;
+                    } else {
+                        joinBtn.style.display = 'block';
+                        statusTxt.innerText = "Înscrie-te pentru a fi ales!";
+                    }
+                }
+
+                // Stats Pill Logic (Show SELECTED User, not Logged in User)
+                const pfp = document.getElementById('wheelStatsPfp');
+                const name = document.getElementById('wheelStatsName');
+                const dia = document.getElementById('wheelStatsDiamonds');
+                const pill = document.querySelector('.wheel-stats-pill');
+
+                if (selectedId) {
+                    // Fetch Selected User Data
+                    // Note: In a real app, optimize this to not read every time metadata changes
+                    // but for this scale, it's fine.
+                    try {
+                        const selSnap = await getDoc(doc(db, "accounts", selectedId));
+                        if(selSnap.exists()) {
+                            eventSelectedUser = selSnap.data();
+                            
+                            pfp.src = eventSelectedUser.image || "https://iili.io/fXks1Dv.png";
+                            name.innerText = eventSelectedUser.username || "Winner";
+                            dia.innerText = eventSelectedUser.diamonds || 0;
+                            
+                            // Visual Cue that it's a special user
+                            pill.style.boxShadow = "0 0 20px #ff00ff"; 
+                            pill.style.borderColor = "#ff00ff";
+                        }
+                    } catch(e) { console.error("Error loading selected user", e); }
+                } else {
+                    // No user selected yet
+                    pfp.src = "https://iili.io/fXks1Dv.png";
+                    dia.innerText = "-";
+                    pill.style.boxShadow = "none";
+                    pill.style.borderColor = "#333";
+
+                    if(isAdmin) {
+                        name.innerText = "ALEGE UN PARTICIPANT";
+                        name.style.color = "#ffd700";
+                        name.onclick = window.openParticipantsList; // Make clickable for admin
+                        name.style.cursor = "pointer";
+                    } else {
+                        name.innerText = "Așteptare extragere...";
+                        name.style.color = "#888";
+                        name.onclick = null;
+                        name.style.cursor = "default";
+                    }
+                }
+
+            } else {
+                // --- EVENT IS OFF (Normal Mode) ---
+                controlsDiv.style.display = 'flex';
+                if(eventDiv) eventDiv.style.display = 'none';
+                
+                // Reset Pill Styles
+                const pill = document.querySelector('.wheel-stats-pill');
+                if(pill) {
+                    pill.style.boxShadow = "0 0 15px rgba(41, 243, 255, 0.15)";
+                    pill.style.borderColor = "var(--primary)";
+                }
+                const name = document.getElementById('wheelStatsName');
+                if(name) {
+                    name.onclick = null;
+                    name.style.cursor = "default";
+                    name.style.color = "#fff";
+                }
+            }
+        });
+
+        // --- B. LISTEN TO CURRENT USER (Standard Stats) ---
         const userRef = doc(db, "accounts", user.uid);
         onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
 
-                // --- A. UPDATE STATS BUBBLE (Real-time) ---
-                const wheelPfp = document.getElementById('wheelStatsPfp');
-                const wheelName = document.getElementById('wheelStatsName');
-                const wheelDia = document.getElementById('wheelStatsDiamonds');
-                
-                if (wheelPfp) wheelPfp.src = data.image || user.photoURL;
-                if (wheelName) wheelName.innerText = data.username || user.displayName || "Gamer";
-                if (wheelDia) wheelDia.innerText = data.diamonds || 0; // Updates Diamonds instantly
+                // ONLY update the visual stats pill if Event Mode is OFF
+                // If Event Mode is ON, the metadata listener above handles the visual stats
+                if (!isEventModeActive) {
+                    const wheelPfp = document.getElementById('wheelStatsPfp');
+                    const wheelName = document.getElementById('wheelStatsName');
+                    const wheelDia = document.getElementById('wheelStatsDiamonds');
+                    
+                    if (wheelPfp) wheelPfp.src = data.image || user.photoURL;
+                    if (wheelName) wheelName.innerText = data.username || user.displayName || "Gamer";
+                    if (wheelDia) wheelDia.innerText = data.diamonds || 0;
+                }
 
-                // --- B. UPDATE TIMER DATA ---
+                // ALWAYS update the timer data regardless of mode
                 if (data.lastWheelSpin) {
                     lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
                 }
             }
         });
         
-        // 3. TIMER LOOP (Pure Math - No Database Calls)
+        // --- C. TIMER LOOP (Calculations) ---
         const timerInterval = setInterval(() => {
             if (!auth.currentUser) {
                 clearInterval(timerInterval);
                 return;
             }
 
-            // Calculate difference using the variable from the snapshot
+            // Calculate difference
             const diff = (12 * 60 * 60 * 1000) - (Date.now() - lastSpinTime);
             
             const freeBtn = document.getElementById('freeSpinBtn');
-            // const timerTextLabel = document.getElementById('spinTimerText'); // Optional label
 
             if (freeBtn) {
+                // If Event Mode is Active, we might want to hide the timer text or change it,
+                // but usually, we just hide the whole button via the metadata listener.
+                // We keep this running so it's ready when event mode turns off.
+                
                 const btnTop = freeBtn.querySelector('.btn-top');
                 
                 if (diff <= 0) {
                     // --- AVAILABLE STATE ---
                     if (btnTop) btnTop.innerText = "FREE SPIN";
                     
-                    freeBtn.style.pointerEvents = "auto"; // Clickable
+                    freeBtn.style.pointerEvents = "auto"; 
                     freeBtn.style.opacity = "1";
                     freeBtn.style.filter = "none";
                 } else {
@@ -2880,10 +3051,9 @@ onAuthStateChanged(auth, user => {
                     const m = Math.floor((diff % 3600000) / 60000);
                     const s = Math.floor((diff % 60000) / 1000);
                     
-                    // Show Timer inside the button
                     if (btnTop) btnTop.innerText = `${h}h ${m}m ${s}s`;
                     
-                    freeBtn.style.pointerEvents = "none"; // NOT clickable
+                    freeBtn.style.pointerEvents = "none"; 
                     freeBtn.style.opacity = "0.7";
                     freeBtn.style.filter = "grayscale(0.8)";
                 }
