@@ -2083,6 +2083,39 @@ input:checked + .slider:before { transform: translateX(24px); }
     flex-direction: column;
     align-items: flex-start;
 }
+
+
+
+.auto-spin-counter {
+    margin: 20px auto 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(5, 11, 20, 0.9);
+    border: 2px solid var(--primary);
+    color: var(--primary);
+    padding: 12px 30px;
+    border-radius: 50px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    text-shadow: 0 0 10px var(--primary);
+    box-shadow: 0 0 20px rgba(41, 243, 255, 0.3), inset 0 0 10px rgba(41, 243, 255, 0.1);
+    animation: counterPulse 1.5s infinite alternate ease-in-out;
+    width: fit-content;
+    z-index: 100;
+}
+
+.auto-spin-counter i {
+    font-size: 18px;
+    filter: drop-shadow(0 0 5px var(--primary));
+}
+
+@keyframes counterPulse {
+    from { transform: scale(1); opacity: 0.9; box-shadow: 0 0 10px rgba(41, 243, 255, 0.2); }
+    to { transform: scale(1.05); opacity: 1; box-shadow: 0 0 25px rgba(41, 243, 255, 0.5); }
+}
 </style>
 </head>
 <body>
@@ -2734,30 +2767,26 @@ async function runNextAutoSpin() {
     if (spinsRemaining <= 0) {
         isMultiSpinActive = false;
         document.getElementById('autoSpinStatus').style.display = 'none';
-        // Opțional: alert("Toate rotirile au fost finalizate!");
         return;
     }
 
-    // Actualizăm textul cu numărul rămas
+    document.getElementById('autoSpinStatus').style.display = 'flex'; // Afișăm contorul
     document.getElementById('spinsLeftCount').innerText = spinsRemaining;
     spinsRemaining--;
 
-    // Pornim învârtirea roții (funcția ta existentă)
     await startSpin(); 
 
-    // LOGICA DE AUTO-CLOSE
-    // Așteptăm să se termine animația (ex: 4 secunde) + 1.5 secunde să vadă premiul
+    // --- AUTO CLOSE LOGIC (Folosind ID-ul corect) ---
     setTimeout(() => {
-        const resultModal = document.getElementById('wheelResultModal'); 
+        const resultModal = document.getElementById('questRewardModal'); // <--- ID CORECTAT
         if (resultModal) {
-            resultModal.classList.remove('active'); // ÎNCHIDE AUTOMAT POPUP-UL
+            resultModal.classList.remove('active'); 
         }
 
-        // Trecem la următoarea rotire după o scurtă pauză
         setTimeout(() => {
             runNextAutoSpin();
         }, 300); 
-    }, 5500); // 4000ms a nimația + 1500ms vizualizare premiu
+    }, 5500); // 4s animația + 1.5s vizualizare
 }
  
 // Asigură-te că în onSnapshot (unde se încarcă datele userului) pui și monedele:
@@ -3700,7 +3729,7 @@ if (spinAction && spinAction.timestamp) {
 }
         });
 
-        // --- 2. CURRENT USER LISTENER (Normal Mode Stats & Timer) ---
+// --- 2. CURRENT USER LISTENER (Normal Mode Stats & Timer) ---
         onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
@@ -3710,7 +3739,20 @@ if (spinAction && spinAction.timestamp) {
                     updatePillVisuals(data);
                 }
 
-                // Timer
+                // --- FIX: ACTUALIZARE MONEDE ---
+                const coinsEl = document.getElementById('wheelStatsCoins');
+                if (coinsEl) {
+                    // Folosim formatCurrency ca să arate 100k în loc de 100000
+                    coinsEl.innerText = formatCurrency(data.coins || 0);
+                }
+
+                // Asigurăm și actualizarea diamantelor în caz că nu e prinsă de updatePillVisuals
+                const diamondsEl = document.getElementById('wheelStatsDiamonds');
+                if (diamondsEl) {
+                    diamondsEl.innerText = data.diamonds || 0;
+                }
+
+                // Timer logic
                 if (data.lastWheelSpin) {
                     lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
                 }
