@@ -2462,8 +2462,7 @@ const REWARDS = [
     { day: 7, val: 1000, type: 'MEGA', img: 'https://cdn-icons-png.flaticon.com/512/6951/6951167.png' } // Mega Box
 ];
 
-// --- 1. RENDER FUNCTION ---
-// --- 1. RENDER FUNCTION (MYSTERY EDITION) ---
+// --- 1. RENDER FUNCTION (UPDATED) ---
 function renderDailyCalendar(userData) {
     const grid = document.getElementById('rewardsGrid');
     if(!grid) return;
@@ -2471,18 +2470,14 @@ function renderDailyCalendar(userData) {
 
     const now = Date.now();
     const lastClaim = userData.lastDailyClaim ? userData.lastDailyClaim.toMillis() : 0;
-    
-    // Streak Logic
     let currentDayIndex = userData.dailyStreakIndex || 0; 
     const hoursSinceLast = (now - lastClaim) / (1000 * 60 * 60);
 
-    if (lastClaim > 0 && hoursSinceLast > 48) {
-        currentDayIndex = 0; // Reset streak visual
-    }
+    if (lastClaim > 0 && hoursSinceLast > 48) { currentDayIndex = 0; } // Reset Streak
 
     const isClaimable = hoursSinceLast >= 24 || lastClaim === 0;
-
-    // Time remaining text calculator
+    
+    // Timer Text
     let timeLeftText = "";
     if (!isClaimable) {
         const msRemaining = (24 * 60 * 60 * 1000) - (now - lastClaim);
@@ -2491,79 +2486,52 @@ function renderDailyCalendar(userData) {
         timeLeftText = `${hrs}h ${mins}m`;
     }
 
-    // --- ICON CONFIG ---
-    // This is the "Mystery Box" icon used for locked/ready days
-    const MYSTERY_ICON = "https://cdn-icons-png.flaticon.com/512/4213/4213650.png"; // Loot Crate Icon
-    const MEGA_MYSTERY_ICON = "https://cdn-icons-png.flaticon.com/512/6951/6951167.png"; // Fancy Chest
+    const MYSTERY_ICON = "https://cdn-icons-png.flaticon.com/512/4213/4213650.png"; 
+    const MEGA_MYSTERY_ICON = "https://cdn-icons-png.flaticon.com/512/6951/6951167.png"; 
 
     REWARDS.forEach((reward, index) => {
         const dayNum = index + 1;
         const isMega = dayNum === 7;
-        
-        let cardClass = '';
-        let contentHtml = '';
-        let clickAction = '';
-        let overlayHtml = '';
+        let cardClass = '', contentHtml = '', clickAction = '', overlayHtml = '';
 
-        // 1. PAST DAYS (Claimed) - SHOW THE REAL REWARD
         if (index < currentDayIndex) {
+            // PAST (Show Reward)
             cardClass = 'claimed';
-            contentHtml = `
-                <img src="${reward.img}" class="reward-img">
-                <div class="reward-amount">+${reward.val}</div>
-            `;
+            contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div>`;
         } 
-        
-        // 2. PRESENT DAY (Active)
         else if (index === currentDayIndex) {
+            // PRESENT (Mystery)
             if (isClaimable) {
-                // READY TO OPEN - SHOW MYSTERY BOX
                 cardClass = 'ready';
-                clickAction = `onclick="startGiftOpening(${reward.val}, '${reward.type}')"`;
-                contentHtml = `
-                    <img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img">
-                    <div class="mystery-text">OPEN ME</div>
-                `;
+                // *** THE FIX IS HERE: window.startGiftOpening ***
+                clickAction = `onclick="window.startGiftOpening(${reward.val}, '${reward.type}')"`;
+                contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">OPEN ME</div>`;
             } else {
-                // WAITING FOR COOLDOWN - SHOW MYSTERY BOX + TIMER
                 cardClass = 'locked';
-                contentHtml = `
-                    <img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img">
-                    <div class="mystery-text">???</div>
-                    <div class="cooldown-text"><i class="fas fa-clock"></i> ${timeLeftText}</div>
-                `;
+                contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">???</div><div class="cooldown-text"><i class="fas fa-clock"></i> ${timeLeftText}</div>`;
             }
         } 
-        
-        // 3. FUTURE DAYS - COMPLETE MYSTERY
         else {
+            // FUTURE (Locked Mystery)
             cardClass = 'locked';
-            overlayHtml = `
-                <div class="lock-overlay">
-                    <i class="fas fa-lock lock-icon"></i>
-                    <span style="font-size:9px; color:#a5b1c2; letter-spacing:1px;">LOCKED</span>
-                </div>`;
-            contentHtml = `
-                <img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img">
-                <div class="mystery-text">???</div>
-            `;
+            overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
+            contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">???</div>`;
         }
 
-        const html = `
+        grid.innerHTML += `
             <div class="day-card ${isMega ? 'mega-day' : ''} ${cardClass}" ${clickAction}>
                 ${overlayHtml}
                 <div class="day-label">DAY ${dayNum}</div>
                 ${contentHtml}
-            </div>
-        `;
-        grid.innerHTML += html;
+            </div>`;
     });
 }
 
-// --- 2. GIFT OPENING LOGIC ---
+// --- 2. GIFT OPENING LOGIC (GLOBAL FIX) ---
 let pendingReward = { val: 0, type: '' };
 let taps = 0;
 
+// *** ATTACH TO WINDOW SO HTML CAN SEE IT ***
 window.startGiftOpening = (val, type) => {
     pendingReward = { val, type };
     taps = 0;
@@ -2576,24 +2544,21 @@ window.handleGiftTap = async () => {
     taps++;
     document.getElementById('tapCount').innerText = taps;
     
-    // Visual Shake
+    // Reset animation
     box.classList.remove('shaking');
-    void box.offsetWidth; // trigger reflow
+    void box.offsetWidth; 
     box.classList.add('shaking');
 
-    // Scale down slightly on each tap to build tension
+    // Shrink Effect
     const scale = 1 - (taps * 0.05);
     box.style.transform = `scale(${scale > 0.5 ? scale : 0.5})`;
 
-    // OPEN ON 10 TAPS
     if (taps >= 10) {
-        box.style.display = 'none'; // Hide box
-        document.getElementById('giftOpeningModal').style.display = 'none'; // Close modal
-        
-        // Process Reward
+        box.style.display = 'none';
+        document.getElementById('giftOpeningModal').style.display = 'none';
         await claimDailyReward(pendingReward.val, pendingReward.type);
         
-        // Reset Box for next time
+        // Reset
         box.style.display = 'block';
         box.style.transform = 'scale(1)';
     }
