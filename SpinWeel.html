@@ -2497,6 +2497,23 @@ input:checked + .slider:before { transform: translateX(24px); }
     <button class="btn-outline" style="width:100%; margin-top:0; border-color:#ff4757; color:#ff4757;" onclick="resetEventData()">
         <i class="fas fa-trash"></i> RESET EVENT
     </button>
+
+
+<!-- ... existing buttons ... -->
+
+    <div class="admin-divider-title">FORCE REWARD (TEST)</div>
+    
+    <select id="forceRewardSelect" class="admin-select">
+        <!-- Values correspond to logic in JS -->
+        <option value="diamonds_10">💎 10 GEMS (Jackpot)</option>
+        <option value="coins_2500">💰 2.5k COINS (Jackpot)</option>
+        <option value="badge">👑 BADGE (Wheel God)</option>
+        <option value="banner">🖼️ BANNER (Ultra)</option>
+    </select>
+
+    <button class="btn-outline" style="width:100%; margin-top:5px; border-color:#ffd700; color:#ffd700;" onclick="triggerForcedJackpot()">
+        <i class="fas fa-bolt"></i> FORCE SPIN
+    </button>
 </div>
 
 <!-- Footer --> 
@@ -2728,6 +2745,49 @@ let lastProcessedSpinTime = 0; // Tracks the last spin to prevent re-spinning on
             list.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
         }
     };
+
+// --- ADMIN FORCE SPIN LOGIC ---
+window.triggerForcedJackpot = async () => {
+    if (!auth.currentUser) return;
+    if (!isEventModeActive) return alert("Activează Event Mode mai întâi!");
+    if (!eventSelectedUser) return alert("Alege un participant!");
+
+    // 1. Get Selected Target
+    const selection = document.getElementById('forceRewardSelect').value;
+    let targetIndex = -1;
+
+    // 2. Find the index in the REWARDS array
+    // We loop through the REWARDS array defined at the top of your script
+    for (let i = 0; i < REWARDS.length; i++) {
+        const r = REWARDS[i];
+        
+        if (selection === 'diamonds_10' && r.type === 'diamonds' && r.val === 10) targetIndex = i;
+        else if (selection === 'coins_2500' && r.type === 'coins' && r.val === 2500) targetIndex = i;
+        else if (selection === 'badge' && r.type === 'badge') targetIndex = i;
+        else if (selection === 'banner' && r.type === 'banner') targetIndex = i;
+        
+        if (targetIndex !== -1) break; // Found it
+    }
+
+    if (targetIndex === -1) return alert("Eroare: Nu am găsit premiul pe roată.");
+
+    // 3. Pay the Cost (Admin pays)
+    const adminRef = doc(db, "accounts", auth.currentUser.uid);
+    const snap = await getDoc(adminRef);
+    if ((snap.data().diamonds || 0) < 1) return alert("Nu ai diamante pentru test!");
+
+    await updateDoc(adminRef, { diamonds: increment(-1) });
+    await logTransaction(-1, "DIAMONDS", `Admin FORCE Spin (${selection})`);
+
+    // 4. Trigger the Spin via Firebase (Syncs with everyone)
+    await updateDoc(doc(db, "site_metadata", "wheel_event"), {
+        spinAction: {
+            index: targetIndex, // The specific index we found
+            timestamp: Date.now(),
+            adminId: auth.currentUser.uid
+        }
+    });
+};
 
 const canvas = document.getElementById("wheelCanvas");
 const ctx = canvas.getContext("2d");
