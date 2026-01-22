@@ -2658,8 +2658,6 @@ const GIFT_LABELS = {
 const tapSound = new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Pressents%2Fpop-402324.mp3?alt=media&token=c1bbb531-56b3-4cb3-af64-1228fb07781f");
 const successSound = new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Pressents%2Fsuccess-videogame-sfx-423626.mp3?alt=media&token=4c97ed7e-4b60-419d-b5e8-9f6f62bd23f8");
 
-    let adminForceUnlock = false;
-
 // Updated Reward Table
 const REWARDS = [
     { day: 1, val: 500, type: 'COINS', img: 'https://iili.io/fhc1SKQ.png' },
@@ -2676,79 +2674,60 @@ function renderDailyCalendar(userData) {
     if(!grid) return;
     grid.innerHTML = '';
 
-    const isAdmin = userData.email === 'nicaemmanuel433qe@gmail.com';
+    // Eliminat codul care genera butonul "FORCE UNLOCK"
     
-    // Add Admin Unlock Button if user is you
-    if (isAdmin && !adminForceUnlock) {
-        const adminBtn = document.createElement('button');
-        adminBtn.className = 'admin-power-btn';
-        adminBtn.innerText = "ADMIN: FORCE UNLOCK ALL";
-        adminBtn.onclick = () => {
-            adminForceUnlock = true;
-            renderDailyCalendar(userData); // Re-render with unlocks
-        };
-        grid.parentNode.insertBefore(adminBtn, grid);
-    }
-
     const now = Date.now();
     const lastClaim = userData.lastDailyClaim ? userData.lastDailyClaim.toMillis() : 0;
     let currentDayIndex = userData.dailyStreakIndex || 0; 
     const hoursSinceLast = (now - lastClaim) / (1000 * 60 * 60);
 
-    // Streak Reset
+    // Resetare streak dacă au trecut mai mult de 48h
     if (lastClaim > 0 && hoursSinceLast > 48) { currentDayIndex = 0; }
+
+    const isCurrentDayClaimable = hoursSinceLast >= 24 || lastClaim === 0;
+    const isAdmin = userData.email === 'nicaemmanuel433qe@gmail.com';
 
     REWARDS.forEach((reward, index) => {
         const dayNum = index + 1;
         const currentGiftIcon = GIFT_IMAGES[dayNum];
         const currentLabel = GIFT_LABELS[dayNum];
         const isMega = dayNum === 7;
-        const isCurrentDay = index === currentDayIndex;
-        const isPast = index < currentDayIndex;
         
         let cardClass = '', contentHtml = '', dataAttr = '', overlayHtml = '';
 
-        // Determine if this specific card should be ready
-        let isReady = false;
-        if (adminForceUnlock) isReady = true;
-        else if (isCurrentDay && (hoursSinceLast >= 24 || lastClaim === 0)) isReady = true;
-
-        if (isPast && !adminForceUnlock) {
+        if (index < currentDayIndex) {
+            // COLECTATE
             cardClass = 'claimed';
-            contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div>`;
+            contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div><div class="claimed-check">✔</div>`;
         } 
-        else if (isReady) {
-            cardClass = 'ready';
-            dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
-            contentHtml = `<img src="${currentGiftIcon}" class="reward-img"><div class="mystery-text">OPEN ME</div>`;
+        else if (index === currentDayIndex) {
+            // ZIUA CURENTĂ
+            if (isCurrentDayClaimable || isAdmin) {
+                cardClass = 'ready';
+                dataAttr = `data-val="${reward.val}" data-type="${reward.type}" data-day="${dayNum}"`;
+                contentHtml = `<img src="${currentGiftIcon}" class="reward-img"><div class="mystery-text">DESCHIDE!</div>`;
+            } else {
+                const msRemaining = (24 * 60 * 60 * 1000) - (now - lastClaim);
+                const hrs = Math.floor(msRemaining / (1000 * 60 * 60));
+                const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
+                cardClass = 'locked';
+                contentHtml = `<img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.5);"><div class="mystery-text">${currentLabel}</div><div class="cooldown-text">DISPONIBIL ÎN ${hrs}h ${mins}m</div>`;
+            }
         } 
         else {
+            // ZILE VIITOARE
             cardClass = 'locked';
             overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
             
-            // Calculate time for future/waiting days
-            let timerText = "";
-            if (isCurrentDay) {
-                const msRem = (24 * 60 * 60 * 1000) - (now - lastClaim);
-                const h = Math.floor(msRem / (1000 * 60 * 60));
-                const m = Math.floor((msRem % (1000 * 60 * 60)) / (1000 * 60));
-                timerText = `${h}h ${m}m`;
-            } else {
-                const daysOut = index - currentDayIndex;
-                timerText = `in ${daysOut}d`;
-            }
-
-            contentHtml = `
-                <img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.3);">
-                <div class="mystery-text">${currentLabel}</div>
-                <div class="cooldown-text">${timerText}</div>
-            `;
+            // Calculăm câte zile întregi mai sunt până la acest reward
+            const diffDays = index - currentDayIndex;
+            contentHtml = `<img src="${currentGiftIcon}" class="reward-img" style="filter: brightness(0.3);"><div class="mystery-text">${currentLabel}</div><div class="cooldown-text">peste ${diffDays} zile</div>`;
         }
 
         grid.innerHTML += `
             <div class="day-card ${isMega ? 'mega-day' : ''} ${cardClass}" ${dataAttr}>
                 ${overlayHtml}
-                <div class="day-label">DAY ${dayNum}</div>
+                <div class="day-label">ZIUA ${dayNum}</div>
                 ${contentHtml}
             </div>`;
     });
@@ -2838,7 +2817,14 @@ async function claimDailyReward(amount, type) {
     try {
         const userSnap = await getDoc(userRef);
         const userData = userSnap.data();
+        
+        // Luăm ziua curentă înainte de incrementare pentru a știi ce nume să punem pe Pop-up
+        const dayOpened = (userData.dailyStreakIndex || 0) + 1;
+        const giftName = GIFT_LABELS[dayOpened] || "GIFT";
+
         let nextDayIndex = (userData.dailyStreakIndex || 0) + 1;
+        
+        // REPORNIRE: Dacă a colectat ziua 7 (index 6), resetăm la 0
         if (nextDayIndex >= 7) nextDayIndex = 0;
 
         const updatePayload = {
@@ -2846,25 +2832,25 @@ async function claimDailyReward(amount, type) {
             dailyStreakIndex: nextDayIndex
         };
 
-        // Modal Elements
         const modal = document.getElementById('questRewardModal');
         const coinBox = modal.querySelector('.reward-coins-box');
         const modalTitle = modal.querySelector('h2');
         const modalP = modal.querySelector('p');
 
-        // REWARD LOGIC
+        // Setează Titlul Dinamic: "RECOMPENSĂ SMALL GIFT!"
+        modalTitle.innerHTML = `<span style="font-size: 24px;">🎁</span> RECOMPENSĂ ${giftName}!`;
+
         if (type === 'COINS') {
             updatePayload.coins = increment(amount);
             coinBox.innerHTML = `<img src="https://iili.io/fhc1SKQ.png" style="width: 50px;"> <span>${amount}</span>`;
-            modalP.innerText = "Ai primit monede KSDA!";
+            modalP.innerText = `Ai primit ${amount} monede KSDA!`;
         } 
         else if (type === 'DIAMONDS') {
             updatePayload.diamonds = increment(amount);
             coinBox.innerHTML = `<img src="https://iili.io/fv5bmtj.png" style="width: 50px;"> <span>${amount}</span>`;
-            modalP.innerText = "Ai primit Diamante!";
+            modalP.innerText = `Ai primit ${amount} diamante!`;
         } 
         else if (type === 'MIXED') {
-            // Day 7: 5000 coins + 3 Diamonds
             updatePayload.coins = increment(5000);
             updatePayload.diamonds = increment(3);
             coinBox.innerHTML = `
@@ -2872,24 +2858,24 @@ async function claimDailyReward(amount, type) {
                     <div><img src="https://iili.io/fhc1SKQ.png" style="width:40px;"> 5000</div>
                     <div><img src="https://iili.io/fv5bmtj.png" style="width:40px;"> 3</div>
                 </div>`;
-            modalTitle.innerHTML = "🎉 MEGA RECOMPENSĂ!";
-            modalP.innerText = "Ai completat săptămâna!";
+            modalP.innerText = "Felicitări! Ai completat toată săptămâna!";
         }
 
         await updateDoc(userRef, updatePayload);
         
-        // Play Success Sound
-        successSound.currentTime = 0;
-        successSound.play();
+        if (typeof successSound !== 'undefined') {
+            successSound.currentTime = 0;
+            successSound.play();
+        }
 
         modal.classList.add('active');
-        renderDailyCalendar({...userData, ...updatePayload});
+        // Re-randăm calendarul cu noile date
+        renderDailyCalendar({...userData, ...updatePayload, lastDailyClaim: { toMillis: () => Date.now() }});
 
     } catch(e) {
         console.error("Claim Error:", e);
     }
 }
-
 
 onAuthStateChanged(auth, user => {
     if (user) {
