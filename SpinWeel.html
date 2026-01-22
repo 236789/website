@@ -3173,7 +3173,7 @@ function pickRewardIndex() {
 // --- MODIFIED REWARD LOGIC ---
 // --- FIXED FINALIZE SPIN (VISUALS, SOUNDS, LOGS & ADMIN POPUP) ---
 // --- FIXED FINALIZE SPIN (GOLDEN ADMIN POPUP) ---
-// --- FIXED FINALIZE SPIN (SQUARE POPUP + SOUND FIX) ---
+// --- FIXED FINALIZE SPIN (WINNER vs EVERYONE ELSE) ---
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
@@ -3191,6 +3191,7 @@ async function finalizeSpin(idx) {
         targetPhoto = eventSelectedUser.image;
         targetUserObj = eventSelectedUser;
     } else if (!isEventModeActive) {
+        // Normal Mode: Fetch fresh name
         const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         if(uSnap.exists()) {
             const d = uSnap.data();
@@ -3200,15 +3201,24 @@ async function finalizeSpin(idx) {
         }
     }
 
-    // 2. Logic: Who sees what?
+    // 2. LOGIC: WHO SEES WHAT?
     const isMeTarget = auth.currentUser.uid === targetUid;
+
+    // A. WINNER (Me): Sees "You Won" Popup
+    // (Normal Mode: I spun for myself. Event Mode: Admin spun for me)
     const shouldShowUserPopup = (!isEventModeActive) || (isEventModeActive && isMeTarget);
-    const shouldShowAdminPopup = isEventModeActive && isAdmin && !isMeTarget;
+
+    // B. SPECTATORS/ADMIN: See "Golden Result" Popup
+    // (Event Mode ONLY: I am NOT the winner)
+    const shouldShowPublicPopup = isEventModeActive && !isMeTarget;
 
     // --- REWARD DATA PREP ---
     let rewardIconHtml = "";
     let rewardText = "";
     
+    // Check Mute globally
+    const isMuted = localStorage.getItem('siteMuted') === 'true';
+
     if (reward.type === "badge") {
         rewardText = "BADGE";
         rewardIconHtml = `<span class="badge-wheel-god" style="transform:scale(1.2); box-shadow:none; border-color:#000; color:#000;"><i class="fas fa-bolt"></i> GOD</span>`;
@@ -3226,16 +3236,13 @@ async function finalizeSpin(idx) {
         rewardIconHtml = `<span style="font-size: 30px;">📉</span>`;
     }
 
-    // --- 1. USER POPUP (Standard Dark Theme) ---
+    // --- 1. SHOW WINNER POPUP (Dark Theme) ---
     if (shouldShowUserPopup) {
         const modal = document.getElementById('questRewardModal');
         const titleText = modal.querySelector('h2');
         const msgP = modal.querySelector('.reward-card p:nth-of-type(1)');
         const rewardBox = modal.querySelector('.reward-coins-box');
         const coinsLabel = modal.querySelector('p:nth-of-type(2)');
-
-        // Check Mute inside the logic
-        const isMuted = localStorage.getItem('siteMuted') === 'true';
 
         if (reward.type === "xp") {
             if(!isMuted) {
@@ -3263,22 +3270,20 @@ async function finalizeSpin(idx) {
         modal.classList.add('active');
     }
 
-    // --- 2. ADMIN POPUP (NEW SQUARE LAYOUT) ---
-    if (shouldShowAdminPopup) {
+    // --- 2. SHOW PUBLIC/ADMIN POPUP (Golden Square) ---
+    if (shouldShowPublicPopup) {
         const adminModal = document.getElementById('adminSpinResultModal');
         const admImg = document.getElementById('adminSpinUserImg');
         const admFrame = document.getElementById('adminSpinUserFrame');
         const admName = document.getElementById('adminSpinUserName');
         const admRewardDisplay = document.getElementById('adminRewardDisplay');
 
-        // Play Crowd Sound (Respecting Mute)
-        const isMuted = localStorage.getItem('siteMuted') === 'true';
+        // Play Crowd Sound for Everyone viewing
         if(!isMuted) {
             audioAdminCheer.currentTime = 0;
             audioAdminCheer.play().catch(()=>{});
         }
 
-        // FIREWORKS!
         launchConfetti(); 
 
         // Populate User Info
@@ -3300,15 +3305,18 @@ async function finalizeSpin(idx) {
             }
         }
 
-        // Populate Reward (Icon + Text side by side)
+        // Populate Reward
         admRewardDisplay.innerHTML = `${rewardIconHtml} <span>${rewardText}</span>`;
 
         adminModal.classList.add('active');
     }
 
-    // --- 3. DB UPDATES ---
+    // --- 3. DATABASE UPDATES (Only Admin or Self) ---
+    // If it's XP, no DB updates
     if (reward.type === "xp") return;
 
+    // Determine who is responsible for writing to the DB
+    // In Event Mode -> Admin writes. In Normal Mode -> User writes.
     const shouldWriteToDB = (isEventModeActive && isAdmin) || (!isEventModeActive);
 
     if (shouldWriteToDB) {
@@ -3345,7 +3353,6 @@ async function finalizeSpin(idx) {
         }
     }
 }
-
  
 
 // --- AUTH STATE CHANGED & REAL-TIME LOGIC ---
