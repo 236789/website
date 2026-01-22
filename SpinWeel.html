@@ -2497,9 +2497,6 @@ input:checked + .slider:before { transform: translateX(24px); }
     <button class="btn-outline" style="width:100%; margin-top:0; border-color:#ff4757; color:#ff4757;" onclick="resetEventData()">
         <i class="fas fa-trash"></i> RESET EVENT
     </button>
-
-
-
 </div>
 
 <!-- Footer --> 
@@ -2892,23 +2889,40 @@ function showFlyingNotification(data) {
 const trophyImg = new Image(); trophyImg.src = "https://iili.io/fXvBEiB.png"; // Using your logo as a trophy placeholder
 
 const REWARDS = [
+    // 1. Common (XP / NOTHING) - Changed from 50 coins
     { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 },
-    { label: "10", val: 10, type: "diamonds", color: "#ffd700", chance: 1, jackpot: true },
-    { label: "75", val: 75, type: "coins", color: "#f44336", chance: 25 },
-    
-    // UPDATED NAME HERE
-    { label: "QUANTUM GOD", val: "b_wheel_god", type: "badge", color: "#e5e4e2", chance: 0.4, jackpot: true },
 
+    // 2. Rare (Jackpot Diamond)
+    { label: "10", val: 10, type: "diamonds", color: "#ffd700", chance: 1, jackpot: true },
+
+    // 3. Common (Coins)
+    { label: "75", val: 75, type: "coins", color: "#f44336", chance: 25 },
+
+    // 4. Ultra Rare (BADGE)
+    { label: "EXCLUSIVE BADGE", val: "b_wheel_god", type: "badge", color: "#e5e4e2", chance: 0.4, jackpot: true },
+
+    // 5. Common (Diamond)
     { label: "1", val: 1, type: "diamonds", color: "#e91e63", chance: 7 },
+
+    // 6. Uncommon (Coins)
     { label: "500", val: 500, type: "coins", color: "#2196f3", chance: 10 },
+ 
+    // 7. Uncommon (150 Coins) - Changed from 50 coins
     { label: "150", val: 150, type: "coins", color: "#00bcd4", chance: 15 },
 
-    // UPDATED NAME HERE
-    { label: "ULTRA BANNER", val: "bub_jackpot", type: "banner", color: "#d4af37", chance: 0.4, jackpot: true },
+    // 8. Ultra Rare (BANNER)
+    { label: "EXCLUSIVE BANNER", val: "bub_jackpot", type: "banner", color: "#d4af37", chance: 0.4, jackpot: true },
 
+    // 9. Common (Diamonds) 
     { label: "2", val: 2, type: "diamonds", color: "#ff9800", chance: 4.5 },
+
+    // 10. Rare (Coins)
     { label: "2.5k", val: 2500, type: "coins", color: "#4caf50", chance: 2 },
+
+    // 11. Uncommon (Diamonds)
     { label: "3", val: 3, type: "diamonds", color: "#00bcd4", chance: 3 },
+
+    // 12. Rare (Diamonds)
     { label: "5", val: 5, type: "diamonds", color: "#f44336", chance: 2 }
 ];
 
@@ -3018,17 +3032,6 @@ window.toggleRewardsModal = (show) => {
     }).join('');
 
     modal.classList.toggle('active', show);
-};
-
-
-window.leaveWheelEvent = async () => {
-    if(!auth.currentUser) return;
-    if(confirm("Ești sigur că vrei să ieși din lista de participanți?")) {
-        // Remove UID from array
-        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
-            participants: arrayRemove(auth.currentUser.uid)
-        });
-    }
 };
 
 // Updated Physics Engine for Perfect Landing
@@ -3171,13 +3174,11 @@ function pickRewardIndex() {
 // --- FIXED FINALIZE SPIN (GOLDEN ADMIN POPUP) ---
 // --- FIXED FINALIZE SPIN (WINNER vs EVERYONE ELSE) ---
 // --- FIXED FINALIZE SPIN (NO DOUBLE POSTING) ---
-// --- FIXED FINALIZE SPIN (DUPLICATE CHECK + TEXT FORMAT) ---
 async function finalizeSpin(idx) {
     isSpinning = false;
-    let reward = REWARDS[idx]; // Use 'let' so we can modify it if duplicate
-    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
+    const reward = REWARDS[idx];
     
-    // 1. Determine Target User & Fetch Data
+    // 1. Determine Target User
     let targetUid = auth.currentUser.uid;
     let targetName = "Jucător";
     let targetPhoto = auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png";
@@ -3198,50 +3199,38 @@ async function finalizeSpin(idx) {
         }
     }
 
-    // 2. DUPLICATE CHECK (For Badges/Banners)
-    // If they already have it, swap reward to 5000 Coins
-    let isDuplicateSwap = false;
-    if (targetUserObj) {
-        if (reward.type === 'badge' && targetUserObj.ownedBadges && targetUserObj.ownedBadges.includes(reward.val)) isDuplicateSwap = true;
-        if (reward.type === 'banner' && targetUserObj.ownedBanners && targetUserObj.ownedBanners.includes(reward.val)) isDuplicateSwap = true;
-    }
-
-    if (isDuplicateSwap) {
-        // SWAP TO 5000 COINS
-        reward = { label: "5000 (DUPLICATE)", val: 5000, type: "coins" };
-    }
-
-    // 3. LOGIC: WHO SEES WHAT?
+    // 2. Logic: Who sees what?
     const isMeTarget = auth.currentUser.uid === targetUid;
+    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
+
     const shouldShowUserPopup = (!isEventModeActive) || (isEventModeActive && isMeTarget);
     const shouldShowAdminPopup = isEventModeActive && isAdmin && !isMeTarget;
 
-    // --- REWARD VISUAL PREP ---
+    // --- REWARD DATA PREP ---
     let rewardIconHtml = "";
-    let rewardLabelHtml = ""; // Supports HTML for multi-line
+    let rewardText = "";
     
     if (reward.type === "badge") {
-        // Name on top, Type below
-        rewardLabelHtml = `QUANTUM GOD<br><span style="font-size:12px; opacity:0.7; font-weight:600;">BADGE</span>`;
-        rewardIconHtml = `<span class="badge-wheel-god" style="transform:scale(1.5); box-shadow:none; border-color:#000; color:#000;"><i class="fas fa-bolt"></i> GOD</span>`;
+        rewardText = "BADGE";
+        rewardIconHtml = `<span class="badge-wheel-god" style="transform:scale(1.2); box-shadow:none; border-color:#000; color:#000;"><i class="fas fa-bolt"></i> GOD</span>`;
     } else if (reward.type === "banner") {
-        rewardLabelHtml = `ULTRA JACKPOT<br><span style="font-size:12px; opacity:0.7; font-weight:600;">BANNER</span>`;
-        rewardIconHtml = `<div class="bubble-jackpot" style="width:120px; font-size:9px; box-shadow:none; border:2px solid #000; color:#000; background:transparent;">JACKPOT</div>`;
+        rewardText = "BANNER";
+        rewardIconHtml = `<div class="bubble-jackpot" style="width:100px; font-size:9px; box-shadow:none; border:2px solid #000; color:#000; background:transparent;">EPIC</div>`;
     } else if (reward.type === "coins") {
-        rewardLabelHtml = `${reward.label}<br><span style="font-size:12px; opacity:0.7; font-weight:600;">COINS</span>`;
-        rewardIconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="width: 60px;">`;
+        rewardText = `${reward.label} COINS`;
+        rewardIconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="width: 40px;">`;
     } else if (reward.type === "diamonds") {
-        rewardLabelHtml = `${reward.label}<br><span style="font-size:12px; opacity:0.7; font-weight:600;">GEMS</span>`;
-        rewardIconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width: 60px;">`;
+        rewardText = `${reward.label} GEMS`;
+        rewardIconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width: 40px;">`;
     } else if (reward.type === "xp") {
-        rewardLabelHtml = "EXPERIENȚĂ";
-        rewardIconHtml = `<span style="font-size: 50px;">📉</span>`;
+        rewardText = "XP";
+        rewardIconHtml = `<span style="font-size: 30px;">📉</span>`;
     }
 
-    // --- POPUPS ---
+    // --- POPUPS (VISUALS ONLY) ---
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
-    // 1. User Popup (Winner)
+    // 1. User Popup
     if (shouldShowUserPopup) {
         const modal = document.getElementById('questRewardModal');
         const titleText = modal.querySelector('h2');
@@ -3250,7 +3239,10 @@ async function finalizeSpin(idx) {
         const coinsLabel = modal.querySelector('p:nth-of-type(2)');
 
         if (reward.type === "xp") {
-            if(!isMuted) { audioFail.src = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/downer_noise.mp3?alt=media&token=efef799f-4f30-4e98-83ac-96456449b0b4"; audioFail.play().catch(()=>{}); }
+            if(!isMuted) {
+                audioFail.src = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/downer_noise.mp3?alt=media&token=efef799f-4f30-4e98-83ac-96456449b0b4";
+                audioFail.volume = 0.6; audioFail.play().catch(()=>{});
+            }
             titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
             msgP.innerText = "Nu ai câștigat nimic material.";
             rewardBox.innerHTML = `<span style="font-size: 35px; color:#aaa; font-weight:900;">EXPERIENȚĂ</span>`;
@@ -3258,20 +3250,19 @@ async function finalizeSpin(idx) {
         } else {
             const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
             if(!isMuted) {
-                if(isJackpot) audioJackpot.play().catch(()=>{});
-                else audioReward.play().catch(()=>{});
+                if(isJackpot) { audioJackpot.currentTime=0; audioJackpot.play().catch(()=>{}); }
+                else { audioReward.currentTime=0; audioReward.play().catch(()=>{}); }
             }
             launchConfetti();
             titleText.innerHTML = `<span style="font-size: 24px;">🎉</span> FELICITĂRI!`;
-            msgP.innerText = isDuplicateSwap ? "Ai primit compensație pentru duplicat:" : "Ai câștigat la roată:";
-            
+            msgP.innerText = "Ai câștigat la roată:";
             rewardBox.innerHTML = rewardIconHtml;
-            coinsLabel.innerHTML = rewardLabelHtml; // Changed to innerHTML for <br>
+            coinsLabel.innerText = rewardText; 
         }
         modal.classList.add('active');
     }
 
-    // 2. Admin Popup (Spectator)
+    // 2. Admin/Public Popup
     if (shouldShowAdminPopup) {
         const adminModal = document.getElementById('adminSpinResultModal');
         const admImg = document.getElementById('adminSpinUserImg');
@@ -3279,7 +3270,10 @@ async function finalizeSpin(idx) {
         const admName = document.getElementById('adminSpinUserName');
         const admRewardDisplay = document.getElementById('adminRewardDisplay');
 
-        if(!isMuted) audioAdminCheer.play().catch(()=>{});
+        if(!isMuted) {
+            audioAdminCheer.currentTime = 0;
+            audioAdminCheer.play().catch(()=>{});
+        }
         launchConfetti(); 
 
         if (targetUserObj) {
@@ -3297,24 +3291,26 @@ async function finalizeSpin(idx) {
                 admFrame.style.display = "none";
             }
         }
-        
-        // Show icon + text below it or side-by-side
-        admRewardDisplay.innerHTML = `
-            <div style="display:flex; flex-direction:column; align-items:center;">
-                ${rewardIconHtml}
-                <div style="font-size:24px; margin-top:5px; line-height:1.1;">${rewardLabelHtml}</div>
-            </div>
-        `;
+        admRewardDisplay.innerHTML = `${rewardIconHtml} <span>${rewardText}</span>`;
         adminModal.classList.add('active');
     }
 
-    // --- 3. DATABASE UPDATES ---
+    // --- 3. DATABASE UPDATES (THE CRITICAL FIX) ---
     if (reward.type === "xp") return;
 
+    // RULE:
+    // 1. If Normal Mode -> User writes for themselves.
+    // 2. If Event Mode -> ONLY the Admin who clicked the button (currentSpinAdminId) writes.
+    
     let shouldWriteToDB = false;
+
     if (isEventModeActive) {
-        if (auth.currentUser.uid === currentSpinAdminId) shouldWriteToDB = true;
+        // Only the specific admin who started this spin allows the write
+        if (auth.currentUser.uid === currentSpinAdminId) {
+            shouldWriteToDB = true;
+        }
     } else {
+        // Normal mode: I write for myself
         shouldWriteToDB = true;
     }
 
@@ -3424,10 +3420,8 @@ function updatePillVisuals(user, isDefault = false) {
 }
 
 // --- MAIN AUTH & REAL-TIME LOGIC ---
-// --- MAIN AUTH & REAL-TIME LOGIC ---
 onAuthStateChanged(auth, user => {
     if (user) {
-        // UI Toggle (Show Game, Hide Wall)
         const wheelWall = document.getElementById('wheelLoginWall');
         const wheelGame = document.getElementById('wheelGameContainer');
         if (wheelWall) wheelWall.style.display = 'none';
@@ -3452,12 +3446,12 @@ onAuthStateChanged(auth, user => {
             const toggle = document.getElementById('eventModeToggle');
             if(toggle) toggle.checked = isEventModeActive;
 
-            // Update Rewards (Swap XP for 500 Coins in Event Mode)
+            // Update Rewards
             if(isEventModeActive) REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
             else REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
             if(!isSpinning) drawWheel();
 
-            // Handle Admin Panel Visibility (Left Side)
+            // Handle Admin Panel Visibility
             const isAdmin = ADMIN_EMAILS.includes(user.email);
             const adminPanel = document.getElementById('adminPanelLeft');
             const controlsDiv = document.querySelector('.controls-container'); 
@@ -3471,33 +3465,17 @@ onAuthStateChanged(auth, user => {
             if (isEventModeActive) {
                 // UI Controls
                 if (isAdmin) {
-                    // Admin: Show Spin buttons only if a user is selected
                     controlsDiv.style.display = selectedId ? 'flex' : 'none';
                     if(eventDiv) eventDiv.style.display = 'none';
                 } else {
-                    // User: Show Join/Leave UI
                     controlsDiv.style.display = 'none';
                     if(eventDiv) eventDiv.style.display = 'flex';
                     
                     if(eventParticipants.includes(user.uid)) {
-                        // ALREADY JOINED -> Show Leave Button
-                        joinBtn.style.display = 'block';
-                        joinBtn.innerText = "IEȘI DIN EVENT";
-                        joinBtn.style.background = "rgba(255, 71, 87, 0.2)";
-                        joinBtn.style.border = "1px solid #ff4757";
-                        joinBtn.style.color = "#ff4757";
-                        joinBtn.onclick = window.leaveWheelEvent;
-
+                        joinBtn.style.display = 'none';
                         statusTxt.innerHTML = `<span style="color:#00ffcc">✅ ÎNSCRIS!</span> Așteaptă extragerea.`;
                     } else {
-                        // NOT JOINED -> Show Join Button
                         joinBtn.style.display = 'block';
-                        joinBtn.innerText = "ÎNSCRIE-TE!";
-                        joinBtn.style.background = "#ffd700"; 
-                        joinBtn.style.border = "none";
-                        joinBtn.style.color = "#000";
-                        joinBtn.onclick = window.joinWheelEvent;
-
                         statusTxt.innerText = "Înscrie-te pentru a fi ales!";
                     }
                 }
@@ -3508,30 +3486,24 @@ onAuthStateChanged(auth, user => {
                     if (selectedUserUnsub) { selectedUserUnsub(); selectedUserUnsub = null; }
 
                     if (selectedId) {
-                        // Listen to the selected winner's profile changes
                         selectedUserUnsub = onSnapshot(doc(db, "accounts", selectedId), (uSnap) => {
                             if (uSnap.exists()) {
                                 const uData = uSnap.data();
                                 eventSelectedUser = { uid: uSnap.id, ...uData };
-                                // Render Pill with Winner's Cosmetics
+                                // RENDER FULL COSMETICS
                                 updatePillVisuals(eventSelectedUser);
                             }
                         });
                     } else {
-                        // No user selected yet
+                        // No user selected
                         eventSelectedUser = null;
-                        updatePillVisuals(null, true); // Render Default Pill
+                        updatePillVisuals(null, true); // Render Default
                         const nameEl = document.getElementById('wheelStatsName');
                         if(isAdmin) {
                             nameEl.innerText = "ALEGE UN PARTICIPANT";
                             nameEl.style.color = "#ffd700";
                             nameEl.style.cursor = "pointer";
                             nameEl.onclick = window.openParticipantsList;
-                        } else {
-                            nameEl.innerText = "Așteptare extragere...";
-                            nameEl.style.color = "#888";
-                            nameEl.onclick = null;
-                            nameEl.style.cursor = "default";
                         }
                     }
                 }
@@ -3543,24 +3515,19 @@ onAuthStateChanged(auth, user => {
                 controlsDiv.style.display = 'flex';
                 if(eventDiv) eventDiv.style.display = 'none';
                 
-                // Normal mode stats handled by User Listener below
+                // Normal mode will be handled by the User Listener below
+                // Just reset onclick
                 const nameEl = document.getElementById('wheelStatsName');
                 if(nameEl) { nameEl.onclick = null; nameEl.style.cursor = "default"; }
             }
 
-            // --- SYNC SPIN TRIGGER ---
+            // Sync Spin
             if (spinAction && spinAction.timestamp) {
                 if (spinAction.timestamp > lastProcessedSpinTime) {
                     lastProcessedSpinTime = spinAction.timestamp;
-                    
-                    // IMPORTANT: Capture who started the spin to prevent double-posting
-                    currentSpinAdminId = spinAction.adminId; 
-
-                    // 5-second buffer to prevent spinning on page refresh
                     if (Date.now() - spinAction.timestamp < 5000) {
-                        console.log("SYNC SPIN START");
-                        audioSpin.currentTime = 0; 
-                        audioSpin.play().catch(()=>{});
+                        console.log("SYNC SPIN");
+                        audioSpin.currentTime = 0; audioSpin.play().catch(()=>{});
                         startSpin(spinAction.index);
                     }
                 }
@@ -3572,12 +3539,12 @@ onAuthStateChanged(auth, user => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 
-                // If Event Mode is OFF, show MY cosmetics in the pill
+                // If Event Mode is OFF, show MY cosmetics
                 if (!isEventModeActive) {
                     updatePillVisuals(data);
                 }
 
-                // Update Timer Logic
+                // Timer
                 if (data.lastWheelSpin) {
                     lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
                 }
@@ -3604,7 +3571,6 @@ onAuthStateChanged(auth, user => {
         }, 1000);
 
     } else {
-        // Logged Out
         document.getElementById('wheelLoginWall').style.display = 'flex';
         document.getElementById('wheelGameContainer').style.display = 'none';
     }
