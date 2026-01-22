@@ -2462,7 +2462,7 @@ const REWARDS = [
     { day: 7, val: 1000, type: 'MEGA', img: 'https://cdn-icons-png.flaticon.com/512/6951/6951167.png' } // Mega Box
 ];
 
-// --- 1. RENDER FUNCTION (UPDATED) ---
+// --- 1. RENDER CALENDAR (FIXED - NO INLINE ONCLICK) ---
 function renderDailyCalendar(userData) {
     const grid = document.getElementById('rewardsGrid');
     if(!grid) return;
@@ -2473,11 +2473,12 @@ function renderDailyCalendar(userData) {
     let currentDayIndex = userData.dailyStreakIndex || 0; 
     const hoursSinceLast = (now - lastClaim) / (1000 * 60 * 60);
 
-    if (lastClaim > 0 && hoursSinceLast > 48) { currentDayIndex = 0; } // Reset Streak
+    // Streak Reset Check
+    if (lastClaim > 0 && hoursSinceLast > 48) { currentDayIndex = 0; }
 
     const isClaimable = hoursSinceLast >= 24 || lastClaim === 0;
     
-    // Timer Text
+    // Timer Logic
     let timeLeftText = "";
     if (!isClaimable) {
         const msRemaining = (24 * 60 * 60 * 1000) - (now - lastClaim);
@@ -2492,19 +2493,19 @@ function renderDailyCalendar(userData) {
     REWARDS.forEach((reward, index) => {
         const dayNum = index + 1;
         const isMega = dayNum === 7;
-        let cardClass = '', contentHtml = '', clickAction = '', overlayHtml = '';
+        let cardClass = '', contentHtml = '', dataAttr = '', overlayHtml = '';
 
         if (index < currentDayIndex) {
-            // PAST (Show Reward)
+            // PAST
             cardClass = 'claimed';
             contentHtml = `<img src="${reward.img}" class="reward-img"><div class="reward-amount">+${reward.val}</div>`;
         } 
         else if (index === currentDayIndex) {
-            // PRESENT (Mystery)
+            // PRESENT
             if (isClaimable) {
                 cardClass = 'ready';
-                // *** THE FIX IS HERE: window.startGiftOpening ***
-                clickAction = `onclick="window.startGiftOpening(${reward.val}, '${reward.type}')"`;
+                // FIX: WE USE DATA ATTRIBUTES INSTEAD OF ONCLICK
+                dataAttr = `data-val="${reward.val}" data-type="${reward.type}"`;
                 contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">OPEN ME</div>`;
             } else {
                 cardClass = 'locked';
@@ -2512,14 +2513,15 @@ function renderDailyCalendar(userData) {
             }
         } 
         else {
-            // FUTURE (Locked Mystery)
+            // FUTURE
             cardClass = 'locked';
             overlayHtml = `<div class="lock-overlay"><i class="fas fa-lock lock-icon"></i></div>`;
             contentHtml = `<img src="${isMega ? MEGA_MYSTERY_ICON : MYSTERY_ICON}" class="reward-img"><div class="mystery-text">???</div>`;
         }
 
+        // Note: dataAttr is only added to the ready card
         grid.innerHTML += `
-            <div class="day-card ${isMega ? 'mega-day' : ''} ${cardClass}" ${clickAction}>
+            <div class="day-card ${isMega ? 'mega-day' : ''} ${cardClass}" ${dataAttr}>
                 ${overlayHtml}
                 <div class="day-label">DAY ${dayNum}</div>
                 ${contentHtml}
@@ -2527,26 +2529,42 @@ function renderDailyCalendar(userData) {
     });
 }
 
-// --- 2. GIFT OPENING LOGIC (GLOBAL FIX) ---
+// --- 2. GIFT OPENING LOGIC (EVENT LISTENER FIX) ---
 let pendingReward = { val: 0, type: '' };
 let taps = 0;
 
-// *** ATTACH TO WINDOW SO HTML CAN SEE IT ***
-window.startGiftOpening = (val, type) => {
+// 1. ADD CLICK LISTENER TO THE GRID (This catches the click 100%)
+setTimeout(() => {
+    const gridEl = document.getElementById('rewardsGrid');
+    if(gridEl) {
+        gridEl.addEventListener('click', function(e) {
+            // Find the closest card that was clicked
+            const card = e.target.closest('.day-card.ready');
+            if(card) {
+                const val = parseInt(card.getAttribute('data-val'));
+                const type = card.getAttribute('data-type');
+                openGiftModal(val, type);
+            }
+        });
+    }
+}, 1000);
+
+function openGiftModal(val, type) {
     pendingReward = { val, type };
     taps = 0;
     document.getElementById('tapCount').innerText = '0';
     document.getElementById('giftOpeningModal').style.display = 'flex';
-};
+}
 
+// MAKE TAP FUNCTION GLOBAL FOR THE HTML ONCLICK
 window.handleGiftTap = async () => {
     const box = document.getElementById('giftBox');
     taps++;
     document.getElementById('tapCount').innerText = taps;
     
-    // Reset animation
+    // Animation
     box.classList.remove('shaking');
-    void box.offsetWidth; 
+    void box.offsetWidth; // trigger reflow
     box.classList.add('shaking');
 
     // Shrink Effect
@@ -2556,9 +2574,10 @@ window.handleGiftTap = async () => {
     if (taps >= 10) {
         box.style.display = 'none';
         document.getElementById('giftOpeningModal').style.display = 'none';
+        
         await claimDailyReward(pendingReward.val, pendingReward.type);
         
-        // Reset
+        // Reset box for next time
         box.style.display = 'block';
         box.style.transform = 'scale(1)';
     }
