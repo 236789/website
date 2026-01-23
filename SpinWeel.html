@@ -2809,7 +2809,6 @@ document.getElementById('btnMultiSpin').onclick = async () => {
 
     runNextAutoSpin();
 };
-
 async function runNextAutoSpin() {
     if (spinsRemaining <= 0) {
         isMultiSpinActive = false;
@@ -2817,28 +2816,37 @@ async function runNextAutoSpin() {
         return;
     }
 
-    // Luăm viteza pentru a calcula cât timp stăm cu pop-up-ul deschis
+    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
     const speed = parseFloat(document.getElementById('multiSpinSpeed')?.value || 1);
 
     document.getElementById('autoSpinStatus').style.display = 'flex'; 
     document.getElementById('spinsLeftCount').innerText = spinsRemaining;
     spinsRemaining--;
 
-    await startSpin(); 
+    // --- LOGICA DE SINCRONIZARE MULTI-SPIN ---
+    if (isEventModeActive && isAdmin) {
+        // Broadcast către toți: Trimitem index, timestamp și viteză
+        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
+            spinAction: {
+                index: pickRewardIndex(),
+                timestamp: Date.now(),
+                adminId: auth.currentUser.uid,
+                speed: speed // Trimitem viteza ca toți să se învârtă la fel de repede
+            }
+        });
+    } else {
+        // Spin privat (Normal)
+        await startSpin(); 
+    }
 
-    // Timpul total de așteptare (durata animației + timpul de afișare premiu)
-    // Dacă viteza e x2, animația durează 2.5s, deci punem un delay de ~3.5s total
+    // Calculăm timpul de așteptare în funcție de viteză
     const waitTime = (5000 / speed) + 1200; 
 
     setTimeout(() => {
-        // --- FIX: ÎNCHIDEM TOATE MODALELE POSIBILE ---
-        const userRewardModal = document.getElementById('questRewardModal'); 
-        const adminRewardModal = document.getElementById('adminSpinResultModal');
-        
-        if (userRewardModal) userRewardModal.classList.remove('active');
-        if (adminRewardModal) adminRewardModal.classList.remove('active');
+        // Închidem modalele pentru a pregăti următorul spin
+        document.getElementById('questRewardModal').classList.remove('active');
+        document.getElementById('adminSpinResultModal').classList.remove('active');
 
-        // Mică pauză între rotiri (mai scurtă la viteză mare)
         setTimeout(() => {
             runNextAutoSpin();
         }, 300 / speed); 
@@ -3270,12 +3278,12 @@ window.toggleRewardsModal = (show) => {
 // Updated Physics Engine for Perfect Landing
 // --- MODIFIED ANIMATION (ACCEPTS TARGET) ---
 // --- MODIFICARE ÎN startSpin ---
-async function startSpin(forcedIndex = null) {
+async function startSpin(forcedIndex = null, speedOverride = null) {
     if (isSpinning) return;
     isSpinning = true;
 
-    // Citim viteza selectată (default 1)
-    const speedMultiplier = parseFloat(document.getElementById('multiSpinSpeed')?.value || 1);
+    // Folosim viteza primită (de la Firebase) sau cea locală (dacă e spin privat)
+    const speedMultiplier = speedOverride || parseFloat(document.getElementById('multiSpinSpeed')?.value || 1);
     
     const rewardIdx = (forcedIndex !== null) ? forcedIndex : pickRewardIndex();
     const sliceWidth = 360 / 12;
@@ -3285,9 +3293,7 @@ async function startSpin(forcedIndex = null) {
     const totalTargetRotation = extraSpins + landingRotation;
     
     const startTime = performance.now();
-    
-    // FIX VITEZĂ: Împărțim durata la multiplicator (ex: 5000 / 2 = 2.5 secunde)
-    const duration = 5000 / speedMultiplier; 
+    const duration = 5000 / speedMultiplier; // Durata se scurtează în funcție de viteză
 
     function animate(currentTime) {
         let elapsed = currentTime - startTime;
@@ -3311,36 +3317,31 @@ async function attemptSpin(isFreeAttempt) {
     const data = snap.data();
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
-    // --- EVENT MODE GLOBAL SPIN LOGIC ---
     if (isEventModeActive && isAdmin) {
-        if (!eventSelectedUser) return alert("Mai întâi alege un câștigător din listă!");
+        if (!eventSelectedUser) return alert("Alege un participant!");
         
-        // Pick the result index NOW
-        const resultIndex = pickRewardIndex();
-
-        // Update Firebase to trigger the spin for EVERYONE
+        // Broadcast Single Spin
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
             spinAction: {
-                index: resultIndex,
-                timestamp: Date.now(), // This triggers the listener on all screens
-                adminId: auth.currentUser.uid
+                index: pickRewardIndex(),
+                timestamp: Date.now(),
+                adminId: auth.currentUser.uid,
+                speed: 1 // La butonul normal viteza e mereu x1
             }
         });
-        return; // Stop here. The onSnapshot listener below will handle the animation.
+        return; 
     }
 
-    // --- NORMAL SPIN LOGIC (Private Spin) ---
+    // Logică normală de plată...
     if (isFreeAttempt) {
-        const stack = data.freeSpinStack || 0;
-        if (stack < 1) return alert("Nu ai rotiri gratuite!");
+        if ((data.freeSpinStack || 0) < 1) return alert("Nu ai rotiri!");
         await updateDoc(userRef, { freeSpinStack: increment(-1) });
     } else {
-        if ((data.diamonds || 0) < 1) return alert("Nu ai destule diamante!");
+        if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
-    startSpin(null); // Spin privately
+    startSpin();
 }
 
 document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
@@ -3740,14 +3741,20 @@ onAuthStateChanged(auth, user => {
             }
 
             // Sync Spin across all clients
-            if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
-                lastProcessedSpinTime = spinAction.timestamp;
-                currentSpinAdminId = spinAction.adminId; 
-                if (Date.now() - spinAction.timestamp < 5000) {
-                    audioSpin.currentTime = 0; audioSpin.play().catch(()=>{});
-                    startSpin(spinAction.index);
-                }
-            }
+// Sync Spin across all clients
+if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
+    lastProcessedSpinTime = spinAction.timestamp;
+    currentSpinAdminId = spinAction.adminId; 
+    
+    // Verificăm dacă mesajul e proaspăt (ultimele 10 secunde)
+    if (Date.now() - spinAction.timestamp < 10000) {
+        if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
+        
+        // --- IMPORTANT: Transmitem și viteza primită de la Admin ---
+        const speedFromAdmin = spinAction.speed || 1;
+        startSpin(spinAction.index, speedFromAdmin); 
+    }
+}
         });
 
         // --- 2. CURRENT USER LISTENER (MY DATA) ---
