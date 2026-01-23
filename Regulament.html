@@ -11,7 +11,7 @@
   </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Regulament KSDA</title>
+  <title>Trivia KSDA</title>
   <meta name="description" content="Pagina noua KSDA">
   <link rel="icon" type="image/png" href="https://iili.io/fXks1Dv.png">
 
@@ -1878,6 +1878,28 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+
+async function logTransaction(amount, type, desc) {
+    if (!auth.currentUser) return;
+    try {
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+
+        await addDoc(collection(db, "transactions"), {
+            userId: auth.currentUser.uid,
+            username: userData.username || auth.currentUser.displayName || "Unknown",
+            userImage: userData.image || auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
+            amount: amount,
+            type: type, // "DIAMONDS"
+            source: "Regulament",
+            description: desc,
+            timestamp: serverTimestamp()
+        });
+    } catch (e) {
+        console.error("Failed to log transaction:", e);
+    }
+}
+
     const headerLoginBtn = document.getElementById('headerLoginBtn');
     const headerLoginText = document.getElementById('headerLoginText');
     const headerUserImg = document.getElementById('headerUserImg');
@@ -1930,27 +1952,43 @@ window.showRulesModal = (type) => {
     modal.classList.add('active');
 };
 
-// Logica pentru SUNT DE ACORD
 window.handleAgree = async () => {
     if (!auth.currentUser) return;
     const userRef = doc(db, "accounts", auth.currentUser.uid);
 
     try {
-        // 1. Dăm diamantul și salvăm acceptarea
+        const snap = await getDoc(userRef);
+        const data = snap.data();
+
+        // Verificăm dacă a acceptat deja (pentru a preveni exploatarea butonului)
+        if (data.agreedToRules === true) {
+            document.getElementById('acceptanceContainer').innerHTML = `
+                <div class="agreed-text"><i class="fas fa-check-double"></i> ESTI DE ACORD !</div>
+            `;
+            return;
+        }
+
+        // 1. Logăm tranzacția în baza de date (Trecem sursa "Regulament")
+        await logTransaction(1, "DIAMONDS", "Recompensă: Citire & Acceptare Regulament");
+
+        // 2. Actualizăm profilul: +1 Diamant și bifăm acceptarea
         await updateDoc(userRef, {
             agreedToRules: true,
             diamonds: increment(1)
         });
 
-        // 2. Schimbăm UI-ul imediat
+        // 3. Modificăm UI-ul imediat
         document.getElementById('acceptanceContainer').innerHTML = `
             <div class="agreed-text"><i class="fas fa-check-double"></i> ESTI DE ACORD !</div>
         `;
 
-        // 3. Arătăm modalul configurat pentru recompensă
+        // 4. Afișăm Modalul de Recompensă (Configurat pentru 1 Diamant)
         window.showRulesModal('agree');
 
-    } catch (e) { console.error("Error accepting rules:", e); }
+    } catch (e) { 
+        console.error("Error accepting rules:", e); 
+        alert("A apărut o eroare. Încearcă din nou.");
+    }
 };
 
 // Logica pentru NU SUNT DE ACORD
