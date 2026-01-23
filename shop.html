@@ -1477,6 +1477,93 @@ input:checked + .slider:before { transform: translateX(16px); }
 #donateStartBtn {
     height: 45px; 
 }
+
+
+/* --- ULTIMATE CYBER MODAL OVERHAUL --- */
+.cyber-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(15px);
+    display: none; justify-content: center; align-items: center;
+    z-index: 99999; padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.cyber-modal-overlay.active { display: flex; }
+
+.cyber-modal-card {
+    background: #050b14;
+    border: 1px solid var(--primary);
+    width: 100%; max-width: 400px;
+    border-radius: 24px;
+    padding: 35px 25px;
+    text-align: center;
+    box-shadow: 0 0 50px rgba(41, 243, 255, 0.2), inset 0 0 20px rgba(41, 243, 255, 0.05);
+    position: relative;
+    animation: slideUpModal 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.cyber-modal-icon {
+    font-size: 40px; color: var(--primary);
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 10px var(--primary));
+}
+
+.cyber-modal-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px; font-weight: 900;
+    color: #fff; text-transform: uppercase;
+    margin-bottom: 15px; letter-spacing: 1px;
+}
+
+.cyber-modal-text {
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px; color: #a5b1c2;
+    line-height: 1.6; margin-bottom: 30px;
+}
+
+/* Container butoane aliniate perfect */
+.cyber-modal-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Două coloane egale */
+    gap: 15px;
+}
+
+/* Butonul de bază */
+.c-btn {
+    padding: 14px;
+    border-radius: 12px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px; font-weight: 800;
+    cursor: pointer; transition: 0.3s;
+    text-transform: uppercase;
+    border: none;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+/* Buton confirmare (Cyan) */
+.c-btn-confirm {
+    background: var(--primary);
+    color: #000;
+    box-shadow: 0 0 20px rgba(41, 243, 255, 0.3);
+}
+.c-btn-confirm:hover { background: #fff; transform: translateY(-3px); box-shadow: 0 5px 25px var(--primary); }
+
+/* Buton anulare (Dark Red Outline) */
+.c-btn-cancel {
+    background: rgba(255, 71, 87, 0.05);
+    border: 1px solid #ff4757;
+    color: #ff4757;
+}
+.c-btn-cancel:hover { background: #ff4757; color: #fff; transform: translateY(-3px); }
+
+/* Dacă e doar o alertă (un singur buton), îl facem să ocupe tot rândul */
+.cyber-modal-btns.single-btn { grid-template-columns: 1fr; }
+
+@keyframes slideUpModal {
+    from { transform: translateY(30px) scale(0.9); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
   </style>
 </head>
 <body>
@@ -1856,14 +1943,15 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 
 <!-- CUSTOM ALERT/CONFIRM MODAL -->
-<div id="customAlertOverlay" class="account-modal-overlay" style="z-index: 20000;">
-    <div class="account-card" style="max-width: 350px; border-color: var(--primary);">
-        <h3 id="customAlertTitle" style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px; font-size:18px;">NOTIFICARE</h3>
-        <p id="customAlertText" style="color:#fff; font-size:14px; margin-bottom:25px; line-height:1.5;">Mesaj...</p>
+<div id="cyberModal" class="cyber-modal-overlay">
+    <div class="cyber-modal-card">
+        <div class="cyber-modal-icon" id="cyberModalIcon"><i class="fas fa-question-circle"></i></div>
+        <h3 class="cyber-modal-title" id="cyberModalTitle">Confirmare</h3>
+        <p class="cyber-modal-text" id="cyberModalText">Sigur vrei să faci această acțiune?</p>
         
-        <div style="display:flex; justify-content:center; gap:15px;">
-            <button id="customAlertCancel" class="btn-logout-pop" style="display:none; padding:10px 25px;">ANULEAZĂ</button>
-            <button id="customAlertOk" class="btn-tasks" style="margin:0; padding:10px 30px; background:var(--primary); color:#000;">OK</button>
+        <div class="cyber-modal-btns" id="cyberModalBtnContainer">
+            <button id="cyberModalCancel" class="c-btn c-btn-cancel">Anulează</button>
+            <button id="cyberModalOk" class="c-btn c-btn-confirm">Confirmă</button>
         </div>
     </div>
 </div>
@@ -2190,31 +2278,50 @@ async function logTransaction(amount, type, source, description, targetUid = nul
             };
         });
     };
+window.showCyberModal = (msg, title = "NOTIFICARE", type = "confirm") => {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('cyberModal');
+        const btnContainer = document.getElementById('cyberModalBtnContainer');
+        const btnCancel = document.getElementById('cyberModalCancel');
+        const btnOk = document.getElementById('cyberModalOk');
+        const iconBox = document.getElementById('cyberModalIcon');
 
-    window.showCustomConfirm = (msg, title = "CONFIRMARE") => {
-        return new Promise((resolve) => {
-            const overlay = document.getElementById('customAlertOverlay');
-            document.getElementById('customAlertTitle').innerText = title;
-            document.getElementById('customAlertText').innerText = msg;
-            
-            const btnOk = document.getElementById('customAlertOk');
-            const btnCancel = document.getElementById('customAlertCancel');
-            
-            btnCancel.style.display = 'block'; // Show cancel
-            overlay.classList.add('active');
+        // Setăm textele
+        document.getElementById('cyberModalTitle').innerText = title;
+        document.getElementById('cyberModalText').innerText = msg;
 
-            btnOk.onclick = () => {
-                overlay.classList.remove('active');
-                resolve(true); // User clicked OK
-            };
-            
-            btnCancel.onclick = () => {
-                overlay.classList.remove('active');
-                resolve(false); // User clicked Cancel
-            };
-        });
-    };
+        // Configurăm iconița în funcție de titlu
+        if (title.includes("EROARE") || title.includes("ANULAT")) {
+            iconBox.innerHTML = '<i class="fas fa-times-circle" style="color: #ff4757;"></i>';
+        } else if (title.includes("SUCCES")) {
+            iconBox.innerHTML = '<i class="fas fa-check-circle" style="color: #00ff88;"></i>';
+        } else {
+            iconBox.innerHTML = '<i class="fas fa-shield-alt"></i>';
+        }
 
+        // Logică butoane (1 sau 2)
+        if (type === "alert") {
+            btnCancel.style.display = "none";
+            btnContainer.classList.add('single-btn');
+        } else {
+            btnCancel.style.display = "flex";
+            btnContainer.classList.remove('single-btn');
+        }
+
+        modal.classList.add('active');
+
+        // Handlers
+        btnOk.onclick = () => {
+            modal.classList.remove('active');
+            resolve(true);
+        };
+
+        btnCancel.onclick = () => {
+            modal.classList.remove('active');
+            resolve(false);
+        };
+    });
+};
     // --- CURRENCY RATES ---
     let selectedCurrency = 'RON';
     const RATES = { RON: 1, EUR: 4.97, USD: 4.60, GBP: 5.80 };
