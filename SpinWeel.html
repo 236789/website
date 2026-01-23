@@ -3313,19 +3313,23 @@ async function attemptSpin(isFreeAttempt) {
     
     if (isFreeAttempt) {
         const stack = data.freeSpinStack || 0;
-        if (stack < 1) return alert("Nu mai ai rotiri gratuite!");
+        if (stack < 1) {
+            alert("Nu ai rotiri gratuite disponibile!");
+            return;
+        }
         
-        // Remove 1 from the stack
+        // Consumăm o rotire din stack
         await updateDoc(userRef, { 
             freeSpinStack: increment(-1) 
         });
     } else {
+        // Spin pe diamante
         if ((data.diamonds || 0) < 1) return alert("Nu ai destule diamante!");
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    audioSpin.currentTime = 0; 
-    audioSpin.play().catch(()=>{});
+    // Pornește animația
+    if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
     startSpin(null);
 }
 
@@ -3771,13 +3775,13 @@ const timerInterval = setInterval(() => {
     const diff = nextSpinAt - Date.now();
 
     if (stack > 0) {
-        // If they have spins, enable button and show count
-        if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 6px; border-radius:50px; font-size:12px; margin-left:5px;">${stack}</span>`;
+        // Arată numărul de rotiri pe buton
+        if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 8px; border-radius:50px; font-size:12px; font-weight:900; margin-left:8px;">${stack}</span>`;
         freeBtn.style.pointerEvents = "auto"; 
         freeBtn.style.opacity = "1"; 
         freeBtn.style.filter = "none";
     } else {
-        // If no spins, show countdown to the next stack increase
+        // Countdown până la următoarea acumulare
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
         const s = Math.floor((diff % 60000) / 1000);
@@ -4435,7 +4439,6 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         }
     };
 
-
 onAuthStateChanged(auth, user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
@@ -4459,30 +4462,37 @@ onAuthStateChanged(auth, user => {
                 const data = uSnap.data();
 
                 // ==========================================
-                // LOGICĂ NOUĂ: ACUMULARE ROTIRI GRATUITE (12h)
+                // FIX & RESET: ACUMULARE ROTIRI GRATUITE (12h)
                 // ==========================================
                 const now = Date.now();
                 const twelveHours = 12 * 60 * 60 * 1000;
-                
-                // Determinăm de când începem numărătoarea (ultima acumulare sau data înscrierii)
-                let lastAccrual = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : 
-                                 (data.joinedAt ? data.joinedAt.toMillis() : now);
-                
+
+                // PAS 1: Resetăm utilizatorii care nu au noul sistem 
+                // sau le ștergem rotirile "ilegale" primite din trecut
+                if (data.freeSpinStack === undefined) {
+                    await updateDoc(userRef, {
+                        freeSpinStack: 0,
+                        lastFreeSpinAccrual: serverTimestamp() // Cronometrul începe de ACUM
+                    });
+                    return; // Revenim după ce se actualizează baza de date
+                }
+
+                // PAS 2: Calculăm acumularea normală (doar de la momentul resetării încolo)
+                let lastAccrual = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : now;
                 const timeDiff = now - lastAccrual;
 
                 if (timeDiff >= twelveHours) {
                     const spinsToAdd = Math.floor(timeDiff / twelveHours);
                     const nextAccrualDate = new Date(lastAccrual + (spinsToAdd * twelveHours));
 
-                    // Actualizăm stack-ul în Firebase
                     await updateDoc(userRef, {
                         freeSpinStack: increment(spinsToAdd),
                         lastFreeSpinAccrual: nextAccrualDate
                     });
-                    return; // Snapshot-ul se va declanșa din nou cu noile date
+                    return;
                 }
 
-                // Salvăm în ferestre globale pentru a fi folosite de interval-ul de timer al butonului
+                // Salvăm valorile global pentru ca intervalul timer-ului de pe buton să le poată vedea
                 window.currentUserStack = data.freeSpinStack || 0;
                 window.lastAccrualTime = lastAccrual;
                 // ==========================================
