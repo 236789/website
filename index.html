@@ -1589,6 +1589,26 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
+
+
+<!-- REGULAMENT REMINDER MODAL -->
+<div id="rulesReminderModal" class="reward-modal">
+    <div class="reward-card" style="border-color: #ff4757; box-shadow: 0 0 30px rgba(255, 71, 87, 0.2);">
+        <h2 style="color: #ff4757;"><span style="font-size: 24px;">📜</span> REGULAMENT</h2>
+        <p>Hey! Am observat că nu ai citit sau nu ai acceptat încă regulamentul comunității noastre.</p>
+        
+        <div style="margin: 20px 0;">
+            <i class="fas fa-file-signature" style="font-size: 60px; color: #ff4757; filter: drop-shadow(0 0 10px rgba(255, 71, 87, 0.5));"></i>
+        </div>
+
+        <p style="font-size: 13px; opacity: 0.8;">Este obligatoriu să fii de acord cu regulile pentru a menține o comunitate unită și corectă. Plus, primești <b>1 DIAMANT</b> cadou la acceptare!</p>
+
+        <button class="super-btn" style="background: #ff4757; color: #fff;" onclick="window.location.href='regulament.html'">MERGI LA REGULAMENT</button>
+        <p style="margin-top: 15px; font-size: 10px; color: #555; cursor: pointer; font-family: 'Orbitron';" onclick="document.getElementById('rulesReminderModal').classList.remove('active')">MAI TÂRZIU</p>
+    </div>
+</div>
+
+
 <!-- MISSED STREAK MODAL (RED) -->
 <div id="streakMissedModal" class="reward-modal">
     <div class="modern-pop-card pop-red">
@@ -2762,6 +2782,7 @@ async function handleLoginFlow() {
                 await setDoc(userRef, {
                     uid: user.uid,
                     username: user.displayName,
+    agreedToRules: false, // Adaugă această linie aici
                     email: user.email,
                     image: user.photoURL,
                     coins: startingCoins,
@@ -3218,7 +3239,7 @@ onAuthStateChanged(auth, async (user) => {
             onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
 
-                // 3. User Data Listener
+// 3. User Data Listener
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
@@ -3227,6 +3248,18 @@ onAuthStateChanged(auth, async (user) => {
                     if (data.isBanned === true) {
                         location.reload(); 
                         return;
+                    }
+
+                    // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
+                    // Verificăm dacă agreedToRules este false sau nu există deloc (utilizatori vechi)
+                    if (data.agreedToRules !== true) {
+                        // Folosim un delay pentru a nu se suprapune instant cu alte eventuale pop-up-uri
+                        setTimeout(() => {
+                            const rulesModal = document.getElementById('rulesReminderModal');
+                            if(rulesModal && !rulesModal.classList.contains('active')) {
+                                rulesModal.classList.add('active');
+                            }
+                        }, 4000); // Apare după 4 secunde de la logare
                     }
 
                     // Referral Logic
@@ -3274,7 +3307,7 @@ onAuthStateChanged(auth, async (user) => {
                             if (!isAwardingInProgress) {
                                 isAwardingInProgress = true;
                                 const oldStr = data.streak || 0;
-                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă");
+                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă", "Acasă");
                                 await updateDoc(userRef, {
                                     streak: increment(1),
                                     diamonds: increment(1),
