@@ -1661,6 +1661,39 @@ input:checked + .slider:before { transform: translateX(16px); }
         <h2 style="color: #d63384; font-family:'Orbitron'; margin-bottom:20px;">SERVICII EXTRA</h2>
         
         <div style="display: flex; flex-direction: column; gap: 15px; overflow-y: auto; max-height: 60vh; padding-right: 10px;">
+
+<!-- ÎN INTERIORUL alteShopModal, sub Schimbă Numele -->
+<div class="shop-badge-item" style="flex-direction: row; justify-content: space-between; padding: 20px; flex-shrink: 0; align-items: center;">
+    <div style="text-align: left;">
+        <div style="font-family: Orbitron; font-weight: 800; font-size: 14px;">SCHIMBĂ POZA</div>
+        <div style="font-size: 10px; color: #aaa;">Cooldown: 7 Zile</div>
+        <div style="color: #00ff88; font-weight: 800; font-size: 12px; margin-top:5px;">3 <img src="https://iili.io/fv5bmtj.png" width="12"></div>
+    </div>
+    <!-- IMAGINEA NOUĂ PENTRU BUTON -->
+    <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/images%2F3%20DIAMONDS.png?alt=media&token=27e8c624-5ed4-4aa6-87c1-ed6f7a7d7312" class="buy-btn-img" onclick="openPfpChangeModal()">
+</div>
+
+<!-- ADAUGĂ ACEST MODAL NOU LÂNGĂ CELELALTE MODALURI -->
+<div id="pfpChangeModal" class="modal-overlay">
+    <div class="payment-card">
+        <button class="close-modal-btn" onclick="closeModal('pfpChangeModal')">✕</button>
+        <h2 style="color: #00ff88; font-size: 20px; font-family: 'Orbitron';">SCHIMBĂ POZA DE PROFIL</h2>
+        <p id="pfpCooldownWarning" style="font-size: 11px; color: var(--error); margin-bottom: 10px; display: none;"></p>
+        
+        <div style="margin: 20px 0;">
+            <img id="pfpPreview" src="https://i.ibb.co/4pGm9S2/user-placeholder.png" style="width: 120px; height: 120px; border-radius: 50%; border: 3px solid #00ff88; object-fit: cover;">
+        </div>
+
+        <input type="file" id="pfpInput" accept="image/*" style="display: none;" onchange="handlePfpPreview(event)">
+        <button class="pay-btn pay-rev" onclick="document.getElementById('pfpInput').click()" style="background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid #00ff88;">
+            <i class="fas fa-upload"></i> ALEGE IMAGINE
+        </button>
+        
+        <button class="pay-btn pay-rev" id="confirmPfpBtn" onclick="processPfpChange()" style="background: #00ff88; color: #000; margin-top: 15px;">
+            CONFIRMĂ (3 DIAMANTE)
+        </button>
+    </div>
+</div>
             
             <!-- Option 1: Change Name (CUMPARA IMAGE) -->
             <div class="shop-badge-item" style="flex-direction: row; justify-content: space-between; padding: 20px; flex-shrink: 0; align-items: center;">
@@ -2007,7 +2040,7 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
-<script type="module">
+<script type="">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, collection, query, orderBy, getDocs, doc, getDoc, updateDoc, onSnapshot, serverTimestamp, arrayUnion, increment,addDoc  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -2890,6 +2923,106 @@ window.openTextShop = async () => {
 };
 
 
+// --- SISTEM TOAST (Înlocuiește alertele) ---
+window.showToast = (msg, type = "success") => {
+    const box = document.getElementById('toastBox');
+    const toast = document.createElement('div');
+    toast.className = 'custom-toast';
+    // Dacă e eroare, schimbăm iconița și culoarea bordurii prin stil inline
+    if(type === "error") {
+        toast.style.borderColor = "#ff4757";
+        toast.style.boxShadow = "0 0 20px rgba(255, 71, 87, 0.4)";
+        toast.innerHTML = `<i class="fas fa-times-circle" style="color:#ff4757;"></i> ${msg}`;
+    } else {
+        toast.innerHTML = `<i class="fas fa-check-circle"></i> ${msg}`;
+    }
+    box.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+};
+
+// --- LOGICĂ SCHIMBARE PFP ---
+let selectedPfpBase64 = null;
+
+window.openPfpChangeModal = async () => {
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
+    const lastChange = data.lastPfpChange;
+    const warn = document.getElementById('pfpCooldownWarning');
+    
+    warn.style.display = "none";
+    if (lastChange) {
+        const diff = Date.now() - lastChange.toDate().getTime();
+        const week = 7 * 24 * 60 * 60 * 1000;
+        if (diff < week) {
+            const daysLeft = Math.ceil((week - diff) / (1000 * 60 * 60 * 24));
+            warn.innerText = `⚠️ COOLDOWN: Mai ai ${daysLeft} zile de așteptat.`;
+            warn.style.display = "block";
+        }
+    }
+    document.getElementById('pfpPreview').src = data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+    document.getElementById('pfpChangeModal').classList.add('active');
+};
+
+window.handlePfpPreview = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) return window.showToast("Imaginea este prea mare (Max 2MB)!", "error");
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 300; // Rezoluție profil
+            canvas.width = size; canvas.height = size;
+            ctx.drawImage(img, 0, 0, size, size);
+            selectedPfpBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            document.getElementById('pfpPreview').src = selectedPfpBase64;
+        };
+    };
+    reader.readAsDataURL(file);
+};
+
+window.processPfpChange = async () => {
+    if (!selectedPfpBase64) return window.showToast("Alege o imagine mai întâi!", "error");
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const data = userSnap.data();
+
+    // Verificare cooldown (7 zile)
+    if (data.lastPfpChange) {
+        const diff = Date.now() - data.lastPfpChange.toDate().getTime();
+        if (diff < 7 * 24 * 60 * 60 * 1000 && auth.currentUser.email !== "nicaemmanuel433qe@gmail.com") {
+            return window.showToast("Ești în cooldown!", "error");
+        }
+    }
+
+    if ((data.diamonds || 0) < 3) return window.showToast("Nu ai destule diamante!", "error");
+
+    const confirmed = await showCustomConfirm("Cumperi schimbarea pozei pentru 3 Diamante?");
+    if (!confirmed) return;
+
+    try {
+        await updateDoc(userRef, {
+            image: selectedPfpBase64,
+            diamonds: increment(-3),
+            lastPfpChange: serverTimestamp()
+        });
+
+        await logTransaction(-3, "DIAMONDS", "Shop", "Changed Profile Picture");
+        
+        window.showToast("Poza de profil a fost schimbată!");
+        closeModal('pfpChangeModal');
+        closeModal('alteShopModal');
+    } catch (e) {
+        window.showToast("Eroare la procesare!", "error");
+    }
+};
+
+
 window.buyStickers = async (currency) => {
     if (!auth.currentUser) return;
     let cost = (currency === 'coins') ? 5000 : 10;
@@ -2952,8 +3085,7 @@ window.buyText = async (id, price) => {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
     
-    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
-    
+if((userSnap.data().coins || 0) < price) return window.showToast("Nu ai destule monede!", "error");    
     try {
         await updateDoc(userRef, { coins: increment(-price), ownedTexts: arrayUnion(id) });
         
@@ -3396,7 +3528,7 @@ window.buyFrame = async (id, price) => {
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
-    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
+if((userSnap.data().coins || 0) < price) return window.showToast("Nu ai destule monede!", "error");
     
     try {
         await updateDoc(userRef, { coins: increment(-price), ownedFrames: arrayUnion(id) });
@@ -3469,7 +3601,7 @@ window.buyBanner = async (id, price) => {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
     
-    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
+if((userSnap.data().coins || 0) < price) return window.showToast("Nu ai destule monede!", "error");
     
     try {
         await updateDoc(userRef, { coins: increment(-price), ownedBanners: arrayUnion(id) });
@@ -3489,8 +3621,7 @@ window.buyBadge = async (badgeId, price) => {
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
-    if((userSnap.data().coins || 0) < price) return await showCustomAlert("Nu ai destule monede!", "EROARE");
-    
+if((userSnap.data().coins || 0) < price) return window.showToast("Nu ai destule monede!", "error");    
     try {
         await updateDoc(userRef, { coins: increment(-price), ownedBadges: arrayUnion(badgeId) });
         
