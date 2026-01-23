@@ -3303,8 +3303,6 @@ async function startSpin(forcedIndex = null) {
 }
 
 // Funcție unică de pornire Spin (Corectată)
-// --- MODIFIED ATTEMPT SPIN ---
-// --- MODIFIED ATTEMPT SPIN (SYNC TRIGGER) ---
 async function attemptSpin(isFreeAttempt) {
     if (isSpinning) return;
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
@@ -3313,49 +3311,21 @@ async function attemptSpin(isFreeAttempt) {
     const snap = await getDoc(userRef);
     const data = snap.data();
     
-    // --- EVENT MODE LOGIC ---
-    if (isEventModeActive) {
-        if (!ADMIN_EMAILS.includes(auth.currentUser.email)) return alert("Doar adminul poate învârti!");
-        if (!eventSelectedUser) return alert("Alege un participant!");
-        
-        // 1. Check if Admin has diamonds
-        if ((data.diamonds || 0) < 1) return alert("Adminule, nu ai diamante!");
-        
-        // 2. Admin pays immediately
-        await logTransaction(-1, "DIAMONDS", `Event Spin for ${eventSelectedUser.username}`);
-        await updateDoc(userRef, { diamonds: increment(-1) });
-
-        // 3. Calculate Result LOCALLY (Admin decides fate)
-        const resultIdx = pickRewardIndex();
-
-        // 4. Update Database to Trigger Everyone else
-        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
-            spinAction: {
-                index: resultIdx,
-                timestamp: Date.now(),
-                adminId: auth.currentUser.uid
-            }
-        });
-
-        // The onSnapshot listener will catch this and start the animation for the Admin too.
-        return; 
-    }
-
-    // --- NORMAL MODE LOGIC ---
-    const now = Date.now();
-    let lastSpinTime = 0;
-    if (data.lastWheelSpin) lastSpinTime = data.lastWheelSpin.seconds ? data.lastWheelSpin.toMillis() : new Date(data.lastWheelSpin).getTime();
-    
     if (isFreeAttempt) {
-        if ((now - lastSpinTime) < (12 * 60 * 60 * 1000)) return alert("Free Spin nu este disponibil.");
-        await updateDoc(userRef, { lastWheelSpin: serverTimestamp() });
+        const stack = data.freeSpinStack || 0;
+        if (stack < 1) return alert("Nu mai ai rotiri gratuite!");
+        
+        // Remove 1 from the stack
+        await updateDoc(userRef, { 
+            freeSpinStack: increment(-1) 
+        });
     } else {
         if ((data.diamonds || 0) < 1) return alert("Nu ai destule diamante!");
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    // In normal mode, we just spin locally
-    audioSpin.currentTime = 0; audioSpin.play().catch(()=>{});
+    audioSpin.currentTime = 0; 
+    audioSpin.play().catch(()=>{});
     startSpin(null);
 }
 
@@ -3788,23 +3758,35 @@ onAuthStateChanged(auth, user => {
         });
         
         // --- 3. FREE SPIN TIMER LOOP ---
-        const timerInterval = setInterval(() => {
-            if (!auth.currentUser) { clearInterval(timerInterval); return; }
-            const diff = (12 * 60 * 60 * 1000) - (Date.now() - lastSpinTime);
-            const freeBtn = document.getElementById('freeSpinBtn');
-            if (freeBtn) {
-                const btnTop = freeBtn.querySelector('.btn-top');
-                if (diff <= 0) {
-                    if (btnTop) btnTop.innerText = "FREE SPIN";
-                    freeBtn.style.pointerEvents = "auto"; freeBtn.style.opacity = "1"; freeBtn.style.filter = "none";
-                } else {
-                    const h = Math.floor(diff / 3600000);
-                    const m = Math.floor((diff % 3600000) / 60000);
-                    if (btnTop) btnTop.innerText = `${h}h ${m}m`;
-                    freeBtn.style.pointerEvents = "none"; freeBtn.style.opacity = "0.7"; freeBtn.style.filter = "grayscale(0.8)";
-                }
-            }
-        }, 1000);
+const timerInterval = setInterval(() => {
+    if (!auth.currentUser) { clearInterval(timerInterval); return; }
+    
+    const freeBtn = document.getElementById('freeSpinBtn');
+    if (!freeBtn) return;
+
+    const btnTop = freeBtn.querySelector('.btn-top');
+    const stack = window.currentUserStack || 0;
+    const twelveHours = 12 * 60 * 60 * 1000;
+    const nextSpinAt = (window.lastAccrualTime || Date.now()) + twelveHours;
+    const diff = nextSpinAt - Date.now();
+
+    if (stack > 0) {
+        // If they have spins, enable button and show count
+        if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 6px; border-radius:50px; font-size:12px; margin-left:5px;">${stack}</span>`;
+        freeBtn.style.pointerEvents = "auto"; 
+        freeBtn.style.opacity = "1"; 
+        freeBtn.style.filter = "none";
+    } else {
+        // If no spins, show countdown to the next stack increase
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        if (btnTop) btnTop.innerText = `NEXT: ${h}h ${m}m ${s}s`;
+        freeBtn.style.pointerEvents = "none"; 
+        freeBtn.style.opacity = "0.7"; 
+        freeBtn.style.filter = "grayscale(0.8)";
+    }
+}, 1000);
 
     } else {
         document.getElementById('wheelLoginWall').style.display = 'flex';
@@ -4454,7 +4436,6 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     };
 
 
-
 onAuthStateChanged(auth, user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
@@ -4468,8 +4449,6 @@ onAuthStateChanged(auth, user => {
             mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
         }
 
-
-
         // 2. Listen for Global Metadata (Notifications)
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
             const totalGlobal = metaSnap.data()?.totalNews || 0;
@@ -4478,43 +4457,63 @@ onAuthStateChanged(auth, user => {
             onSnapshot(userRef, async (uSnap) => {
                 if(!uSnap.exists()) return;
                 const data = uSnap.data();
+
+                // ==========================================
+                // LOGICĂ NOUĂ: ACUMULARE ROTIRI GRATUITE (12h)
+                // ==========================================
+                const now = Date.now();
+                const twelveHours = 12 * 60 * 60 * 1000;
                 
+                // Determinăm de când începem numărătoarea (ultima acumulare sau data înscrierii)
+                let lastAccrual = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : 
+                                 (data.joinedAt ? data.joinedAt.toMillis() : now);
+                
+                const timeDiff = now - lastAccrual;
+
+                if (timeDiff >= twelveHours) {
+                    const spinsToAdd = Math.floor(timeDiff / twelveHours);
+                    const nextAccrualDate = new Date(lastAccrual + (spinsToAdd * twelveHours));
+
+                    // Actualizăm stack-ul în Firebase
+                    await updateDoc(userRef, {
+                        freeSpinStack: increment(spinsToAdd),
+                        lastFreeSpinAccrual: nextAccrualDate
+                    });
+                    return; // Snapshot-ul se va declanșa din nou cu noile date
+                }
+
+                // Salvăm în ferestre globale pentru a fi folosite de interval-ul de timer al butonului
+                window.currentUserStack = data.freeSpinStack || 0;
+                window.lastAccrualTime = lastAccrual;
+                // ==========================================
+
                 // --- A. QUEST RESET & STREAK LOSS LOGIC ---
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
 
-                // --- B. 6/6 QUEST COMPLETION REWARD (THE FIRE MODAL) ---
+                // --- B. 6/6 QUEST COMPLETION REWARD ---
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // Check if all 6 quests are done and not already awarded for this block
-               if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         if (!window.isAwardingInProgress) {
                             window.isAwardingInProgress = true;
-
                             const oldStr = data.streak || 0;
-                            
-                            // --- LOG TRANSACTION (+1 Diamond Streak) ---
                             await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-
-                            // Update Firebase: Give +1 Streak and +1 Diamond
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
-
-                            // Show the FIRE Modal
                             const rewardModal = document.getElementById('streakRewardModal');
                             if (rewardModal) {
                                 document.getElementById('streakOld').innerText = oldStr;
                                 document.getElementById('streakNew').innerText = oldStr + 1;
                                 rewardModal.classList.add('active');
                             }
-                            
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
@@ -4528,9 +4527,8 @@ onAuthStateChanged(auth, user => {
                         popFrame.src = data.equippedFrame.img;
                         popFrame.style.display = "block";
                         const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = scale * 100;
-                        popFrame.style.width = `${sizePct}%`;
-                        popFrame.style.height = `${sizePct}%`;
+                        popFrame.style.width = `${scale * 100}%`;
+                        popFrame.style.height = `${scale * 100}%`;
                     } else {
                         popFrame.style.display = "none";
                     }
@@ -4539,7 +4537,6 @@ onAuthStateChanged(auth, user => {
                 // --- D. NAME CUSTOMIZATION ---
                 let rawName = data.username || user.displayName;
                 if(user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
                 const popNameEl = document.getElementById('popUserName');
                 if (data.equippedText && data.equippedText.cssClass) {
                     popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
@@ -4547,32 +4544,28 @@ onAuthStateChanged(auth, user => {
                     popNameEl.innerText = rawName;
                 }
 
-                // --- E. STACKED BADGES (Staff + Cosmetic) ---
+                // --- E. STACKED BADGES ---
                 const popBadgeBox = document.getElementById('popUserBadges');
                 if(popBadgeBox) {
                     let staffHtml = "";
                     const email = data.email || "";
-                    
                     if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
                     else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
                     else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
                     
                     let cosmeticHtml = "";
                     if(data.equippedBadge) {
-                        cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
+                        cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
                     }
                     popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
                 }
 
                 // --- F. DUAL CURRENCY & STREAK UI ---
                 document.getElementById('popUserEmail').innerText = data.email;
-                
-                // Use formatCurrency (e.g., 1000 -> 1k)
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
+                if(document.getElementById('popUserDiamonds')) {
+                    document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+                }
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
@@ -4581,31 +4574,20 @@ onAuthStateChanged(auth, user => {
                 const noutatiNoi = totalGlobal - userVazute;
                 const heroBadge = document.getElementById('heroNotifBadge');
                 const headerBadge = document.getElementById('headerNotifBadge');
-
                 [heroBadge, headerBadge].forEach(badge => {
                     if (badge) {
-                        if (noutatiNoi > 0) {
-                            badge.innerText = `+${noutatiNoi}`;
-                            badge.style.display = 'flex';
-                        } else {
-                            badge.style.display = 'none';
-                        }
+                        badge.innerText = `+${noutatiNoi}`;
+                        badge.style.display = noutatiNoi > 0 ? 'flex' : 'none';
                     }
                 });
             });
         });
 
-        updateOnlineStatus(); // Start tracking online presence
+        updateOnlineStatus();
     } else {
-        // LOGGED OUT STATE
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        }
-
-
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
     } 
 });
 
