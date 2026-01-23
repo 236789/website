@@ -3302,7 +3302,6 @@ async function startSpin(forcedIndex = null) {
     requestAnimationFrame(animate);
 }
 
-// Funcție unică de pornire Spin (Corectată)
 async function attemptSpin(isFreeAttempt) {
     if (isSpinning) return;
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
@@ -3310,27 +3309,38 @@ async function attemptSpin(isFreeAttempt) {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const snap = await getDoc(userRef);
     const data = snap.data();
-    
+    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
+
+    // --- EVENT MODE GLOBAL SPIN LOGIC ---
+    if (isEventModeActive && isAdmin) {
+        if (!eventSelectedUser) return alert("Mai întâi alege un câștigător din listă!");
+        
+        // Pick the result index NOW
+        const resultIndex = pickRewardIndex();
+
+        // Update Firebase to trigger the spin for EVERYONE
+        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
+            spinAction: {
+                index: resultIndex,
+                timestamp: Date.now(), // This triggers the listener on all screens
+                adminId: auth.currentUser.uid
+            }
+        });
+        return; // Stop here. The onSnapshot listener below will handle the animation.
+    }
+
+    // --- NORMAL SPIN LOGIC (Private Spin) ---
     if (isFreeAttempt) {
         const stack = data.freeSpinStack || 0;
-        if (stack < 1) {
-            alert("Nu ai rotiri gratuite disponibile!");
-            return;
-        }
-        
-        // Consumăm o rotire din stack
-        await updateDoc(userRef, { 
-            freeSpinStack: increment(-1) 
-        });
+        if (stack < 1) return alert("Nu ai rotiri gratuite!");
+        await updateDoc(userRef, { freeSpinStack: increment(-1) });
     } else {
-        // Spin pe diamante
         if ((data.diamonds || 0) < 1) return alert("Nu ai destule diamante!");
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    // Pornește animația
     if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
-    startSpin(null);
+    startSpin(null); // Spin privately
 }
 
 document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
@@ -3373,27 +3383,25 @@ function pickRewardIndex() {
 // Add these imports to your top import line if missing: 
 // query, orderBy, limit, getDocs
  
-// --- MODIFIED REWARD LOGIC ---
-// --- FIXED FINALIZE SPIN (VISUALS, SOUNDS, LOGS & ADMIN POPUP) ---
-// --- FIXED FINALIZE SPIN (GOLDEN ADMIN POPUP) ---
-// --- FIXED FINALIZE SPIN (WINNER vs EVERYONE ELSE) ---
-// --- FIXED FINALIZE SPIN (NO DOUBLE POSTING) ---
+// --- UPDATED REWARD LOGIC FOR GLOBAL SYNC ---
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
     
-    // 1. Determine Target User (The one who gets the prize)
+    // 1. Identificăm cine primește premiul (Câștigătorul)
     let targetUid = auth.currentUser.uid;
     let targetName = "Jucător";
     let targetPhoto = auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png";
     let targetUserObj = null; 
     
     if (isEventModeActive && eventSelectedUser) {
+        // Dacă e Event, target-ul este userul selectat de Admin din listă
         targetUid = eventSelectedUser.uid;
         targetName = eventSelectedUser.username;
         targetPhoto = eventSelectedUser.image;
         targetUserObj = eventSelectedUser;
     } else if (!isEventModeActive) {
+        // Dacă e privat, target-ul sunt eu
         const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
         if(uSnap.exists()) {
             const d = uSnap.data();
@@ -3407,7 +3415,6 @@ async function finalizeSpin(idx) {
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
     // --- OPTIMISTIC UI UPDATE (INSTANT) ---
-    // Dacă eu sunt cel care primește premiul, actualizăm vizual cifrele înainte de baza de date
     if (isMeTarget) {
         if (reward.type === "coins") {
             const coinsEl = document.getElementById('wheelStatsCoins');
@@ -3424,11 +3431,13 @@ async function finalizeSpin(idx) {
         }
     }
 
-    // 2. UI Logic: Who sees what?
-    const shouldShowUserPopup = (!isEventModeActive) || (isEventModeActive && isMeTarget);
-    const shouldShowAdminPopup = isEventModeActive && isAdmin && !isMeTarget;
+    // --- 2. LOGICA DE AFIȘARE POP-UP (CINE VEDE CE?) ---
+    // Regulă: Doar Câștigătorul vede cardul de "You Won". 
+    // În Event Mode, TOȚI CEILALȚI văd Cardul Auriu Hype cu chipul câștigătorului.
+    const shouldShowUserPopup = isMeTarget; 
+    const shouldShowAdminPopup = isEventModeActive && !isMeTarget;
 
-    // --- REWARD DATA PREP ---
+    // --- PREGĂTIRE REWARD DATA ---
     let rewardIconHtml = "";
     let rewardText = "";
     
@@ -3451,7 +3460,7 @@ async function finalizeSpin(idx) {
 
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
-    // 1. User Popup
+    // A. POP-UP PENTRU CÂȘTIGĂTOR (Cardul Standard)
     if (shouldShowUserPopup) {
         const modal = document.getElementById('questRewardModal');
         const titleText = modal.querySelector('h2');
@@ -3473,14 +3482,14 @@ async function finalizeSpin(idx) {
             }
             launchConfetti();
             titleText.innerHTML = `<span style="font-size: 24px;">🎉</span> FELICITĂRI!`;
-            msgP.innerText = "Ai câștigat la roată:";
+            msgP.innerText = isEventModeActive ? "Adminul a învârtit pentru tine și ai câștigat:" : "Ai câștigat la roată:";
             rewardBox.innerHTML = rewardIconHtml;
             coinsLabel.innerText = rewardText; 
         }
         modal.classList.add('active');
     }
 
-    // 2. Admin/Public Popup
+    // B. POP-UP PENTRU PUBLIC (Cardul Auriu Hype)
     if (shouldShowAdminPopup) {
         const adminModal = document.getElementById('adminSpinResultModal');
         const admImg = document.getElementById('adminSpinUserImg');
@@ -3491,6 +3500,7 @@ async function finalizeSpin(idx) {
         if(!isMuted) audioAdminCheer.play().catch(()=>{});
         launchConfetti(); 
 
+        // Populăm cardul cu datele Câștigătorului (Target), nu ale Adminului
         if (targetUserObj) {
             admImg.src = targetUserObj.image || "https://iili.io/fXks1Dv.png";
             if (targetUserObj.equippedText && targetUserObj.equippedText.cssClass) {
@@ -3510,15 +3520,17 @@ async function finalizeSpin(idx) {
         adminModal.classList.add('active');
     }
 
-    // --- 3. DATABASE UPDATES ---
+    // --- 3. DATABASE UPDATES (DOAR ADMINUL CARE A DAT SPIN PROCESEAZĂ) ---
     if (reward.type === "xp") return;
 
     let shouldWriteToDB = false;
     if (isEventModeActive) {
+        // În Event, doar Adminul care a inițiat spin-ul scrie în DB (pentru a evita ca 50 de oameni să adauge puncte aceluiași user)
         if (auth.currentUser.uid === currentSpinAdminId) {
             shouldWriteToDB = true;
         }
     } else {
+        // În mod privat, spinner-ul scrie pentru el
         shouldWriteToDB = true;
     }
 
@@ -3544,6 +3556,7 @@ async function finalizeSpin(idx) {
             await updateDoc(userRef, { ownedBanners: arrayUnion(reward.val) });
         }
 
+        // Log tranzacție
         try {
             await addDoc(collection(db, "transactions"), {
                 userId: targetUid, 
@@ -3555,8 +3568,9 @@ async function finalizeSpin(idx) {
                 description: isEventModeActive ? `Event Win (Admin: ${auth.currentUser.displayName})` : "Wheel Spin Reward",
                 timestamp: serverTimestamp()
             });
-        } catch(e) { console.error("Transaction Log Error:", e); }
+        } catch(e) { console.error("Transaction Error:", e); }
 
+        // Alertă Jackpot pe Wall
         const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
         if (isJackpot) {
             try {
