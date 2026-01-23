@@ -11,7 +11,7 @@
   </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trivia KSDA</title>
+  <title>Regulament KSDA</title>
   <meta name="description" content="Pagina noua KSDA">
   <link rel="icon" type="image/png" href="https://iili.io/fXks1Dv.png">
 
@@ -1402,6 +1402,73 @@
     color: #ffb8bc;
     font-size: 13px;
 }
+
+
+
+.rules-acceptance-section {
+    margin-top: 50px;
+    padding: 30px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.acceptance-btns-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+/* Stilul butoanelor din imaginea ta */
+.btn-agree {
+    background: #00ffff;
+    color: #000;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    border: none;
+    padding: 15px 45px;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 16px;
+    text-transform: uppercase;
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.6);
+    transition: 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.btn-agree:hover { transform: scale(1.05); box-shadow: 0 0 40px rgba(0, 255, 255, 0.8); }
+
+.btn-disagree {
+    background: transparent;
+    color: #ff4757;
+    font-family: 'Orbitron', sans-serif;
+    border: 1px solid #ff4757;
+    padding: 15px 45px;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: 0.3s;
+    text-transform: uppercase;
+}
+
+.btn-disagree:hover { background: rgba(255, 71, 87, 0.1); box-shadow: 0 0 15px rgba(255, 71, 87, 0.2); }
+
+.agreed-text {
+    font-family: 'Orbitron';
+    color: #2ecc71;
+    font-size: 20px;
+    font-weight: 900;
+    text-shadow: 0 0 15px rgba(46, 204, 113, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
   </style>
 </head>
 <body>
@@ -1740,15 +1807,17 @@
         </div>
 
         <!-- BUTOANE ACCEPTARE -->
-        <div class="rules-acceptance-btns" style="margin-top: 40px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
-            <button class="super-btn" onclick="handleAgree()">
-                <i class="fas fa-check-circle"></i> SUNT DE ACORD
-            </button>
-            <button class="btn-logout-pop" style="padding: 15px 40px; border-radius: 50px;" onclick="handleDisagree()">
-                NU SUNT DE ACORD
-            </button>
-        </div>
+       <div class="rules-acceptance-section">
+    <div id="acceptanceContainer" class="acceptance-btns-wrapper">
+        <!-- Acestea vor fi înlocuite prin JS dacă userul a acceptat deja -->
+        <button class="btn-agree" onclick="handleAgree()">
+            <i class="fas fa-check-circle"></i> SUNT DE ACORD
+        </button>
+        <button class="btn-disagree" onclick="handleDisagree()">
+            NU SUNT DE ACORD
+        </button>
     </div>
+</div>
 </main>
 <!-- Footer -->
 <footer>
@@ -1833,23 +1902,60 @@
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
 
 
-// Funcție pentru butonul "Sunt de acord"
-window.handleAgree = () => {
-    // Poți adăuga un efect vizual sau un mesaj de confirmare
-    alert("Mulțumim pentru confirmare! Distracție plăcută pe KSDA.");
-    // Opțional: poți să-l redirecționezi către pagina principală
-    // window.location.href = "index.html";
+// Funcție pentru a modifica și afișa Modalul de Recompensă existent
+window.showRulesModal = (type) => {
+    const modal = document.getElementById('rewardModal');
+    const title = modal.querySelector('h2');
+    const desc = modal.querySelector('p');
+    const coinsBox = modal.querySelector('.reward-coins-box');
+    const btn = modal.querySelector('.super-btn');
+
+    if (type === 'agree') {
+        title.innerHTML = '🎉 REGULAMENT ACCEPTAT';
+        desc.innerText = 'Mulțumim! Pentru că ești un membru corect, ai primit un diamant cadou.';
+        coinsBox.innerHTML = `
+            <img src="https://iili.io/fv5bmtj.png" alt="Diamond" style="width: 50px;">
+            <span style="color: #00e5ff;">1</span>
+        `;
+        modal.querySelector('p[style*="letter-spacing"]').innerText = "DIAMOND REWARD";
+        btn.onclick = () => modal.classList.remove('active');
+    } else {
+        title.innerHTML = '⚠️ ATENȚIE';
+        desc.innerText = 'Trebuie să fii de acord cu regulamentul pentru a putea activa în comunitatea KSDA.';
+        coinsBox.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size: 50px; color: #ff4757;"></i>';
+        modal.querySelector('p[style*="letter-spacing"]').innerText = "ACȚIUNE REFUZATĂ";
+        btn.innerText = "ÎNAPOI";
+        btn.onclick = () => modal.classList.remove('active');
+    }
+    modal.classList.add('active');
 };
 
-// Funcție pentru butonul "Nu sunt de acord"
-window.handleDisagree = () => {
-    const confirmOut = confirm("Dacă nu ești de acord cu regulamentul, nu poți face parte din comunitatea noastră. Vei fi deconectat.");
-    if (confirmOut) {
-        // Îl deconectăm și îl trimitem pe pagina de start
-        signOut(auth).then(() => {
-            window.location.href = "index.html";
+// Logica pentru SUNT DE ACORD
+window.handleAgree = async () => {
+    if (!auth.currentUser) return;
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+
+    try {
+        // 1. Dăm diamantul și salvăm acceptarea
+        await updateDoc(userRef, {
+            agreedToRules: true,
+            diamonds: increment(1)
         });
-    }
+
+        // 2. Schimbăm UI-ul imediat
+        document.getElementById('acceptanceContainer').innerHTML = `
+            <div class="agreed-text"><i class="fas fa-check-double"></i> ESTI DE ACORD !</div>
+        `;
+
+        // 3. Arătăm modalul configurat pentru recompensă
+        window.showRulesModal('agree');
+
+    } catch (e) { console.error("Error accepting rules:", e); }
+};
+
+// Logica pentru NU SUNT DE ACORD
+window.handleDisagree = () => {
+    window.showRulesModal('disagree');
 };
 
     // --- BADGE DATABASE (Reused for Inventory Display) ---
@@ -2511,6 +2617,7 @@ onAuthStateChanged(auth, user => {
     // Referințe către elementele de vizibilitate ale regulamentului
     const rulesLoginWall = document.getElementById('rulesLoginWall');
     const rulesContent = document.getElementById('rulesAuthenticatedContent');
+    const acceptanceContainer = document.getElementById('acceptanceContainer');
 
     if (user) {
         // --- LOGICĂ PENTRU UTILIZATOR LOGAT ---
@@ -2539,6 +2646,25 @@ onAuthStateChanged(auth, user => {
                 if(!uSnap.exists()) return;
                 const data = uSnap.data();
                 
+                // --- [NOU] VERIFICARE ACCEPTARE REGULAMENT ---
+                if (acceptanceContainer) {
+                    if (data.agreedToRules === true) {
+                        acceptanceContainer.innerHTML = `
+                            <div class="agreed-text"><i class="fas fa-check-double"></i> ESTI DE ACORD !</div>
+                        `;
+                    } else {
+                        // Afișăm butoanele doar dacă nu a acceptat încă
+                        acceptanceContainer.innerHTML = `
+                            <button class="btn-agree" onclick="handleAgree()">
+                                <i class="fas fa-check-circle"></i> SUNT DE ACORD
+                            </button>
+                            <button class="btn-disagree" onclick="handleDisagree()">
+                                NU SUNT DE ACORD
+                            </button>
+                        `;
+                    }
+                }
+
                 // --- A. QUEST RESET & STREAK LOSS LOGIC ---
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
@@ -2549,12 +2675,10 @@ onAuthStateChanged(auth, user => {
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // Variabilă de control pentru animație (asigură-te că e definită în afara onAuthStateChanged dacă nu e deja)
                 if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         if (typeof isAwardingInProgress !== 'undefined' && !isAwardingInProgress) {
                             window.isAwardingInProgress = true;
-
                             const oldStr = data.streak || 0;
                             
                             await updateDoc(userRef, {
@@ -2651,8 +2775,6 @@ onAuthStateChanged(auth, user => {
         updateOnlineStatus(); 
     } else {
         // --- LOGICĂ PENTRU UTILIZATOR DECONECTAT (GUEST) ---
-        
-        // Ascundem regulamentul, afișăm wall-ul de login
         if (rulesLoginWall) rulesLoginWall.style.display = 'flex';
         if (rulesContent) rulesContent.style.display = 'none';
 
