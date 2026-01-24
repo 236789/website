@@ -1654,6 +1654,27 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+
+// ADAUGĂ ACESTEA CHIAR DUPĂ IMPORTURI
+let isAwardingInProgress = false; 
+
+// Avem nevoie de această funcție pentru ca quest-ul să poată salva recompensa
+async function logTransaction(amount, type, description, source) {
+    if (!auth.currentUser) return;
+    try {
+        await addDoc(collection(db, "transactions"), {
+            userId: auth.currentUser.uid,
+            username: auth.currentUser.displayName || "User",
+            userImage: auth.currentUser.photoURL || "",
+            amount: amount,
+            type: type,
+            description: description,
+            source: source,
+            timestamp: serverTimestamp()
+        });
+    } catch (e) { console.error("Log error:", e); }
+}
+
     const headerLoginBtn = document.getElementById('headerLoginBtn');
     const headerLoginText = document.getElementById('headerLoginText');
     const headerUserImg = document.getElementById('headerUserImg');
@@ -2411,155 +2432,71 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 
 
-onAuthStateChanged(auth, user => {
-    if (user) {
-        const userRef = doc(db, "accounts", user.uid);
+onAuthStateChanged(auth, async (user) => {
+    const loginWall = document.getElementById('loginWall');
+    const botInterface = document.getElementById('botInterface');
 
-        // 1. UI Updates for Logged In User
+    if (user) {
+        console.log("User logat corect pe pagina Bot-ului");
+        
+        // AFIȘEAZĂ INTERFAȚA IMEDIAT
+        if(loginWall) loginWall.style.display = 'none';
+        if(botInterface) botInterface.style.display = 'flex';
+
         headerLoginText.innerText = "ACCOUNT";
         headerUserImg.src = user.photoURL;
         headerUserImg.style.display = "block";
         
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-        }
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
 
+        const userRef = doc(db, "accounts", user.uid);
 
+        // Listener pentru datele userului
+        onSnapshot(userRef, async (uSnap) => {
+            if(!uSnap.exists()) return;
+            const data = uSnap.data();
+            
+            if (typeof resetUserQuests === "function") {
+                await resetUserQuests(userRef, data);
+            }
 
-        // 2. Listen for Global Metadata (Notifications)
-        onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-            const totalGlobal = metaSnap.data()?.totalNews || 0;
+            // UPDATE PROGRESS BAR TRIVIA/BOT
+            const msgCount = data.kevinMessagesToday || 0;
+            const questStatusEl = document.getElementById('questStatus');
+            const progressFillEl = document.getElementById('progressFill');
+            if(questStatusEl) questStatusEl.innerText = `${msgCount} / 15`;
+            if(progressFillEl) progressFillEl.style.width = `${Math.min((msgCount / 15) * 100, 100)}%`;
 
-            // 3. Listen for User Data LIVE
-            onSnapshot(userRef, async (uSnap) => {
-                if(!uSnap.exists()) return;
-                const data = uSnap.data();
-                
-                // --- A. QUEST RESET & STREAK LOSS LOGIC ---
-                if (typeof resetUserQuests === "function") {
-                    await resetUserQuests(userRef, data);
-                }
+            // POPULARE MODAL CONT
+            document.getElementById('popUserImg').src = data.image || user.photoURL;
+            document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+            document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+            document.getElementById('popUserName').innerText = data.username || user.displayName;
+            document.getElementById('popUserEmail').innerText = data.email;
+            
+            const streakTxt = document.querySelector('.streak-txt');
+            if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                // --- B. 6/6 QUEST COMPLETION REWARD (THE FIRE MODAL) ---
-                const activeIds = data.activeDailyQuests || [];
-                const completedIds = data.completedQuests || [];
-                const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
-
-                // Check if all 6 quests are done and not already awarded for this block
-                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                    if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        if (!isAwardingInProgress) {
-                            isAwardingInProgress = true;
-
-                            const oldStr = data.streak || 0;
-                            
-                            // Update Firebase: Give +1 Streak and +1 Diamond
-                            await updateDoc(userRef, {
-                                streak: increment(1),
-                                diamonds: increment(1),
-                                lastStreakAwardedBlock: data.lastResetBlock
-                            });
-
-                            // Show the FIRE Modal
-                            const rewardModal = document.getElementById('streakRewardModal');
-                            if (rewardModal) {
-                                document.getElementById('streakOld').innerText = oldStr;
-                                document.getElementById('streakNew').innerText = oldStr + 1;
-                                rewardModal.classList.add('active');
-                            }
-                            
-                            setTimeout(() => { isAwardingInProgress = false; }, 3000);
-                        }
-                    }
-                }
-
-                // --- C. AVATAR & FRAME LOGIC ---
-                document.getElementById('popUserImg').src = data.image || user.photoURL;
-                const popFrame = document.getElementById('popUserFrame');
-                if(popFrame) {
-                    if (data.equippedFrame && data.equippedFrame.img) {
-                        popFrame.src = data.equippedFrame.img;
-                        popFrame.style.display = "block";
-                        const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = scale * 100;
-                        popFrame.style.width = `${sizePct}%`;
-                        popFrame.style.height = `${sizePct}%`;
-                    } else {
-                        popFrame.style.display = "none";
-                    }
-                }
-
-                // --- D. NAME CUSTOMIZATION ---
-                let rawName = data.username || user.displayName;
-                if(user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-
-                const popNameEl = document.getElementById('popUserName');
-                if (data.equippedText && data.equippedText.cssClass) {
-                    popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                } else {
-                    popNameEl.innerText = rawName;
-                }
-
-                // --- E. STACKED BADGES (Staff + Cosmetic) ---
-                const popBadgeBox = document.getElementById('popUserBadges');
-                if(popBadgeBox) {
-                    let staffHtml = "";
-                    const email = data.email || "";
-                    
-                    if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                    
-                    let cosmeticHtml = "";
-                    if(data.equippedBadge) {
-                        cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                    }
-                    popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
-                }
-
-                // --- F. DUAL CURRENCY & STREAK UI ---
-                document.getElementById('popUserEmail').innerText = data.email;
-                
-                // Use formatCurrency (e.g., 1000 -> 1k)
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
-                const streakTxt = document.querySelector('.streak-txt');
-                if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
-
-                // --- G. NOTIFICATION BADGE LOGIC ---
-                const userVazute = data.lastSeenNewsCount || 0;
-                const noutatiNoi = totalGlobal - userVazute;
-                const heroBadge = document.getElementById('heroNotifBadge');
-                const headerBadge = document.getElementById('headerNotifBadge');
-
-                [heroBadge, headerBadge].forEach(badge => {
-                    if (badge) {
-                        if (noutatiNoi > 0) {
-                            badge.innerText = `+${noutatiNoi}`;
-                            badge.style.display = 'flex';
-                        } else {
-                            badge.style.display = 'none';
-                        }
-                    }
-                });
-            });
+            // LOGICĂ RAMĂ (FRAME)
+            const popFrame = document.getElementById('popUserFrame');
+            if(popFrame) {
+                if (data.equippedFrame && data.equippedFrame.img) {
+                    popFrame.src = data.equippedFrame.img;
+                    popFrame.style.display = "block";
+                    const scale = data.equippedFrame.scale || 1.45;
+                    popFrame.style.width = (scale * 100) + "%";
+                    popFrame.style.height = (scale * 100) + "%";
+                } else { popFrame.style.display = "none"; }
+            }
         });
 
-        updateOnlineStatus(); // Start tracking online presence
     } else {
-        // LOGGED OUT STATE
+        // Logged out
+        if(loginWall) loginWall.style.display = 'flex';
+        if(botInterface) botInterface.style.display = 'none';
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        }
-
-
-    } 
+    }
 });
 
 
