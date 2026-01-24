@@ -2143,92 +2143,93 @@ window.equipText = async (id, cssClass) => {
     setInterval(updateResetTimer, 1000);
 
 function renderQuests(userData) {
-        questGrid.innerHTML = '';
-        const completed = userData.completedQuests || [];
-        const activeIds = userData.activeDailyQuests || [];
+    questGrid.innerHTML = '';
+    const completed = userData.completedQuests || [];
+    const activeIds = userData.activeDailyQuests || [];
 
-        // Calculate current skip cost (250, 500, 1000, 2000, 4000 max)
-        const skipsUsed = userData.skipsUsedInBlock || 0;
-        const skipCost = Math.min(250 * Math.pow(2, skipsUsed), 4000);
+    // Calculate current skip cost (250, 500, 1000, 2000, 4000 max)
+    const skipsUsed = userData.skipsUsedInBlock || 0;
+    const skipCost = Math.min(250 * Math.pow(2, skipsUsed), 4000);
 
-        quests.forEach(q => {
-            // Logic 1: Visibility for One-Time quests
-            if (q.oneTime && completed.includes(q.id)) return;
+    quests.forEach(q => {
+        // Logic 1: One-Time quests - Hide if completed
+        if (q.oneTime) {
+            if (completed.includes(q.id)) return;
+        } 
+        // Logic 2: Daily Rotation - ONLY show if the ID exists in the active rotation list
+        // This fixes the bug where all quests show if activeIds is empty.
+        else {
+            if (!activeIds.includes(q.id)) return;
+        }
 
-            // Logic 2: Visibility for Daily rotation
-            if (!q.oneTime && activeIds.length > 0 && !activeIds.includes(q.id)) return;
+        const isCompleted = completed.includes(q.id);
+        const card = document.createElement('div');
+        card.className = 'quest-card';
+        let progressHTML = '';
+        let canAward = false;
 
-            const isCompleted = completed.includes(q.id);
-            const card = document.createElement('div');
-            card.className = 'quest-card';
-            let progressHTML = '';
-            let canAward = false;
-
-            // --- SPECIAL: GALLERY (2 BARS) ---
-            if (q.id === 'gallery_task') {
-                const curL = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
-                const curC = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
-                progressHTML = `
-                    <div class="progress-wrapper">
-                        <div class="progress-info"><span>Likes</span><span>${curL}/${q.targetLikes}</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${(curL/q.targetLikes)*100}%"></div></div>
-                    </div>
-                    <div class="progress-wrapper">
-                        <div class="progress-info"><span>Comentarii</span><span>${curC}/${q.targetComments}</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${(curC/q.targetComments)*100}%"></div></div>
-                    </div>
-                `;
-                if (curL >= q.targetLikes && curC >= q.targetComments) canAward = true;
-            } 
-            // --- STANDARD QUESTS ---
-            else {
-                let current = 0;
-                const mapping = {
-                    msg3: 'messagesSentToday', wall_reply_5: 'wallRepliesToday', wall_react_10: 'wallReactionsToday',
-                    wall_long_msg: 'wallLongMsgSent', kevin_talk_15: 'kevinMessagesToday', review: 'hasWrittenReview',
-                    tiktok5: 'tiktoksFollowed', social3: 'socialFollowed', visit_news: 'newsVisitedToday', give_feedback: 'feedbackGivenToday',
-                    meet_team_hunt: 'teamHuntCount', buy_badge: 'shopBadgeBought', buy_banner: 'shopBannerBought', 
-                    buy_frame: 'shopFrameBought', donate_100: 'coinsDonatedToday', trivia_single_5: 'triviaSingleCorrectToday', 
-                    trivia_multi_5: 'triviaMultiCorrectToday'
-                };
-                if(q.id === 'meet_team_hunt') {
-                    current = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
-                } else if (q.id === 'donate_100') {
-                    current = userData.coinsDonatedToday >= 100 ? 1 : 0; 
-                } else {
-                    current = userData[mapping[q.id]] || 0;
-                    if (typeof current === 'boolean') current = current ? 1 : 0;
-                }
-                progressHTML = generateBar(current, q.target);
-                if (current >= q.target) canAward = true;
-            } 
-
-            // --- UPDATED ACTION AREA (HIGH QUALITY SKIP BUTTON) ---
-            let actionArea = "";
-            if (isCompleted) {
-                actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
+        // --- SPECIAL: GALLERY (2 BARS) ---
+        if (q.id === 'gallery_task') {
+            const curL = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
+            const curC = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
+            progressHTML = `
+                <div class="progress-wrapper">
+                    <div class="progress-info"><span>Likes</span><span>${curL}/${q.targetLikes}</span></div>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${(curL/q.targetLikes)*100}%"></div></div>
+                </div>
+                <div class="progress-wrapper">
+                    <div class="progress-info"><span>Comentarii</span><span>${curC}/${q.targetComments}</span></div>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${(curC/q.targetComments)*100}%"></div></div>
+                </div>
+            `;
+            if (curL >= q.targetLikes && curC >= q.targetComments) canAward = true;
+        } 
+        // --- STANDARD QUESTS ---
+        else {
+            let current = 0;
+            const mapping = {
+                msg3: 'messagesSentToday', wall_reply_5: 'wallRepliesToday', wall_react_10: 'wallReactionsToday',
+                wall_long_msg: 'wallLongMsgSent', kevin_talk_15: 'kevinMessagesToday', review: 'hasWrittenReview',
+                tiktok5: 'tiktoksFollowed', social3: 'socialFollowed', visit_news: 'newsVisitedToday', give_feedback: 'feedbackGivenToday',
+                meet_team_hunt: 'teamHuntCount', buy_badge: 'shopBadgeBought', buy_banner: 'shopBannerBought', 
+                buy_frame: 'shopFrameBought', donate_100: 'coinsDonatedToday', trivia_single_5: 'triviaSingleCorrectToday', 
+                trivia_multi_5: 'triviaMultiCorrectToday'
+            };
+            if(q.id === 'meet_team_hunt') {
+                current = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
+            } else if (q.id === 'donate_100') {
+                current = userData.coinsDonatedToday >= 100 ? 1 : 0; 
             } else {
-                // Action Button
-                actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
-                
-                // NEW SKIP BUTTON: High Contrast & Professional
-                actionArea += `
-                    <button class="skip-btn" onclick="window.confirmSkip('${q.id}', '${q.title.replace(/'/g, "\\'")}', ${skipCost}, ${q.reward})">
-                        <span class="skip-cost-val">-${skipCost}</span>
-                        <img src="https://iili.io/fhc1SKQ.png" class="skip-coin-icon">
-                        <span class="skip-text-label">Sari peste</span>
-                    </button>
-                `;
+                current = userData[mapping[q.id]] || 0;
+                if (typeof current === 'boolean') current = current ? 1 : 0;
             }
+            progressHTML = generateBar(current, q.target);
+            if (current >= q.target) canAward = true;
+        } 
 
-            card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
-            questGrid.appendChild(card);
+        // --- ACTION AREA ---
+        let actionArea = "";
+        if (isCompleted) {
+            actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
+        } else {
+            actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
+            actionArea += `
+                <button class="skip-btn" onclick="window.confirmSkip('${q.id}', '${q.title.replace(/'/g, "\\'")}', ${skipCost}, ${q.reward})">
+                    <span class="skip-cost-val">-${skipCost}</span>
+                    <img src="https://iili.io/fhc1SKQ.png" class="skip-coin-icon">
+                    <span class="skip-text-label">Sari peste</span>
+                </button>
+            `;
+        }
 
-            if (canAward && !isCompleted && !claimedInSession.has(q.id)) {
-                awardQuest(q.id, q.reward);
-            }
-        });
-    } 
+        card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
+        questGrid.appendChild(card);
+
+        if (canAward && !isCompleted && !claimedInSession.has(q.id)) {
+            awardQuest(q.id, q.reward);
+        }
+    });
+}
 
     function generateBar(cur, tar) {
         const perc = Math.min((cur / tar) * 100, 100);
@@ -2450,53 +2451,82 @@ onAuthStateChanged(auth, async (user) => {
         document.getElementById('headerUserImg').style.display = "block";
 
         // Listen to Data
-        onSnapshot(userRef, async (snap) => {
-            if (!snap.exists()) return;
-            const data = snap.data();
-            
-            // 1. Reset Logic
-            await resetUserQuests(userRef, data);
-            
-            // 2. Check 6/6 Completion
-            const activeIds = data.activeDailyQuests || [];
-            const completedIds = data.completedQuests || [];
-            const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
+onSnapshot(userRef, async (snap) => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    
+    // 1. Reset Logic
+    await resetUserQuests(userRef, data);
+    
+    // 2. Check 6/6 Completion
+    const activeIds = data.activeDailyQuests || [];
+    const completedIds = data.completedQuests || [];
+    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-            if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                    if (!window.isAwardingPremiu) {
-                        window.isAwardingPremiu = true;
-                        
-                        await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-                        await updateDoc(userRef, {
-                            streak: increment(1),
-                            diamonds: increment(1),
-                            lastStreakAwardedBlock: data.lastResetBlock
-                        });
+    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+            if (!window.isAwardingPremiu) {
+                window.isAwardingPremiu = true;
+                
+                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
+                await updateDoc(userRef, {
+                    streak: increment(1),
+                    diamonds: increment(1),
+                    lastStreakAwardedBlock: data.lastResetBlock
+                });
 
-                        document.getElementById('streakOld').innerText = data.streak || 0;
-                        document.getElementById('streakNew').innerText = (data.streak || 0) + 1;
-                        document.getElementById('streakRewardModal').classList.add('active');
-                        setTimeout(() => { window.isAwardingPremiu = false; }, 3000);
-                    }
-                }
+                document.getElementById('streakOld').innerText = data.streak || 0;
+                document.getElementById('streakNew').innerText = (data.streak || 0) + 1;
+                document.getElementById('streakRewardModal').classList.add('active');
+                setTimeout(() => { window.isAwardingPremiu = false; }, 3000);
             }
+        }
+    }
 
-            // 3. Render UI
-            renderQuests(data);
-            
-            // Modal Updates
-            const nameEl = document.getElementById('popUserName');
-            let rawName = data.username || user.displayName;
-            if (data.equippedText && data.equippedText.cssClass) {
-                nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-            } else { nameEl.innerText = rawName; }
-            
-            document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-            document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
-            const streakEl = document.querySelector('.streak-txt');
-            if(streakEl) streakEl.innerText = `Daily Streak: ${data.streak || 0}`;
-        });
+    // 3. Render UI Quests
+    renderQuests(data);
+    
+    // --- MODAL UPDATES (FIXED) ---
+    
+    // 1. Email Update
+    const emailEl = document.getElementById('popUserEmail');
+    if(emailEl) emailEl.innerText = user.email || "email@exemplu.com";
+
+    // 2. Profile Image & Frame Update
+    const popImg = document.getElementById('popUserImg');
+    const popFrame = document.getElementById('popUserFrame');
+    
+    if(popImg) popImg.src = data.image || user.photoURL;
+    
+    if(popFrame) {
+        if (data.equippedFrame && data.equippedFrame.img) {
+            popFrame.src = data.equippedFrame.img;
+            popFrame.style.display = "block";
+            const scale = data.equippedFrame.scale || 1.45;
+            popFrame.style.width = (scale * 100) + "%";
+            popFrame.style.height = (scale * 100) + "%";
+        } else {
+            popFrame.style.display = "none";
+        }
+    }
+
+    // 3. Username with Animated Text Support
+    const nameEl = document.getElementById('popUserName');
+    let rawName = data.username || user.displayName || "Utilizator";
+    if (data.equippedText && data.equippedText.cssClass) {
+        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+    } else { 
+        nameEl.innerText = rawName; 
+    }
+    
+    // 4. Currencies
+    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+    document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+    
+    // 5. Streak Label
+    const streakEl = document.querySelector('.streak-txt');
+    if(streakEl) streakEl.innerText = `Daily Streak: ${data.streak || 0}`;
+});
     } else {
         // Logout State
         document.getElementById('headerLoginText').innerText = "LOGIN";
