@@ -1368,6 +1368,43 @@
 /* Toast Notification (Optional but good) */
 #toastBox-v2 { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 99999; pointer-events: none; }
 .custom-toast-v2 { background: rgba(8, 16, 27, 0.95); border: 1px solid #00ff88; color: #fff; padding: 12px 30px; border-radius: 50px; font-family: 'Orbitron'; font-size: 13px; box-shadow: 0 0 20px rgba(0, 255, 136, 0.4); animation: slideUpFade 0.4s ease-out; }
+
+
+
+/* --- SHARE / REFERRAL MODAL STYLES --- */
+#shareModal-v2 .account-card-v2 {
+    border-color: #00ff88;
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+}
+
+.ref-link-box-v2 {
+    background: rgba(0,0,0,0.3);
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    word-break: break-all;
+    font-family: monospace;
+    border: 1px dashed #00ff88;
+    color: #00ff88;
+    font-size: 12px;
+    text-align: center;
+}
+
+.copy-btn-v2 {
+    background: #00ff88;
+    color: #000;
+    font-family: 'Orbitron';
+    font-weight: 900;
+    border: none;
+    padding: 12px 40px;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 14px;
+    text-transform: uppercase;
+    box-shadow: 0 0 20px rgba(0,255,136,0.4);
+    transition: 0.3s;
+}
+.copy-btn-v2:hover { transform: scale(1.05); box-shadow: 0 0 30px #00ff88; }
   </style>
 </head>
 <body>
@@ -1518,6 +1555,26 @@
     </div>
 </div>
 
+
+
+<!-- SHARE LINK MODAL -->
+<div id="shareModal-v2" class="account-modal-overlay">
+    <div class="account-card-v2">
+        <button class="close-pop" onclick="document.getElementById('shareModal-v2').classList.remove('active')">✕</button>
+        <h2 style="color: #00ff88; font-family:'Orbitron'; font-size: 20px; margin-top: 10px;">INVITĂ UN PRIETEN</h2>
+        <p style="color: #fff; margin-bottom: 20px; font-size: 13px; font-family: 'Poppins';">
+            Trimite acest link prietenului tău. Când își face cont, amândoi primiți <span style="color:#ffd700; font-weight:bold;">1000 KSDA Coins</span>!
+        </p>
+        
+        <div id="refLinkDisplay-v2" class="ref-link-box-v2">
+            ...generare link...
+        </div>
+
+        <button class="copy-btn-v2" onclick="copyRefLinkV2()">
+            <i class="fas fa-copy"></i> COPIAZĂ LINK
+        </button>
+    </div>
+</div>
 <!-- ACCOUNT POP-UP MODAL V2 -->
 <div id="accountModal" class="account-modal-overlay">
     <div class="account-card-v2">
@@ -1694,57 +1751,64 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-// --- NEW TOAST SYSTEM ---
-window.showToast = (msg) => {
-    const box = document.getElementById('toastBox-new');
-    if(!box) return;
-    const toast = document.createElement('div');
-    toast.className = 'custom-toast-new';
-    toast.innerHTML = `<i class="fas fa-check-circle"></i> ${msg}`;
-    box.appendChild(toast);
-    setTimeout(() => { toast.remove(); }, 3000);
+// --- INVITE SYSTEM LOGIC ---
+
+// 1. Open Modal and Generate Link
+const inviteBtn = document.getElementById('inviteFriendBtn');
+if (inviteBtn) {
+    inviteBtn.onclick = () => {
+        if (!auth.currentUser) {
+            window.showToast("Loghează-te pentru a invita prieteni!");
+            return;
+        }
+        
+        // Generate the unique link using the current user's ID
+        const myUid = auth.currentUser.uid;
+        const link = `${window.location.origin}/index.html?ref=${myUid}`;
+        
+        // Show the link in the box
+        document.getElementById('refLinkDisplay-v2').innerText = link;
+        
+        // Close Account Modal, Open Share Modal
+        document.getElementById('accountModal').classList.remove('active');
+        document.getElementById('shareModal-v2').classList.add('active');
+    };
+}
+
+// 2. Copy to Clipboard Function
+window.copyRefLinkV2 = () => {
+    const linkText = document.getElementById('refLinkDisplay-v2').innerText;
+    
+    if (linkText.includes("...generare...")) return;
+
+    navigator.clipboard.writeText(linkText).then(() => {
+        // Show the success toast we created earlier
+        window.showToast("Link copiat cu succes! 🤝");
+        
+        // Optional: Close modal after copy
+        setTimeout(() => {
+            document.getElementById('shareModal-v2').classList.remove('active');
+        }, 1500);
+    }).catch(err => {
+        console.error('Copy failed', err);
+    });
 };
 
-// --- TRANSACTION HISTORY LOGGING ---
+// 3. Transaction History (Already provided, but ensure it exists for rewards)
 async function logTransaction(amount, type, description, source, customUserId = null) {
-    // If we want to reward a specific user (like an inviter), we pass their ID
     const uid = customUserId || (auth.currentUser ? auth.currentUser.uid : null);
     if (!uid) return;
-
     try {
-        let uName = "User";
-        let uImg = "https://iili.io/fhc1SKQ.png";
-
-        // Get basic user info for the log entry
-        if (!customUserId && auth.currentUser) {
-            uName = auth.currentUser.displayName;
-            uImg = auth.currentUser.photoURL;
-        } else if (customUserId) {
-            const snap = await getDoc(doc(db, "accounts", customUserId));
-            if(snap.exists()) {
-                uName = snap.data().username || "Unknown";
-                uImg = snap.data().image || uImg;
-            }
-        }
-
-        // Add to 'transactions' collection in Firebase
         await addDoc(collection(db, "transactions"), {
             userId: uid,
-            username: uName,
-            userImage: uImg,
             amount: amount,
-            type: type, // Should be "COINS" or "DIAMONDS"
+            type: type,
             description: description,
             source: source,
             timestamp: serverTimestamp()
         });
-        console.log("History Updated:", description);
-    } catch (e) {
-        console.error("Log Error:", e);
-    }
+    } catch (e) { console.error("Log Error:", e); }
 }
-
-// Make it available globally so you can call it from any function
 window.logTransaction = logTransaction;
 
     const headerLoginBtn = document.getElementById('headerLoginBtn');
@@ -1769,6 +1833,8 @@ window.logTransaction = logTransaction;
     // --- NEW COSMETICS MODAL ---
     const cosmeticsSelectModal = document.getElementById('cosmeticsSelectModal');
     const openCosmeticsBtn = document.getElementById('openCosmeticsBtn');
+
+
 
 
 
