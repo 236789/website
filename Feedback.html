@@ -3177,12 +3177,23 @@ async function resetUserQuests(userRef, snapData) {
         await updateDoc(userRef, { lastResetBlock: resetKey, activeDailyQuests: generateDailyIds() });
     }
 }
-// --- 5. AUTH & LOGIC (ACTUALIZAT PENTRU FEEDBACK.HTML) ---
-// --- 5. AUTH & LOGIC (ACTUALIZAT LIVE + RESET LOGIC) ---
+//// --- 5. AUTH & LOGIC (ACTUALIZAT LIVE + RESET LOGIC) ---
     let isAwardingInProgress = false; 
 
     onAuthStateChanged(auth, async (user) => {
         if(user) {
+            
+            // --- 🔴 START: ADD THIS FOR ONESIGNAL ---
+            if (window.OneSignalDeferred) {
+                window.OneSignalDeferred.push(function(OneSignal) {
+                    if (user && user.uid) {
+                        OneSignal.login(user.uid);
+                        console.log("OneSignal Linked on Feedback:", user.uid);
+                    }
+                });
+            }
+            // --- 🔴 END: ADD THIS FOR ONESIGNAL ---
+
             const userRef = doc(db, "accounts", user.uid);
             
             // 1. UI Header fix
@@ -3220,7 +3231,7 @@ async function resetUserQuests(userRef, snapData) {
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock && !isAwardingInProgress) {
                         isAwardingInProgress = true;
                         const oldStr = data.streak || 0;
