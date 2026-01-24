@@ -4236,7 +4236,7 @@ let isAwardingInProgress = false;
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         
-        // --- 🔴 START OF NEW CODE: CONNECT TO ONESIGNAL ---
+        // --- 🔴 ONESIGNAL (PĂSTRAT) ---
         if (window.OneSignalDeferred) {
             window.OneSignalDeferred.push(function(OneSignal) {
                 if (user && user.uid) {
@@ -4245,10 +4245,19 @@ onAuthStateChanged(auth, async (user) => {
                 }
             });
         }
-        // --- 🔴 END OF NEW CODE ---
 
         const userRef = doc(db, "accounts", user.uid);
         const ip = userIP || "unknown";
+
+        // --- 🔔 NEW: RESET WALL NOTIFICATIONS ---
+        // Cand intri pe Wall, marcam toate mesajele ca fiind "vazute" pentru tine
+        try {
+            const metaSnap = await getDoc(doc(db, "site_metadata", "counters"));
+            if (metaSnap.exists()) {
+                const currentTotal = metaSnap.data().totalWallMessages || 0;
+                await updateDoc(userRef, { lastSeenWallCount: currentTotal });
+            }
+        } catch(e) { console.log("Notification sync failed", e); }
 
         // Initial check and creation of account if new
         getDoc(userRef).then((snap) => {
@@ -4269,7 +4278,8 @@ onAuthStateChanged(auth, async (user) => {
                     wallLongMsgSent: false,
                     completedQuests: [],
                     ownedBadges: [],
-                    equippedBadge: null
+                    equippedBadge: null,
+                    lastSeenWallCount: 0 // Initialize field
                 });
             } else {
                 updateDoc(userRef, { ip: ip, image: user.photoURL });
@@ -4292,7 +4302,6 @@ onAuthStateChanged(auth, async (user) => {
         isMod = (user.email === 'mary.bughi@gmail.com' || user.email === 'emmanuel.nica83@gmail.com');
         isHelper = ['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(user.email);
 
-        // --- STAFF BUTTONS VISIBILITY (Cu Null Checks pentru a repara eroarea) ---
         const imgBtn = document.getElementById('imgBtn');
         const pollBtn = document.getElementById('pollBtn');
         const resetBtn = document.getElementById('resetChatBtn');
@@ -4324,7 +4333,6 @@ onAuthStateChanged(auth, async (user) => {
             }
         }
 
-        // Global Ban Check
         if (userIP) {
             const banRef = doc(db, "banned_ips", userIP);
             const banSnap = await getDoc(banRef);
@@ -4341,30 +4349,23 @@ onAuthStateChanged(auth, async (user) => {
         lockedView.style.display = 'none'; bannedView.style.display = 'none'; chatView.style.display = 'flex';
         if (userAvatar) userAvatar.src = user.photoURL;
 
-// --- LIVE USER DATA LISTENER (FIXED FOR HEADERS & FRAMES) ---
         onSnapshot(userRef, async (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-
-                // 1. Quest & Streak Logic
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
 
-                // Streak Reward Completion (6/6 Quests)
                 const activeIds = data.activeDailyQuests || [];
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+                if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
                             const oldStr = data.streak || 0;
-                            
-                            // --- LOG TRANSACTION (+1 Diamond) ---
                             await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Quests");
-
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
@@ -4380,19 +4381,16 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                     }
                 }
 
-                // 2. AVATAR & FRAME SYNC (Updates both Account Modal AND Chat Header)
                 const userPic = data.image || user.photoURL;
                 if(document.getElementById('popUserImg')) document.getElementById('popUserImg').src = userPic;
-                if(userAvatar) userAvatar.src = userPic; // Updates Header PFP
+                if(userAvatar) userAvatar.src = userPic;
 
                 const popFrame = document.getElementById('popUserFrame');
-                const headFrame = document.getElementById('userHeaderFrame'); // Header Frame
+                const headFrame = document.getElementById('userHeaderFrame');
 
                 if (data.equippedFrame && data.equippedFrame.img) {
                     const scale = data.equippedFrame.scale || 1.45;
                     const sizePct = (scale * 100) + '%';
-                    
-                    // Apply to both frame elements
                     [popFrame, headFrame].forEach(f => {
                         if(f) {
                             f.src = data.equippedFrame.img;
@@ -4406,19 +4404,13 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                     if(headFrame) headFrame.style.display = 'none';
                 }
 
-                // 3. NAME & TEXT COLORING
                 let rawName = data.username || "Anonim";
                 if (isOwner) rawName = "Lost Soul";
-                
-                // Apply custom text color if equipped
                 let coloredNameHtml = (data.equippedText && data.equippedText.cssClass) 
                     ? `<span class="${data.equippedText.cssClass}">${rawName}</span>` 
                     : rawName;
 
-                // Update Name in Account Modal
                 if(document.getElementById('popUserName')) document.getElementById('popUserName').innerHTML = coloredNameHtml;
-                
-                // Update Currencies & Email
                 if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email;
                 if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
@@ -4426,29 +4418,20 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
                 const streakTxt = document.querySelector('.streak-txt');
                 if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                // 4. HEADER BANNER LOGIC (Fix for alignment)
                 const chatHeaderBar = document.getElementById('chatHeaderBar');
                 if (chatHeaderBar) {
-                    // Reset class to base and add banner if exists
                     chatHeaderBar.className = 'chat-header';
                     if (data.equippedBanner && data.equippedBanner.cssClass) {
                         chatHeaderBar.classList.add(data.equippedBanner.cssClass);
                     }
                 }
 
-               // 5. HEADER STAFF BADGES & COSMETIC BADGES
                 if(userName) {
                     let headerStaffBadge = "";
-                    if (isOwner) {
-                        headerStaffBadge = ` <span class="owner-badge"><i class="fas fa-crown"></i> Website Owner</span>`;
-                    } else if (isAdmin) {
-                        headerStaffBadge = ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
-                    } else if (isMod) {
-                        headerStaffBadge = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
-                    } else if (isHelper) {
-                        headerStaffBadge = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
-                    }
-                    // Final assembly: Colored Name + Staff Rank + Item Badge
+                    if (isOwner) headerStaffBadge = ` <span class="owner-badge"><i class="fas fa-crown"></i> Website Owner</span>`;
+                    else if (isAdmin) headerStaffBadge = ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
+                    else if (isMod) headerStaffBadge = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
+                    else if (isHelper) headerStaffBadge = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
                     userName.innerHTML = coloredNameHtml + headerStaffBadge + getCosmeticBadge(data.equippedBadge);
                 }
             }
@@ -4460,7 +4443,7 @@ if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FO
         checkMuteStatus();
         resetIdleTimer();
         listenOnlineUsers();
-        listenForPinned(); // ACTIVARE LISTENER MESAJ FIXAT
+        listenForPinned(); 
 
     } else {
         if(headerLoginText) headerLoginText.innerText = "LOGIN";
@@ -4616,145 +4599,145 @@ window.startReply = function(id, name, text, uid) {
     msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
 
 async function sendMessage() {
-        if(isSending) return;
+    if(isSending) return;
 
-        const text = msgInput.value.trim();
-        
-        // Validation: Allow send if there is Text OR an Image/GIF
-        if((!text && !selectedImgBase64) || !auth.currentUser) return;
-        
-        // 1. Admin Commands
-        if(text === '/reset chat') {
-            msgInput.value = '';
-            if(isAdmin || isOwner) {
-                showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
-                initiateWipeSequence(true); 
-            } else {
-                showToast("Nu ai permisiuni de administrator!", "error");
-            }
-            return;
+    const text = msgInput.value.trim();
+    
+    // Validation: Allow send if there is Text OR an Image/GIF
+    if((!text && !selectedImgBase64) || !auth.currentUser) return;
+    
+    // 1. Admin Commands
+    if(text === '/reset chat') {
+        msgInput.value = '';
+        if(isAdmin || isOwner) {
+            showToast("Admin comandă recunoscută. Se inițiază ștergerea...", "success");
+            initiateWipeSequence(true); 
+        } else {
+            showToast("Nu ai permisiuni de administrator!", "error");
         }
-
-        // 2. Validation
-        if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
-
-        const lastSent = localStorage.getItem('lastMsgTime');
-        const COOLDOWN = 2000; 
-        if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
-            showToast(`Te rog nu fă spam!`);
-            return;
-        }
-
-        isSending = true;
-
-        // 3. Animation
-        const btn = document.getElementById('sendBtn');
-        if(typeof window.flyCoins === "function" && btn) {
-            window.flyCoins(btn);
-        }
-
-        try {
-            const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-            const userData = userSnapshot.data();
-
-            let displayName = userData.username || auth.currentUser.displayName;
-            if(isOwner) displayName = "Lost Soul";
-
-            const currentBadge = userData.equippedBadge || null;
-            const currentBanner = userData.equippedBanner || null;
-
-            // 4. Construct Payload
-            const payload = {
-                text: text,
-                uid: auth.currentUser.uid,
-                name: displayName,
-                photo: auth.currentUser.photoURL,
-                email: auth.currentUser.email,
-                ip: userIP || "unknown",
-                isAdmin: isAdmin, 
-                isOwner: isOwner, 
-                isMod: isMod,
-                isHelper: isHelper,
-                equippedBadge: currentBadge, 
-                equippedBanner: currentBanner,
-                equippedText: userData.equippedText || null, 
-                createdAt: serverTimestamp(),
-                isDeleted: false,
-                reactions: {},
-                seenBy: [auth.currentUser.uid]
-            };
-
-            // Attach GIF/Image if exists
-            if(selectedImgBase64) {
-                payload.image = selectedImgBase64;
-            }
-
-// Find this section in sendMessage() and update:
-if(replyData) {
-    payload.replyToId = replyData.id;
-    payload.replyToName = replyData.name;
-    payload.replyToText = replyData.text;
-    payload.replyToUid = replyData.uid; // ADD THIS LINE
-}
-
-            // 5. Send Message to Firebase
-            await addDoc(collection(db, "wall_messages"), payload);
-
-            // 6. Update Stats
-// 6. Update Stats
-            const userRef = doc(db, "accounts", auth.currentUser.uid);
-            
-            // --- LOG TRANSACTION (+10 Coins) ---
-            await logTransaction(10, "COINS", "Message Reward");
-
-            const updates = {
-                messagesSentToday: increment(1),
-                coins: increment(10)
-            };
-            
-            let isLongMsg = false;
-            let isReply = false;
-
-            if(text.length >= 100) {
-                updates.wallLongMsgSent = true;
-                isLongMsg = true;
-            }
-            if(replyData) {
-                updates.wallRepliesToday = increment(1);
-                isReply = true;
-            }
-
-            await updateDoc(userRef, updates);
-
-            // 7. Check Quests
-            checkWallQuest('msg3'); 
-            if (isLongMsg) checkWallQuest('wall_long_msg');
-            if (isReply) checkWallQuest('wall_reply_5');
-            
-            // 8. Reset UI & Cleanup Variables
-            msgInput.value = '';
-            charCount.textContent = '0 / 1000';
-            localStorage.setItem('lastMsgTime', Date.now()); 
-            
-            if(replyData) { 
-                replyData = null; 
-                replyBar.style.display = 'none'; 
-            }
-            
-            // CRITICAL CLEANUP FOR GIFS
-            selectedImgBase64 = null;
-            imgPreview.src = "";
-            imgPreviewContainer.style.display = 'none';
-
-        } catch(e) { 
-            console.error(e); 
-            showToast("Eroare la trimitere!");
-        } finally {
-            isSending = false;
-            isTyping = false;
-            updateTypingStatus(false);
-        }
+        return;
     }
+
+    // 2. Validation
+    if(text.length > 1000) { showToast("Mesajul este prea lung (Max 1000)!"); return; }
+
+    const lastSent = localStorage.getItem('lastMsgTime');
+    const COOLDOWN = 2000; 
+    if(lastSent && (Date.now() - lastSent < COOLDOWN)) {
+        showToast(`Te rog nu fă spam!`);
+        return;
+    }
+
+    isSending = true;
+
+    // 3. Animation
+    const btn = document.getElementById('sendBtn');
+    if(typeof window.flyCoins === "function" && btn) {
+        window.flyCoins(btn);
+    }
+
+    try {
+        const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnapshot.data();
+
+        let displayName = userData.username || auth.currentUser.displayName;
+        if(isOwner) displayName = "Lost Soul";
+
+        const currentBadge = userData.equippedBadge || null;
+        const currentBanner = userData.equippedBanner || null;
+
+        // 4. Construct Payload
+        const payload = {
+            text: text,
+            uid: auth.currentUser.uid,
+            name: displayName,
+            photo: auth.currentUser.photoURL,
+            email: auth.currentUser.email,
+            ip: userIP || "unknown",
+            isAdmin: isAdmin, 
+            isOwner: isOwner, 
+            isMod: isMod,
+            isHelper: isHelper,
+            equippedBadge: currentBadge, 
+            equippedBanner: currentBanner,
+            equippedText: userData.equippedText || null, 
+            createdAt: serverTimestamp(),
+            isDeleted: false,
+            reactions: {},
+            seenBy: [auth.currentUser.uid]
+        };
+
+        if(selectedImgBase64) {
+            payload.image = selectedImgBase64;
+        }
+
+        if(replyData) {
+            payload.replyToId = replyData.id;
+            payload.replyToName = replyData.name;
+            payload.replyToText = replyData.text;
+            payload.replyToUid = replyData.uid;
+        }
+
+        // 5. Send Message to Firebase
+        await addDoc(collection(db, "wall_messages"), payload);
+
+        // --- 🔔 NEW: INCREMENT GLOBAL WALL COUNTER ---
+        // Aceasta linie face ca bulina rosie sa apara la ceilalti useri
+        await updateDoc(doc(db, "site_metadata", "counters"), {
+            totalWallMessages: increment(1)
+        });
+
+        // 6. Update Stats
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        await logTransaction(10, "COINS", "Message Reward");
+
+        const updates = {
+            messagesSentToday: increment(1),
+            coins: increment(10)
+        };
+        
+        let isLongMsg = false;
+        let isReply = false;
+
+        if(text.length >= 100) {
+            updates.wallLongMsgSent = true;
+            isLongMsg = true;
+        }
+        if(replyData) {
+            updates.wallRepliesToday = increment(1);
+            isReply = true;
+        }
+
+        await updateDoc(userRef, updates);
+
+        // 7. Check Quests
+        checkWallQuest('msg3'); 
+        if (isLongMsg) checkWallQuest('wall_long_msg');
+        if (isReply) checkWallQuest('wall_reply_5');
+        
+        // 8. Reset UI
+        msgInput.value = '';
+        charCount.textContent = '0 / 1000';
+        localStorage.setItem('lastMsgTime', Date.now()); 
+        
+        if(replyData) { 
+            replyData = null; 
+            replyBar.style.display = 'none'; 
+        }
+        
+        selectedImgBase64 = null;
+        imgPreview.src = "";
+        imgPreviewContainer.style.display = 'none';
+
+    } catch(e) { 
+        console.error(e); 
+        showToast("Eroare la trimitere!");
+    } finally {
+        isSending = false;
+        isTyping = false;
+        updateTypingStatus(false);
+    }
+}
 
 
 
