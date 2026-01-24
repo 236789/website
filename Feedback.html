@@ -3436,7 +3436,19 @@ function appendReviewCard(data, prepend = false) {
     let actionButtons = '';
     if (canManage) {
         // Safe text for the onClick function
-        const safeText = data.text ? data.text.replace(/'/g, "\\'").replace(/"/g, '&quot;') : "";
+// --- FIX: Advanced escaping function to prevent SyntaxError on New Lines ---
+        const escapeForHtml = (str) => {
+            if (!str) return "";
+            return str
+                .replace(/\\/g, "\\\\")   // Escape backslashes first
+                .replace(/'/g, "\\'")     // Escape single quotes
+                .replace(/"/g, "&quot;")  // Escape double quotes
+                .replace(/\n/g, "\\n")    // Escape New Lines (CRITICAL FIX)
+                .replace(/\r/g, "");      // Remove Carriage Returns
+        };
+
+        const safeText = escapeForHtml(data.text);
+        const safeName = escapeForHtml(data.name); // Also sanitize the name (e.g. O'Connor)
         
         // Decide Approve vs Remove
         let approveBtn = '';
@@ -3450,9 +3462,10 @@ function appendReviewCard(data, prepend = false) {
                 </button>`;
         } else {
             // IF NOT APPROVED: Show "APROBĂ"
+            // We use safeName here instead of data.name to prevent errors on names with apostrophes
             approveBtn = `
                 <button class="btn-action-staff approve" 
-                        onclick="toggleApproveFeedback('${data.id}', false, '${safeText}', '${data.name}', '${data.photo}', '${data.email}', '${data.uid}', this)">
+                        onclick="toggleApproveFeedback('${data.id}', false, '${safeText}', '${safeName}', '${data.photo}', '${data.email}', '${data.uid}', this)">
                     <i class="fas fa-check"></i> APROBĂ
                 </button>`;
         }
