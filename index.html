@@ -1833,11 +1833,15 @@ input:checked + .slider:before { transform: translateX(16px); }
 </section>
 
 
-<!-- SECTION: COMMUNITY WALL -->
+<!-- Caută butonul din secțiunea Community Wall -->
 <section class="container wall-promo-wrapper">
     <h2 class="metallic-title-big">Community Wall</h2>
-    <p class="wall-promo-desc">Ai vreo întrebare? Vrei să îți dai cu părerea despre site-ul nostru sau pur și simplu vrei să comunici?</p>
-    <a href="Wall.html" class="btn btn-outline">Mergi la Community Wall</a>
+    <p class="wall-promo-desc">Ai vreo întrebare?...</p>
+    <a href="Wall.html" class="btn btn-outline" style="position: relative;">
+        Mergi la Community Wall
+        <!-- Adăugăm id-ul promoWallNotifBadge -->
+        <span id="promoWallNotifBadge" class="notif-badge" style="right: -10px; left: auto;"></span>
+    </a>
 </section>
 
 <!-- Services Grid -->
@@ -3236,10 +3240,12 @@ onAuthStateChanged(auth, async (user) => {
             }
 
             // 2. Metadata Listener
-            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
+                // 🔔 NOU: Luăm numărul total de mesaje de pe Wall
+                const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
 
-// 3. User Data Listener
+                // 3. User Data Listener
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
@@ -3251,15 +3257,13 @@ onAuthStateChanged(auth, async (user) => {
                     }
 
                     // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
-                    // Verificăm dacă agreedToRules este false sau nu există deloc (utilizatori vechi)
                     if (data.agreedToRules !== true) {
-                        // Folosim un delay pentru a nu se suprapune instant cu alte eventuale pop-up-uri
                         setTimeout(() => {
                             const rulesModal = document.getElementById('rulesReminderModal');
                             if(rulesModal && !rulesModal.classList.contains('active')) {
                                 rulesModal.classList.add('active');
                             }
-                        }, 4000); // Apare după 4 secunde de la logare
+                        }, 4000);
                     }
 
                     // Referral Logic
@@ -3284,7 +3288,6 @@ onAuthStateChanged(auth, async (user) => {
                     const hoursPassed = (currentTime - lastClaimTime) / (1000 * 60 * 60);
                     const canClaimDaily = hoursPassed >= 24 || lastClaimTime === 0;
 
-                    // Arătăm pop-up-ul doar dacă e gata de claim și nu a fost arătat în această sesiune de browser
                     if (canClaimDaily && !sessionStorage.getItem('rewardReminderShown')) {
                         setTimeout(() => {
                             const reminderModal = document.getElementById('rewardReminderModal');
@@ -3292,7 +3295,7 @@ onAuthStateChanged(auth, async (user) => {
                                 reminderModal.classList.add('active');
                                 sessionStorage.setItem('rewardReminderShown', 'true');
                             }
-                        }, 2500); // Apare după 2.5 secunde pentru un feeling natural
+                        }, 2500);
                     }
                     
                     // Quest & Streak Logic
@@ -3366,6 +3369,7 @@ onAuthStateChanged(auth, async (user) => {
                         popBadgeBox.innerHTML = badgesHtml;
                     }
 
+                    // --- 🔔 LOGICĂ NOTIFICĂRI NOUTĂȚI ---
                     const userVazute = data.lastSeenNewsCount || 0;
                     const noutatiNoi = totalGlobal - userVazute;
                     const heroBadge = document.getElementById('heroNotifBadge');
@@ -3374,6 +3378,23 @@ onAuthStateChanged(auth, async (user) => {
                             heroBadge.innerText = `+${noutatiNoi}`;
                             heroBadge.style.display = 'flex';
                         } else { heroBadge.style.display = 'none'; }
+                    }
+
+                    // --- 🔔 NOU: LOGICĂ NOTIFICĂRI WALL ---
+                    const userSeenWall = data.lastSeenWallCount || 0;
+                    const mesajeNoiWall = totalGlobalWall - userSeenWall;
+
+                    // Luăm elementele din HTML (cel din Side Menu și cel din Promo Section)
+                    const sideWallBadge = document.getElementById('sideWallNotifBadge');
+                    const promoWallBadge = document.getElementById('promoWallNotifBadge');
+
+                    if (mesajeNoiWall > 0) {
+                        const displayTxt = `+${mesajeNoiWall}`;
+                        if(sideWallBadge) { sideWallBadge.innerText = displayTxt; sideWallBadge.style.display = 'flex'; }
+                        if(promoWallBadge) { promoWallBadge.innerText = displayTxt; promoWallBadge.style.display = 'flex'; }
+                    } else {
+                        if(sideWallBadge) sideWallBadge.style.display = 'none';
+                        if(promoWallBadge) promoWallBadge.style.display = 'none';
                     }
                 });
             });
@@ -3428,5 +3449,4 @@ function generateDailyIds() {
   </script>
 </body>
 </html>```
-
 
