@@ -2269,34 +2269,82 @@ window.equipText = async (id, cssClass) => {
     checkGlobalBan();
 
     // LOGICA QUEST KEVIN BOT (15 MESAJE)
-    window.trackKevinQuest = async () => {
-        if (!auth.currentUser) return;
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
+// --- UPDATED KEVIN BOT QUEST LOGIC (WITH STREAK & 6/6 SYNC) ---
+window.trackKevinQuest = async () => {
+    if (!auth.currentUser) return;
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    
+    try {
+        // 1. Increment local message count in DB
+        await updateDoc(userRef, { kevinMessagesToday: increment(1) });
         
-        try {
-            // Pas 1: Incrementează numărul de mesaje în baza de date
-            await updateDoc(userRef, { kevinMessagesToday: increment(1) });
+        // 2. Fetch fresh data to check quest status
+        const snap = await getDoc(userRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        
+        const activeQuests = data.activeDailyQuests || [];
+        const completedQuests = data.completedQuests || [];
+        const count = data.kevinMessagesToday || 0;
+
+        // 3. CHECK: Is the quest active, reached 15, and not already rewarded?
+        if (activeQuests.includes('kevin_talk_15') && !completedQuests.includes('kevin_talk_15') && count >= 15) {
             
-            // Pas 2: Verifică dacă a ajuns la 15 și dacă quest-ul nu a fost deja completat azi
-            const snap = await getDoc(userRef);
-            if (snap.exists()) {
-                const data = snap.data();
-                const count = data.kevinMessagesToday || 0;
-                const completed = data.completedQuests || [];
-                
-                if (count === 15 && !completed.includes('kevin_talk_15')) {
-                    // Pas 3: Oferă recompensa (350 monede)
-                    await updateDoc(userRef, {
-                        coins: increment(350),
-                        completedQuests: arrayUnion('kevin_talk_15')
-                    });
+            // A. Award 350 Coins and mark as completed
+            await updateDoc(userRef, {
+                coins: increment(350),
+                completedQuests: arrayUnion('kevin_talk_15')
+            });
+
+            // B. Log the transaction for history
+            if(typeof logTransaction === "function") {
+                await logTransaction(350, "COINS", "Quest: Vorbește cu Kevin (15 msg)", "Bot Page");
+            }
+
+            // C. FIX THE "0" BUG: Update the modal number before showing it
+            const modal = document.getElementById('questRewardModal');
+            if (modal) {
+                const coinSpan = modal.querySelector('.reward-coins-box span');
+                if (coinSpan) coinSpan.innerText = "350"; // Set the number!
+                modal.classList.add('active');
+            }
+
+            // D. STREAK LOGIC: Check if this was the 6th quest (The "Fire" Modal trigger)
+            // We calculate the new completed count (old count + this one)
+            const newFinishedCount = activeQuests.filter(id => [...completedQuests, 'kevin_talk_15'].includes(id)).length;
+
+            if (activeQuests.length === 6 && newFinishedCount === 6) {
+                // Check if streak was already awarded for this specific block to prevent glitches
+                if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                     
-                    // Pas 4: Afișează Pop-up-ul cu noul stil (Yellow border + Cyan btn)
-                    questRewardModal.classList.add('active');
+                    const oldStr = data.streak || 0;
+                    
+                    // Award the Diamond and Streak
+                    await updateDoc(userRef, {
+                        streak: increment(1),
+                        diamonds: increment(1),
+                        lastStreakAwardedBlock: data.lastResetBlock
+                    });
+
+                    // Log the Diamond
+                    if(typeof logTransaction === "function") {
+                        await logTransaction(1, "DIAMONDS", "Bonus 6/6 Quests Complet", "Bot Page");
+                    }
+
+                    // Show the "Quest Master" (Fire) Modal after a small delay
+                    setTimeout(() => {
+                        const streakModal = document.getElementById('streakRewardModal');
+                        if (streakModal) {
+                            document.getElementById('streakOld').innerText = oldStr;
+                            document.getElementById('streakNew').innerText = oldStr + 1;
+                            streakModal.classList.add('active');
+                        }
+                    }, 2000); // 2 seconds after the coin modal so they don't overlap too fast
                 }
             }
-        } catch(e) { console.error("Eroare tracking quest:", e); }
-    };
+        }
+    } catch(e) { console.error("Quest Error:", e); }
+};
 
     // --- 2. ONLINE STATUS TRACKING (THROTTLED) ---
     let lastStatusUpdate = 0;
@@ -2585,7 +2633,7 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         }
     };
 
-
+let isAwardingInProgress = false;
 
 onAuthStateChanged(auth, user => {
     if (user) {
