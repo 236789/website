@@ -1658,6 +1658,19 @@ let isAwardingInProgress = false; // Flag global pentru a preveni dublarea feres
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
+        
+        // --- 🔴 START: ADD THIS FOR ONESIGNAL ---
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                if (user && user.uid) {
+                    // This links the device to the Firebase UID
+                    OneSignal.login(user.uid);
+                    console.log("OneSignal Linked on Noutati:", user.uid);
+                }
+            });
+        }
+        // --- 🔴 END: ADD THIS FOR ONESIGNAL ---
+
         currentUid = user.uid;
         const userRef = doc(db, "accounts", user.uid);
 
@@ -1680,7 +1693,7 @@ onAuthStateChanged(auth, async (user) => {
                 await resetUserQuests(userRef, data);
             }
 
- // B. QUEST VIZITĂ NOUTĂȚI (Trigger doar dacă e activ pe Firebase)
+            // B. QUEST VIZITĂ NOUTĂȚI
             const activeQuests = data.activeDailyQuests || [];
             const completedQuests = data.completedQuests || [];
 
@@ -1703,7 +1716,7 @@ onAuthStateChanged(auth, async (user) => {
 
             if (activeQuests.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                 if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-if (!isAwardingInProgress) {
+                    if (!isAwardingInProgress) {
                         isAwardingInProgress = true;
                         const oldStr = data.streak || 0;
 
@@ -1713,7 +1726,6 @@ if (!isAwardingInProgress) {
                             lastStreakAwardedBlock: data.lastResetBlock
                         });
 
-                        // --- LOG TRANSACTION (DIAMOND STREAK) ---
                         await logTransaction(1, "DIAMONDS", "Streak Bonus: 6/6 Quests", "Noutăți");
 
                         const streakModal = document.getElementById('streakRewardModal');
@@ -1735,7 +1747,6 @@ if (!isAwardingInProgress) {
             if(document.getElementById('popUserName')) document.getElementById('popUserName').innerText = data.username || user.displayName;
             if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email || user.email;
             
-            // Valute formatate (1k, 1.5k)
             if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
             if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
             
@@ -1743,7 +1754,7 @@ if (!isAwardingInProgress) {
             if (streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
         });
 
-        // 5. NOTIFICATION ENGINE
+        // 5. NOTIFICATION ENGINE (Counters)
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
             const totalGlobal = metaSnap.data()?.totalNews || 0;
             const userRefBadge = doc(db, "accounts", user.uid);
@@ -1764,13 +1775,12 @@ if (!isAwardingInProgress) {
         updateOnlineStatus();
 
     } else {
-        // --- SECȚIUNEA CARE REPARĂ EROAREA TA ---
+        // --- LOGOUT STATE ---
         currentUid = null;
         if(chatView) chatView.style.display = 'none'; 
         if(lockedView) lockedView.style.display = 'flex';
         if(headerUserImg) headerUserImg.style.display = "none";
  
-        // Punem evenimentele de click doar dacă elementele există în pagină
         const loginBtn = document.getElementById('loginBtn');
         if(loginBtn) loginBtn.onclick = handleLoginFlow;
         
