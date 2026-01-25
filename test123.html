@@ -2126,14 +2126,17 @@ window.logTransaction = logTransaction;
 
 
 // Global variable to hold user data for the bot to use
+// Global variable to hold user data for the bot to use
 let currentUserData = null;
 
-// --- BOT INITIALIZATION ---
+// --- INITIALIZE BOT (Called by the big button) ---
 window.initBot = () => {
-    document.getElementById('startBotWrapper').style.display = 'none';
-    document.getElementById('botInputArea').style.display = 'flex';
+    const startBtn = document.getElementById('startBotWrapper');
+    const inputArea = document.getElementById('botInputArea');
+    if(startBtn) startBtn.style.display = 'none';
+    if(inputArea) inputArea.style.display = 'flex';
     
-    // First Message with all the options you requested
+    // Kevin's First Message + Your Requested Options
     const welcomeText = "Bună! Sunt <b>Kevin-Bot</b>, asistentul tău personal KSDA. Cu ce te pot ajuta astăzi?";
     const welcomeOptions = `
         <div class="bot-internal-options">
@@ -2142,7 +2145,7 @@ window.initBot = () => {
             <a href="Wall.html" class="internal-opt-link">💬 COMMUNITY WALL</a>
             <a href="recenzii.html" class="internal-opt-link">⭐ LASĂ O RECENZIE</a>
             <a href="Feedback.html" class="internal-opt-link">📝 SECȚIUNE FEEDBACK</a>
-            <button class="internal-opt-link" style="width:100%;" onclick="window.processBotCommand('cine esti')">🤖 CINE EȘTI TU?</button>
+            <button class="internal-opt-link" style="width:100%; cursor:pointer;" onclick="window.processBotCommand('cine esti')">🤖 CINE EȘTI TU?</button>
         </div>
     `;
     
@@ -2152,6 +2155,7 @@ window.initBot = () => {
 // --- RENDER BOT MESSAGE ---
 window.addBotMsg = (htmlContent) => {
     const history = document.getElementById('botHistory');
+    if(!history) return;
     const row = document.createElement('div');
     row.className = 'msg-row bot';
     row.innerHTML = `
@@ -2162,11 +2166,12 @@ window.addBotMsg = (htmlContent) => {
     history.scrollTop = history.scrollHeight;
 };
 
-// --- RENDER USER MESSAGE (WITH COSMETICS) ---
+// --- RENDER USER MESSAGE (WITH YOUR COSMETICS) ---
 window.addUserMsg = (text) => {
     const history = document.getElementById('botHistory');
-    
-    // Fallbacks if data isn't loaded yet
+    if(!history) return;
+
+    // Pull current cosmetics from the data synced in onSnapshot
     const bannerClass = currentUserData?.equippedBanner?.cssClass || "";
     const textClass = currentUserData?.equippedText?.cssClass || "";
     const frameImg = currentUserData?.equippedFrame?.img || "";
@@ -2182,8 +2187,8 @@ window.addUserMsg = (text) => {
                 <span class="${textClass}" style="font-weight:600;">${text}</span>
             </div>
         </div>
-        <div class="profile-frame-wrapper" style="width:40px; height:40px; margin: 0 0 0 10px; align-self: flex-end;">
-            <img src="${userPfp}" class="pop-img-inner" style="border: 1px solid var(--primary);">
+        <div class="profile-frame-wrapper" style="width:40px; height:40px; margin: 0 0 0 10px; align-self: flex-end; flex-shrink:0;">
+            <img src="${userPfp}" class="pop-img-inner" style="border: 1px solid var(--primary); width:100%; height:100%; border-radius:50%; object-fit:cover;">
             ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:${frameScale*100}%; height:${frameScale*100}%;">` : ''}
         </div>
     `;
@@ -2192,37 +2197,21 @@ window.addUserMsg = (text) => {
     history.scrollTop = history.scrollHeight;
 };
 
-// --- BOT LOGIC ENGINE ---
+// --- BOT LOGIC ---
 window.processBotCommand = (input) => {
     const val = input.toLowerCase().trim();
     let response = "";
 
     if (val.includes("cine esti")) {
-        response = "Sunt Kevin-Bot, inteligența artificială creată de <b>Lost Soul</b> pentru a ghida utilizatorii pe platforma KSDA. Sunt programat să fiu de ajutor și uneori puțin sarcastic! 😎";
+        response = "Sunt <b>Kevin-Bot</b>, un algoritm creat de Lost Soul pentru a face viața mai ușoară utilizatorilor KSDA. Mai vrei să știi ceva?";
     } else if (val.match(/(salut|re|bună|hei)/)) {
-        response = "Salutare! Cu ce te pot ajuta? Alege o opțiune din meniul de mai sus sau scrie-mi direct.";
+        response = "Salutare! Folosește meniul de mai sus pentru link-uri rapide sau întreabă-mă orice!";
     } else {
-        response = "Interesant... Nu sunt sigur că am înțeles, dar poți folosi link-urile din primul meu mesaj pentru a naviga rapid pe site!";
+        response = "Am recepționat! Dacă ai nevoie de ajutor cu o secțiune anume, verifică butoanele din primul meu mesaj.";
     }
 
     setTimeout(() => { window.addBotMsg(response); }, 600);
 };
-
-// --- INPUT LISTENERS ---
-document.getElementById('botSendBtn').onclick = () => {
-    const el = document.getElementById('botUserInput');
-    if(!el.value.trim()) return;
-    window.addUserMsg(el.value);
-    window.processBotCommand(el.value);
-    if(typeof trackKevinQuest === 'function') trackKevinQuest(); // Count messages for quest
-    el.value = "";
-};
-
-// Handle Enter Key
-document.getElementById('botUserInput').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') document.getElementById('botSendBtn').click();
-});
-
     // --- BADGE DATABASE (Reused for Inventory Display) ---
      const BADGES_DB = [
     { id: 'b_boss', text: 'BOSS DE BOSS', color: 'linear-gradient(45deg, #ffd700, #ffaa00)', price: 2000, icon: 'fa-crown' },
@@ -2926,17 +2915,20 @@ onAuthStateChanged(auth, user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
 
-        // ✅ B. ACCESS CONTROL (LOGIN WALL)
-        document.getElementById('loginWall').style.display = 'none';
-        document.getElementById('botInterface').style.display = 'flex';
-        if (document.getElementById('botHistory').children.length === 0) startBotConversation();
+        // ✅ FIXED: Show interface but do NOT call the old startBotConversation
+        const logWall = document.getElementById('loginWall');
+        const botInt = document.getElementById('botInterface');
+        if (logWall) logWall.style.display = 'none';
+        if (botInt) botInt.style.display = 'flex';
 
         // 1. UI Updates for Logged In User
-        headerLoginText.innerText = "ACCOUNT";
-        headerUserImg.src = user.photoURL;
-        headerUserImg.style.display = "block";
+        if (headerLoginText) headerLoginText.innerText = "ACCOUNT";
+        if (headerUserImg) {
+            headerUserImg.src = user.photoURL || "https://iili.io/fhc1SKQ.png";
+            headerUserImg.style.display = "block";
+        }
         
-        if(mobileLoginBtn) {
+        if (mobileLoginBtn) {
             mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
         }
 
@@ -2944,12 +2936,12 @@ onAuthStateChanged(auth, user => {
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
             const totalGlobal = metaSnap.data()?.totalNews || 0;
 
-// 3. Listen for User Data LIVE
+            // 3. Listen for User Data LIVE
             onSnapshot(userRef, async (uSnap) => {
-                if(!uSnap.exists()) return;
+                if (!uSnap.exists()) return;
                 const data = uSnap.data();
 
-                // ✅ NEW: Sync global data for the bot to use your cosmetics
+                // ✅ Sync global data for the bot to use your cosmetics (Banners/Frames)
                 currentUserData = data; 
                 
                 // --- A. QUEST RESET & STREAK LOSS LOGIC ---
@@ -2972,18 +2964,20 @@ onAuthStateChanged(auth, user => {
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
-                            const rewardModal = document.getElementById('streakRewardModal');
-                            if (rewardModal) {
-                                document.getElementById('streakOld').innerText = oldStr;
-                                document.getElementById('streakNew').innerText = oldStr + 1;
-                                rewardModal.classList.add('active');
+                            const strModal = document.getElementById('streakRewardModal');
+                            if (strModal) {
+                                const sOld = document.getElementById('streakOld');
+                                const sNew = document.getElementById('streakNew');
+                                if (sOld) sOld.innerText = oldStr;
+                                if (sNew) sNew.innerText = oldStr + 1;
+                                strModal.classList.add('active');
                             }
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
                 }
 
-               // --- H. BOT QUEST PROGRESS UI LOGIC (UPDATED TEXT) ---
+               // --- H. BOT QUEST PROGRESS UI LOGIC ---
                 const questContainer = document.getElementById('botQuestContainer');
                 const barWrapper = document.getElementById('botQuestBarWrapper');
                 const barTitle = document.getElementById('botQuestTitle');
@@ -2995,40 +2989,38 @@ onAuthStateChanged(auth, user => {
                         questContainer.style.display = 'block';
 
                         if (completedIds.includes('kevin_talk_15')) {
-                            // SHOW COMPLETED TEXT
-                            if(barWrapper) barWrapper.style.display = 'none';
-                            if(barTitle) barTitle.style.display = 'none';
-                            if(barStatus) barStatus.style.display = 'none';
-                            if(completeMsg) {
+                            if (barWrapper) barWrapper.style.display = 'none';
+                            if (barTitle) barTitle.style.display = 'none';
+                            if (barStatus) barStatus.style.display = 'none';
+                            if (completeMsg) {
                                 completeMsg.style.display = 'block';
                                 completeMsg.innerText = "MISIUNE COMPLETATĂ"; 
                             }
                         } else {
-                            // SHOW PROGRESS BAR
-                            if(barWrapper) barWrapper.style.display = 'block';
-                            if(barTitle) barTitle.style.display = 'block';
-                            if(barStatus) barStatus.style.display = 'block';
-                            if(completeMsg) completeMsg.style.display = 'none';
-                            if(barTitle) barTitle.innerText = "VORBEȘTE CU KEVIN BOT";
+                            if (barWrapper) barWrapper.style.display = 'block';
+                            if (barTitle) barTitle.style.display = 'block';
+                            if (barStatus) barStatus.style.display = 'block';
+                            if (completeMsg) completeMsg.style.display = 'none';
+                            if (barTitle) barTitle.innerText = "VORBEȘTE CU KEVIN BOT";
 
                             const msgCount = data.kevinMessagesToday || 0;
                             const progressPct = Math.min((msgCount / 15) * 100, 100);
                             
                             const fillEl = document.getElementById('botQuestFill');
-                            if(fillEl) fillEl.style.width = progressPct + "%";
-                            if(barStatus) barStatus.innerText = `${Math.min(msgCount, 15)} / 15`;
+                            if (fillEl) fillEl.style.width = progressPct + "%";
+                            if (barStatus) barStatus.innerText = `${Math.min(msgCount, 15)} / 15`;
                         }
                     } else {
                         questContainer.style.display = 'none';
                     }
                 }
 
-                // --- C. AVATAR & FRAME LOGIC ---
+                // --- C. AVATAR & FRAME LOGIC (FIXED BROKEN PIC) ---
                 const popImgEl = document.getElementById('popUserImg');
-                if(popImgEl) popImgEl.src = data.image || user.photoURL;
+                if (popImgEl) popImgEl.src = data.image || user.photoURL || "https://iili.io/fhc1SKQ.png";
                 
                 const popFrame = document.getElementById('popUserFrame');
-                if(popFrame) {
+                if (popFrame) {
                     if (data.equippedFrame && data.equippedFrame.img) {
                         popFrame.src = data.equippedFrame.img;
                         popFrame.style.display = "block";
@@ -3043,10 +3035,10 @@ onAuthStateChanged(auth, user => {
 
                 // --- D. NAME CUSTOMIZATION ---
                 let rawName = data.username || user.displayName;
-                if(user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                if (user.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
 
                 const popNameEl = document.getElementById('popUserName');
-                if(popNameEl) {
+                if (popNameEl) {
                     if (data.equippedText && data.equippedText.cssClass) {
                         popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
                     } else {
@@ -3054,17 +3046,17 @@ onAuthStateChanged(auth, user => {
                     }
                 }
 
-                // --- E. STACKED BADGES (Staff + Cosmetic) ---
+                // --- E. STACKED BADGES ---
                 const popBadgeBox = document.getElementById('popUserBadges');
-                if(popBadgeBox) {
+                if (popBadgeBox) {
                     let staffHtml = "";
                     const email = data.email || "";
-                    if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
+                    if (email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
+                    else if (email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
+                    else if (['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
                     
                     let cosmeticHtml = "";
-                    if(data.equippedBadge) {
+                    if (data.equippedBadge) {
                         cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
                     }
                     popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
@@ -3072,16 +3064,16 @@ onAuthStateChanged(auth, user => {
 
                 // --- F. DUAL CURRENCY & STREAK UI ---
                 const mailEl = document.getElementById('popUserEmail');
-                if(mailEl) mailEl.innerText = data.email;
+                if (mailEl) mailEl.innerText = data.email;
                 
                 const coinsEl = document.getElementById('popUserCoins');
-                if(coinsEl) coinsEl.innerText = formatCurrency(data.coins || 0);
+                if (coinsEl) coinsEl.innerText = formatCurrency(data.coins || 0);
                 
                 const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                if (diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
 
                 const streakTxt = document.querySelector('.streak-txt');
-                if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
+                if (streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
                 // --- G. NOTIFICATION BADGE LOGIC ---
                 const userVazute = data.lastSeenNewsCount || 0;
@@ -3103,11 +3095,14 @@ onAuthStateChanged(auth, user => {
         updateOnlineStatus();
     } else {
         // ❌ LOGGED OUT STATE
-        document.getElementById('loginWall').style.display = 'flex';
-        document.getElementById('botInterface').style.display = 'none';
-        headerLoginText.innerText = "LOGIN";
-        headerUserImg.style.display = "none";
-        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+        const lWall = document.getElementById('loginWall');
+        const bInt = document.getElementById('botInterface');
+        if (lWall) lWall.style.display = 'flex';
+        if (bInt) bInt.style.display = 'none';
+        
+        if (headerLoginText) headerLoginText.innerText = "LOGIN";
+        if (headerUserImg) headerUserImg.style.display = "none";
+        if (mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
     } 
 });
 
