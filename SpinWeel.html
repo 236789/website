@@ -3442,24 +3442,23 @@ async function attemptSpin(isFreeAttempt) {
     const data = snap.data();
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
+    // În Event Mode, adminul controlează roata gratis
     if (isEventModeActive && isAdmin) {
         if (!eventSelectedUser) return alert("Alege un participant!");
-        
-        // Broadcast Single Spin
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
             spinAction: {
                 index: pickRewardIndex(),
                 timestamp: Date.now(),
                 adminId: auth.currentUser.uid,
-                speed: 1 // La butonul normal viteza e mereu x1
+                speed: 1
             }
         });
         return; 
     }
 
-    // Logică normală de plată...
+    // Logică plată Normal Mode
     if (isFreeAttempt) {
-        if ((data.freeSpinStack || 0) < 1) return alert("Nu ai rotiri!");
+        if ((data.freeSpinStack || 0) < 1) return alert("Nu ai rotiri gratuite!");
         await updateDoc(userRef, { freeSpinStack: increment(-1) });
     } else {
         if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
@@ -3514,31 +3513,32 @@ async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
     
-    // 1. Identificăm cine primește premiul
+    // 1. Identificăm cine primește premiul (Câștigătorul)
     let targetUid = auth.currentUser.uid;
     let targetName = "Jucător";
     let targetPhoto = auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png";
     let targetUserObj = null; 
     
+    // Luăm datele la zi ale userului curent pentru a verifica XP-ul ulterior
+    const myDocSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const myData = myDocSnap.exists() ? myDocSnap.data() : {};
+
     if (isEventModeActive && eventSelectedUser) {
         targetUid = eventSelectedUser.uid;
         targetName = eventSelectedUser.username;
         targetPhoto = eventSelectedUser.image;
         targetUserObj = eventSelectedUser;
-    } else if (!isEventModeActive) {
-        const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        if(uSnap.exists()) {
-            const d = uSnap.data();
-            targetName = d.username;
-            targetPhoto = d.image;
-            targetUserObj = d;
-        }
+    } else {
+        targetUserObj = myData;
+        targetName = myData.username || auth.currentUser.displayName;
+        targetPhoto = myData.image || auth.currentUser.photoURL;
     }
 
     const isMeTarget = auth.currentUser.uid === targetUid;
+    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
-    // --- PREGĂTIRE REWARD DATA ---
+    // --- PREGĂTIRE REWARD DATA PENTRU UI ---
     let rewardIconHtml = "";
     let rewardText = "";
     
@@ -3559,7 +3559,7 @@ async function finalizeSpin(idx) {
         rewardIconHtml = `<span style="font-size: 30px;">📉</span>`;
     }
 
-    // A. POP-UP PENTRU CÂȘTIGĂTOR
+    // --- A. AFIȘARE POP-UP PENTRU CÂȘTIGĂTOR ---
     if (isMeTarget) {
         const modal = document.getElementById('questRewardModal');
         const titleText = modal.querySelector('h2');
@@ -3573,49 +3573,85 @@ async function finalizeSpin(idx) {
             msgP.innerText = "Nu ai câștigat nimic material.";
             rewardBox.innerHTML = `<span style="font-size: 35px; color:#aaa; font-weight:900;">+15% XP</span>`;
             coinsLabel.innerText = "COLECTEAZĂ XP PENTRU DIAMANTE";
-            modal.classList.add('active');
-
-            // --- NOU: LOGICA BAREI DE XP (DOAR ÎN NORMAL MODE) ---
-            if (!isEventModeActive) {
-                const userRef = doc(db, "accounts", auth.currentUser.uid);
-                const currentXP = targetUserObj?.wheelXP || 0;
-                let nextXP = currentXP + 15;
-
-                if (nextXP >= 100) {
-                    // Premiu Consolare
-                    await updateDoc(userRef, { wheelXP: 0, diamonds: increment(5) });
-                    setTimeout(() => {
-                        modal.classList.remove('active');
-                        document.getElementById('xpCompleteModal').classList.add('active');
-                        launchConfetti();
-                        if(!isMuted) audioJackpot.play().catch(()=>{});
-                    }, 2000);
-                } else {
-                    await updateDoc(userRef, { wheelXP: nextXP });
-                }
-            }
         } else {
-            // Logica normală pentru restul premiilor
             const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
-            if(!isMuted) {
-                if(isJackpot) audioJackpot.play().catch(()=>{});
-                else audioReward.play().catch(()=>{});
-            }
+            if(!isMuted) { if(isJackpot) audioJackpot.play().catch(()=>{}); else audioReward.play().catch(()=>{}); }
             launchConfetti();
             titleText.innerHTML = `<span style="font-size: 24px;">🎉</span> FELICITĂRI!`;
             msgP.innerText = isEventModeActive ? "Adminul a învârtit pentru tine și ai câștigat:" : "Ai câștigat la roată:";
             rewardBox.innerHTML = rewardIconHtml;
             coinsLabel.innerText = rewardText; 
-            modal.classList.add('active');
         }
+        modal.classList.add('active');
     }
 
-    // Restul logicii pentru Admin Popup și Database Updates (Coins/Diamonds) rămâne neschimbat...
-    if (reward.type === "xp") return; // XP-ul a fost deja procesat mai sus
+    // --- B. AFIȘARE POP-UP PENTRU PUBLIC (EVENT MODE) ---
+    if (isEventModeActive && !isMeTarget) {
+        const adminModal = document.getElementById('adminSpinResultModal');
+        const admRewardDisplay = document.getElementById('adminRewardDisplay');
+        // Actualizăm restul elementelor (nume, poze etc.)
+        document.getElementById('adminSpinUserImg').src = targetPhoto;
+        document.getElementById('adminSpinUserName').innerText = targetName;
+        admRewardDisplay.innerHTML = `${rewardIconHtml} <span>${rewardText}</span>`;
+        if(!isMuted) audioAdminCheer.play().catch(()=>{});
+        launchConfetti(); 
+        adminModal.classList.add('active');
+    }
 
-    // ... (Aici continuă codul tău original pentru shouldShowAdminPopup și shouldWriteToDB) ...
-    // Păstrează codul original de la "// B. POP-UP PENTRU PUBLIC" până la finalul funcției.
-    // [Codul tău existent pentru writing to DB, transactions și jackpot alerts]
+    // --- C. DATABASE UPDATES (LOGICA DE SALVARE) ---
+    const userRef = doc(db, "accounts", targetUid);
+
+    // 1. Logica specială pentru XP (Loss Protection)
+    if (reward.type === "xp" && !isEventModeActive) {
+        let currentXP = myData.wheelXP || 0;
+        let nextXP = currentXP + 15;
+
+        if (nextXP >= 100) {
+            await updateDoc(userRef, { wheelXP: 0, diamonds: increment(5) });
+            setTimeout(() => {
+                document.getElementById('questRewardModal').classList.remove('active');
+                document.getElementById('xpCompleteModal').classList.add('active');
+                launchConfetti();
+                if(!isMuted) audioJackpot.play().catch(()=>{});
+            }, 2000);
+        } else {
+            await updateDoc(userRef, { wheelXP: nextXP });
+        }
+        return; // Oprim aici pentru XP
+    }
+
+    // 2. Salvare Premii Normale (Doar dacă nu e XP)
+    if (reward.type !== "xp") {
+        let updateData = {};
+        if (reward.type === "coins") {
+            updateData.coins = increment(reward.val);
+            updateData["wheelStats.coins"] = increment(reward.val);
+        } else if (reward.type === "diamonds") {
+            updateData.diamonds = increment(reward.val);
+            updateData["wheelStats.diamonds"] = increment(reward.val);
+        } else if (reward.type === "badge") {
+            updateData.ownedBadges = arrayUnion(reward.val);
+        } else if (reward.type === "banner") {
+            updateData.ownedBanners = arrayUnion(reward.val);
+        }
+
+        // Scriem în baza de date (Doar cel care dă spin scrie, sau adminul în event)
+        const canWrite = !isEventModeActive || (isEventModeActive && auth.currentUser.uid === currentSpinAdminId);
+        
+        if (canWrite) {
+            await updateDoc(userRef, updateData);
+            logTransaction(reward.val, reward.type.toUpperCase(), isEventModeActive ? "Event Reward" : "Wheel Spin");
+            
+            // Verificare Jackpot pentru istoric global
+            const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
+            if (isJackpot) {
+                await addDoc(collection(db, "wheel_jackpot_history"), {
+                    username: targetName, userPhoto: targetPhoto,
+                    rewardLabel: reward.label, rewardType: reward.type, timestamp: serverTimestamp()
+                });
+            }
+        }
+    }
 }
  
 
