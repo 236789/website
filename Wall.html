@@ -3654,6 +3654,7 @@ function getCosmeticBadge(equippedBadge) {
     let currentUid = null;
     let userIP = null;
     let replyData = null;
+let openMenuId = null; // Tracks which message menu is currently clicked open
     
     // ROLE VARIABLES
     let isAdmin = false; 
@@ -5026,62 +5027,81 @@ async function sendBotMessage(text, customClass = null) {
             list.innerHTML = '<div style="color:red; text-align:center;">Eroare la încărcare.</div>';
         }
     };
-let openMenuId = null; // Global variable to track which menu is open
-
 function loadMessages() {
-    if (unsubscribe) unsubscribe();
+    if(unsubscribe) unsubscribe();
     
-    // We increase limit slightly to ensure smooth filling
+    // We get the last 50 messages
     const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(50));
     
     unsubscribe = onSnapshot(q, snapshot => {
         const feed = messagesFeed;
         
-        // Check if user is near the bottom BEFORE we add new content
-        const threshold = 150; 
+        // 1. Detect if user is currently at the bottom
+        const threshold = 100; 
         const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + threshold);
 
-        // Get changes since last snapshot
-        snapshot.docChanges().reverse().forEach(change => {
+        // 2. Loop through changes instead of wiping everything
+        snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const msgId = change.doc.id;
-            
+
             if (data.isDeleted) {
-                const existingMsg = document.querySelector(`[data-id="${msgId}"]`);
-                if (existingMsg) existingMsg.remove();
+                const el = document.querySelector(`[data-id="${msgId}"]`);
+                if (el) el.remove();
                 return;
             }
 
-            // Create or Find Message Element
+            // Find existing message or create new one
             let wrapper = document.querySelector(`[data-id="${msgId}"]`);
             let isNew = false;
-
             if (!wrapper) {
                 wrapper = document.createElement('div');
                 wrapper.dataset.id = msgId;
                 isNew = true;
             }
 
-            // --- BUILD CONTENT (This part remains similar to your logic but updates the wrapper) ---
+            // --- MESSAGE LOGIC (Exactly as your old code) ---
             const isMine = data.uid === currentUid;
             const isBot = data.isBot === true;
             wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
-            
+
             let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
             let bubbleClass = 'msg-bubble';
             let bubbleContent = "";
             const textStyleClass = (data.equippedText && data.equippedText.cssClass) ? data.equippedText.cssClass : "";
 
-            // Handle Polls, Images, and Text (Simplified logic for the update)
             if (data.uid === 'system-alert') {
                 bubbleClass += ' jackpot-system-alert';
                 bubbleContent = data.text;
-            } else if (data.type === 'poll') {
-                // ... (Keep your existing Poll HTML generation logic here)
-                bubbleContent = renderPollHtml(msgId, data); 
-            } else {
+            } 
+            else if (data.type === 'poll') {
+                const now = Date.now();
+                const isExpired = now > data.expiresAt;
+                const myVote = data.votes ? data.votes[currentUid] : undefined;
+                const hasVoted = myVote !== undefined;
+                const optionCount = data.options ? data.options.length : 2;
+                const results = new Array(optionCount).fill(0);
+                let totalVotes = 0;
+                if(data.votes) {
+                    Object.values(data.votes).forEach(val => { if(val >= 0 && val < optionCount) { results[val]++; totalVotes++; } });
+                }
+                let optionsHtml = '<div class="poll-options">';
+                data.options.forEach((opt, idx) => {
+                    if (isExpired || hasVoted) {
+                        const percent = totalVotes > 0 ? Math.round((results[idx] / totalVotes) * 100) : 0;
+                        optionsHtml += `<div class="poll-btn" style="cursor:default; ${myVote === idx ? 'border: 1px solid var(--primary);' : ''}">
+                            <div class="poll-result-bar" style="width:${percent}%"></div>
+                            <div class="poll-text"><span>${opt}</span><span class="poll-percent">${percent}%</span></div>
+                        </div>`;
+                    } else {
+                        optionsHtml += `<button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">${opt}</button>`;
+                    }
+                });
+                bubbleContent = `<div class="poll-card"><div class="poll-question">${data.question}</div>${optionsHtml}</div>`;
+            } 
+            else {
                 if(data.replyToName) {
-                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${data.replyToText.replace(/</g, "&lt;")}</span>`;
+                    bubbleContent += `<span class="quoted-msg"><strong>${data.replyToName}</strong>${data.replyToText.substring(0,60)}</span>`;
                 }
                 if(data.image) {
                     bubbleContent += `<img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
@@ -5089,9 +5109,9 @@ function loadMessages() {
                 let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
                 if(safeText) {
                     let styledText = textStyleClass ? `<span class="${textStyleClass}">${linkify(safeText)}</span>` : linkify(safeText);
-                    bubbleContent += (data.image ? `<div style="margin-top:8px;">${styledText}</div>` : styledText);
+                    bubbleContent += styledText;
                 }
-
+                // Banners
                 if(data.equippedBanner && data.equippedBanner.cssClass) bubbleClass += ` ${data.equippedBanner.cssClass}`;
                 else if(isBot) bubbleClass += ' bot-msg';
                 else if(data.isOwner) bubbleClass += ' owner-msg';
@@ -5100,65 +5120,68 @@ function loadMessages() {
                 else if(data.isHelper) bubbleClass += ' helper-msg';
             }
 
-            // Names, Badges, Reactions (Keep your existing logic)
-            let authorNameText = textStyleClass ? `<span class="${textStyleClass}">${data.name}</span>` : data.name;
-            let staffHtml = getStaffBadgeHtml(data);
+            // Roles / Badges
+            let staffHtml = "";
+            if(data.isOwner) staffHtml = ` <span class="owner-badge">OWNER</span>`;
+            else if(data.isAdmin) staffHtml = ` <span class="admin-badge">ADMIN</span>`;
+            else if(data.isMod) staffHtml = ` <span class="mod-badge">MOD</span>`;
+            else if(data.isHelper) staffHtml = ` <span class="helper-badge">HELPER</span>`;
+            
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
-            let seenCount = (data.seenBy || []).length;
-            let reactionsHtml = renderReactionsHtml(msgId, data.reactions);
+            let authorHtml = textStyleClass ? `<span class="${textStyleClass}">${data.name}</span>` : data.name;
 
-            // Menu logic - Preserve open state
+            // Reactions
+            let reactionsHtml = "";
+            if(data.reactions) {
+                const counts = {};
+                Object.values(data.reactions).forEach(emoji => { counts[emoji] = (counts[emoji] || 0) + 1; });
+                reactionsHtml = `<div class="msg-reactions">`;
+                for(let [emoji, count] of Object.entries(counts)) { 
+                    reactionsHtml += `<span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">${emoji} ${count}</span>`; 
+                }
+                reactionsHtml += `</div>`;
+            }
+
+            // Menu state preservation
             const isMenuOpen = (openMenuId === msgId);
 
             wrapper.innerHTML = `
-                <div class="msg-author">${authorNameText}${staffHtml}${cosmeticHtml}</div>
+                <div class="msg-author">${authorHtml}${staffHtml}${cosmeticHtml}</div>
                 <div class="${bubbleClass}">${bubbleContent}</div>
                 ${reactionsHtml}
-                <div class="msg-info"><span>${time}</span> <button class="seen-btn" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${seenCount}</button></div>
-                <div class="msg-options" onclick="handleMenuToggle('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                <div class="msg-info"><span>${time}</span> <button class="seen-btn" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${(data.seenBy||[]).length}</button></div>
+                <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
                 <div id="menu-${msgId}" class="options-dropdown ${isMenuOpen ? 'show-menu' : ''}">
-                    <!-- Your Menu Buttons Here -->
                     <button onclick="startReply('${msgId}', '${data.name}', '${(data.text || "Media").replace(/'/g, "\\'")}', '${data.uid}')"><i class="fas fa-reply"></i> Răspunde</button>
                     <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
                     <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
-                    ${(isMine || isAdmin || isOwner) ? `<button onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                    ${(isMine || isAdmin || isOwner) ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                    <div id="emojis-${msgId}" class="emoji-picker-menu">
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                        <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                    </div>
                 </div>
             `;
 
             if (isNew) {
+                // If it's a new message, we need to decide where it goes (usually at the end)
                 feed.appendChild(wrapper);
                 seenObserver.observe(wrapper);
             }
         });
 
-        // --- THE SCROLL FIX ---
-        // Only scroll if we are at the bottom or if I just sent a message
-        const lastChange = snapshot.docChanges()[snapshot.docChanges().length - 1];
-        const iSentLast = lastChange && lastChange.doc.data().uid === currentUid;
+        // --- 3. THE SMART SCROLL ---
+        // Scroll only if user was at the bottom or the LAST message added was from the current user
+        const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+        const iSentLast = lastDoc && lastDoc.data().uid === currentUid;
 
         if (wasAtBottom || iSentLast) {
             feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
         }
     });
 }
-
-// Optimized Helper for Menu
-window.handleMenuToggle = (id) => {
-    if (openMenuId === id) {
-        openMenuId = null;
-        document.getElementById(`menu-${id}`).classList.remove('show-menu');
-    } else {
-        if (openMenuId) {
-            const oldMenu = document.getElementById(`menu-${openMenuId}`);
-            if (oldMenu) oldMenu.classList.remove('show-menu');
-        }
-        openMenuId = id;
-        document.getElementById(`menu-${id}`).classList.add('show-menu');
-    }
-};
-
-
-
     window.openSeenByList = async (msgId) => {
         const modal = document.getElementById('seenByModal');
         const list = document.getElementById('seenByList');
@@ -5296,20 +5319,62 @@ await setDoc(ref, {
         }
     }
 
-    window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
+// 1. Updated Toggle Menu - Now tracks the open ID globally
+window.toggleMenu = function(id) { 
+    const menu = document.getElementById(`menu-${id}`);
+    
+    if (openMenuId === id) {
+        // If clicking the same button, close it
+        openMenuId = null; 
+        if(menu) menu.classList.remove('show-menu');
+    } else {
+        // Close any other open menus first
+        window.closeAllMenus(); 
+        
+        // Open the new one and track it
+        openMenuId = id; 
+        if(menu) menu.classList.add('show-menu');
+    }
+}
 
+// 2. Updated Emoji Picker - Simple toggle for the sub-menu
 window.toggleEmojiPicker = function(id) { 
     const picker = document.getElementById(`emojis-${id}`); 
     if(picker) {
-        // Toggle between 'grid' (visible) and 'none' (hidden)
-        if (picker.style.display === 'grid') {
-            picker.style.display = 'none';
-        } else {
-            picker.style.display = 'grid';
-        }
+        // Toggle between 'grid' and 'none'
+        picker.style.display = (picker.style.display === 'grid') ? 'none' : 'grid';
     }
 }
-    window.closeAllMenus = function() { document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu')); document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none'); }
+
+// 3. Updated Close All - Now resets the global tracker
+window.closeAllMenus = function() { 
+    openMenuId = null; // Reset the ID so the Smart Loader knows nothing is open
+    document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu'));
+    document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none');
+}
+
+// 4. Updated React Function - Now properly cleans up after reacting
+window.reactMsg = async function(msgId, emoji) { 
+    if(!currentUid) return; 
+    
+    // Close the menu after clicking an emoji
+    window.closeAllMenus();
+    
+    const msgRef = doc(db, "wall_messages", msgId);
+    const fieldPath = `reactions.${currentUid}`;
+    const updateObj = {}; 
+    updateObj[fieldPath] = emoji;
+    
+    try { 
+        await updateDoc(msgRef, updateObj); 
+        await updateDoc(doc(db, "accounts", currentUid), { 
+            wallReactionsToday: increment(1) 
+        });
+        checkWallQuest('wall_react_10'); 
+    } catch(e) {
+        console.error("Reaction Error:", e);
+    } 
+}
     
     window.reactMsg = async function(msgId, emoji) { 
         if(!currentUid) return; closeAllMenus();
