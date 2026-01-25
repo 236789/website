@@ -2649,19 +2649,22 @@ input:checked + .slider:before { transform: translateX(24px); }
 </div>
 
 <!-- POP-UP SPECIAL PENTRU XP 100% -->
+<!-- POP-UP REPARAT: MAI PRIETENOS -->
 <div id="xpCompleteModal" class="reward-modal">
     <div class="modern-pop-card pop-consolare">
-        <div style="font-size: 40px; margin-bottom: 15px;">💎</div>
-        <h2 style="color: #00ffcc;">ESTI BUN LA NIMIC!</h2>
-        <p style="color: #fff; font-size: 14px; line-height: 1.5;">
-            Bravo! Ai reușit să pierzi atât de mult încât ne-a făcut milă de tine.<br>
-            Uite aici niște diamante să nu plângi!
+        <div style="font-size: 45px; margin-bottom: 15px;">🏆</div>
+        <h2 style="color: #00ffcc;">CAMPIONUL GHINIONULUI!</h2>
+        <p style="color: #fff; font-size: 14px; line-height: 1.5; font-family: 'Poppins';">
+            Wow! Ai reușit să aduni atâta XP încât statistica pur și simplu a cedat.<br>
+            Pentru că ești un magnet de ghinion (dar un magnet perseverent), uite 5 diamante să-ți porți noroc la următoarea rotire!
         </p>
-        <div class="pop-reward-pill" style="border-color: #00ffcc;">
+        <div class="pop-reward-pill" style="border-color: #00ffcc; background: rgba(0, 255, 204, 0.05);">
             <img src="https://iili.io/fv5bmtj.png" style="width: 40px;">
-            <span style="color: #00ffcc; font-family: 'Orbitron'; font-size: 20px; font-weight: 900;">+5 GEMS</span>
+            <span style="color: #00ffcc; font-family: 'Orbitron'; font-size: 22px; font-weight: 900;">+5 GEMS</span>
         </div>
-        <button class="pop-btn-cyan" style="background:#00ffcc;" onclick="document.getElementById('xpCompleteModal').classList.remove('active')">MERSI... CRED?</button>
+        <button class="pop-btn-cyan" style="background:#00ffcc; color: #000; box-shadow: 0 0 20px #00ffcc;" onclick="document.getElementById('xpCompleteModal').classList.remove('active')">
+            SĂ VINĂ NOROCUL!
+        </button>
     </div>
 </div>
     <!-- 3. REWARDS BUTTON -->
@@ -3507,8 +3510,7 @@ function pickRewardIndex() {
 
 // Add these imports to your top import line if missing: 
 // query, orderBy, limit, getDocs
- 
-// --- UPDATED REWARD LOGIC FOR GLOBAL SYNC ---
+// --- UPDATED REWARD LOGIC FOR GLOBAL SYNC & FRIENDLY XP ---
 async function finalizeSpin(idx) {
     isSpinning = false;
     const reward = REWARDS[idx];
@@ -3535,7 +3537,6 @@ async function finalizeSpin(idx) {
     }
 
     const isMeTarget = auth.currentUser.uid === targetUid;
-    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
     // --- PREGĂTIRE REWARD DATA PENTRU UI ---
@@ -3556,7 +3557,7 @@ async function finalizeSpin(idx) {
         rewardIconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width: 40px;">`;
     } else if (reward.type === "xp") {
         rewardText = "XP";
-        rewardIconHtml = `<span style="font-size: 30px;">📉</span>`;
+        rewardIconHtml = `<span style="font-size: 30px;">🛡️</span>`;
     }
 
     // --- A. AFIȘARE POP-UP PENTRU CÂȘTIGĂTOR ---
@@ -3569,10 +3570,11 @@ async function finalizeSpin(idx) {
 
         if (reward.type === "xp") {
             if(!isMuted) audioFail.play().catch(()=>{});
-            titleText.innerHTML = `<span style="font-size: 24px;">📉</span> GHINION...`;
-            msgP.innerText = "Nu ai câștigat nimic material.";
-            rewardBox.innerHTML = `<span style="font-size: 35px; color:#aaa; font-weight:900;">+15% XP</span>`;
-            coinsLabel.innerText = "COLECTEAZĂ XP PENTRU DIAMANTE";
+            // --- TEXTE PRIETENOASE PENTRU GHINION ---
+            titleText.innerHTML = `<span style="font-size: 24px;">🛡️</span> LOSS PROTECTION`;
+            msgP.innerText = "Fiecare XP te apropie de un premiu de consolare!";
+            rewardBox.innerHTML = `<span style="font-size: 35px; color:#29f3ff; font-weight:900;">+15% XP</span>`;
+            coinsLabel.innerText = "ADUNĂ 100% PENTRU DIAMANTE!";
         } else {
             const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
             if(!isMuted) { if(isJackpot) audioJackpot.play().catch(()=>{}); else audioReward.play().catch(()=>{}); }
@@ -3589,7 +3591,6 @@ async function finalizeSpin(idx) {
     if (isEventModeActive && !isMeTarget) {
         const adminModal = document.getElementById('adminSpinResultModal');
         const admRewardDisplay = document.getElementById('adminRewardDisplay');
-        // Actualizăm restul elementelor (nume, poze etc.)
         document.getElementById('adminSpinUserImg').src = targetPhoto;
         document.getElementById('adminSpinUserName').innerText = targetName;
         admRewardDisplay.innerHTML = `${rewardIconHtml} <span>${rewardText}</span>`;
@@ -3598,29 +3599,32 @@ async function finalizeSpin(idx) {
         adminModal.classList.add('active');
     }
 
-    // --- C. DATABASE UPDATES (LOGICA DE SALVARE) ---
+    // --- C. DATABASE UPDATES (SALVARE REZULTATE) ---
     const userRef = doc(db, "accounts", targetUid);
 
-    // 1. Logica specială pentru XP (Loss Protection)
+    // 1. Logica pentru XP (Doar în Normal Mode)
     if (reward.type === "xp" && !isEventModeActive) {
         let currentXP = myData.wheelXP || 0;
         let nextXP = currentXP + 15;
 
         if (nextXP >= 100) {
+            // Reset XP și acordare diamante
             await updateDoc(userRef, { wheelXP: 0, diamonds: increment(5) });
+            logTransaction(5, "DIAMONDS", "Loss Protection Reward (100% XP)");
+            
             setTimeout(() => {
                 document.getElementById('questRewardModal').classList.remove('active');
                 document.getElementById('xpCompleteModal').classList.add('active');
                 launchConfetti();
                 if(!isMuted) audioJackpot.play().catch(()=>{});
-            }, 2000);
+            }, 1800);
         } else {
             await updateDoc(userRef, { wheelXP: nextXP });
         }
-        return; // Oprim aici pentru XP
+        return; // Ieșim, restul e pentru monede/premii
     }
 
-    // 2. Salvare Premii Normale (Doar dacă nu e XP)
+    // 2. Salvare Premii Standard (Monede, Diamante, Cosmetice)
     if (reward.type !== "xp") {
         let updateData = {};
         if (reward.type === "coins") {
@@ -3635,14 +3639,15 @@ async function finalizeSpin(idx) {
             updateData.ownedBanners = arrayUnion(reward.val);
         }
 
-        // Scriem în baza de date (Doar cel care dă spin scrie, sau adminul în event)
+        // Scriem în baza de date
+        // Regula: Scriem doar dacă suntem în mod privat, sau dacă suntem adminul care a pornit spinul în event
         const canWrite = !isEventModeActive || (isEventModeActive && auth.currentUser.uid === currentSpinAdminId);
         
         if (canWrite) {
             await updateDoc(userRef, updateData);
-            logTransaction(reward.val, reward.type.toUpperCase(), isEventModeActive ? "Event Reward" : "Wheel Spin");
+            logTransaction(reward.val, reward.type.toUpperCase(), isEventModeActive ? `Event Win (Selected by Admin)` : "Normal Wheel Spin");
             
-            // Verificare Jackpot pentru istoric global
+            // Logica pentru Jackpot global
             const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.type.startsWith('b');
             if (isJackpot) {
                 await addDoc(collection(db, "wheel_jackpot_history"), {
