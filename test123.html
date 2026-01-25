@@ -1105,52 +1105,50 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 .bot-close:hover { opacity: 1; color: #ff4757; }
 
-/* --- UNIVERSAL COSMETIC CHAT ENGINE --- */
 
-/* --- 1. REPARARE INVENTAR ȘI PREVIEW --- */
-/* Ne asigurăm că itemele din inventar își păstrează design-ul */
+/* --- 2. FIX PENTRU INVENTAR (Să nu mai fie invizibile) --- */
 .shop-badge-item [class*="bubble-"], 
-.shop-badge-item [class*="anim_"],
-.dm-item [class*="bubble-"] {
+.shop-badge-item [class*="bubble-anim-"],
+.shop-badge-item .bubble-jackpot {
     display: block !important;
-    min-height: 20px;
-    width: 100%;
-    border-radius: 8px;
+    min-height: 25px !important;
+    width: 100% !important;
+    border-radius: 6px !important;
+    margin-bottom: 8px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
-/* --- 2. REPARARE CHAT BUBBLES --- */
-/* Scoatem gradientul albastru de user DOAR dacă există un banner personalizat pe el */
-.bot-msg-user.bubble-galaxy, 
-.bot-msg-user.bubble-toxic, 
-.bot-msg-user.bubble-fire,
-.bot-msg-user.bubble-midas,
-.bot-msg-user.bubble-void,
-.bot-msg-user[class*="bubble-"], 
-.bot-msg-user[class*="anim_"] {
-    background-image: none !important; /* Elimină fundalul albastru default */
+/* --- 3. FIX PENTRU BULELE DE CHAT (Vizibilitate Banners) --- */
+/* Regula asta "omoară" albastrul standard DOAR când ai un banner echipat */
+.bot-msg-user.bubble-galaxy, .bot-msg-user.bubble-toxic, .bot-msg-user.bubble-fire,
+.bot-msg-user.bubble-midas, .bot-msg-user.bubble-void, .bot-msg-user.bubble-comic,
+.bot-msg-user.bubble-hearts, .bot-msg-user.bubble-pixel, .bot-msg-user.bubble-graffiti,
+.bot-msg-user.bubble-ice, .bot-msg-user.bubble-ocean, .bot-msg-user.bubble-nature,
+.bot-msg-user.bubble-candy, .bot-msg-user.bubble-military, .bot-msg-user.bubble-blueprint,
+.bot-msg-user[class*="bubble-anim-"], .bot-msg-user.bubble-jackpot {
+    background-image: none !important; /* Elimină gradientul albastru */
     background-color: transparent !important;
     border: none !important;
     box-shadow: none !important;
 }
 
-/* Forțăm bannerele să aibă padding și rotunjime în interiorul chat-ului */
-.bot-msg[class*="bubble"], .bot-msg[class*="anim_"] {
+/* Forțăm bulele care au banner să se comporte ca niște containere grafice */
+.bot-msg[class*="bubble-"], .bot-msg.bubble-jackpot {
+    display: inline-block !important;
     padding: 10px 14px !important;
     border-radius: 15px !important;
     margin: 5px 0 !important;
-    display: inline-block !important;
-    max-width: 85%;
-    text-align: left;
+    max-width: 85% !important;
+    color: #fff !important; /* Text alb standard pentru contrast */
 }
 
-
-/* 3. TEXT: Fix pentru animațiile de text (t-fire, t-matrix, etc.) */
+/* Fix pentru animațiile de text să stea pe un singur rând și să nu se taie */
 .bot-msg span[class*="t-"] {
-    display: inline-block;
-    width: 100%;
-    font-weight: 700;
-    line-height: 1.4;
-    vertical-align: middle;
+    display: inline-block !important;
+    width: 100% !important;
+    line-height: 1.4 !important;
+    vertical-align: middle !important;
 }
 
 /* 4. PREVIEW: Dacă un banner e prea întunecat (ex: Void), forțăm textul să fie alb */
@@ -1801,19 +1799,18 @@ function addBotMsg(text, sender, forcedBanner = '', forcedText = '') {
     const div = document.createElement('div');
     div.className = `bot-msg bot-msg-${sender}`;
 
-    // Accesăm cosmeticele globale (încărcate de Firebase în onSnapshot)
+    // Luăm stilurile din fereastra globală
     const cosmetics = window.currentUserCosmetics || { banner: '', text: '' };
 
-    // Regulă: Userul își folosește stilul propriu. Botul/Alții folosesc forced style sau deloc.
     let activeBanner = (sender === 'user') ? cosmetics.banner : forcedBanner;
     let activeText = (sender === 'user') ? cosmetics.text : forcedText;
 
-    // APLICARE BANNER
+    // Aplicăm bannerul dacă există
     if (activeBanner) {
         div.classList.add(activeBanner);
     }
 
-    // APLICARE TEXT (Dacă există t-class, punem textul în SPAN)
+    // Aplicăm textul
     if (activeText) {
         div.innerHTML = `<span class="${activeText}">${text}</span>`;
     } else {
@@ -1821,9 +1818,10 @@ function addBotMsg(text, sender, forcedBanner = '', forcedText = '') {
     }
 
     botHistory.appendChild(div);
+
+    // Scroll instant la ultimul mesaj
     botHistory.scrollTop = botHistory.scrollHeight;
 
-    // Actualizare Preview Listă
     if (sender === 'bot') {
         updateMessengerPreview(text);
     } else {
