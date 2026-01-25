@@ -1533,17 +1533,20 @@ input:checked + .slider:before { transform: translateX(16px); }
     <main class="shop-hero">
         <h1 class="metallic-title">Cumpără KSDA Coins</h1>
         
-        <div class="user-stats-card">
-            <img id="shopUserImg" src="https://i.ibb.co/4pGm9S2/user-placeholder.png" class="user-stats-img">
-            <div class="user-stats-info">
-                <h3 id="shopUserName" style="margin: 0; font-size: 16px;">Se încarcă...</h3>
-                <div class="user-stats-coins">
-                    <img src="https://iili.io/fhc1SKQ.png" width="22">
-                    <span id="shopUserCoins">0</span>
-                </div>
-            </div>
+<!-- UPDATED USER STATS CARD -->
+<div class="user-stats-card" id="shopUserCard">
+    <div class="profile-frame-wrapper" style="width: 70px; height: 70px; margin: 0; flex-shrink: 0;">
+        <img id="shopUserImg" src="https://i.ibb.co/4pGm9S2/user-placeholder.png" class="pop-img-inner">
+        <img id="shopUserFrame" src="" class="pop-frame-overlay" style="display: none;">
+    </div>
+    <div class="user-stats-info">
+        <h3 id="shopUserName" style="margin: 0; font-size: 16px;">Se încarcă...</h3>
+        <div class="user-stats-coins">
+            <img id="shopStatIcon" src="https://iili.io/fhc1SKQ.png" width="22">
+            <span id="shopStatValue">0</span>
         </div>
-
+    </div>
+</div>
 
 <!-- SHOP CATEGORY TOGGLE (NEW HD LINKS) -->
 <div class="shop-category-switch">
@@ -2594,15 +2597,16 @@ async function checkShopQuest(actionType, donationAmount = 0) {
         { amount: 500, price: 250 }
     ];
 
-    window.switchShopCategory = (mode) => {
-        currentShopMode = mode;
-        
-        // Update Buttons
-        document.getElementById('cat-coins').className = mode === 'coins' ? 'shop-cat-btn active' : 'shop-cat-btn';
-        document.getElementById('cat-diamonds').className = mode === 'diamonds' ? 'shop-cat-btn active' : 'shop-cat-btn';
-        
-        renderShop();
-    };
+window.switchShopCategory = (mode) => {
+    currentShopMode = mode;
+    document.getElementById('cat-coins').className = mode === 'coins' ? 'shop-cat-btn active' : 'shop-cat-btn';
+    document.getElementById('cat-diamonds').className = mode === 'diamonds' ? 'shop-cat-btn active' : 'shop-cat-btn';
+    
+    // ADD THIS LINE
+    refreshShopHeroCurrency(); 
+    
+    renderShop();
+};
 
     window.switchCurrency = (curr) => {
         selectedCurrency = curr;
@@ -3715,11 +3719,45 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
+
+
+
+// Helper to update the Shop Hero Card balance dynamically
+function updateShopHeroBalance(coins, diamonds) {
+    const iconEl = document.getElementById('shopStatIcon');
+    const valEl = document.getElementById('shopStatValue');
+    if(!iconEl || !valEl) return;
+
+    if (currentShopMode === 'coins') {
+        iconEl.src = "https://iili.io/fhc1SKQ.png";
+        valEl.innerText = formatCurrency(coins || 0);
+    } else {
+        iconEl.src = "https://iili.io/fv5bmtj.png";
+        valEl.innerText = formatCurrency(diamonds || 0);
+    }
+}
+
+
+// Helper to update the Shop Hero Card balance dynamically
+window.refreshShopHeroCurrency = () => {
+    const iconEl = document.querySelector('.user-stats-coins img');
+    const valEl = document.getElementById('shopUserCoins');
+    if(!iconEl || !valEl || !window.currentUserData) return;
+
+    if (currentShopMode === 'coins') {
+        iconEl.src = "https://iili.io/fhc1SKQ.png"; // KSDA Icon
+        valEl.innerText = formatCurrency(window.currentUserData.coins || 0);
+        valEl.parentElement.style.color = "var(--gold)";
+    } else {
+        iconEl.src = "https://iili.io/fv5bmtj.png"; // Diamond Icon
+        valEl.innerText = formatCurrency(window.currentUserData.diamonds || 0);
+        valEl.parentElement.style.color = "#00ff88"; // Emerald color for diamonds
+    }
+};
 // --- AUTH & LIVE SNAPSHOT ---
 onAuthStateChanged(auth, async user => {
     if (user) {
-        
-        // ✅ ADD THIS BLOCK: Connect User to OneSignal
+        // OneSignal Connection
         if (window.OneSignalDeferred) {
             window.OneSignalDeferred.push(function(OneSignal) {
                 if (user && user.uid) {
@@ -3728,7 +3766,6 @@ onAuthStateChanged(auth, async user => {
                 }
             });
         }
-        // ✅ END OF ADDITION
 
         const userRef = doc(db, "accounts", user.uid);
         
@@ -3740,6 +3777,7 @@ onAuthStateChanged(auth, async user => {
         onSnapshot(userRef, async (snap) => {
             if(snap.exists()) {
                 const d = snap.data();
+                window.currentUserData = d; // Store globally for currency toggle
                 
                 // 1. Reset logic
                 await resetUserQuests(userRef, d);
@@ -3754,18 +3792,12 @@ onAuthStateChanged(auth, async user => {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
                             const oldStr = d.streak || 0;
-                            
-                            // A. Update Database
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: d.lastResetBlock
                             });
-
-                            // B. LOG TRANSACTION (NEW)
                             await logTransaction(1, "DIAMONDS", "Daily", "Streak Bonus 6/6 Quests");
-
-                            // C. Show Animation
                             document.getElementById('streakOld').innerText = oldStr;
                             document.getElementById('streakNew').innerText = oldStr + 1;
                             document.getElementById('streakRewardModal').classList.add('active');
@@ -3774,19 +3806,53 @@ onAuthStateChanged(auth, async user => {
                     }
                 }
 
-                // 3. UI Update (Modal + Shop Hero)
+                // 3. UI Update (SHOP HERO BUBBLE - FIXED)
+                const shopCard = document.querySelector('.user-stats-card');
+                const shopName = document.getElementById('shopUserName');
+                const shopImg = document.getElementById('shopUserImg');
+                
+                // Apply Banner CSS to the whole bubble
+                if(shopCard) shopCard.className = 'user-stats-card ' + (d.equippedBanner?.cssClass || '');
+                
+                // Apply Custom Text CSS to Name
+                if(shopName) {
+                    shopName.innerText = d.username || user.displayName;
+                    shopName.className = (d.equippedText?.cssClass || '');
+                }
+
+                // Fix Profile Picture & Add Frame Support
+                if(shopImg) {
+                    shopImg.src = d.image || user.photoURL;
+                    
+                    // Create frame element if it doesn't exist in the Hero Card
+                    let shopFrame = document.getElementById('shopHeroFrame');
+                    if(!shopFrame) {
+                        // We wrap the image in a container to match your Frame CSS
+                        shopImg.outerHTML = `<div class="profile-frame-wrapper" style="width:60px; height:60px; margin:0;">
+                            <img id="shopUserImg" src="${d.image || user.photoURL}" class="pop-img-inner">
+                            <img id="shopHeroFrame" src="" class="pop-frame-overlay" style="display:none;">
+                        </div>`;
+                        shopFrame = document.getElementById('shopHeroFrame');
+                    }
+
+                    if (d.equippedFrame?.img) {
+                        shopFrame.src = d.equippedFrame.img;
+                        shopFrame.style.display = "block";
+                    } else {
+                        shopFrame.style.display = "none";
+                    }
+                }
+
+                // Handle Dynamic Currency (Feature)
+                refreshShopHeroCurrency();
+
+                // 4. Modal & Header Updates
                 const headerText = document.getElementById('headerLoginText');
                 if(headerText) {
                     headerText.innerText = (d.username || "").toUpperCase();
                     headerText.className = 'login-btn-header ' + (d.equippedText?.cssClass || '');
                 }
 
-                const shopName = document.getElementById('shopUserName');
-                const shopCoins = document.getElementById('shopUserCoins');
-                if(shopName) shopName.innerText = d.username || user.displayName;
-                if(shopCoins) shopCoins.innerText = formatCurrency(d.coins || 0);
-
-                // Modal population
                 document.getElementById('popUserImg').src = d.image || user.photoURL;
                 const popName = document.getElementById('popUserName');
                 popName.innerText = d.username;
