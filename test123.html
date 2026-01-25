@@ -1106,50 +1106,47 @@ input:checked + .slider:before { transform: translateX(16px); }
 .bot-close:hover { opacity: 1; color: #ff4757; }
 
 
-/* --- 2. REPARARE INVENTAR (BANNER PREVIEWS) --- */
-.shop-badge-item [class*="bubble-"], 
-.shop-badge-item [class*="anim_"],
-.shop-badge-item .bubble-jackpot {
-    display: block !important;
-    min-height: 25px !important;
-    width: 100% !important;
-    border-radius: 6px !important;
-    margin-bottom: 8px !important;
-    opacity: 1 !important;
-    visibility: visible !important;
+/* --- CHAT BUBBLE & BANNER OVERRIDES --- */
+.bot-msg {
+    position: relative;
+    max-width: 85%;
+    padding: 8px 12px;
+    margin: 4px 0;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 12px;
+    display: inline-block;
+    word-break: break-word;
 }
 
-/* --- 3. REPARARE CHAT (LOGICA DIN WALL.HTML) --- */
-/* Resetăm fundalul albastru default dacă există un banner personalizat */
-.bot-msg-user.bubble-galaxy, .bot-msg-user.bubble-toxic, .bot-msg-user.bubble-fire,
-.bot-msg-user.bubble-midas, .bot-msg-user.bubble-void, .bot-msg-user.bubble-comic,
-.bot-msg-user.bubble-hearts, .bot-msg-user.bubble-pixel, .bot-msg-user.bubble-graffiti,
-.bot-msg-user.bubble-ice, .bot-msg-user.bubble-ocean, .bot-msg-user.bubble-nature,
-.bot-msg-user.bubble-candy, .bot-msg-user.bubble-military, .bot-msg-user.bubble-blueprint,
-.bot-msg-user[class*="bubble-anim-"], .bot-msg-user.bubble-jackpot {
-    background-image: none !important; 
+/* Force banners to override default messenger colors */
+.bot-msg[class*="bubble-"], 
+.bot-msg[class*="anim_"], 
+.bot-msg.bubble-jackpot {
     background-color: transparent !important;
+    background-image: inherit; /* This lets the specific banner class take over */
     border: none !important;
-    box-shadow: none !important;
-}
-
-/* Stilul de bază pentru orice bulă care are un banner (exact ca pe Wall) */
-.bot-msg[class*="bubble-"], .bot-msg[class*="anim_"], .bot-msg.bubble-jackpot {
-    padding: 10px 14px !important;
-    border-radius: 15px !important;
-    margin: 5px 0 !important;
-    display: inline-block !important;
-    max-width: 85% !important;
     color: #fff !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-/* Fix pentru animațiile de text să nu se strângă */
+/* Ensure text styles inside bubbles stay centered/readable */
 .bot-msg span[class*="t-"] {
-    display: inline-block !important;
-    width: 100% !important;
-    line-height: 1.4 !important;
-    vertical-align: middle !important;
+    display: inline-block;
+    width: 100%;
+}
+
+/* FIX: Specific blue removal for users with banners */
+.bot-msg-user[class*="bubble-"] {
+    background: none !important;
+}
+
+/* Inventory Item Fix - Ensure buttons don't overlap text */
+.shop-badge-item {
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 15px 10px !important;
 }
 /* 4. PREVIEW: Dacă un banner e prea întunecat (ex: Void), forțăm textul să fie alb */
 .bubble-void span, .bubble-midas span, .bubble-anim-blood span {
@@ -1799,30 +1796,24 @@ function addBotMsg(text, sender, forcedBanner = '', forcedText = '') {
     const div = document.createElement('div');
     div.className = `bot-msg bot-msg-${sender}`;
 
-    // Luăm cosmeticele globale (window.currentUserCosmetics este setat de Firebase)
+    // Get styles: if user, use their equipped ones. If bot, use the forced ones.
     const cosmetics = window.currentUserCosmetics || { banner: '', text: '' };
-
     let activeBanner = (sender === 'user') ? cosmetics.banner : forcedBanner;
     let activeText = (sender === 'user') ? cosmetics.text : forcedText;
 
-    // APLICARE BANNER (Clasa pe DIV)
-    if (activeBanner) {
-        div.classList.add(activeBanner);
-    }
+    // Apply Banner Class
+    if (activeBanner) div.classList.add(activeBanner);
 
-    // APLICARE TEXT (Logica de SPAN din Wall.html)
+    // Apply Text Style and Content
     if (activeText) {
-        // Dacă are stil de text, învelim conținutul în SPAN
         div.innerHTML = `<span class="${activeText}">${text}</span>`;
     } else {
-        // Dacă nu are stil, punem text simplu
-        div.innerHTML = text;
+        div.innerText = text;
     }
 
-    botHistory.appendChild(div);
-
-    // Scroll instant ca pe telefon
-    botHistory.scrollTop = botHistory.scrollHeight;
+    const history = document.getElementById('botHistory');
+    history.appendChild(div);
+    history.scrollTop = history.scrollHeight;
 
     if (sender === 'bot') {
         updateMessengerPreview(text);
@@ -2895,63 +2886,55 @@ async function handleLoginFlow() {
                  actionContainer.appendChild(unequipBtn);
             }
         } 
-        else if (type === 'banners') {
-            const ownedIds = data.ownedBanners || [];
-            const equipped = data.equippedBanner?.id || null;
-            
-            if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
-            
-            ownedIds.forEach(id => {
-                const item = BANNERS_DB.find(b => b.id === id);
-                if(item) {
-                    const isEquipped = (id === equipped);
-                    const card = document.createElement('div');
-                    card.className = 'shop-badge-item';
-                    card.innerHTML = `
-                        <div class="${item.cssClass}" style="padding:5px; border-radius:5px; font-size:10px; width:100%;">PREVIEW</div>
-                        <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                        ${isEquipped 
-                            ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
-                            : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
-                        }
-                    `;
-                    list.appendChild(card);
-                }
-            });
-            
-            if(equipped) {
-                 const unequipBtn = document.createElement('button');
-                 unequipBtn.className = 'unequip-all-btn';
-                 unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE BANNER';
-                 unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBanner: null }); window.openInventory('banners'); };
-                 actionContainer.appendChild(unequipBtn);
-            }
+// FIND THIS SECTION INSIDE openInventory(type)
+else if (type === 'banners') {
+    const ownedIds = data.ownedBanners || [];
+    const equipped = data.equippedBanner?.id || null;
+    
+    if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
+    
+    ownedIds.forEach(id => {
+        const item = BANNERS_DB.find(b => b.id === id);
+        if(item) {
+            const isEquipped = (id === equipped);
+            const card = document.createElement('div');
+            card.className = 'shop-badge-item';
+            // We simulate a chat bubble for the preview
+            card.innerHTML = `
+                <div class="bot-msg ${item.cssClass}" style="width:100%; margin-bottom:10px; font-size:10px; text-align:center;">PREVIEW</div>
+                <div style="font-family:'Orbitron'; font-size:9px; color:var(--primary); margin-bottom:5px;">${item.name}</div>
+                <button class="equip-btn" ${isEquipped ? 'style="background:#555;" disabled' : `onclick="equipBanner('${item.id}', '${item.cssClass}')"`}>
+                    ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
+                </button>
+            `;
+            list.appendChild(card);
         }
-
+    });
+}
 else if(type === 'texts') {
     const ownedIds = data.ownedTexts || [];
     const equipped = data.equippedText?.id || null;
-    if(ownedIds.length === 0) { list.innerHTML = '<p style="text-align:center; color:#aaa;">Nu ai culori text.</p>'; }
+    const username = data.username || "Utilizator";
+
+    if(ownedIds.length === 0) { list.innerHTML = '<p style="text-align:center; color:#aaa;">Nu ai stiluri de text.</p>'; return; }
+
     ownedIds.forEach(id => {
         const item = TEXTS_DB.find(b => b.id === id);
         if(item) {
             const isEquipped = (id === equipped);
-            list.innerHTML += `
-                <div class="shop-badge-item">
-                    <div class="${item.cssClass}" style="font-size:14px; font-weight:800; margin-bottom:10px;">${data.username}</div>
-                    <button class="equip-btn" ${isEquipped ? 'style="background:#555;" disabled' : `onclick="equipText('${item.id}', '${item.cssClass}')"`}>
-                        ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
-                    </button>
-                </div>`;
+            const card = document.createElement('div');
+            card.className = 'shop-badge-item';
+            card.innerHTML = `
+                <div style="margin-bottom:10px; font-size:12px; font-weight:900;">
+                    <span class="${item.cssClass}">${username}</span>
+                </div>
+                <button class="equip-btn" ${isEquipped ? 'style="background:#555;" disabled' : `onclick="equipText('${item.id}', '${item.cssClass}')"`}>
+                    ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
+                </button>
+            `;
+            list.appendChild(card);
         }
     });
-    if(equipped) {
-        const unBtn = document.createElement('button');
-        unBtn.className = 'unequip-all-btn';
-        unBtn.innerHTML = '<i class="fas fa-ban"></i> RESETEAZĂ CULOAREA';
-        unBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedText: null }); window.openInventory('texts'); };
-        actionContainer.appendChild(unBtn);
-    }
 }
 
 else if (type === 'frames') {
