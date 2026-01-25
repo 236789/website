@@ -1556,6 +1556,33 @@ input:checked + .slider:before { transform: translateX(16px); }
     display: inline-block;
     width: 100%;
 }
+
+
+/* --- UNIVERSAL CHAT COSMETICS FIX --- */
+
+/* Dezactivăm stilul standard de user dacă există un banner echipat */
+.bot-msg-user[class*="bubble"] {
+    background: none !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Forțăm textul să ocupe tot spațiul în interiorul bulei pentru animații */
+.bot-msg span[class*="t-"] {
+    display: inline-block;
+    width: 100%;
+    /* Asigură-te că animația textului nu este tăiată */
+    padding: 2px 0; 
+}
+
+/* Fix pentru bannerele animate să aibă margini rotunjite corecte în chat */
+.bot-msg[class*="bubble"] {
+    border-radius: 12px !important;
+    padding: 8px 12px;
+    min-width: 40px;
+    text-align: center;
+}
   </style>
 </head>
 <body>
@@ -2196,29 +2223,18 @@ function updateMessengerPreview(text) {
     }
 }
 
-// Modified addBotMsg to update the list view snippet
-function addBotMsg(text, sender, customBanner = '', customText = '') {
+function addBotMsg(text, sender, forcedBanner = '', forcedText = '') {
     const div = document.createElement('div');
-    // Clasa de bază (bot-msg-user sau bot-msg-bot)
     div.className = `bot-msg bot-msg-${sender}`;
 
-    let finalBanner = customBanner;
-    let finalTextClass = customText;
+    // Aici folosim numele corect: currentUserCosmetics
+    let activeBanner = (sender === 'user') ? currentUserCosmetics.banner : forcedBanner;
+    let activeText = (sender === 'user') ? currentUserCosmetics.text : forcedText;
 
-    // Dacă mesajul vine de la USER, folosim ce are echipat în baza de date
-    if (sender === 'user') {
-        finalBanner = currentUserCosmetics.banner;
-        finalTextClass = currentUserCosmetics.text;
-    }
+    if (activeBanner) div.classList.add(activeBanner);
 
-    // Aplicăm Banner-ul (dacă există)
-    if (finalBanner) {
-        div.classList.add(finalBanner);
-    }
-
-    // Aplicăm Textul (dacă există, îl punem într-un span în interiorul bulei)
-    if (finalTextClass) {
-        div.innerHTML = `<span class="${finalTextClass}">${text}</span>`;
+    if (activeText) {
+        div.innerHTML = `<span class="${activeText}">${text}</span>`;
     } else {
         div.innerHTML = text;
     }
@@ -2226,7 +2242,6 @@ function addBotMsg(text, sender, customBanner = '', customText = '') {
     botHistory.appendChild(div);
     botHistory.scrollTop = botHistory.scrollHeight;
 
-    // Actualizăm și snippet-ul din listă (fără tag-uri HTML)
     if (sender === 'bot') {
         updateMessengerPreview(text);
     } else {
@@ -2406,11 +2421,8 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-// Variabilă globală pentru a reține cosmeticele userului curent
-let currentUserCosmetics = {
-    banner: '',
-    text: ''
-};
+// În loc de let currentUserCosmetics... pune:
+window.currentUserCosmetics = { banner: '', text: '' };
 
 // --- NOTIFICATION SETTINGS LOGIC (FIXED) ---
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
@@ -3574,163 +3586,156 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
 
                 // 3. User Data Listener
-                onSnapshot(userRef, async (uSnap) => {
-                    if(!uSnap.exists()) return;
-                    const data = uSnap.data();
+// 3. User Data Listener 
+onSnapshot(userRef, async (uSnap) => {
+    if (!uSnap.exists()) return;
+    const data = uSnap.data();
 
+// În interiorul onSnapshot...
+if (data.equippedBanner) currentUserCosmetics.banner = data.equippedBanner.cssClass || '';
+if (data.equippedText) currentUserCosmetics.text = data.equippedText.cssClass || '';
 
-// Salvăm cosmeticele pentru a le folosi în chat
-currentUserCosmetics.banner = data.equippedBanner?.cssClass || '';
-currentUserCosmetics.text = data.equippedText?.cssClass || '';
+    // LIVE BAN CHECK (If banned while online)
+    if (data.isBanned === true) {
+        location.reload();
+        return;
+    }
 
-                    // LIVE BAN CHECK (If banned while online)
-                    if (data.isBanned === true) {
-                        location.reload(); 
-                        return;
-                    }
+    // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
+    if (data.agreedToRules !== true) {
+        setTimeout(() => {
+            const rulesModal = document.getElementById('rulesReminderModal');
+            if (rulesModal && !rulesModal.classList.contains('active')) {
+                rulesModal.classList.add('active');
+            }
+        }, 4000);
+    }
 
-                    // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
-                    if (data.agreedToRules !== true) {
-                        setTimeout(() => {
-                            const rulesModal = document.getElementById('rulesReminderModal');
-                            if(rulesModal && !rulesModal.classList.contains('active')) {
-                                rulesModal.classList.add('active');
-                            }
-                        }, 4000);
-                    }
+    // Referral Logic
+    if (data.pendingReferrals && data.pendingReferrals > 0) {
+        const count = data.pendingReferrals;
+        const totalBonus = count * 1000;
+        const refModal = document.getElementById('referralRewardModal');
+        const refText = document.getElementById('referralText');
+        const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
 
-                    // Referral Logic
-                    if (data.pendingReferrals && data.pendingReferrals > 0) {
-                        const count = data.pendingReferrals;
-                        const totalBonus = count * 1000;
-                        const refModal = document.getElementById('referralRewardModal');
-                        const refText = document.getElementById('referralText');
-                        const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
+        if (refModal && refText && refAmount) {
+            refText.innerText = count === 1 ? "Un prieten s-a înregistrat!" : `${count} prieteni s-au înregistrat!`;
+            refAmount.innerText = totalBonus;
+            refModal.classList.add('active');
+            await updateDoc(userRef, { pendingReferrals: 0 });
+        }
+    }
 
-                        if (refModal && refText && refAmount) {
-                            refText.innerText = count === 1 ? "Un prieten s-a înregistrat!" : `${count} prieteni s-au înregistrat!`;
-                            refAmount.innerText = totalBonus; 
-                            refModal.classList.add('active');
-                            await updateDoc(userRef, { pendingReferrals: 0 });
-                        }
-                    }
+    // --- NEW: LOGICĂ REAMINTIRE DAILY REWARD ---
+    const currentTime = Date.now();
+    const lastClaimTime = data.lastDailyClaim ? data.lastDailyClaim.toMillis() : 0;
+    const hoursPassed = (currentTime - lastClaimTime) / (1000 * 60 * 60);
+    const canClaimDaily = hoursPassed >= 24 || lastClaimTime === 0;
 
-                    // --- NEW: LOGICĂ REAMINTIRE DAILY REWARD ---
-                    const currentTime = Date.now();
-                    const lastClaimTime = data.lastDailyClaim ? data.lastDailyClaim.toMillis() : 0;
-                    const hoursPassed = (currentTime - lastClaimTime) / (1000 * 60 * 60);
-                    const canClaimDaily = hoursPassed >= 24 || lastClaimTime === 0;
+    if (canClaimDaily && !sessionStorage.getItem('rewardReminderShown')) {
+        setTimeout(() => {
+            const reminderModal = document.getElementById('rewardReminderModal');
+            if (reminderModal) {
+                reminderModal.classList.add('active');
+                sessionStorage.setItem('rewardReminderShown', 'true');
+            }
+        }, 2500);
+    }
 
-                    if (canClaimDaily && !sessionStorage.getItem('rewardReminderShown')) {
-                        setTimeout(() => {
-                            const reminderModal = document.getElementById('rewardReminderModal');
-                            if(reminderModal) {
-                                reminderModal.classList.add('active');
-                                sessionStorage.setItem('rewardReminderShown', 'true');
-                            }
-                        }, 2500);
-                    }
-                    
-                    // Quest & Streak Logic
-                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
+    // Quest & Streak Logic
+    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
 
-                    const activeIds = data.activeDailyQuests || [];
-                    const completedIds = data.completedQuests || [];
-                    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
+    const activeIds = data.activeDailyQuests || [];
+    const completedIds = data.completedQuests || [];
+    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            if (!isAwardingInProgress) {
-                                isAwardingInProgress = true;
-                                const oldStr = data.streak || 0;
-                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă", "Acasă");
-                                await updateDoc(userRef, {
-                                    streak: increment(1),
-                                    diamonds: increment(1),
-                                    lastStreakAwardedBlock: data.lastResetBlock
-                                });
-                                const rewardModal = document.getElementById('streakRewardModal');
-                                if (rewardModal) {
-                                    document.getElementById('streakOld').innerText = oldStr;
-                                    document.getElementById('streakNew').innerText = oldStr + 1;
-                                    rewardModal.classList.add('active');
-                                }
-                                setTimeout(() => { isAwardingInProgress = false; }, 3000);
-                            }
-                        }
-                    }
-
-                    // Populate UI
-                    document.getElementById('popUserImg').src = data.image || user.photoURL;
-                    const popFrame = document.getElementById('popUserFrame');
-                    if(popFrame) {
-                        if (data.equippedFrame?.img) {
-                            popFrame.src = data.equippedFrame.img;
-                            popFrame.style.display = "block";
-                            const scale = data.equippedFrame.scale || 1.45;
-                            popFrame.style.width = (scale * 100) + "%";
-                            popFrame.style.height = (scale * 100) + "%";
-                        } else { popFrame.style.display = "none"; }
-                    }
-
-                    const nameEl = document.getElementById('popUserName');
-                    let rawName = data.username || user.displayName;
-                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-                    if (data.equippedText?.cssClass) {
-                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else { nameEl.innerText = rawName; }
-
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    const streakDisplay = document.querySelector('.streak-txt');
-                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
-
-                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                    const diamondEl = document.getElementById('popUserDiamonds');
-                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
-                    const popBadgeBox = document.getElementById('popUserBadges');
-                    if(popBadgeBox) {
-                        let badgesHtml = "";
-                        const email = data.email || "";
-                        if(email === 'nicaemmanuel433qe@gmail.com') badgesHtml += `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
-                        else if(email === 'kevin.trinity2020@gmail.com') badgesHtml += `<div><span class="admin-badge">ADMIN</span></div>`;
-                        else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) badgesHtml += `<div><span class="mod-badge">MODERATOR</span></div>`;
-                        
-                        if(data.equippedBadge) {
-                            badgesHtml += `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                        }
-                        popBadgeBox.innerHTML = badgesHtml;
-                    }
-
-                    // --- 🔔 LOGICĂ NOTIFICĂRI NOUTĂȚI ---
-                    const userVazute = data.lastSeenNewsCount || 0;
-                    const noutatiNoi = totalGlobal - userVazute;
-                    const heroBadge = document.getElementById('heroNotifBadge');
-                    if (heroBadge) {
-                        if (noutatiNoi > 0) {
-                            heroBadge.innerText = `+${noutatiNoi}`;
-                            heroBadge.style.display = 'flex';
-                        } else { heroBadge.style.display = 'none'; }
-                    }
-
-                    // --- 🔔 NOU: LOGICĂ NOTIFICĂRI WALL ---
-                    const userSeenWall = data.lastSeenWallCount || 0;
-                    const mesajeNoiWall = totalGlobalWall - userSeenWall;
-
-                    // Luăm elementele din HTML (cel din Side Menu și cel din Promo Section)
-                    const sideWallBadge = document.getElementById('sideWallNotifBadge');
-                    const promoWallBadge = document.getElementById('promoWallNotifBadge');
-
-                    if (mesajeNoiWall > 0) {
-                        const displayTxt = `+${mesajeNoiWall}`;
-                        if(sideWallBadge) { sideWallBadge.innerText = displayTxt; sideWallBadge.style.display = 'flex'; }
-                        if(promoWallBadge) { promoWallBadge.innerText = displayTxt; promoWallBadge.style.display = 'flex'; }
-                    } else {
-                        if(sideWallBadge) sideWallBadge.style.display = 'none';
-                        if(promoWallBadge) promoWallBadge.style.display = 'none';
-                    }
+    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
+        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
+            if (!isAwardingInProgress) {
+                isAwardingInProgress = true;
+                const oldStr = data.streak || 0;
+                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă", "Acasă");
+                await updateDoc(userRef, {
+                    streak: increment(1),
+                    diamonds: increment(1),
+                    lastStreakAwardedBlock: data.lastResetBlock
                 });
-            });
+                const rewardModal = document.getElementById('streakRewardModal');
+                if (rewardModal) {
+                    document.getElementById('streakOld').innerText = oldStr;
+                    document.getElementById('streakNew').innerText = oldStr + 1;
+                    rewardModal.classList.add('active');
+                }
+                setTimeout(() => { isAwardingInProgress = false; }, 3000);
+            }
+        }
+    }
+
+    // Populate UI Account Modal
+    const popImg = document.getElementById('popUserImg');
+    if(popImg) popImg.src = data.image || user.photoURL;
+
+    const popFrame = document.getElementById('popUserFrame');
+    if (popFrame) {
+        if (data.equippedFrame?.img) {
+            popFrame.src = data.equippedFrame.img;
+            popFrame.style.display = "block";
+            const scale = data.equippedFrame.scale || 1.45;
+            popFrame.style.width = (scale * 100) + "%";
+            popFrame.style.height = (scale * 100) + "%";
+        } else {
+            popFrame.style.display = "none";
+        }
+    }
+
+    const nameEl = document.getElementById('popUserName');
+    let rawName = data.username || user.displayName;
+    if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+
+    if (data.equippedText?.cssClass) {
+        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+    } else {
+        nameEl.innerText = rawName;
+    }
+
+    document.getElementById('popUserEmail').innerText = data.email;
+    const streakDisplay = document.querySelector('.streak-txt');
+    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
+
+    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+    const diamondEl = document.getElementById('popUserDiamonds');
+    if (diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+
+    // --- 🔔 LOGICĂ NOTIFICĂRI NOUTĂȚI ---
+    const userVazute = data.lastSeenNewsCount || 0;
+    const noutatiNoi = totalGlobal - userVazute;
+    const heroBadge = document.getElementById('heroNotifBadge');
+    if (heroBadge) {
+        if (noutatiNoi > 0) {
+            heroBadge.innerText = `+${noutatiNoi}`;
+            heroBadge.style.display = 'flex';
+        } else {
+            heroBadge.style.display = 'none';
+        }
+    }
+
+    // --- 🔔 LOGICĂ NOTIFICĂRI WALL ---
+    const userSeenWall = data.lastSeenWallCount || 0;
+    const mesajeNoiWall = totalGlobalWall - userSeenWall;
+    const promoWallBadge = document.getElementById('promoWallNotifBadge');
+    const sideWallBadge = document.getElementById('sideWallNotifBadge');
+
+    if (mesajeNoiWall > 0) {
+        const displayTxt = `+${mesajeNoiWall}`;
+        if (sideWallBadge) { sideWallBadge.innerText = displayTxt; sideWallBadge.style.display = 'flex'; }
+        if (promoWallBadge) { promoWallBadge.innerText = displayTxt; promoWallBadge.style.display = 'flex'; }
+    } else {
+        if (sideWallBadge) sideWallBadge.style.display = 'none';
+        if (promoWallBadge) promoWallBadge.style.display = 'none';
+    }
+});
+            }); 
 
             updateOnlineStatus(); 
         } else {
