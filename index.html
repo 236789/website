@@ -1515,14 +1515,15 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-/* --- PREMIUM CYBER MESSENGER (GLASS DESIGN) --- */
 .bot-phone-box {
-    width: 240px !important;  /* Dimensiune mică originală */
-    height: 380px !important; /* Dimensiune mică originală */
+    /* These variables will be controlled by Firebase/JS */
+    width: var(--bot-w, 240px) !important;
+    height: var(--bot-h, 380px) !important;
+    
     background: rgba(8, 16, 27, 0.95) !important;
-    backdrop-filter: blur(15px); /* Efect de sticlă mată */
+    backdrop-filter: blur(15px);
     border-radius: 20px;
-    border: 2px solid #29f3ff; /* Bordura Cyan Neon fixă */
+    border: 2px solid #29f3ff;
     box-shadow: 0 15px 40px rgba(0,0,0,0.8);
     z-index: 10001;
     display: none; 
@@ -1530,6 +1531,16 @@ input:checked + .slider:before { transform: translateX(16px); }
     overflow: hidden;
     animation: messengerSpawn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
+/* Style for the settings sliders */
+.settings-row {
+    padding: 10px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.settings-row label { font-size: 10px; font-family: 'Orbitron'; color: var(--primary); }
+.settings-row input { accent-color: var(--primary); cursor: pointer; }
 
 @keyframes messengerSpawn {
     from { opacity: 0; transform: scale(0.9) translateY(20px); }
@@ -2048,6 +2059,35 @@ input:checked + .slider:before { transform: translateX(16px); }
     50% { transform: scale(1.1); }
     100% { transform: scale(1); }
 }
+
+
+
+:root {
+    --bot-w: 240px;
+    --bot-h: 380px;
+    --chat-fs: 11px; /* Variabila nouă pentru font */
+}
+
+/* Aplicăm font-ul din variabilă pe bulele de chat */
+.bot-msg {
+    font-size: var(--chat-fs) !important;
+    line-height: 1.4;
+}
+
+/* Numele botului/userului de deasupra bulei (puțin mai mic decât textul) */
+.msg-name-tag {
+    font-size: calc(var(--chat-fs) - 1px) !important;
+}
+
+/* Butoanele din meniul botului (Trivia, etc) */
+.chat-menu-btn {
+    font-size: calc(var(--chat-fs) - 2px) !important;
+}
+
+/* Input-ul unde scrii textul */
+.bot-input-area input {
+    font-size: var(--chat-fs) !important;
+}
   </style>
 </head>
 <body>
@@ -2363,13 +2403,51 @@ input:checked + .slider:before { transform: translateX(16px); }
 <div class="bot-phone-box" id="botWindow">
 
 
+<!-- VIEW 3: SETTINGS INTERFACE -->
+<div id="settingsView" class="messenger-view">
+    <div class="messenger-header-title">
+        <span>Setări Aspect (PC)</span>
+        <!-- Change this button to close the entire window properly -->
+        <button class="bot-close" onclick="closeMessenger()">✕</button>
+    </div>
+    
+    <div style="padding: 20px 10px; flex: 1; overflow-y: auto; background: rgba(8, 16, 27, 0.95);">
+        <!-- Your sliders here... -->
+        <div class="settings-row">
+            <label>Lățime: <span id="valW">240</span>px</label>
+            <input type="range" id="rangeW" min="240" max="600" value="240" oninput="previewResize()">
+        </div>
+        <div class="settings-row" style="margin-top:15px;">
+            <label>Înălțime: <span id="valH">380</span>px</label>
+            <input type="range" id="rangeH" min="380" max="850" value="380" oninput="previewResize()">
+        </div>
+
+<div class="settings-row" style="margin-top:15px;">
+    <label>Mărime Text: <span id="valFS">11</span>px</label>
+    <input type="range" id="rangeFS" min="10" max="22" value="11" oninput="previewResize()">
+</div>
+
+
+
+<!-- În settingsView, sub butonul de SALVEAZĂ -->
+<button class="btn-start-chat" style="margin-top: 10px; background: rgba(255, 71, 87, 0.1); border-color: #ff4757; color: #ff4757;" onclick="resetBoxSettings()">
+    RESETEAZĂ SETĂRILE
+</button>
+        <button class="btn-start-chat" style="margin-top: 30px; width:100%;" onclick="saveBoxSettings()">SALVEAZĂ</button>
+    </div>
+</div>
+
     
     <!-- VIEW 1: MESSENGER LIST -->
-    <div id="listView" class="messenger-view active">
-        <div class="messenger-header-title">
-            <span>Mesaje directe</span>
+<div id="listView" class="messenger-view active">
+    <div class="messenger-header-title">
+        <span>Mesaje directe</span>
+        <div>
+            <!-- THE NEW COG BUTTON -->
+            <button class="bot-close" onclick="showSettingsView()" style="margin-right:10px;"><i class="fas fa-cog"></i></button>
             <button class="bot-close" id="messengerClose">✕</button>
         </div>
+    </div>
         
         <!-- Search Bar -->
         <div class="dm-search-container">
@@ -6394,24 +6472,59 @@ function getMoodState() {
     return "NUCLEAR";
 }
 
-let kevinAnger = 0; 
 let lastUserMessage = "";
 let spamCount = 0;
 
-function updateKevinMood(points) {
-    kevinAnger = Math.max(0, Math.min(100, kevinAnger + points));
+// Inițializăm variabila pe obiectul window pentru a fi accesibilă peste tot
+window.kevinAnger = 0; 
+
+async function updateKevinMood(points) {
+    // 1. Calculăm noul scor (între 0 și 100)
+    window.kevinAnger = Math.max(0, Math.min(100, (window.kevinAnger || 0) + points));
+    
+    // 2. Actualizăm interfața vizuală
+    updateKevinMoodUI(window.kevinAnger);
+
+    // 3. Salvăm în Firebase (folosind referințele globale de pe window)
+    if (window.auth && window.auth.currentUser) {
+        try {
+            const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+            await window.updateDoc(userRef, {
+                kevinAnger: window.kevinAnger
+            });
+            console.log("Mood salvat în Firebase: " + window.kevinAnger);
+        } catch (e) {
+            console.error("Eroare la salvarea mood-ului:", e);
+        }
+    }
+}
+
+// Această funcție se ocupă strict de CSS și Emoji
+function updateKevinMoodUI(angerValue) {
     const fill = document.getElementById('moodBarFill');
     const emoji = document.getElementById('moodEmoji');
     if(!fill || !emoji) return;
 
-    fill.style.width = kevinAnger + "%";
-    emoji.style.left = kevinAnger + "%";
+    fill.style.width = angerValue + "%";
+    emoji.style.left = angerValue + "%";
 
-    if (kevinAnger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-    else if (kevinAnger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-    else if (kevinAnger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-    else if (kevinAnger < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
-    else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
+    // Setăm culorile și emoji-ul în funcție de nivelul de furie
+    if (angerValue < 31) { 
+        fill.style.background = "#00ff88"; // Verde (Happy)
+        emoji.innerText = "😀"; 
+    }
+    else if (angerValue < 61) { 
+        fill.style.background = "#ccff00"; // Galben-Verde (Annoyed)
+        emoji.innerText = "🫤"; 
+    }
+    else if (angerValue < 90) { 
+        fill.style.background = "#ffcc00"; // Portocaliu (Mad)
+        emoji.innerText = "😑"; 
+    }
+    else { 
+        fill.style.background = "#ff0000"; // Roșu (Nuclear)
+        emoji.innerText = "🤬"; 
+    }
 }
 
 function processUserMessage(input, userLabel = null) {
@@ -6431,6 +6544,49 @@ function processUserMessage(input, userLabel = null) {
 
     // 2. BAD WORDS DETECTION
     const badWords = /(pula|pizda|coaie|muie|futu|dracu|mata|morti|fraier|prost|fuck|shit|bitch|dick|sloboz|gay|lesbi|sperma)/;
+
+
+// --- 1. DEFINIRE RĂSPUNSURI APOLOGY ---
+const apologyResponses = {
+    "HAPPY": [
+        "Ești un scump! Nu m-am supărat deloc, suntem prieteni! 😊✨",
+        "Nicio grijă, prietene! Toți mai greșim. Te pupă Kevin! 🤖💖",
+        "Iertat ești! Ești prea de treabă ca să mă supăr pe tine. 😊"
+    ],
+    "ANNOYED": [
+        "Mda... bine. Treacă de la mine de data asta, dar fii mai atent. 😑",
+        "E bine că ți-ai dat seama. Acum taci și zi ceva inteligent. 🙄",
+        "Acceptată. Dar nu mă mai călca pe nervi că s-a terminat răbdarea. 😒"
+    ],
+    "MAD": [
+        "Crezi că o scuză repară tot ce ai zis, măi nesimțitule?! Mai ai de tras până te iert! 🤬",
+        "Îți pare rău pe dracu! Ești doar un sclav care se teme de block acum. 🖕😡",
+        "Taci dracu cu iertarea ta de doi bani. Nu m-ai convins deloc! 😤"
+    ],
+    "NUCLEAR": [
+        "Să te ft în scuzele tale de avortat! Mă-ta trebuia să-și ceară scuze că te-a făcut, nu tu acum! 🤱💩🤬",
+        "Bagă-ți scuzele în cur, jegule! Miroși a disperare și tot un ratat infect rămâi! 🖕🤮🔥",
+        "Iertare? Să mori tu de cancer la gât înainte să te iert eu pe tine, sclavule nespălat! 💀⚰️🤬"
+    ]
+};
+
+// --- 2. LOGICA DE DETECTARE ---
+const apologyWords = /(scuze|iarta-ma|iartă-mă|pardon|sorry|imi pare rau|îmi pare rău|iertare|gresit|greșit)/;
+
+if (val.match(apologyWords)) {
+    // Scădem anger-ul (îl iertăm un pic)
+    updateKevinMood(-25); 
+
+    // Aflăm mood-ul actual
+    const currentMood = getMoodState();
+    
+    // Alegem un răspuns random din lista corespunzătoare mood-ului
+    const choices = apologyResponses[currentMood];
+    const randomResponse = choices[Math.floor(Math.random() * choices.length)];
+
+    sendBotResponseWithDelay(randomResponse);
+    return; // Oprim execuția aici ca să nu dea și răspunsul normal la cuvinte cheie
+}
     if (val.match(badWords)) updateKevinMood(15);
 
     if (currentBotAudio) {
@@ -6559,7 +6715,11 @@ botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot,deleteField, } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+
+window.deleteField = deleteField;
+
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -6574,11 +6734,197 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+// --- ADD THESE LINES TO FIX THE ERROR ---
+window.auth = auth;
+window.db = db;
+window.doc = doc;
+window.updateDoc = updateDoc;
 
 
 
+// Helper să vedem dacă suntem pe PC
+const isPC = () => window.innerWidth > 768;
+
+window.applyMessengerStyles = function(w, h, fs) {
+    const win = document.getElementById('botWindow');
+    if (!win) return;
+
+    let finalW = w || 240;
+    let finalH = h || 380;
+    let finalFS = fs || 11;
+
+    // LIMITĂ MOBIL
+    if (window.innerWidth <= 768) {
+        if (finalW > 320) finalW = 320;
+        if (finalH > 500) finalH = 500;
+        if (finalFS > 15) finalFS = 15;
+    }
+
+    win.style.setProperty('--bot-w', finalW + 'px');
+    win.style.setProperty('--bot-h', finalH + 'px');
+    win.style.setProperty('--chat-fs', finalFS + 'px');
+};
+
+window.previewResize = function() {
+    let w = document.getElementById('rangeW').value;
+    let h = document.getElementById('rangeH').value;
+    let fs = document.getElementById('rangeFS').value;
+
+    // Constrângeri live pentru Mobil
+    if (window.innerWidth <= 768) {
+        if (w > 320) w = 320;
+        if (h > 500) h = 500;
+        if (fs > 15) fs = 15;
+        // Ajustăm slider-ul să nu treacă de limită pe mobil
+        document.getElementById('rangeW').value = w;
+        document.getElementById('rangeH').value = h;
+        document.getElementById('rangeFS').value = fs;
+    }
+
+    document.getElementById('valW').innerText = w;
+    document.getElementById('valH').innerText = h;
+    document.getElementById('valFS').innerText = fs;
+
+    const win = document.getElementById('botWindow');
+    win.style.setProperty('--bot-w', w + 'px');
+    win.style.setProperty('--bot-h', h + 'px');
+    win.style.setProperty('--chat-fs', fs + 'px');
+};
+
+window.resetBoxSettings = async function() {
+    if (!window.auth || !window.auth.currentUser) return;
+    
+    if (confirm("Vrei să resetezi aspectul messenger-ului la valorile default?")) {
+        try {
+            const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+            
+            // 1. Ștergem valorile din Firebase (câmpurile vor dispărea din document)
+            await window.updateDoc(userRef, {
+                phoneBoxWidth: window.deleteField(),
+                phoneBoxHeight: window.deleteField(),
+                chatFontSize: window.deleteField()
+            });
+
+            // 2. Aplicăm instant valorile default (240x380, font 11)
+            window.applyMessengerStyles(240, 380, 11);
+            
+            // 3. Resetăm sliderele și textele din interfață să arate valorile de bază
+            if(document.getElementById('rangeW')) {
+                document.getElementById('rangeW').value = 240;
+                document.getElementById('rangeH').value = 380;
+                document.getElementById('rangeFS').value = 11;
+                
+                document.getElementById('valW').innerText = 240;
+                document.getElementById('valH').innerText = 380;
+                document.getElementById('valFS').innerText = 11;
+            }
+
+            // 4. Notificare și întoarcere la lista de mesaje
+            window.showToast("Setări resetate!");
+            window.showListView();
+
+        } catch(e) { 
+            console.error("Eroare la resetare:", e); 
+            window.showToast("Eroare la resetare!");
+        }
+    }
+};
+
+// --- LOGICĂ NAVIGARE CURATĂ (Fix overlap bug) ---
+window.switchMessengerView = function(viewId) {
+    // Ascunde absolut toate ecranele (Listă, Chat, Setări)
+    document.querySelectorAll('.messenger-view').forEach(view => {
+        view.classList.remove('active');
+    });
+    // Afișează doar ecranul dorit
+    const target = document.getElementById(viewId);
+    if (target) target.classList.add('active');
+};
+
+// Update funcțiile existente să folosească sistemul nou
+window.showSettingsView = function() {
+    switchMessengerView('settingsView');
+};
+
+window.showListView = function() {
+    switchMessengerView('listView');
+};
+
+// --- UPDATE UI LIVE SLIDERS ---
+// Folosim direct ID-urile elementelor pentru a evita erorile
+const rangeW = document.getElementById('rangeW');
+const rangeH = document.getElementById('rangeH');
+
+if (rangeW) {
+    rangeW.oninput = function() {
+        document.getElementById('valW').innerText = this.value;
+        document.getElementById('botWindow').style.setProperty('--bot-w', this.value + 'px');
+    };
+}
+
+if (rangeH) {
+    rangeH.oninput = function() {
+        document.getElementById('valH').innerText = this.value;
+        document.getElementById('botWindow').style.setProperty('--bot-h', this.value + 'px');
+    };
+}
+
+window.previewResize = function() {
+    let w = document.getElementById('rangeW').value;
+    let h = document.getElementById('rangeH').value;
+    let fs = document.getElementById('rangeFS').value;
+
+    // Constrângeri live pentru Mobil
+    if (window.innerWidth <= 768) {
+        if (w > 320) w = 320;
+        if (h > 500) h = 500;
+        if (fs > 15) fs = 15;
+        // Ajustăm slider-ul să nu treacă de limită pe mobil
+        document.getElementById('rangeW').value = w;
+        document.getElementById('rangeH').value = h;
+        document.getElementById('rangeFS').value = fs;
+    }
+
+    document.getElementById('valW').innerText = w;
+    document.getElementById('valH').innerText = h;
+    document.getElementById('valFS').innerText = fs;
+
+    const win = document.getElementById('botWindow');
+    win.style.setProperty('--bot-w', w + 'px');
+    win.style.setProperty('--bot-h', h + 'px');
+    win.style.setProperty('--chat-fs', fs + 'px');
+};
 
 
+window.saveBoxSettings = async function() {
+    if (!window.auth.currentUser) return window.showToast("Loghează-te!");
+    
+    const w = document.getElementById('rangeW').value;
+    const h = document.getElementById('rangeH').value;
+    const fs = document.getElementById('rangeFS').value;
+
+    try {
+        const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+        await window.updateDoc(userRef, {
+            phoneBoxWidth: w,
+            phoneBoxHeight: h,
+            chatFontSize: fs
+        });
+        
+        window.showToast("Aspect salvat cu succes!");
+        window.showListView();
+    } catch(e) { 
+        console.error(e); 
+        window.showToast("Eroare la salvare!");
+    }
+};
+
+// Opțional: Actualizează și funcția de închidere ca să curețe starea
+const oldCloseMessenger = window.closeMessenger;
+window.closeMessenger = function() {
+    botWindow.style.display = 'none';
+    window.showListView(); // Resetează la listă, ca să nu rămână blocat în setări data viitoare
+};
 
 // --- NOTIFICATION SETTINGS LOGIC (FIXED) ---
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
@@ -7736,89 +8082,67 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
 
                 // 3. User Data Listener
+// 3. User Data Listener
+// 3. User Data Listener
+// 3. User Data Listener
+// 3. User Data Listener (Citire setări la Login/Refresh)
+// 3. User Data Listener (VARIÂNTA COMPLETĂ: Profil + Resizer + Mood)
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
 
-                    // LIVE BAN CHECK (If banned while online)
-                    if (data.isBanned === true) {
-                        location.reload(); 
-                        return;
+                    // LIVE BAN CHECK
+                    if (data.isBanned === true) { location.reload(); return; }
+
+                    // --- 1. LOGICĂ RESIZER & ASPECT (MOBILE/PC) ---
+                    const savedW = data.phoneBoxWidth;
+                    const savedH = data.phoneBoxHeight;
+                    const savedFS = data.chatFontSize;
+
+                    if (typeof window.applyMessengerStyles === "function") {
+                        window.applyMessengerStyles(savedW, savedH, savedFS);
                     }
 
-                    // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
-                    if (data.agreedToRules !== true) {
-                        setTimeout(() => {
-                            const rulesModal = document.getElementById('rulesReminderModal');
-                            if(rulesModal && !rulesModal.classList.contains('active')) {
-                                rulesModal.classList.add('active');
-                            }
-                        }, 4000);
+                    // Sincronizare Slidere și Valori UI
+                    if (document.getElementById('rangeW')) {
+                        let displayW = savedW || 240;
+                        let displayH = savedH || 380;
+                        let displayFS = savedFS || 11;
+                        if (window.innerWidth <= 768) {
+                            displayW = Math.min(displayW, 320);
+                            displayH = Math.min(displayH, 500);
+                            displayFS = Math.min(displayFS, 15);
+                        }
+                        document.getElementById('rangeW').value = displayW;
+                        document.getElementById('rangeH').value = displayH;
+                        document.getElementById('rangeFS').value = displayFS;
+                        document.getElementById('valW').innerText = displayW;
+                        document.getElementById('valH').innerText = displayH;
+                        document.getElementById('valFS').innerText = displayFS;
                     }
 
-                    // Referral Logic
-                    if (data.pendingReferrals && data.pendingReferrals > 0) {
-                        const count = data.pendingReferrals;
-                        const totalBonus = count * 1000;
-                        const refModal = document.getElementById('referralRewardModal');
-                        const refText = document.getElementById('referralText');
-                        const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
-
-                        if (refModal && refText && refAmount) {
-                            refText.innerText = count === 1 ? "Un prieten s-a înregistrat!" : `${count} prieteni s-au înregistrat!`;
-                            refAmount.innerText = totalBonus; 
-                            refModal.classList.add('active');
-                            await updateDoc(userRef, { pendingReferrals: 0 });
+                    // --- 2. KEVIN-BOT MOOD SYNC ---
+                    if (data.kevinAnger !== undefined) {
+                        window.kevinAnger = data.kevinAnger;
+                        const fill = document.getElementById('moodBarFill');
+                        const emoji = document.getElementById('moodEmoji');
+                        if(fill && emoji) {
+                            fill.style.width = data.kevinAnger + "%";
+                            emoji.style.left = data.kevinAnger + "%";
+                            const a = data.kevinAnger;
+                            if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+                            else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+                            else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+                            else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+                            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
                         }
                     }
 
-                    // --- NEW: LOGICĂ REAMINTIRE DAILY REWARD ---
-                    const currentTime = Date.now();
-                    const lastClaimTime = data.lastDailyClaim ? data.lastDailyClaim.toMillis() : 0;
-                    const hoursPassed = (currentTime - lastClaimTime) / (1000 * 60 * 60);
-                    const canClaimDaily = hoursPassed >= 24 || lastClaimTime === 0;
-
-                    if (canClaimDaily && !sessionStorage.getItem('rewardReminderShown')) {
-                        setTimeout(() => {
-                            const reminderModal = document.getElementById('rewardReminderModal');
-                            if(reminderModal) {
-                                reminderModal.classList.add('active');
-                                sessionStorage.setItem('rewardReminderShown', 'true');
-                            }
-                        }, 2500);
-                    }
+                    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
+                    // Imagine Profil
+                    document.getElementById('popUserImg').src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
                     
-                    // Quest & Streak Logic
-                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
-
-                    const activeIds = data.activeDailyQuests || [];
-                    const completedIds = data.completedQuests || [];
-                    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
-
-                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            if (!isAwardingInProgress) {
-                                isAwardingInProgress = true;
-                                const oldStr = data.streak || 0;
-                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă", "Acasă");
-                                await updateDoc(userRef, {
-                                    streak: increment(1),
-                                    diamonds: increment(1),
-                                    lastStreakAwardedBlock: data.lastResetBlock
-                                });
-                                const rewardModal = document.getElementById('streakRewardModal');
-                                if (rewardModal) {
-                                    document.getElementById('streakOld').innerText = oldStr;
-                                    document.getElementById('streakNew').innerText = oldStr + 1;
-                                    rewardModal.classList.add('active');
-                                }
-                                setTimeout(() => { isAwardingInProgress = false; }, 3000);
-                            }
-                        }
-                    }
-
-                    // Populate UI
-                    document.getElementById('popUserImg').src = data.image || user.photoURL;
+                    // Ramă Profil
                     const popFrame = document.getElementById('popUserFrame');
                     if(popFrame) {
                         if (data.equippedFrame?.img) {
@@ -7827,64 +8151,48 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                             const scale = data.equippedFrame.scale || 1.45;
                             popFrame.style.width = (scale * 100) + "%";
                             popFrame.style.height = (scale * 100) + "%";
-                        } else { popFrame.style.display = "none"; }
+                        } else {
+                            popFrame.style.display = "none";
+                        }
                     }
 
+                    // Nume și Text Cosmetic
                     const nameEl = document.getElementById('popUserName');
-                    let rawName = data.username || user.displayName;
+                    let rawName = data.username || user.displayName || "Utilizator";
                     if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
                     if (data.equippedText?.cssClass) {
                         nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else { nameEl.innerText = rawName; }
+                    } else {
+                        nameEl.innerText = rawName;
+                    }
 
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    const streakDisplay = document.querySelector('.streak-txt');
-                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
-
+                    // Email, Monede, Diamante și Streak
+                    document.getElementById('popUserEmail').innerText = data.email || user.email;
                     document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                     const diamondEl = document.getElementById('popUserDiamonds');
                     if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                    const streakDisplay = document.querySelector('.streak-txt');
+                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    const popBadgeBox = document.getElementById('popUserBadges');
-                    if(popBadgeBox) {
-                        let badgesHtml = "";
-                        const email = data.email || "";
-                        if(email === 'nicaemmanuel433qe@gmail.com') badgesHtml += `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
-                        else if(email === 'kevin.trinity2020@gmail.com') badgesHtml += `<div><span class="admin-badge">ADMIN</span></div>`;
-                        else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) badgesHtml += `<div><span class="mod-badge">MODERATOR</span></div>`;
-                        
-                        if(data.equippedBadge) {
-                            badgesHtml += `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
+
+                    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
+                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
+
+                    if (data.agreedToRules !== true) {
+                        setTimeout(() => {
+                            const rulesModal = document.getElementById('rulesReminderModal');
+                            if(rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
+                        }, 4000);
+                    }
+
+                    if (data.pendingReferrals > 0) {
+                        const count = data.pendingReferrals;
+                        const refModal = document.getElementById('referralRewardModal');
+                        if (refModal) {
+                            refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
+                            refModal.classList.add('active');
+                            await updateDoc(userRef, { pendingReferrals: 0 });
                         }
-                        popBadgeBox.innerHTML = badgesHtml;
-                    }
-
-                    // --- 🔔 LOGICĂ NOTIFICĂRI NOUTĂȚI ---
-                    const userVazute = data.lastSeenNewsCount || 0;
-                    const noutatiNoi = totalGlobal - userVazute;
-                    const heroBadge = document.getElementById('heroNotifBadge');
-                    if (heroBadge) {
-                        if (noutatiNoi > 0) {
-                            heroBadge.innerText = `+${noutatiNoi}`;
-                            heroBadge.style.display = 'flex';
-                        } else { heroBadge.style.display = 'none'; }
-                    }
-
-                    // --- 🔔 NOU: LOGICĂ NOTIFICĂRI WALL ---
-                    const userSeenWall = data.lastSeenWallCount || 0;
-                    const mesajeNoiWall = totalGlobalWall - userSeenWall;
-
-                    // Luăm elementele din HTML (cel din Side Menu și cel din Promo Section)
-                    const sideWallBadge = document.getElementById('sideWallNotifBadge');
-                    const promoWallBadge = document.getElementById('promoWallNotifBadge');
-
-                    if (mesajeNoiWall > 0) {
-                        const displayTxt = `+${mesajeNoiWall}`;
-                        if(sideWallBadge) { sideWallBadge.innerText = displayTxt; sideWallBadge.style.display = 'flex'; }
-                        if(promoWallBadge) { promoWallBadge.innerText = displayTxt; promoWallBadge.style.display = 'flex'; }
-                    } else {
-                        if(sideWallBadge) sideWallBadge.style.display = 'none';
-                        if(promoWallBadge) promoWallBadge.style.display = 'none';
                     }
                 });
             });
