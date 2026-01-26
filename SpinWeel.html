@@ -2434,6 +2434,23 @@ input:checked + .slider:before { transform: translateX(24px); }
 
 
 
+<!-- 3. LOSERS LEADERBOARD MODAL -->
+<div id="wheelLosersModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 450px;">
+        <button class="close-pop" onclick="document.getElementById('wheelLosersModal').classList.remove('active')">✕</button>
+        <h3 style="color: #ff4757; font-family: 'Orbitron'; margin-bottom: 20px;">💀 TOP GHINIONIȘTI</h3>
+        
+        <div style="display:flex; justify-content:space-between; color:#888; font-size:10px; padding:0 15px; margin-bottom:10px; font-family:'Orbitron';">
+            <span>JUCĂTOR</span>
+            <span>XP-uri ADUNATE</span>
+        </div>
+
+        <div id="wheelLosersList" class="lobby-container" style="max-height: 400px; overflow-y: auto;">
+            <p style="color:#888;">Se încarcă...</p>
+        </div>
+    </div>
+</div>
+
 
 <!-- ACCOUNT POP-UP MODAL -->
 <div id="accountModal" class="account-modal-overlay">
@@ -2587,16 +2604,22 @@ input:checked + .slider:before { transform: translateX(24px); }
 </button>
 
 
-    <!-- 1. THE HEADER BUTTONS (Moved Inside) -->
-    <div class="wheel-header-row" style="margin-bottom: 25px;">
-        <button class="wheel-head-btn" onclick="openJackpotHistory()">
-            <i class="fas fa-trophy"></i> ISTORIC JACKPOT
-        </button>
-        <div class="divider-vertical"></div>
-        <button class="wheel-head-btn" onclick="openWheelLeaderboard()">
-            <i class="fas fa-chart-bar"></i> TOP CÂȘTIGĂTORI
-        </button>
-    </div>
+<div class="wheel-header-row" style="margin-bottom: 25px;">
+    <button class="wheel-head-btn" onclick="openJackpotHistory()">
+        <i class="fas fa-trophy"></i> ISTORIC JACKPOT
+    </button>
+    <div class="divider-vertical"></div>
+    
+    <!-- BUTONUL NOU -->
+    <button class="wheel-head-btn" onclick="openWheelLosersLeaderboard()">
+        <i class="fas fa-heart-broken"></i> TOP PIERZĂTORI
+    </button>
+    <div class="divider-vertical"></div>
+    
+    <button class="wheel-head-btn" onclick="openWheelLeaderboard()">
+        <i class="fas fa-chart-bar"></i> TOP CÂȘTIGĂTORI
+    </button>
+</div>
 
 <!-- UPDATED STATS PILL (Insert this where the old pill was) -->
 <!-- UPDATED STATS PILL (Dual Currency + Banner Support) -->
@@ -3097,6 +3120,53 @@ async function runNextAutoSpin() {
             list.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
         }
     };
+
+
+window.openWheelLosersLeaderboard = async () => {
+    document.getElementById('wheelLosersModal').classList.add('active');
+    const list = document.getElementById('wheelLosersList');
+    list.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">Se caută cei mai ghinioniști...</p>';
+
+    try {
+        // Sortăm după noul câmp xpLandings
+        const q = query(collection(db, "accounts"), orderBy("wheelStats.xpLandings", "desc"), limit(20));
+        const snapshot = await getDocs(q);
+        
+        list.innerHTML = "";
+        
+        if(snapshot.empty) {
+            list.innerHTML = '<p style="color:#888; text-align:center;">Toată lumea e norocoasă momentan!</p>';
+            return;
+        }
+
+        let rank = 1;
+        snapshot.forEach(doc => {
+            const d = doc.data();
+            const xpHits = d.wheelStats?.xpLandings || 0;
+
+            if(xpHits === 0) return;
+
+            list.innerHTML += `
+            <div class="lobby-player" style="justify-content: space-between; padding: 8px 15px; min-height: 55px; border-left: 3px solid #ff4757;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-weight:900; color:#ff4757; width:20px;">#${rank}</div>
+                    <img src="${d.image}" class="lobby-pfp" style="width:35px; height:35px; border-color:#ff4757;">
+                    <span class="lobby-name" style="font-size:12px;">${d.username}</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                    <span style="font-family:'Orbitron'; font-weight:900; color:#fff; font-size:16px;">
+                        ${xpHits} <span style="font-size:10px; color:#ff4757;">XP</span>
+                    </span>
+                    <span style="font-size:9px; color:#888;">GHINION PUR</span>
+                </div>
+            </div>`;
+            rank++;
+        });
+    } catch(e) {
+        console.error(e);
+        list.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
+    }
+};
 
 const canvas = document.getElementById("wheelCanvas");
 const ctx = canvas.getContext("2d");
@@ -3606,6 +3676,12 @@ async function finalizeSpin(idx) {
     if (reward.type === "xp" && !isEventModeActive) {
         let currentXP = myData.wheelXP || 0;
         let nextXP = currentXP + 15;
+
+
+    // ADAUGĂ ACEASTĂ LINIE: Incrementează contorul de ghinion total
+    await updateDoc(userRef, { 
+        "wheelStats.xpLandings": increment(1) 
+    });
 
         if (nextXP >= 100) {
             // Reset XP și acordare diamante
