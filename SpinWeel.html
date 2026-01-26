@@ -3582,17 +3582,27 @@ async function startSpin(forcedIndex = null, speedOverride = null) {
 }
 
 async function attemptSpin(isFreeAttempt) {
-    if (isSpinning) return;
-    if (!auth.currentUser) return alert("Trebuie să fii logat!");
+    if (isSpinning) return; // 1. Immediate check
+    
+    // --- ADD THIS LINE IMMEDIATELY ---
+    isSpinning = true; 
+    // ---------------------------------
+
+    if (!auth.currentUser) {
+        isSpinning = false; // Reset if failed
+        return alert("Trebuie să fii logat!");
+    }
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const snap = await getDoc(userRef);
     const data = snap.data();
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
-    // În Event Mode, adminul controlează roata gratis
     if (isEventModeActive && isAdmin) {
-        if (!eventSelectedUser) return alert("Alege un participant!");
+        if (!eventSelectedUser) {
+            isSpinning = false; // Reset
+            return alert("Alege un participant!");
+        }
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
             spinAction: {
                 index: pickRewardIndex(),
@@ -3601,18 +3611,26 @@ async function attemptSpin(isFreeAttempt) {
                 speed: 1
             }
         });
+        isSpinning = false; // Admin doesn't spin locally, snapshot handles it
         return; 
     }
 
     // Logică plată Normal Mode
     if (isFreeAttempt) {
-        if ((data.freeSpinStack || 0) < 1) return alert("Nu ai rotiri gratuite!");
+        if ((data.freeSpinStack || 0) < 1) {
+            isSpinning = false; // Reset
+            return alert("Nu ai rotiri gratuite!");
+        }
         await updateDoc(userRef, { freeSpinStack: increment(-1) });
     } else {
-        if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
+        if ((data.diamonds || 0) < 1) {
+            isSpinning = false; // Reset
+            return alert("Nu ai diamante!");
+        }
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
+    // Start animation (Note: isSpinning is already true now)
     startSpin();
 }
 
@@ -3657,8 +3675,10 @@ function pickRewardIndex() {
 // query, orderBy, limit, getDocs
 // --- UPDATED REWARD LOGIC FOR GLOBAL SYNC & FRIENDLY XP ---
 async function finalizeSpin(idx) {
-    isSpinning = false;
-    const reward = REWARDS[idx];
+
+  if (!isSpinning) return; 
+    isSpinning = false; // Mark as finished immediately
+    const reward = REWARDS[idx]; 
     
     // 1. Identificăm cine primește premiul (Câștigătorul)
     let targetUid = auth.currentUser.uid;
@@ -3992,14 +4012,20 @@ onAuthStateChanged(auth, user => {
             }
 
             // Sync Spin
-            if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
-                lastProcessedSpinTime = spinAction.timestamp;
-                currentSpinAdminId = spinAction.adminId; 
-                if (Date.now() - spinAction.timestamp < 10000) {
-                    if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
-                    startSpin(spinAction.index, spinAction.speed || 1); 
-                }
-            }
+// Sync Spin
+if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
+    // --- MOVE THIS TO THE TOP ---
+    lastProcessedSpinTime = spinAction.timestamp; 
+    // ----------------------------
+    
+    currentSpinAdminId = spinAction.adminId; 
+    if (Date.now() - spinAction.timestamp < 10000) {
+        if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
+        // Force isSpinning true before calling startSpin
+        isSpinning = true; 
+        startSpin(spinAction.index, spinAction.speed || 1); 
+    }
+}
         });
 
 // --- 2. CURRENT USER LISTENER (MY DATA) ---
