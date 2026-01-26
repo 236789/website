@@ -2059,6 +2059,35 @@ input:checked + .slider:before { transform: translateX(16px); }
     50% { transform: scale(1.1); }
     100% { transform: scale(1); }
 }
+
+
+
+:root {
+    --bot-w: 240px;
+    --bot-h: 380px;
+    --chat-fs: 11px; /* Variabila nouă pentru font */
+}
+
+/* Aplicăm font-ul din variabilă pe bulele de chat */
+.bot-msg {
+    font-size: var(--chat-fs) !important;
+    line-height: 1.4;
+}
+
+/* Numele botului/userului de deasupra bulei (puțin mai mic decât textul) */
+.msg-name-tag {
+    font-size: calc(var(--chat-fs) - 1px) !important;
+}
+
+/* Butoanele din meniul botului (Trivia, etc) */
+.chat-menu-btn {
+    font-size: calc(var(--chat-fs) - 2px) !important;
+}
+
+/* Input-ul unde scrii textul */
+.bot-input-area input {
+    font-size: var(--chat-fs) !important;
+}
   </style>
 </head>
 <body>
@@ -2392,6 +2421,11 @@ input:checked + .slider:before { transform: translateX(16px); }
             <label>Înălțime: <span id="valH">380</span>px</label>
             <input type="range" id="rangeH" min="380" max="850" value="380" oninput="previewResize()">
         </div>
+
+<div class="settings-row" style="margin-top:15px;">
+    <label>Mărime Text: <span id="valFS">11</span>px</label>
+    <input type="range" id="rangeFS" min="10" max="22" value="11" oninput="previewResize()">
+</div>
         <button class="btn-start-chat" style="margin-top: 30px; width:100%;" onclick="saveBoxSettings()">SALVEAZĂ</button>
     </div>
 </div>
@@ -6737,28 +6771,42 @@ if (rangeH) {
 }
 
 // --- SALVARE SETĂRI ÎN FIREBASE ---
-window.saveBoxSettings = async function() {
-    if (!window.auth.currentUser) {
-        window.showToast("Trebuie să fii logat!");
-        return;
-    }
+window.previewResize = function() {
+    const w = document.getElementById('rangeW').value;
+    const h = document.getElementById('rangeH').value;
+    const fs = document.getElementById('rangeFS').value;
     
-    const newW = document.getElementById('rangeW').value;
-    const newH = document.getElementById('rangeH').value;
+    document.getElementById('valW').innerText = w;
+    document.getElementById('valH').innerText = h;
+    document.getElementById('valFS').innerText = fs;
+    
+    const win = document.getElementById('botWindow');
+    win.style.setProperty('--bot-w', w + 'px');
+    win.style.setProperty('--bot-h', h + 'px');
+    win.style.setProperty('--chat-fs', fs + 'px');
+};
+
+window.saveBoxSettings = async function() {
+    if (!window.auth.currentUser) return window.showToast("Loghează-te!");
+    
+    const w = document.getElementById('rangeW').value;
+    const h = document.getElementById('rangeH').value;
+    const fs = document.getElementById('rangeFS').value;
 
     try {
         const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
         await window.updateDoc(userRef, {
-            phoneBoxWidth: newW,
-            phoneBoxHeight: newH
+            phoneBoxWidth: w,
+            phoneBoxHeight: h,
+            chatFontSize: fs
         });
         
-        window.showToast("Dimensiuni salvate!");
-        window.showListView(); // Ne întoarcem la listă după salvare
-    } catch (e) {
-        console.error("Eroare salvare dimensiuni:", e);
+        window.showToast("Aspect salvat cu succes!");
+        window.showListView();
+    } catch(e) { 
+        console.error(e); 
         window.showToast("Eroare la salvare!");
-    } 
+    }
 };
 
 // Opțional: Actualizează și funcția de închidere ca să curețe starea
