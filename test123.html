@@ -6398,19 +6398,39 @@ let kevinAnger = 0;
 let lastUserMessage = "";
 let spamCount = 0;
 
-function updateKevinMood(points) {
+async function updateKevinMood(points) {
+    // 1. Update local variable
     kevinAnger = Math.max(0, Math.min(100, kevinAnger + points));
+    
+    // 2. Update UI Visuals
+    updateKevinMoodUI(kevinAnger);
+
+    // 3. Save to Firebase so it persists on refresh
+    if (auth.currentUser) {
+        try {
+            const userRef = doc(db, "accounts", auth.currentUser.uid);
+            await updateDoc(userRef, {
+                kevinAnger: kevinAnger
+            });
+        } catch (e) {
+            console.error("Error saving mood:", e);
+        }
+    }
+}
+
+// Separate function just for UI so we can call it on load too
+function updateKevinMoodUI(angerValue) {
     const fill = document.getElementById('moodBarFill');
     const emoji = document.getElementById('moodEmoji');
     if(!fill || !emoji) return;
 
-    fill.style.width = kevinAnger + "%";
-    emoji.style.left = kevinAnger + "%";
+    fill.style.width = angerValue + "%";
+    emoji.style.left = angerValue + "%";
 
-    if (kevinAnger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-    else if (kevinAnger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-    else if (kevinAnger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-    else if (kevinAnger < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+    if (angerValue < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+    else if (angerValue < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+    else if (angerValue < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+    else if (angerValue < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
     else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
 }
 
@@ -6431,6 +6451,14 @@ function processUserMessage(input, userLabel = null) {
 
     // 2. BAD WORDS DETECTION
     const badWords = /(pula|pizda|coaie|muie|futu|dracu|mata|morti|fraier|prost|fuck|shit|bitch|dick|sloboz|gay|lesbi|sperma)/;
+
+
+const apologyWords = /(scuze|iarta-ma|iartă-mă|pardon|sorry|imi pare rau|îmi pare rău|iertare|gresit|greșit)/;
+if (val.match(apologyWords)) {
+    updateKevinMood(-25); // Forgive 25 points
+    sendBotResponseWithDelay("Mda... treacă de la mine. Să nu se mai repete! 😑");
+    return;
+}
     if (val.match(badWords)) updateKevinMood(15);
 
     if (currentBotAudio) {
@@ -7736,6 +7764,7 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
 
                 // 3. User Data Listener
+// 3. User Data Listener
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
@@ -7744,6 +7773,25 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                     if (data.isBanned === true) {
                         location.reload(); 
                         return;
+                    }
+
+                    // --- KEVIN-BOT MOOD SYNC (NEW) ---
+                    // This keeps the mood persistent across refreshes
+                    if (data.kevinAnger !== undefined) {
+                        kevinAnger = data.kevinAnger; // Update the global variable
+                        const fill = document.getElementById('moodBarFill');
+                        const emoji = document.getElementById('moodEmoji');
+                        if(fill && emoji) {
+                            fill.style.width = kevinAnger + "%";
+                            emoji.style.left = kevinAnger + "%";
+
+                            // Apply correct colors/emojis based on synced value
+                            if (kevinAnger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+                            else if (kevinAnger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+                            else if (kevinAnger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+                            else if (kevinAnger < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+                            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
+                        }
                     }
 
                     // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
