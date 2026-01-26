@@ -3582,8 +3582,7 @@ async function startSpin(forcedIndex = null, speedOverride = null) {
 }
 
 async function attemptSpin(isFreeAttempt) {
-    if (isSpinning) return; 
-
+    if (isSpinning) return;
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
@@ -3591,39 +3590,60 @@ async function attemptSpin(isFreeAttempt) {
     const data = snap.data();
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
-    const targetIdx = pickRewardIndex();
-    const spinTime = Date.now();
+    // 1. THE GUARD: Check if you actually have the currency
+    if (isFreeAttempt) {
+        if ((data.freeSpinStack || 0) < 1) {
+            return alert("Nu ai rotiri gratuite!");
+        }
+    } else {
+        if ((data.diamonds || 0) < 1) {
+            return alert("Nu ai diamante pentru această rotire!");
+        }
+    }
 
-    // 1. EVENT MODE LOGIC
+    // 2. LOGIC FOR EVENT MODE (Admin spinning for someone else)
     if (isEventModeActive && isAdmin) {
-        if (!eventSelectedUser) return alert("Alege un participant!");
-        
+        if (!eventSelectedUser) {
+            return alert("Alege un participant din listă mai întâi!");
+        }
+
+        // DEDUCT FROM ADMIN BALANCE (This was missing!)
+        if (isFreeAttempt) {
+            await updateDoc(userRef, { freeSpinStack: increment(-1) });
+        } else {
+            await updateDoc(userRef, { diamonds: increment(-1) });
+        }
+
+        // Trigger the spin for everyone
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
             spinAction: {
-                index: targetIdx,
-                timestamp: spinTime,
-                adminId: auth.currentUser.uid, // You are the one triggering it
-                speed: 1
+                index: pickRewardIndex(),
+                timestamp: Date.now(),
+                adminId: auth.currentUser.uid,
+                speed: parseFloat(document.getElementById('multiSpinSpeed')?.value || 1)
             }
         });
+        
+        // We don't call startSpin() here; the onSnapshot listener will catch 
+        // the update we just made and start the wheel for everyone (including us).
         return; 
     }
 
-    // 2. NORMAL MODE LOGIC
+    // 3. LOGIC FOR NORMAL MODE (Private Spin)
+    // Deduct from balance
     if (isFreeAttempt) {
-        if ((data.freeSpinStack || 0) < 1) return alert("Nu ai rotiri gratuite!");
         await updateDoc(userRef, { freeSpinStack: increment(-1) });
     } else {
-        if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
         await updateDoc(userRef, { diamonds: increment(-1) });
     }
 
-    // Trigger local/private spin via a dummy "site_metadata" update or 
-    // simply by reusing the event sync logic for yourself
+    // If you want your private spins to be synced/visible to others, 
+    // update the global metadata. If not, just call startSpin() directly.
+    // Assuming you want SYNC based on your previous messages:
     await updateDoc(doc(db, "site_metadata", "wheel_event"), {
         spinAction: {
-            index: targetIdx,
-            timestamp: spinTime,
+            index: pickRewardIndex(),
+            timestamp: Date.now(),
             adminId: auth.currentUser.uid,
             speed: parseFloat(document.getElementById('multiSpinSpeed')?.value || 1)
         }
