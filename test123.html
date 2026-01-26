@@ -1515,14 +1515,15 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-/* --- PREMIUM CYBER MESSENGER (GLASS DESIGN) --- */
 .bot-phone-box {
-    width: 240px !important;  /* Dimensiune mică originală */
-    height: 380px !important; /* Dimensiune mică originală */
+    /* These variables will be controlled by Firebase/JS */
+    width: var(--bot-w, 240px) !important;
+    height: var(--bot-h, 380px) !important;
+    
     background: rgba(8, 16, 27, 0.95) !important;
-    backdrop-filter: blur(15px); /* Efect de sticlă mată */
+    backdrop-filter: blur(15px);
     border-radius: 20px;
-    border: 2px solid #29f3ff; /* Bordura Cyan Neon fixă */
+    border: 2px solid #29f3ff;
     box-shadow: 0 15px 40px rgba(0,0,0,0.8);
     z-index: 10001;
     display: none; 
@@ -1530,6 +1531,16 @@ input:checked + .slider:before { transform: translateX(16px); }
     overflow: hidden;
     animation: messengerSpawn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
+/* Style for the settings sliders */
+.settings-row {
+    padding: 10px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.settings-row label { font-size: 10px; font-family: 'Orbitron'; color: var(--primary); }
+.settings-row input { accent-color: var(--primary); cursor: pointer; }
 
 @keyframes messengerSpawn {
     from { opacity: 0; transform: scale(0.9) translateY(20px); }
@@ -2363,13 +2374,39 @@ input:checked + .slider:before { transform: translateX(16px); }
 <div class="bot-phone-box" id="botWindow">
 
 
+<!-- VIEW 3: SETTINGS INTERFACE -->
+<div id="settingsView" class="messenger-view">
+    <div class="messenger-header-title">
+        <span>Setări Aspect (PC)</span>
+        <!-- Change this button to close the entire window properly -->
+        <button class="bot-close" onclick="closeMessenger()">✕</button>
+    </div>
+    
+    <div style="padding: 20px 10px; flex: 1; overflow-y: auto; background: rgba(8, 16, 27, 0.95);">
+        <!-- Your sliders here... -->
+        <div class="settings-row">
+            <label>Lățime: <span id="valW">240</span>px</label>
+            <input type="range" id="rangeW" min="240" max="600" value="240" oninput="previewResize()">
+        </div>
+        <div class="settings-row" style="margin-top:15px;">
+            <label>Înălțime: <span id="valH">380</span>px</label>
+            <input type="range" id="rangeH" min="380" max="850" value="380" oninput="previewResize()">
+        </div>
+        <button class="btn-start-chat" style="margin-top: 30px; width:100%;" onclick="saveBoxSettings()">SALVEAZĂ</button>
+    </div>
+</div>
+
     
     <!-- VIEW 1: MESSENGER LIST -->
-    <div id="listView" class="messenger-view active">
-        <div class="messenger-header-title">
-            <span>Mesaje directe</span>
+<div id="listView" class="messenger-view active">
+    <div class="messenger-header-title">
+        <span>Mesaje directe</span>
+        <div>
+            <!-- THE NEW COG BUTTON -->
+            <button class="bot-close" onclick="showSettingsView()" style="margin-right:10px;"><i class="fas fa-cog"></i></button>
             <button class="bot-close" id="messengerClose">✕</button>
         </div>
+    </div>
         
         <!-- Search Bar -->
         <div class="dm-search-container">
@@ -6660,8 +6697,76 @@ window.updateDoc = updateDoc;
 
 
 
+// --- LOGICĂ NAVIGARE CURATĂ (Fix overlap bug) ---
+window.switchMessengerView = function(viewId) {
+    // Ascunde absolut toate ecranele (Listă, Chat, Setări)
+    document.querySelectorAll('.messenger-view').forEach(view => {
+        view.classList.remove('active');
+    });
+    // Afișează doar ecranul dorit
+    const target = document.getElementById(viewId);
+    if (target) target.classList.add('active');
+};
 
+// Update funcțiile existente să folosească sistemul nou
+window.showSettingsView = function() {
+    switchMessengerView('settingsView');
+};
 
+window.showListView = function() {
+    switchMessengerView('listView');
+};
+
+// --- UPDATE UI LIVE SLIDERS ---
+// Folosim direct ID-urile elementelor pentru a evita erorile
+const rangeW = document.getElementById('rangeW');
+const rangeH = document.getElementById('rangeH');
+
+if (rangeW) {
+    rangeW.oninput = function() {
+        document.getElementById('valW').innerText = this.value;
+        document.getElementById('botWindow').style.setProperty('--bot-w', this.value + 'px');
+    };
+}
+
+if (rangeH) {
+    rangeH.oninput = function() {
+        document.getElementById('valH').innerText = this.value;
+        document.getElementById('botWindow').style.setProperty('--bot-h', this.value + 'px');
+    };
+}
+
+// --- SALVARE SETĂRI ÎN FIREBASE ---
+window.saveBoxSettings = async function() {
+    if (!window.auth.currentUser) {
+        window.showToast("Trebuie să fii logat!");
+        return;
+    }
+    
+    const newW = document.getElementById('rangeW').value;
+    const newH = document.getElementById('rangeH').value;
+
+    try {
+        const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+        await window.updateDoc(userRef, {
+            phoneBoxWidth: newW,
+            phoneBoxHeight: newH
+        });
+        
+        window.showToast("Dimensiuni salvate!");
+        window.showListView(); // Ne întoarcem la listă după salvare
+    } catch (e) {
+        console.error("Eroare salvare dimensiuni:", e);
+        window.showToast("Eroare la salvare!");
+    } 
+};
+
+// Opțional: Actualizează și funcția de închidere ca să curețe starea
+const oldCloseMessenger = window.closeMessenger;
+window.closeMessenger = function() {
+    botWindow.style.display = 'none';
+    window.showListView(); // Resetează la listă, ca să nu rămână blocat în setări data viitoare
+};
 
 // --- NOTIFICATION SETTINGS LOGIC (FIXED) ---
 const openNotifBtn = document.getElementById('openNotifSettingsBtn');
@@ -7830,17 +7935,32 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                         return;
                     }
 
-                    // --- KEVIN-BOT MOOD SYNC (NEW) ---
-                    // This keeps the mood persistent across refreshes
+                    // --- [NOU] MESSENGER DIMENSIONS SYNC ---
+                    if (data.phoneBoxWidth && data.phoneBoxHeight) {
+                        const win = document.getElementById('botWindow');
+                        if (win) {
+                            win.style.setProperty('--bot-w', data.phoneBoxWidth + 'px');
+                            win.style.setProperty('--bot-h', data.phoneBoxHeight + 'px');
+                            
+                            // Actualizăm și sliderele/textele din meniul de setări dacă sunt vizibile
+                            if(document.getElementById('rangeW')) {
+                                document.getElementById('rangeW').value = data.phoneBoxWidth;
+                                document.getElementById('rangeH').value = data.phoneBoxHeight;
+                                document.getElementById('valW').innerText = data.phoneBoxWidth;
+                                document.getElementById('valH').innerText = data.phoneBoxHeight;
+                            }
+                        }
+                    }
+
+                    // --- KEVIN-BOT MOOD SYNC ---
                     if (data.kevinAnger !== undefined) {
-                        kevinAnger = data.kevinAnger; // Update the global variable
+                        kevinAnger = data.kevinAnger; 
                         const fill = document.getElementById('moodBarFill');
                         const emoji = document.getElementById('moodEmoji');
                         if(fill && emoji) {
                             fill.style.width = kevinAnger + "%";
                             emoji.style.left = kevinAnger + "%";
 
-                            // Apply correct colors/emojis based on synced value
                             if (kevinAnger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
                             else if (kevinAnger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
                             else if (kevinAnger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
@@ -7977,7 +8097,6 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                     const userSeenWall = data.lastSeenWallCount || 0;
                     const mesajeNoiWall = totalGlobalWall - userSeenWall;
 
-                    // Luăm elementele din HTML (cel din Side Menu și cel din Promo Section)
                     const sideWallBadge = document.getElementById('sideWallNotifBadge');
                     const promoWallBadge = document.getElementById('promoWallNotifBadge');
 
