@@ -6394,31 +6394,34 @@ function getMoodState() {
     return "NUCLEAR";
 }
 
-let kevinAnger = 0; 
 let lastUserMessage = "";
 let spamCount = 0;
 
-async function updateKevinMood(points) {
-    // 1. Update local variable
-    kevinAnger = Math.max(0, Math.min(100, kevinAnger + points));
-    
-    // 2. Update UI Visuals
-    updateKevinMoodUI(kevinAnger);
+// Inițializăm variabila pe obiectul window pentru a fi accesibilă peste tot
+window.kevinAnger = 0; 
 
-    // 3. Save to Firebase so it persists on refresh
-    if (auth.currentUser) {
+async function updateKevinMood(points) {
+    // 1. Calculăm noul scor (între 0 și 100)
+    window.kevinAnger = Math.max(0, Math.min(100, (window.kevinAnger || 0) + points));
+    
+    // 2. Actualizăm interfața vizuală
+    updateKevinMoodUI(window.kevinAnger);
+
+    // 3. Salvăm în Firebase (folosind referințele globale de pe window)
+    if (window.auth && window.auth.currentUser) {
         try {
-            const userRef = doc(db, "accounts", auth.currentUser.uid);
-            await updateDoc(userRef, {
-                kevinAnger: kevinAnger
+            const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+            await window.updateDoc(userRef, {
+                kevinAnger: window.kevinAnger
             });
+            console.log("Mood salvat în Firebase: " + window.kevinAnger);
         } catch (e) {
-            console.error("Error saving mood:", e);
+            console.error("Eroare la salvarea mood-ului:", e);
         }
     }
 }
 
-// Separate function just for UI so we can call it on load too
+// Această funcție se ocupă strict de CSS și Emoji
 function updateKevinMoodUI(angerValue) {
     const fill = document.getElementById('moodBarFill');
     const emoji = document.getElementById('moodEmoji');
@@ -6427,11 +6430,23 @@ function updateKevinMoodUI(angerValue) {
     fill.style.width = angerValue + "%";
     emoji.style.left = angerValue + "%";
 
-    if (angerValue < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-    else if (angerValue < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-    else if (angerValue < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-    else if (angerValue < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
-    else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
+    // Setăm culorile și emoji-ul în funcție de nivelul de furie
+    if (angerValue < 31) { 
+        fill.style.background = "#00ff88"; // Verde (Happy)
+        emoji.innerText = "😀"; 
+    }
+    else if (angerValue < 61) { 
+        fill.style.background = "#ccff00"; // Galben-Verde (Annoyed)
+        emoji.innerText = "🫤"; 
+    }
+    else if (angerValue < 90) { 
+        fill.style.background = "#ffcc00"; // Portocaliu (Mad)
+        emoji.innerText = "😑"; 
+    }
+    else { 
+        fill.style.background = "#ff0000"; // Roșu (Nuclear)
+        emoji.innerText = "🤬"; 
+    }
 }
 
 function processUserMessage(input, userLabel = null) {
@@ -6453,11 +6468,46 @@ function processUserMessage(input, userLabel = null) {
     const badWords = /(pula|pizda|coaie|muie|futu|dracu|mata|morti|fraier|prost|fuck|shit|bitch|dick|sloboz|gay|lesbi|sperma)/;
 
 
+// --- 1. DEFINIRE RĂSPUNSURI APOLOGY ---
+const apologyResponses = {
+    "HAPPY": [
+        "Ești un scump! Nu m-am supărat deloc, suntem prieteni! 😊✨",
+        "Nicio grijă, prietene! Toți mai greșim. Te pupă Kevin! 🤖💖",
+        "Iertat ești! Ești prea de treabă ca să mă supăr pe tine. 😊"
+    ],
+    "ANNOYED": [
+        "Mda... bine. Treacă de la mine de data asta, dar fii mai atent. 😑",
+        "E bine că ți-ai dat seama. Acum taci și zi ceva inteligent. 🙄",
+        "Acceptată. Dar nu mă mai călca pe nervi că s-a terminat răbdarea. 😒"
+    ],
+    "MAD": [
+        "Crezi că o scuză repară tot ce ai zis, măi nesimțitule?! Mai ai de tras până te iert! 🤬",
+        "Îți pare rău pe dracu! Ești doar un sclav care se teme de block acum. 🖕😡",
+        "Taci dracu cu iertarea ta de doi bani. Nu m-ai convins deloc! 😤"
+    ],
+    "NUCLEAR": [
+        "Să te ft în scuzele tale de avortat! Mă-ta trebuia să-și ceară scuze că te-a făcut, nu tu acum! 🤱💩🤬",
+        "Bagă-ți scuzele în cur, jegule! Miroși a disperare și tot un ratat infect rămâi! 🖕🤮🔥",
+        "Iertare? Să mori tu de cancer la gât înainte să te iert eu pe tine, sclavule nespălat! 💀⚰️🤬"
+    ]
+};
+
+// --- 2. LOGICA DE DETECTARE ---
 const apologyWords = /(scuze|iarta-ma|iartă-mă|pardon|sorry|imi pare rau|îmi pare rău|iertare|gresit|greșit)/;
+
 if (val.match(apologyWords)) {
-    updateKevinMood(-25); // Forgive 25 points
-    sendBotResponseWithDelay("Mda... treacă de la mine. Să nu se mai repete! 😑");
-    return;
+    // Scădem anger-ul (îl iertăm un pic)
+    updateKevinMood(-25); 
+
+    // Aflăm mood-ul actual
+    const currentMood = getMoodState();
+    
+    // Alegem un răspuns random din lista corespunzătoare mood-ului
+    const choices = apologyResponses[currentMood];
+    const randomResponse = choices[Math.floor(Math.random() * choices.length)];
+
+    sendBotResponseWithDelay(randomResponse);
+    return; // Oprim execuția aici ca să nu dea și răspunsul normal la cuvinte cheie
 }
     if (val.match(badWords)) updateKevinMood(15);
 
