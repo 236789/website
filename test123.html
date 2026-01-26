@@ -2120,82 +2120,56 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-/* FIX GLOBAL: Când un banner de chat e pus pe fereastra mare a botului */
-#botWindow[class*="bubble-"] {
-    /* Resetează regulile de poziționare care strică layout-ul */
-    display: flex !important; /* Păstrăm flex pentru structura messengerului */
-    flex-direction: column !important;
-    position: fixed !important; /* Forțăm rămânerea în colțul de jos */
-    bottom: 85px !important;
-    left: 20px !important;
-    transform: none !important; /* Elimină orice transform care îl aruncă în colț */
-    justify-content: flex-start !important;
-    align-items: stretch !important;
-}
+/* --- FIX VIZUAL GLOBAL KEVIN BOT --- */
 
-/* Fix specific pentru scanner-ul de la Quantum/Jackpot să nu iasă din telefon */
-#botWindow.bubble-jackpot::before, 
-#botWindow.badge-wheel-god::before {
-    z-index: 0 !important;
-    pointer-events: none;
-}
-
-/* Asigură-te că conținutul (lista, chat-ul) rămâne deasupra fundalului animat */
-#botWindow[class*="bubble-"] > * {
-    z-index: 1;
-    position: relative;
-}
-
-
-/* FIX PENTRU TOATĂ FEREASTRA BOTULUI */
+/* 1. Base Container - Scoatem !important de pe background-ul default ca sa poata fi suprascris de bannere */
 #botWindow {
-    background-color: #08101b !important; /* Culoare de bază */
+    background-color: #08101b; 
     background-size: cover !important;
     background-position: center !important;
-    background-repeat: no-repeat !important;
-    overflow: hidden !important;
     display: flex !important;
     flex-direction: column !important;
+    overflow: hidden !important;
+    border: 2px solid #29f3ff; /* Bordura default */
 }
 
-/* ANULARE FONT-URI ȘI BOLD DIN BANNERE PE FEREASTRA MARE */
-#botWindow[class*="bubble-"], 
-#botWindow[class*="bubble-anim-"] {
-    /* Forțăm botul să ignore fontul bannerului pentru interfață */
-    font-family: 'Orbitron', sans-serif !important; 
-    font-weight: normal !important;
+/* 2. Fortam BANNERUL sa se vada (Daca exista o clasa de tip bubble-) */
+#botWindow[class*="bubble-"] {
+    background-image: inherit; /* Mosteneste imaginea din clasa bannerului */
+    border: 2px solid rgba(41, 243, 255, 0.3);
+}
+
+/* 3. FIX TEXT BOLD & WEIRD FONTS */
+/* Cand botWindow are un banner, fortam tot textul din interior sa ramana curat */
+#botWindow[class*="bubble-"] *, 
+#botWindow[class*="bubble-anim-"] * {
+    font-weight: 500 !important; /* Anuleaza Bold-ul din Comic/Cartoon */
     text-transform: none !important;
+    font-family: 'Orbitron', sans-serif;
 }
 
-/* Fix pentru marginile (sides) bannerelor complexe/animate */
-#botWindow.bubble-jackpot, #botWindow.bubble-galaxy, 
-#botWindow.bubble-toxic, #botWindow.bubble-fire {
-    border: 2px solid rgba(41, 243, 255, 0.5) !important;
-    background-clip: border-box !important;
-}
-
-/* Facem toate ecranele interne complet transparente */
-/* Asta asigură că bannerul se vede "peste tot" (Listă, Setări, Chat) */
-.messenger-view {
+/* 4. TRANSPARENTA TOTALA PENTRU REZULTAT "HOLE PHONE" */
+/* Toate ecranele si zonele trebuie sa fie transparente ca sa vedem bannerul din spate */
+.messenger-view, 
+#botHistory, 
+#listView, 
+#chatView, 
+#settingsView, 
+#customizeBotView, 
+#botInventoryView {
     background: transparent !important;
-    flex: 1;
-    display: none;
-    flex-direction: column;
 }
 
-.messenger-view.active {
-    display: flex !important;
-}
-
-/* Overlay discret pe chat pentru lizibilitate, dar fără să acopere fundalul */
+/* 5. LIZIBILITATE TEXT */
+/* Punem un strat negru foarte transparent DOAR pe zona de mesaje ca sa putem citi textul */
 .bot-body {
-    background: rgba(5, 11, 20, 0.5) !important;
+    background: rgba(0, 0, 0, 0.4) !important;
     backdrop-filter: blur(2px);
 }
 
-/* Fundal semi-transparent pentru headere și footere ca să se vadă bannerul sub ele */
+/* Capetele (Header/Footer) raman putin mai intunecate pentru contrast */
 .messenger-header-title, .bot-header, .bot-footer {
-    background: rgba(13, 25, 41, 0.7) !important;
+    background: rgba(13, 25, 41, 0.8) !important;
     backdrop-filter: blur(5px);
 }
   </style>
@@ -8327,26 +8301,28 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
 
 // --- 2. [REPARAT] SYNC CUSTOMIZARE BOT GLOBAL (Box & Background) ---
                    // --- 2. [FIXED] SYNC CUSTOMIZARE BOT GLOBAL ---
+                   // --- 2. [ULTIMATE FIX] SYNC CUSTOMIZARE BOT ---
                     const botWin = document.getElementById('botWindow');
-                    
                     if (botWin) {
+                        // Colectăm TOATE clasele de bannere din baza de date
                         const allBannerClasses = BANNERS_DB.map(b => b.cssClass);
 
-                        // A. Ștergem absolut toate clasele de bannere vechi ca să nu se bată între ele
+                        // A. Curățăm absolut orice urmă de banner vechi
                         botWin.classList.remove(...allBannerClasses);
 
-                        // B. Aplicăm bannerul ales pentru ASPECT (Bordură/Glow)
-                        if (data.kevinBoxBanner) {
+                        // B. Aplicăm bannerul ales pentru FUNDAL GLOBAL (Chat Banner)
+                        // Acesta se va vedea peste tot pentru că am făcut ecranele transparente
+                        if (data.kevinChatBanner) {
+                            botWin.classList.add(data.kevinChatBanner);
+                        }
+
+                        // C. Aplicăm bannerul ales pentru BORDURĂ/GLOW (Box Banner)
+                        // Dacă e diferit de fundal, îl adăugăm și pe acesta
+                        if (data.kevinBoxBanner && data.kevinBoxBanner !== data.kevinChatBanner) {
                             botWin.classList.add(data.kevinBoxBanner);
                         }
 
-                        // C. Aplicăm bannerul ales pentru FUNDAL (Global)
-                        // Dacă ai ales un fundal diferit de bordură, îl adăugăm și pe acesta
-                        if (data.kevinChatBanner && data.kevinChatBanner !== data.kevinBoxBanner) {
-                            botWin.classList.add(data.kevinChatBanner);
-                        }
-                        
-                        // D. Fix Bordură Default: Dacă nu e niciun banner de box, punem bordura cyan
+                        // D. Reset Bordură dacă nu e nimic ales
                         if (!data.kevinBoxBanner) {
                             botWin.style.border = "2px solid #29f3ff";
                         } else {
