@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -2364,43 +2365,46 @@ input:checked + .slider:before { transform: translateX(16px); }
 
     
     <!-- VIEW 1: MESSENGER LIST -->
-<!-- Inside #listView in index.html -->
-<div id="listView" class="messenger-view active">
-    <div class="messenger-header-title">
-        <span>Mesaje directe</span>
-        <button class="bot-close" id="messengerClose">✕</button>
-    </div>
-    
-    <!-- NEW: REQUESTS HEADER -->
-    <div id="pendingRequestsHeader" style="display:none; background: rgba(255, 215, 0, 0.1); padding: 8px 12px; border-bottom: 1px solid #ffd700; cursor:pointer;">
-        <span style="font-size:10px; font-family:'Orbitron'; color:#ffd700;">
-            <i class="fas fa-bell"></i> CERERI NOI (<span id="reqCount">0</span>)
-        </span>
-    </div>
-    
-    <div id="requestsList" style="display:none; background: rgba(0,0,0,0.3); max-height: 150px; overflow-y:auto; border-bottom: 1px solid rgba(255,255,255,0.1);">
-        <!-- Pending requests injected here -->
-    </div>
+    <div id="listView" class="messenger-view active">
+        <div class="messenger-header-title">
+            <span>Mesaje directe</span>
+            <button class="bot-close" id="messengerClose">✕</button>
+        </div>
+        
+        <!-- Search Bar -->
+        <div class="dm-search-container">
+            <input type="text" class="dm-search-input" id="dmSearch" placeholder="Caută sau începe o conversație">
+        </div>
 
-    <div class="dm-search-container">
-        <input type="text" class="dm-search-input" id="dmSearch" placeholder="Caută prieteni...">
-    </div>
-
-    <div class="dm-list" id="dmList">
-        <!-- Kevin Bot Always Top -->
-        <div class="dm-item" onclick="openChatView('kevin')">
-             <div class="dm-avatar-wrapper">
-                <img src="https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w" class="dm-avatar">
-                <div class="status-indicator"></div>
+        <div class="dm-list" id="dmList">
+            <!-- Kevin Bot DM Item -->
+            <div class="dm-item" id="kevinDmItem" onclick="openChatView('kevin')">
+                <div class="dm-avatar-wrapper">
+                    <img src="https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w" class="dm-avatar">
+                    <div class="status-indicator"></div>
+                </div>
+                <div class="dm-info">
+                   <div class="dm-name">
+    <span>kevin<span class="neon-text-bot">-bot</span></span>
+    <div class="dm-notif-dot" id="kevinBadge"></div>
+</div>
+                    <!-- Snippet displays the last message -->
+                    <span class="dm-snippet" id="kevinSnippet">Dă clic pentru a vorbi cu Kevin!</span>
+                </div>
             </div>
-            <div class="dm-info">
-                <div class="dm-name">kevin<span class="neon-text-bot">-bot</span></div>
-                <span class="dm-snippet">Dă clic pentru a vorbi cu Kevin!</span>
+            
+            <!-- Future Placeholder -->
+            <div class="dm-item" style="opacity: 0.3;">
+                <div class="dm-avatar-wrapper">
+                    <div class="dm-avatar" style="background: #111; display: flex; align-items: center; justify-content: center;"><i class="fas fa-plus"></i></div>
+                </div>
+                <div class="dm-info">
+                    <span class="dm-name">Adaugă prieteni</span>
+                    <span class="dm-snippet">Funcție în curând...</span>
+                </div>
             </div>
         </div>
-        <!-- Friends will be injected here -->
     </div>
-</div>
 
     <!-- VIEW 2: CHAT INTERFACE -->
 <!-- VIEW 2: CHAT INTERFACE -->
@@ -6573,138 +6577,7 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
 
 
 
-// --- EXPERIMENTAL FRIEND & PRIVATE CHAT SYSTEM (INDEX.HTML) ---
 
-// 1. Listen for Pending Requests
-function listenForFriendRequests() {
-    if(!auth.currentUser) return;
-    
-    const q = query(collection(db, "friend_requests"), 
-                    where("to", "==", auth.currentUser.uid), 
-                    where("status", "==", "pending"));
-                    
-    onSnapshot(q, async (snapshot) => {
-        const header = document.getElementById('pendingRequestsHeader');
-        const list = document.getElementById('requestsList');
-        const countSpan = document.getElementById('reqCount');
-        
-        if(snapshot.empty) {
-            header.style.display = 'none';
-            list.style.display = 'none';
-            return;
-        }
-        
-        header.style.display = 'block';
-        countSpan.innerText = snapshot.size;
-        list.innerHTML = '';
-        
-        snapshot.forEach(async (d) => {
-            const reqData = d.data();
-            const senderSnap = await getDoc(doc(db, "accounts", reqData.from));
-            if(!senderSnap.exists()) return;
-            const u = senderSnap.data();
-            
-            // Build the UI for the request item
-            const item = document.createElement('div');
-            item.className = `dm-item ${u.equippedBanner?.cssClass || ''}`;
-            item.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
-            
-            // Cosmetics Logic
-            let displayName = u.username;
-            if(u.equippedText?.cssClass) displayName = `<span class="${u.equippedText.cssClass}">${displayName}</span>`;
-            
-            item.innerHTML = `
-                <div class="dm-avatar-wrapper">
-                    <img src="${u.image}" class="dm-avatar">
-                    ${u.equippedFrame ? `<img src="${u.equippedFrame.img}" style="position:absolute; inset:-20%; width:140%; height:140%;">` : ''}
-                </div>
-                <div class="dm-info" style="flex:1;">
-                    <div class="dm-name">${displayName}</div>
-                    <div style="display:flex; gap:5px; margin-top:5px;">
-                        <button onclick="acceptFriend('${d.id}', '${u.uid}')" style="background:#00ff88; color:#000; border:none; border-radius:4px; font-size:8px; padding:4px 8px; font-weight:900;">ACCEPT</button>
-                        <button onclick="declineFriend('${d.id}')" style="background:#ff4757; color:#fff; border:none; border-radius:4px; font-size:8px; padding:4px 8px; font-weight:900;">REJECT</button>
-                    </div>
-                </div>
-            `;
-            list.appendChild(item);
-        });
-    });
-}
-
-window.acceptFriend = async (requestId, friendUid) => {
-    await updateDoc(doc(db, "friend_requests", requestId), { status: 'accepted' });
-    // Also add to each other's friends array for easy querying
-    await updateDoc(doc(db, "accounts", auth.currentUser.uid), { friends: arrayUnion(friendUid) });
-    await updateDoc(doc(db, "accounts", friendUid), { friends: arrayUnion(auth.currentUser.uid) });
-    showToast("Prieten adăugat!", "success");
-};
-
-window.declineFriend = async (requestId) => {
-    await deleteDoc(doc(db, "friend_requests", requestId));
-};
-
-// 2. Listen for Friends List (To show in Phone Box)
-function listenForFriends() {
-    if(!auth.currentUser) return;
-    
-    onSnapshot(doc(db, "accounts", auth.currentUser.uid), async (snap) => {
-        const friendIds = snap.data().friends || [];
-        const dmList = document.getElementById('dmList');
-        
-        // Remove old friend items but keep Kevin
-        const oldItems = dmList.querySelectorAll('.friend-dm-item');
-        oldItems.forEach(el => el.remove());
-        
-        for(const fid of friendIds) {
-            const fSnap = await getDoc(doc(db, "accounts", fid));
-            if(!fSnap.exists()) continue;
-            const u = fSnap.data();
-            
-            const div = document.createElement('div');
-            div.className = `dm-item friend-dm-item ${u.equippedBanner?.cssClass || ''}`;
-            
-            let displayName = u.username;
-            if(u.equippedText?.cssClass) displayName = `<span class="${u.equippedText.cssClass}">${displayName}</span>`;
-
-            div.innerHTML = `
-                 <div class="dm-avatar-wrapper">
-                    <img src="${u.image}" class="dm-avatar">
-                    ${u.equippedFrame ? `<img src="${u.equippedFrame.img}" style="position:absolute; inset:-20%; width:140%; height:140%;">` : ''}
-                </div>
-                <div class="dm-info">
-                    <div class="dm-name">${displayName}</div>
-                    <span class="dm-snippet">Online</span>
-                </div>
-            `;
-            div.onclick = () => openPrivateChat(fid, u.username);
-            dmList.appendChild(div);
-        }
-    });
-}
-
-// 3. Open Private Chat (Logic for User-to-User)
-function openPrivateChat(fid, fname) {
-    // Switch to ChatView
-    showChatView();
-    // Update Header
-    document.querySelector('#chatView .bot-name').innerText = fname;
-    // We would then load messages from a "private_messages" collection here
-    addBotMsg(`Te-ai conectat cu ${fname}. Funcția de chat privat este sub mentenanță (Alpha).`, 'bot');
-}
-
-// Toggle Requests List
-document.getElementById('pendingRequestsHeader').onclick = () => {
-    const list = document.getElementById('requestsList');
-    list.style.display = (list.style.display === 'none') ? 'block' : 'none';
-};
-
-// Call these inside onAuthStateChanged
-onAuthStateChanged(auth, (user) => {
-    if(user) {
-        listenForFriendRequests();
-        listenForFriends();
-    }
-});
 
 
 // --- NOTIFICATION SETTINGS LOGIC (FIXED) ---
