@@ -2249,6 +2249,113 @@ input:checked + .slider:before { transform: translateX(24px); }
     border-color: #00ffcc !important;
     box-shadow: 0 0 40px rgba(0, 255, 204, 0.3) !important;
 }
+
+
+
+/* --- UPDATED WHEEL HEADER BUTTONS --- */
+.wheel-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 10px;
+    margin: 0 auto 20px auto;
+    width: 100%;
+    max-width: 550px;
+    backdrop-filter: blur(10px);
+}
+
+.wheel-head-btn {
+    flex: 1; /* Makes them equal width */
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 8px 5px;
+    cursor: pointer;
+    transition: 0.3s;
+    display: flex;
+    flex-direction: column; /* Stack icon and text on mobile */
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px; /* Smaller for mobile */
+    font-weight: 700;
+}
+
+/* Specific Styles for each Button */
+.btn-head-jackpot { color: #ffd700; border-color: rgba(255, 215, 0, 0.3); }
+.btn-head-jackpot:hover { background: rgba(255, 215, 0, 0.1); box-shadow: 0 0 10px rgba(255, 215, 0, 0.2); }
+
+.btn-head-losers { color: #ff4757; border-color: rgba(255, 71, 87, 0.3); }
+.btn-head-losers:hover { background: rgba(255, 71, 87, 0.1); box-shadow: 0 0 10px rgba(255, 71, 87, 0.2); }
+
+.btn-head-winners { color: var(--primary); border-color: rgba(41, 243, 255, 0.3); }
+.btn-head-winners:hover { background: rgba(41, 243, 255, 0.1); box-shadow: 0 0 10px rgba(41, 243, 255, 0.2); }
+
+.wheel-head-btn i { font-size: 14px; }
+
+@media (min-width: 768px) {
+    .wheel-head-btn {
+        flex-direction: row; /* Side by side on PC */
+        font-size: 11px;
+        padding: 10px 15px;
+    }
+    .wheel-header-row { gap: 15px; padding: 10px 20px; border-radius: 50px; }
+}
+
+
+
+/* --- ADMIN PANEL MOBILE OVERRIDE --- */
+.admin-panel-left {
+    /* Existing properties... keep them, but ensure display is handled by JS */
+    transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@media (max-width: 768px) {
+    .admin-panel-left {
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) scale(0.9); /* Center on mobile */
+        width: 90% !important;
+        max-width: 320px;
+        position: fixed;
+    }
+}
+
+.admin-panel-left.active {
+    display: flex !important;
+}
+
+/* Floating Admin Toggle Button */
+.admin-toggle-btn {
+    position: fixed;
+    bottom: 80px; /* Above sound button */
+    left: 20px;
+    width: 50px;
+    height: 50px;
+    background: #ff4757;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 10001;
+    display: none; /* Shown via JS for admins */
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: pulseRedAdmin 2s infinite;
+}
+
+@keyframes pulseRedAdmin {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); box-shadow: 0 0 30px rgba(255, 71, 87, 0.8); }
+    100% { transform: scale(1); }
+}
 </style>
 </head>
 <body>
@@ -2603,21 +2710,20 @@ input:checked + .slider:before { transform: translateX(24px); }
     <i class="fas fa-volume-up"></i>
 </button>
 
+<button id="adminToggleBtn" class="admin-toggle-btn" onclick="toggleAdminPanel()">
+    <i class="fas fa-tools"></i>
+</button>
 
-<div class="wheel-header-row" style="margin-bottom: 25px;">
-    <button class="wheel-head-btn" onclick="openJackpotHistory()">
-        <i class="fas fa-trophy"></i> ISTORIC JACKPOT
+
+<div class="wheel-header-row">
+    <button class="wheel-head-btn btn-head-jackpot" onclick="openJackpotHistory()">
+        <i class="fas fa-trophy"></i> <span>istoric Jackpot</span>
     </button>
-    <div class="divider-vertical"></div>
-    
-    <!-- BUTONUL NOU -->
-    <button class="wheel-head-btn" onclick="openWheelLosersLeaderboard()">
-        <i class="fas fa-heart-broken"></i> TOP PIERZĂTORI
+    <button class="wheel-head-btn btn-head-losers" onclick="openWheelLosersLeaderboard()">
+        <i class="fas fa-heart-broken"></i> <span>Ghinioniști</span>
     </button>
-    <div class="divider-vertical"></div>
-    
-    <button class="wheel-head-btn" onclick="openWheelLeaderboard()">
-        <i class="fas fa-chart-bar"></i> TOP CÂȘTIGĂTORI
+    <button class="wheel-head-btn btn-head-winners" onclick="openWheelLeaderboard()">
+        <i class="fas fa-chart-bar"></i> <span>Top</span>
     </button>
 </div>
 
@@ -3815,41 +3921,64 @@ onAuthStateChanged(auth, user => {
         let currentSelectedId = null;
 
         // --- 1. EVENT METADATA LISTENER ---
-        onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
-            const data = snap.exists() ? snap.data() : { isActive: false, 
-selectedUserId: null, participants: [], spinAction: null };
-
-
+onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
+            const data = snap.exists() ? snap.data() : { 
+                isActive: false, 
+                selectedUserId: null, 
+                participants: [], 
+                spinAction: null 
+            };
             
             isEventModeActive = data.isActive;
             eventParticipants = data.participants || [];
             const selectedId = data.selectedUserId;
             const spinAction = data.spinAction;
 
-            // Update Left Admin Panel Switch
+            // Update Left Admin Panel Switch (în interiorul panoului)
             const toggle = document.getElementById('eventModeToggle');
             if(toggle) toggle.checked = isEventModeActive;
 
             // Update Rewards logic (Normal vs Event)
-            if(isEventModeActive) REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
-            else REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
+            if(isEventModeActive) {
+                REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
+            } else {
+                REWARDS[0] = { label: "XP", val: 0, type: "xp", color: "#607d8b", chance: 25 };
+            }
             if(!isSpinning) drawWheel();
 
-            // Handle Admin UI
+            // --- LOGICĂ ADMIN UI (PC vs Mobile) ---
             const isAdmin = ADMIN_EMAILS.includes(user.email);
             const adminPanel = document.getElementById('adminPanelLeft');
+            const adminToggleBtn = document.getElementById('adminToggleBtn'); // Butonul nou tip "Sound"
             const controlsDiv = document.querySelector('.controls-container'); 
             const eventDiv = document.getElementById('eventActionContainer');
             const joinBtn = document.getElementById('btnJoinEvent');
             const statusTxt = document.getElementById('eventStatusText');
 
-            if(adminPanel) adminPanel.style.display = isAdmin ? 'flex' : 'none';
+            if (isAdmin) {
+                // Afișăm butonul de Toggle (cel roșu cu rotiță)
+                if (adminToggleBtn) adminToggleBtn.style.display = 'flex';
+                
+                // Pe PC (ecran mare) lăsăm panoul vizibil default, pe mobil îl ascundem
+                if (window.innerWidth > 768) {
+                    adminPanel.style.display = 'flex';
+                } else {
+                    // Pe mobil, lăsăm clasa .active (controlată de buton) să decidă display-ul
+                    // Nu forțăm adminPanel.style.display = 'flex' aici.
+                }
+            } else {
+                if (adminToggleBtn) adminToggleBtn.style.display = 'none';
+                if (adminPanel) adminPanel.style.display = 'none';
+                if (adminPanel) adminPanel.classList.remove('active');
+            }
 
             if (isEventModeActive) {
                 if (isAdmin) {
+                    // Adminul vede butoanele de spin doar dacă a ales un câștigător
                     controlsDiv.style.display = selectedId ? 'flex' : 'none';
                     if(eventDiv) eventDiv.style.display = 'none';
                 } else {
+                    // Jucătorii văd panoul de "Înscrie-te"
                     controlsDiv.style.display = 'none';
                     if(eventDiv) eventDiv.style.display = 'flex';
                     if(eventParticipants.includes(user.uid)) {
@@ -3871,7 +4000,6 @@ selectedUserId: null, participants: [], spinAction: null };
                             if (uSnap.exists()) {
                                 const uData = uSnap.data();
                                 eventSelectedUser = { uid: uSnap.id, ...uData };
-                                // ACEASTA VA ACTUALIZA PILL-UL CU DATELE JUCĂTORULUI ALES
                                 updatePillVisuals(eventSelectedUser);
                             }
                         });
@@ -3888,30 +4016,31 @@ selectedUserId: null, participants: [], spinAction: null };
                     }
                 }
             } else {
-                // NORMAL MODE: Cleanup event listeners
+                // MOD NORMAL
                 if (selectedUserUnsub) { selectedUserUnsub(); selectedUserUnsub = null; }
                 currentSelectedId = null;
-                controlsDiv.style.display = 'flex';
+                
+                // Jucătorii își văd butoanele lor normale dacă nu e event
+                if (!isAdmin) controlsDiv.style.display = 'flex'; 
+                // Adminul vede butoanele lui oricând în mod normal
+                if (isAdmin) controlsDiv.style.display = 'flex';
+
                 if(eventDiv) eventDiv.style.display = 'none';
                 const nameEl = document.getElementById('wheelStatsName');
                 if(nameEl) { nameEl.onclick = null; nameEl.style.cursor = "default"; }
             }
 
-            // Sync Spin across all clients
-// Sync Spin across all clients
-if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
-    lastProcessedSpinTime = spinAction.timestamp;
-    currentSpinAdminId = spinAction.adminId; 
-    
-    // Verificăm dacă mesajul e proaspăt (ultimele 10 secunde)
-    if (Date.now() - spinAction.timestamp < 10000) {
-        if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
-        
-        // --- IMPORTANT: Transmitem și viteza primită de la Admin ---
-        const speedFromAdmin = spinAction.speed || 1;
-        startSpin(spinAction.index, speedFromAdmin); 
-    }
-}
+            // --- SINCRONIZARE SPIN (GLOBAL) ---
+            if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
+                lastProcessedSpinTime = spinAction.timestamp;
+                currentSpinAdminId = spinAction.adminId; 
+                
+                if (Date.now() - spinAction.timestamp < 10000) {
+                    if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
+                    const speedFromAdmin = spinAction.speed || 1;
+                    startSpin(spinAction.index, speedFromAdmin); 
+                }
+            }
         });
 
 // --- 2. CURRENT USER LISTENER (MY DATA) ---
