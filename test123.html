@@ -6751,9 +6751,8 @@ window.applyMessengerStyles = function(w, h, fs) {
     let finalH = h || 380;
     let finalFS = fs || 11;
 
-    // Detectăm dacă e ecran de mobil/tabletă (<= 768px)
+    // LIMITĂ MOBIL
     if (window.innerWidth <= 768) {
-        // Aplicăm limitele cerute de tine pentru mobil
         if (finalW > 320) finalW = 320;
         if (finalH > 500) finalH = 500;
         if (finalFS > 15) finalFS = 15;
@@ -6764,38 +6763,70 @@ window.applyMessengerStyles = function(w, h, fs) {
     win.style.setProperty('--chat-fs', finalFS + 'px');
 };
 
+window.previewResize = function() {
+    let w = document.getElementById('rangeW').value;
+    let h = document.getElementById('rangeH').value;
+    let fs = document.getElementById('rangeFS').value;
+
+    // Constrângeri live pentru Mobil
+    if (window.innerWidth <= 768) {
+        if (w > 320) w = 320;
+        if (h > 500) h = 500;
+        if (fs > 15) fs = 15;
+        // Ajustăm slider-ul să nu treacă de limită pe mobil
+        document.getElementById('rangeW').value = w;
+        document.getElementById('rangeH').value = h;
+        document.getElementById('rangeFS').value = fs;
+    }
+
+    document.getElementById('valW').innerText = w;
+    document.getElementById('valH').innerText = h;
+    document.getElementById('valFS').innerText = fs;
+
+    const win = document.getElementById('botWindow');
+    win.style.setProperty('--bot-w', w + 'px');
+    win.style.setProperty('--bot-h', h + 'px');
+    win.style.setProperty('--chat-fs', fs + 'px');
+};
+
 window.resetBoxSettings = async function() {
-    if (!window.auth.currentUser) return;
+    if (!window.auth || !window.auth.currentUser) return;
     
-    if (confirm("Vrei să resetezi aspectul la valorile default?")) {
+    if (confirm("Vrei să resetezi aspectul messenger-ului la valorile default?")) {
         try {
             const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
             
-            // Ștergem valorile din Firebase
+            // 1. Ștergem valorile din Firebase (câmpurile vor dispărea din document)
             await window.updateDoc(userRef, {
                 phoneBoxWidth: window.deleteField(),
                 phoneBoxHeight: window.deleteField(),
                 chatFontSize: window.deleteField()
             });
 
-            // Aplicăm vizual valorile default
+            // 2. Aplicăm instant valorile default (240x380, font 11)
             window.applyMessengerStyles(240, 380, 11);
             
-            // Resetăm sliderele dacă sunt deschise
+            // 3. Resetăm sliderele și textele din interfață să arate valorile de bază
             if(document.getElementById('rangeW')) {
                 document.getElementById('rangeW').value = 240;
                 document.getElementById('rangeH').value = 380;
                 document.getElementById('rangeFS').value = 11;
+                
                 document.getElementById('valW').innerText = 240;
                 document.getElementById('valH').innerText = 380;
                 document.getElementById('valFS').innerText = 11;
             }
 
+            // 4. Notificare și întoarcere la lista de mesaje
             window.showToast("Setări resetate!");
-        } catch(e) { console.error(e); }
+            window.showListView();
+
+        } catch(e) { 
+            console.error("Eroare la resetare:", e); 
+            window.showToast("Eroare la resetare!");
+        }
     }
 };
-
 
 // --- LOGICĂ NAVIGARE CURATĂ (Fix overlap bug) ---
 window.switchMessengerView = function(viewId) {
@@ -6846,8 +6877,7 @@ window.previewResize = function() {
         if (w > 320) w = 320;
         if (h > 500) h = 500;
         if (fs > 15) fs = 15;
-        
-        // Sincronizăm și poziția sliderului să nu sară peste limită vizual
+        // Ajustăm slider-ul să nu treacă de limită pe mobil
         document.getElementById('rangeW').value = w;
         document.getElementById('rangeH').value = h;
         document.getElementById('rangeFS').value = fs;
@@ -6862,6 +6892,8 @@ window.previewResize = function() {
     win.style.setProperty('--bot-h', h + 'px');
     win.style.setProperty('--chat-fs', fs + 'px');
 };
+
+
 window.saveBoxSettings = async function() {
     if (!window.auth.currentUser) return window.showToast("Loghează-te!");
     
@@ -8051,25 +8083,81 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
 // 3. User Data Listener
 // 3. User Data Listener
 // 3. User Data Listener
-window.applyMessengerStyles = function(w, h, fs) {
-    const win = document.getElementById('botWindow');
-    if (!win) return;
+// 3. User Data Listener (Citire setări la Login/Refresh)
+                onSnapshot(userRef, async (uSnap) => {
+                    if(!uSnap.exists()) return;
+                    const data = uSnap.data();
 
-    let finalW = w || 240;
-    let finalH = h || 380;
-    let finalFS = fs || 11;
+                    // LIVE BAN CHECK
+                    if (data.isBanned === true) { location.reload(); return; }
 
-    // Detectăm mobil (ecrane mai mici de 768px)
-    if (window.innerWidth <= 768) {
-        if (finalW > 320) finalW = 320;
-        if (finalH > 500) finalH = 500;
-        if (finalFS > 15) finalFS = 15;
-    }
+                    // --- [NOU] LOGICĂ RESIZER CU LIMITE MOBILE ---
+                    const savedW = data.phoneBoxWidth;
+                    const savedH = data.phoneBoxHeight;
+                    const savedFS = data.chatFontSize;
 
-    win.style.setProperty('--bot-w', finalW + 'px');
-    win.style.setProperty('--bot-h', finalH + 'px');
-    win.style.setProperty('--chat-fs', finalFS + 'px');
-};
+                    // Aplicăm stilurile imediat
+                    if (typeof window.applyMessengerStyles === "function") {
+                        window.applyMessengerStyles(savedW, savedH, savedFS);
+                    }
+
+                    // Sincronizăm sliderele din meniul de setări
+                    if (document.getElementById('rangeW')) {
+                        let displayW = savedW || 240;
+                        let displayH = savedH || 380;
+                        let displayFS = savedFS || 11;
+
+                        // Aplicăm limitele de afișare dacă suntem pe mobil (768px sau mai mic)
+                        if (window.innerWidth <= 768) {
+                            displayW = Math.min(displayW, 320);
+                            displayH = Math.min(displayH, 500);
+                            displayFS = Math.min(displayFS, 15);
+                        }
+
+                        document.getElementById('rangeW').value = displayW;
+                        document.getElementById('rangeH').value = displayH;
+                        document.getElementById('rangeFS').value = displayFS;
+                        
+                        document.getElementById('valW').innerText = displayW;
+                        document.getElementById('valH').innerText = displayH;
+                        document.getElementById('valFS').innerText = displayFS;
+                    }
+
+                    // --- KEVIN-BOT MOOD SYNC ---
+                    if (data.kevinAnger !== undefined) {
+                        window.kevinAnger = data.kevinAnger;
+                        const fill = document.getElementById('moodBarFill');
+                        const emoji = document.getElementById('moodEmoji');
+                        if(fill && emoji) {
+                            fill.style.width = data.kevinAnger + "%";
+                            emoji.style.left = data.kevinAnger + "%";
+                            const a = data.kevinAnger;
+                            if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+                            else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+                            else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+                            else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+                            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
+                        }
+                    }
+
+                    // --- RESTUL LOGICII TALE (REGULAMENT, REFERRAL, ETC) ---
+                    if (data.agreedToRules !== true) {
+                        setTimeout(() => {
+                            const rulesModal = document.getElementById('rulesReminderModal');
+                            if(rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
+                        }, 4000);
+                    }
+
+                    if (data.pendingReferrals > 0) {
+                        const count = data.pendingReferrals;
+                        const refModal = document.getElementById('referralRewardModal');
+                        if (refModal) {
+                            refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
+                            refModal.classList.add('active');
+                            await updateDoc(userRef, { pendingReferrals: 0 });
+                        }
+                    }
+                });
             });
 
             updateOnlineStatus(); 
