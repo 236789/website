@@ -2426,6 +2426,11 @@ input:checked + .slider:before { transform: translateX(16px); }
     <label>Mărime Text: <span id="valFS">11</span>px</label>
     <input type="range" id="rangeFS" min="10" max="22" value="11" oninput="previewResize()">
 </div>
+
+<!-- În settingsView, sub butonul de SALVEAZĂ -->
+<button class="btn-start-chat" style="margin-top: 10px; background: rgba(255, 71, 87, 0.1); border-color: #ff4757; color: #ff4757;" onclick="resetBoxSettings()">
+    RESETEAZĂ SETĂRILE
+</button>
         <button class="btn-start-chat" style="margin-top: 30px; width:100%;" onclick="saveBoxSettings()">SALVEAZĂ</button>
     </div>
 </div>
@@ -6708,7 +6713,11 @@ botUserInput.onkeypress = (e) => { if(e.key === 'Enter') botSendBtn.click(); };
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot,deleteField, } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+
+window.deleteField = deleteField;
+
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -6729,6 +6738,59 @@ window.db = db;
 window.doc = doc;
 window.updateDoc = updateDoc;
 
+
+
+// Helper să vedem dacă suntem pe PC
+const isPC = () => window.innerWidth > 768;
+
+window.applyMessengerStyles = function(w, h, fs) {
+    const win = document.getElementById('botWindow');
+    if (!win) return;
+
+    if (isPC()) {
+        // Dacă e PC, aplicăm ce e salvat sau default
+        win.style.setProperty('--bot-w', (w || 240) + 'px');
+        win.style.setProperty('--bot-h', (h || 380) + 'px');
+        win.style.setProperty('--chat-fs', (fs || 11) + 'px');
+    } else {
+        // Dacă e Mobil, FORȚĂM valorile default ca să nu se strice UI-ul
+        win.style.setProperty('--bot-w', '240px');
+        win.style.setProperty('--bot-h', '380px');
+        win.style.setProperty('--chat-fs', '11px');
+    }
+};
+
+window.resetBoxSettings = async function() {
+    if (!window.auth.currentUser) return;
+    
+    if (confirm("Vrei să resetezi aspectul la valorile default?")) {
+        try {
+            const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+            
+            // Ștergem valorile din Firebase
+            await window.updateDoc(userRef, {
+                phoneBoxWidth: window.deleteField(),
+                phoneBoxHeight: window.deleteField(),
+                chatFontSize: window.deleteField()
+            });
+
+            // Aplicăm vizual valorile default
+            window.applyMessengerStyles(240, 380, 11);
+            
+            // Resetăm sliderele dacă sunt deschise
+            if(document.getElementById('rangeW')) {
+                document.getElementById('rangeW').value = 240;
+                document.getElementById('rangeH').value = 380;
+                document.getElementById('rangeFS').value = 11;
+                document.getElementById('valW').innerText = 240;
+                document.getElementById('valH').innerText = 380;
+                document.getElementById('valFS').innerText = 11;
+            }
+
+            window.showToast("Setări resetate!");
+        } catch(e) { console.error(e); }
+    }
+};
 
 
 // --- LOGICĂ NAVIGARE CURATĂ (Fix overlap bug) ---
@@ -7974,6 +8036,7 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 // 3. User Data Listener
 // 3. User Data Listener
 // 3. User Data Listener
+// 3. User Data Listener
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
@@ -7984,42 +8047,42 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                         return;
                     }
 
-                    // --- [ACTUALIZAT] MESSENGER DIMENSIONS & FONT SYNC ---
-                    if (data.phoneBoxWidth && data.phoneBoxHeight) {
-                        const win = document.getElementById('botWindow');
-                        const fs = data.chatFontSize || 11; // 11px e default
+                    // --- [ACTUALIZAT] MESSENGER DIMENSIONS & FONT SYNC CU PROTECȚIE MOBIL ---
+                    const savedW = data.phoneBoxWidth;
+                    const savedH = data.phoneBoxHeight;
+                    const savedFS = data.chatFontSize;
+
+                    // Folosim funcția globală pentru a decide dacă aplicăm setările (doar pe PC)
+                    if (typeof window.applyMessengerStyles === "function") {
+                        window.applyMessengerStyles(savedW, savedH, savedFS);
+                    }
+
+                    // Sincronizăm sliderele din setări (doar dacă suntem pe PC și elementele există în DOM)
+                    const isPC = window.innerWidth > 768;
+                    if(isPC && document.getElementById('rangeW')) {
+                        document.getElementById('rangeW').value = savedW || 240;
+                        document.getElementById('rangeH').value = savedH || 380;
+                        document.getElementById('rangeFS').value = savedFS || 11;
                         
-                        if (win) {
-                            win.style.setProperty('--bot-w', data.phoneBoxWidth + 'px');
-                            win.style.setProperty('--bot-h', data.phoneBoxHeight + 'px');
-                            win.style.setProperty('--chat-fs', fs + 'px'); // Aplică fontul salvat
-                            
-                            // Actualizăm și sliderele/textele din meniul de setări dacă sunt vizibile
-                            if(document.getElementById('rangeW')) {
-                                document.getElementById('rangeW').value = data.phoneBoxWidth;
-                                document.getElementById('rangeH').value = data.phoneBoxHeight;
-                                document.getElementById('rangeFS').value = fs; // Slider font
-                                
-                                document.getElementById('valW').innerText = data.phoneBoxWidth;
-                                document.getElementById('valH').innerText = data.phoneBoxHeight;
-                                document.getElementById('valFS').innerText = fs; // Text valoare font
-                            }
-                        }
+                        document.getElementById('valW').innerText = savedW || 240;
+                        document.getElementById('valH').innerText = savedH || 380;
+                        document.getElementById('valFS').innerText = savedFS || 11;
                     }
 
                     // --- KEVIN-BOT MOOD SYNC ---
                     if (data.kevinAnger !== undefined) {
-                        kevinAnger = data.kevinAnger; 
+                        window.kevinAnger = data.kevinAnger; // Sincronizăm variabila globală
                         const fill = document.getElementById('moodBarFill');
                         const emoji = document.getElementById('moodEmoji');
                         if(fill && emoji) {
-                            fill.style.width = kevinAnger + "%";
-                            emoji.style.left = kevinAnger + "%";
+                            const anger = window.kevinAnger;
+                            fill.style.width = anger + "%";
+                            emoji.style.left = anger + "%";
 
-                            if (kevinAnger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-                            else if (kevinAnger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-                            else if (kevinAnger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-                            else if (kevinAnger < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+                            if (anger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+                            else if (anger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+                            else if (anger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+                            else if (anger < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
                             else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
                         }
                     }
