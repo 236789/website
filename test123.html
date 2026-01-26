@@ -8084,6 +8084,7 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
 // 3. User Data Listener
 // 3. User Data Listener
 // 3. User Data Listener (Citire setări la Login/Refresh)
+// 3. User Data Listener (VARIÂNTA COMPLETĂ: Profil + Resizer + Mood)
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
@@ -8091,39 +8092,34 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                     // LIVE BAN CHECK
                     if (data.isBanned === true) { location.reload(); return; }
 
-                    // --- [NOU] LOGICĂ RESIZER CU LIMITE MOBILE ---
+                    // --- 1. LOGICĂ RESIZER & ASPECT (MOBILE/PC) ---
                     const savedW = data.phoneBoxWidth;
                     const savedH = data.phoneBoxHeight;
                     const savedFS = data.chatFontSize;
 
-                    // Aplicăm stilurile imediat
                     if (typeof window.applyMessengerStyles === "function") {
                         window.applyMessengerStyles(savedW, savedH, savedFS);
                     }
 
-                    // Sincronizăm sliderele din meniul de setări
+                    // Sincronizare Slidere și Valori UI
                     if (document.getElementById('rangeW')) {
                         let displayW = savedW || 240;
                         let displayH = savedH || 380;
                         let displayFS = savedFS || 11;
-
-                        // Aplicăm limitele de afișare dacă suntem pe mobil (768px sau mai mic)
                         if (window.innerWidth <= 768) {
                             displayW = Math.min(displayW, 320);
                             displayH = Math.min(displayH, 500);
                             displayFS = Math.min(displayFS, 15);
                         }
-
                         document.getElementById('rangeW').value = displayW;
                         document.getElementById('rangeH').value = displayH;
                         document.getElementById('rangeFS').value = displayFS;
-                        
                         document.getElementById('valW').innerText = displayW;
                         document.getElementById('valH').innerText = displayH;
                         document.getElementById('valFS').innerText = displayFS;
                     }
 
-                    // --- KEVIN-BOT MOOD SYNC ---
+                    // --- 2. KEVIN-BOT MOOD SYNC ---
                     if (data.kevinAnger !== undefined) {
                         window.kevinAnger = data.kevinAnger;
                         const fill = document.getElementById('moodBarFill');
@@ -8140,7 +8136,46 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                         }
                     }
 
-                    // --- RESTUL LOGICII TALE (REGULAMENT, REFERRAL, ETC) ---
+                    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
+                    // Imagine Profil
+                    document.getElementById('popUserImg').src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
+                    
+                    // Ramă Profil
+                    const popFrame = document.getElementById('popUserFrame');
+                    if(popFrame) {
+                        if (data.equippedFrame?.img) {
+                            popFrame.src = data.equippedFrame.img;
+                            popFrame.style.display = "block";
+                            const scale = data.equippedFrame.scale || 1.45;
+                            popFrame.style.width = (scale * 100) + "%";
+                            popFrame.style.height = (scale * 100) + "%";
+                        } else {
+                            popFrame.style.display = "none";
+                        }
+                    }
+
+                    // Nume și Text Cosmetic
+                    const nameEl = document.getElementById('popUserName');
+                    let rawName = data.username || user.displayName || "Utilizator";
+                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                    if (data.equippedText?.cssClass) {
+                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                    } else {
+                        nameEl.innerText = rawName;
+                    }
+
+                    // Email, Monede, Diamante și Streak
+                    document.getElementById('popUserEmail').innerText = data.email || user.email;
+                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                    const diamondEl = document.getElementById('popUserDiamonds');
+                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                    const streakDisplay = document.querySelector('.streak-txt');
+                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
+
+
+                    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
+                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
+
                     if (data.agreedToRules !== true) {
                         setTimeout(() => {
                             const rulesModal = document.getElementById('rulesReminderModal');
