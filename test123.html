@@ -6747,17 +6747,21 @@ window.applyMessengerStyles = function(w, h, fs) {
     const win = document.getElementById('botWindow');
     if (!win) return;
 
-    if (isPC()) {
-        // Dacă e PC, aplicăm ce e salvat sau default
-        win.style.setProperty('--bot-w', (w || 240) + 'px');
-        win.style.setProperty('--bot-h', (h || 380) + 'px');
-        win.style.setProperty('--chat-fs', (fs || 11) + 'px');
-    } else {
-        // Dacă e Mobil, FORȚĂM valorile default ca să nu se strice UI-ul
-        win.style.setProperty('--bot-w', '240px');
-        win.style.setProperty('--bot-h', '380px');
-        win.style.setProperty('--chat-fs', '11px');
+    let finalW = w || 240;
+    let finalH = h || 380;
+    let finalFS = fs || 11;
+
+    // Detectăm dacă e ecran de mobil/tabletă (<= 768px)
+    if (window.innerWidth <= 768) {
+        // Aplicăm limitele cerute de tine pentru mobil
+        if (finalW > 320) finalW = 320;
+        if (finalH > 500) finalH = 500;
+        if (finalFS > 15) finalFS = 15;
     }
+
+    win.style.setProperty('--bot-w', finalW + 'px');
+    win.style.setProperty('--bot-h', finalH + 'px');
+    win.style.setProperty('--chat-fs', finalFS + 'px');
 };
 
 window.resetBoxSettings = async function() {
@@ -6832,22 +6836,32 @@ if (rangeH) {
     };
 }
 
-// --- SALVARE SETĂRI ÎN FIREBASE ---
 window.previewResize = function() {
-    const w = document.getElementById('rangeW').value;
-    const h = document.getElementById('rangeH').value;
-    const fs = document.getElementById('rangeFS').value;
-    
+    let w = document.getElementById('rangeW').value;
+    let h = document.getElementById('rangeH').value;
+    let fs = document.getElementById('rangeFS').value;
+
+    // Constrângeri live pentru Mobil
+    if (window.innerWidth <= 768) {
+        if (w > 320) w = 320;
+        if (h > 500) h = 500;
+        if (fs > 15) fs = 15;
+        
+        // Sincronizăm și poziția sliderului să nu sară peste limită vizual
+        document.getElementById('rangeW').value = w;
+        document.getElementById('rangeH').value = h;
+        document.getElementById('rangeFS').value = fs;
+    }
+
     document.getElementById('valW').innerText = w;
     document.getElementById('valH').innerText = h;
     document.getElementById('valFS').innerText = fs;
-    
+
     const win = document.getElementById('botWindow');
     win.style.setProperty('--bot-w', w + 'px');
     win.style.setProperty('--bot-h', h + 'px');
     win.style.setProperty('--chat-fs', fs + 'px');
 };
-
 window.saveBoxSettings = async function() {
     if (!window.auth.currentUser) return window.showToast("Loghează-te!");
     
@@ -8037,196 +8051,25 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
 // 3. User Data Listener
 // 3. User Data Listener
 // 3. User Data Listener
-                onSnapshot(userRef, async (uSnap) => {
-                    if(!uSnap.exists()) return;
-                    const data = uSnap.data();
+window.applyMessengerStyles = function(w, h, fs) {
+    const win = document.getElementById('botWindow');
+    if (!win) return;
 
-                    // LIVE BAN CHECK (If banned while online)
-                    if (data.isBanned === true) {
-                        location.reload(); 
-                        return;
-                    }
+    let finalW = w || 240;
+    let finalH = h || 380;
+    let finalFS = fs || 11;
 
-                    // --- [ACTUALIZAT] MESSENGER DIMENSIONS & FONT SYNC CU PROTECȚIE MOBIL ---
-                    const savedW = data.phoneBoxWidth;
-                    const savedH = data.phoneBoxHeight;
-                    const savedFS = data.chatFontSize;
+    // Detectăm mobil (ecrane mai mici de 768px)
+    if (window.innerWidth <= 768) {
+        if (finalW > 320) finalW = 320;
+        if (finalH > 500) finalH = 500;
+        if (finalFS > 15) finalFS = 15;
+    }
 
-                    // Folosim funcția globală pentru a decide dacă aplicăm setările (doar pe PC)
-                    if (typeof window.applyMessengerStyles === "function") {
-                        window.applyMessengerStyles(savedW, savedH, savedFS);
-                    }
-
-                    // Sincronizăm sliderele din setări (doar dacă suntem pe PC și elementele există în DOM)
-                    const isPC = window.innerWidth > 768;
-                    if(isPC && document.getElementById('rangeW')) {
-                        document.getElementById('rangeW').value = savedW || 240;
-                        document.getElementById('rangeH').value = savedH || 380;
-                        document.getElementById('rangeFS').value = savedFS || 11;
-                        
-                        document.getElementById('valW').innerText = savedW || 240;
-                        document.getElementById('valH').innerText = savedH || 380;
-                        document.getElementById('valFS').innerText = savedFS || 11;
-                    }
-
-                    // --- KEVIN-BOT MOOD SYNC ---
-                    if (data.kevinAnger !== undefined) {
-                        window.kevinAnger = data.kevinAnger; // Sincronizăm variabila globală
-                        const fill = document.getElementById('moodBarFill');
-                        const emoji = document.getElementById('moodEmoji');
-                        if(fill && emoji) {
-                            const anger = window.kevinAnger;
-                            fill.style.width = anger + "%";
-                            emoji.style.left = anger + "%";
-
-                            if (anger < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-                            else if (anger < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-                            else if (anger < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-                            else if (anger < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
-                            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
-                        }
-                    }
-
-                    // --- [NOU] LOGICĂ REAMINTIRE REGULAMENT ---
-                    if (data.agreedToRules !== true) {
-                        setTimeout(() => {
-                            const rulesModal = document.getElementById('rulesReminderModal');
-                            if(rulesModal && !rulesModal.classList.contains('active')) {
-                                rulesModal.classList.add('active');
-                            }
-                        }, 4000);
-                    }
-
-                    // Referral Logic
-                    if (data.pendingReferrals && data.pendingReferrals > 0) {
-                        const count = data.pendingReferrals;
-                        const totalBonus = count * 1000;
-                        const refModal = document.getElementById('referralRewardModal');
-                        const refText = document.getElementById('referralText');
-                        const refAmount = refModal ? refModal.querySelector('.reward-coins-box span') : null;
-
-                        if (refModal && refText && refAmount) {
-                            refText.innerText = count === 1 ? "Un prieten s-a înregistrat!" : `${count} prieteni s-au înregistrat!`;
-                            refAmount.innerText = totalBonus; 
-                            refModal.classList.add('active');
-                            await updateDoc(userRef, { pendingReferrals: 0 });
-                        }
-                    }
-
-                    // --- NEW: LOGICĂ REAMINTIRE DAILY REWARD ---
-                    const currentTime = Date.now();
-                    const lastClaimTime = data.lastDailyClaim ? data.lastDailyClaim.toMillis() : 0;
-                    const hoursPassed = (currentTime - lastClaimTime) / (1000 * 60 * 60);
-                    const canClaimDaily = hoursPassed >= 24 || lastClaimTime === 0;
-
-                    if (canClaimDaily && !sessionStorage.getItem('rewardReminderShown')) {
-                        setTimeout(() => {
-                            const reminderModal = document.getElementById('rewardReminderModal');
-                            if(reminderModal) {
-                                reminderModal.classList.add('active');
-                                sessionStorage.setItem('rewardReminderShown', 'true');
-                            }
-                        }, 2500);
-                    }
-                    
-                    // Quest & Streak Logic
-                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
-
-                    const activeIds = data.activeDailyQuests || [];
-                    const completedIds = data.completedQuests || [];
-                    const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
-
-                    if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
-                        if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                            if (!isAwardingInProgress) {
-                                isAwardingInProgress = true;
-                                const oldStr = data.streak || 0;
-                                await logTransaction(1, "DIAMONDS", "STREAK BONUS: 6/6 Acasă", "Acasă");
-                                await updateDoc(userRef, {
-                                    streak: increment(1),
-                                    diamonds: increment(1),
-                                    lastStreakAwardedBlock: data.lastResetBlock
-                                });
-                                const rewardModal = document.getElementById('streakRewardModal');
-                                if (rewardModal) {
-                                    document.getElementById('streakOld').innerText = oldStr;
-                                    document.getElementById('streakNew').innerText = oldStr + 1;
-                                    rewardModal.classList.add('active');
-                                }
-                                setTimeout(() => { isAwardingInProgress = false; }, 3000);
-                            }
-                        }
-                    }
-
-                    // Populate UI
-                    document.getElementById('popUserImg').src = data.image || user.photoURL;
-                    const popFrame = document.getElementById('popUserFrame');
-                    if(popFrame) {
-                        if (data.equippedFrame?.img) {
-                            popFrame.src = data.equippedFrame.img;
-                            popFrame.style.display = "block";
-                            const scale = data.equippedFrame.scale || 1.45;
-                            popFrame.style.width = (scale * 100) + "%";
-                            popFrame.style.height = (scale * 100) + "%";
-                        } else { popFrame.style.display = "none"; }
-                    }
-
-                    const nameEl = document.getElementById('popUserName');
-                    let rawName = data.username || user.displayName;
-                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-                    if (data.equippedText?.cssClass) {
-                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else { nameEl.innerText = rawName; }
-
-                    document.getElementById('popUserEmail').innerText = data.email;
-                    const streakDisplay = document.querySelector('.streak-txt');
-                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
-
-                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                    const diamondEl = document.getElementById('popUserDiamonds');
-                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-
-                    const popBadgeBox = document.getElementById('popUserBadges');
-                    if(popBadgeBox) {
-                        let badgesHtml = "";
-                        const email = data.email || "";
-                        if(email === 'nicaemmanuel433qe@gmail.com') badgesHtml += `<div><span class="owner-badge">WEBSITE OWNER</span></div>`;
-                        else if(email === 'kevin.trinity2020@gmail.com') badgesHtml += `<div><span class="admin-badge">ADMIN</span></div>`;
-                        else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) badgesHtml += `<div><span class="mod-badge">MODERATOR</span></div>`;
-                        
-                        if(data.equippedBadge) {
-                            badgesHtml += `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000;"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
-                        }
-                        popBadgeBox.innerHTML = badgesHtml;
-                    }
-
-                    // --- 🔔 LOGICĂ NOTIFICĂRI NOUTĂȚI ---
-                    const userVazute = data.lastSeenNewsCount || 0;
-                    const noutatiNoi = totalGlobal - userVazute;
-                    const heroBadge = document.getElementById('heroNotifBadge');
-                    if (heroBadge) {
-                        if (noutatiNoi > 0) {
-                            heroBadge.innerText = `+${noutatiNoi}`;
-                            heroBadge.style.display = 'flex';
-                        } else { heroBadge.style.display = 'none'; }
-                    }
-
-                    // --- 🔔 NOU: LOGICĂ NOTIFICĂRI WALL ---
-                    const userSeenWall = data.lastSeenWallCount || 0;
-                    const mesajeNoiWall = totalGlobalWall - userSeenWall;
-
-                    const sideWallBadge = document.getElementById('sideWallNotifBadge');
-                    const promoWallBadge = document.getElementById('promoWallNotifBadge');
-
-                    if (mesajeNoiWall > 0) {
-                        const displayTxt = `+${mesajeNoiWall}`;
-                        if(sideWallBadge) { sideWallBadge.innerText = displayTxt; sideWallBadge.style.display = 'flex'; }
-                        if(promoWallBadge) { promoWallBadge.innerText = displayTxt; promoWallBadge.style.display = 'flex'; }
-                    } else {
-                        if(sideWallBadge) sideWallBadge.style.display = 'none';
-                        if(promoWallBadge) promoWallBadge.style.display = 'none';
-                    }
-                });
+    win.style.setProperty('--bot-w', finalW + 'px');
+    win.style.setProperty('--bot-h', finalH + 'px');
+    win.style.setProperty('--chat-fs', finalFS + 'px');
+};
             });
 
             updateOnlineStatus(); 
