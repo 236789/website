@@ -2403,6 +2403,37 @@ input:checked + .slider:before { transform: translateX(16px); }
 <div class="bot-phone-box" id="botWindow">
 
 
+<div id="customizeBotView" class="messenger-view">
+    <div class="messenger-header-title">
+        <span>Alege Componenta</span>
+        <button class="bot-close" onclick="switchMessengerView('settingsView')">✕</button>
+    </div>
+    <div class="cosmetics-selection-grid">
+        <!-- OPȚIUNEA 1: RAMA EXTERIOARĂ -->
+        <div class="cosmetic-select-btn" onclick="openBotInventoryFor('box')">
+            <i class="fas fa-mobile-alt" style="color: #29f3ff;"></i>
+            <span>BORDURĂ (BOX)</span>
+        </div>
+        <!-- OPȚIUNEA 2: FUNDALUL CHAT-ULUI -->
+        <div class="cosmetic-select-btn" onclick="openBotInventoryFor('bg')">
+            <i class="fas fa-image" style="color: #ff00ff;"></i>
+            <span>FUNDAL (CHAT)</span>
+        </div>
+    </div>
+</div>
+
+<!-- VIEW 4: Inventarul de Bannere pentru Bot -->
+<div id="botInventoryView" class="messenger-view">
+    <div class="messenger-header-title">
+        <span id="botInvTitle">Inventar Bannere</span>
+        <button class="bot-close" onclick="switchMessengerView('customizeBotView')">✕</button>
+    </div>
+    <div id="botBannerList" class="badges-container" style="padding:10px;">
+        <!-- Aici se încarcă bannerele tale -->
+    </div>
+</div>
+
+
 <!-- VIEW 3: SETTINGS INTERFACE -->
 <div id="settingsView" class="messenger-view">
     <div class="messenger-header-title">
@@ -2426,6 +2457,10 @@ input:checked + .slider:before { transform: translateX(16px); }
     <label>Mărime Text: <span id="valFS">11</span>px</label>
     <input type="range" id="rangeFS" min="10" max="22" value="11" oninput="previewResize()">
 </div>
+
+<button class="btn-start-chat" style="margin-top: 15px; border-color: #bf55ec; color: #bf55ec; background: rgba(191, 85, 236, 0.05);" onclick="switchMessengerView('customizeBotView')">
+    <i class="fas fa-paint-brush"></i> CUSTOMIZARE BOT
+</button>
 
 <!-- În settingsView, sub butonul de SALVEAZĂ -->
 <button class="btn-start-chat" style="margin-top: 10px; background: rgba(255, 71, 87, 0.1); border-color: #ff4757; color: #ff4757;" onclick="resetBoxSettings()">
@@ -6740,6 +6775,65 @@ window.updateDoc = updateDoc;
 
 
 
+
+// Funcție pentru a deschide inventarul tău de bannere pentru Kevin
+window.openBotInventoryFor = async function(targetComponent) {
+    const list = document.getElementById('botBannerList');
+    list.innerHTML = '<p style="color:#555; font-size:10px;">Se încarcă...</p>';
+    document.getElementById('botInvTitle').innerText = targetComponent === 'box' ? "Bordură Kevin" : "Fundal Kevin";
+    
+    switchMessengerView('botInventoryView');
+
+    const userSnap = await window.getDoc(window.doc(window.db, "accounts", window.auth.currentUser.uid));
+    const data = userSnap.data();
+    const ownedBanners = data.ownedBanners || [];
+
+    list.innerHTML = '';
+    
+    if(ownedBanners.length === 0) {
+        list.innerHTML = '<p style="font-size:10px; color:#aaa; text-align:center; width:100%;">Nu ai bannere cumpărate în Shop!</p>';
+        return;
+    }
+
+    ownedBanners.forEach(id => {
+        const banner = BANNERS_DB.find(b => b.id === id);
+        if(banner) {
+            const card = document.createElement('div');
+            card.className = 'shop-badge-item';
+            card.style.width = "100%";
+            card.innerHTML = `
+                <div class="${banner.cssClass}" style="padding:5px; border-radius:5px; font-size:9px; width:100%; margin-bottom:5px;">PREVIEW</div>
+                <button class="equip-btn" onclick="equipBotBanner('${targetComponent}', '${banner.cssClass}')">APLICĂ</button>
+            `;
+            list.appendChild(card);
+        }
+    });
+
+    // Buton de scoatere (Reset la default)
+    const resetItem = document.createElement('button');
+    resetItem.className = 'unequip-all-btn';
+    resetItem.innerText = "SCOATE / RESET";
+    resetItem.onclick = () => equipBotBanner(targetComponent, null);
+    list.appendChild(resetItem);
+};
+
+// Salvare în Firebase
+window.equipBotBanner = async function(target, cssClass) {
+    if(!window.auth.currentUser) return;
+    const userRef = window.doc(window.db, "accounts", window.auth.currentUser.uid);
+    const updateData = {};
+    
+    if(target === 'box') updateData.kevinBoxBanner = cssClass;
+    else updateData.kevinChatBanner = cssClass;
+
+    try {
+        await window.updateDoc(userRef, updateData);
+        window.showToast("Bot actualizat!");
+        switchMessengerView('settingsView');
+    } catch(e) { console.error(e); }
+};
+
+
 // Helper să vedem dacă suntem pe PC
 const isPC = () => window.innerWidth > 768;
 
@@ -8084,7 +8178,7 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
 // 3. User Data Listener
 // 3. User Data Listener
 // 3. User Data Listener (Citire setări la Login/Refresh)
-// 3. User Data Listener (VARIÂNTA COMPLETĂ: Profil + Resizer + Mood)
+// 3. User Data Listener (VARIÂNTA COMPLETĂ: Profil + Resizer + Mood + Customizare Bot)
                 onSnapshot(userRef, async (uSnap) => {
                     if(!uSnap.exists()) return;
                     const data = uSnap.data();
@@ -8119,7 +8213,23 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                         document.getElementById('valFS').innerText = displayFS;
                     }
 
-                    // --- 2. KEVIN-BOT MOOD SYNC ---
+                    // --- 2. [NOU] SYNC CUSTOMIZARE BOT (Bannere Box & Chat) ---
+                    const botWin = document.getElementById('botWindow');
+                    const botHistory = document.getElementById('botHistory');
+                    if (botWin && botHistory) {
+                        // Colectăm toate clasele de bannere posibile pentru a le curăța înainte de aplicare
+                        const allBannerClasses = BANNERS_DB.map(b => b.cssClass);
+
+                        // Aplicare Banner pe Bordură (Box)
+                        botWin.classList.remove(...allBannerClasses);
+                        if (data.kevinBoxBanner) botWin.classList.add(data.kevinBoxBanner);
+
+                        // Aplicare Banner pe Fundal Chat (History)
+                        botHistory.classList.remove(...allBannerClasses);
+                        if (data.kevinChatBanner) botHistory.classList.add(data.kevinChatBanner);
+                    }
+
+                    // --- 3. KEVIN-BOT MOOD SYNC ---
                     if (data.kevinAnger !== undefined) {
                         window.kevinAnger = data.kevinAnger;
                         const fill = document.getElementById('moodBarFill');
@@ -8136,9 +8246,10 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                         }
                     }
 
-                    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
+                    // --- 4. ACTUALIZARE INTERFAȚĂ PROFIL ---
                     // Imagine Profil
-                    document.getElementById('popUserImg').src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
+                    const popImg = document.getElementById('popUserImg');
+                    if(popImg) popImg.src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
                     
                     // Ramă Profil
                     const popFrame = document.getElementById('popUserFrame');
@@ -8156,24 +8267,31 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
 
                     // Nume și Text Cosmetic
                     const nameEl = document.getElementById('popUserName');
-                    let rawName = data.username || user.displayName || "Utilizator";
-                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-                    if (data.equippedText?.cssClass) {
-                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else {
-                        nameEl.innerText = rawName;
+                    if(nameEl) {
+                        let rawName = data.username || user.displayName || "Utilizator";
+                        if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                        if (data.equippedText?.cssClass) {
+                            nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                        } else {
+                            nameEl.innerText = rawName;
+                        }
                     }
 
                     // Email, Monede, Diamante și Streak
-                    document.getElementById('popUserEmail').innerText = data.email || user.email;
-                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                    const emailEl = document.getElementById('popUserEmail');
+                    if(emailEl) emailEl.innerText = data.email || user.email;
+                    
+                    const coinsEl = document.getElementById('popUserCoins');
+                    if(coinsEl) coinsEl.innerText = formatCurrency(data.coins || 0);
+                    
                     const diamondEl = document.getElementById('popUserDiamonds');
                     if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                    
                     const streakDisplay = document.querySelector('.streak-txt');
                     if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
 
 
-                    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
+                    // --- 5. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
                     if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
 
                     if (data.agreedToRules !== true) {
