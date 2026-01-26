@@ -1515,22 +1515,27 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
+/* Containerul Principal - Baza pentru Fundal Global */
 .bot-phone-box {
-    /* These variables will be controlled by Firebase/JS */
     width: var(--bot-w, 240px) !important;
     height: var(--bot-h, 380px) !important;
-    
-    background: rgba(8, 16, 27, 0.95) !important;
+    background: #08101b !important; /* Culoare de fallback */
+    background-size: cover !important;
+    background-position: center !important;
     backdrop-filter: blur(15px);
     border-radius: 20px;
-    border: 2px solid #29f3ff;
+    border: 2px solid #29f3ff; /* Bordura default */
     box-shadow: 0 15px 40px rgba(0,0,0,0.8);
     z-index: 10001;
     display: none; 
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden; /* Important pentru a tăia bannerul la colțuri */
+    position: fixed;
+    bottom: 85px;
+    left: 20px;
     animation: messengerSpawn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
 
 /* Style for the settings sliders */
 .settings-row {
@@ -1549,6 +1554,31 @@ input:checked + .slider:before { transform: translateX(16px); }
 
 .messenger-view { display: none; flex-direction: column; height: 100%; width: 100%; background: transparent; }
 .messenger-view.active { display: flex; }
+
+.messenger-view {
+    background: transparent !important;
+}
+
+
+/* Ajustare pentru corpul chat-ului să fie semi-transparent peste fundal */
+.bot-body {
+    background: rgba(5, 11, 20, 0.6) !important; /* Overlay întunecat pentru lizibilitate */
+}
+
+/* FIX PENTRU BANNERUL DE BORDURĂ (BOX) */
+/* Când un banner e aplicat pe Box, trebuie să forțăm mărimea corectă */
+#botWindow.bubble-galaxy, #botWindow.bubble-toxic, #botWindow.bubble-fire, 
+#botWindow.bubble-blood, #botWindow.bubble-matrix, #botWindow.bubble-jackpot {
+    border: 2px solid transparent !important;
+    background-origin: border-box !important;
+    background-clip: padding-box, border-box !important;
+}
+
+/* Efect de aura pentru bannerele de bordură */
+#botWindow.bubble-galaxy { border: 2px solid #7000ff !important; box-shadow: 0 0 20px #7000ff; }
+#botWindow.bubble-toxic { border: 2px solid #39ff14 !important; box-shadow: 0 0 20px #39ff14; }
+#botWindow.bubble-fire { border: 2px solid #ff4500 !important; box-shadow: 0 0 20px #ff4500; }
+#botWindow.bubble-jackpot { border: 2px solid #29f3ff !important; box-shadow: 0 0 25px #29f3ff; }
 
 /* HEADER LISTĂ */
 .messenger-header-title {
@@ -2087,18 +2117,6 @@ input:checked + .slider:before { transform: translateX(16px); }
 /* Input-ul unde scrii textul */
 .bot-input-area input {
     font-size: var(--chat-fs) !important;
-}
-
-
-
-    /* Fix pentru ca bannerele să nu acopere conținutul dacă au animații */
-#botWindow.bubble-galaxy, #botWindow.bubble-toxic, #botWindow.bubble-fire, #botWindow.bubble-jackpot {
-    border: 3px solid transparent !important;
-}
-
-/* Dacă fundalul chat-ului are banner, mesajele botului trebuie să iasă în evidență */
-#botHistory.bubble-galaxy, #botHistory.bubble-void, #botHistory.bubble-blood {
-    background-blend-mode: overlay;
 }
   </style>
 </head>
@@ -6784,7 +6802,6 @@ window.auth = auth;
 window.db = db;
 window.doc = doc;
 window.updateDoc = updateDoc;
-window.getDoc = getDoc; // <--- ADAUGĂ ACEASTĂ LINIE
 
 
 
@@ -8226,22 +8243,36 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                         document.getElementById('valFS').innerText = displayFS;
                     }
 
-                    // --- 2. [NOU] SYNC CUSTOMIZARE BOT (Bannere Box & Chat) ---
+// --- 2. [REPARAT] SYNC CUSTOMIZARE BOT GLOBAL (Box & Background) ---
                     const botWin = document.getElementById('botWindow');
-                    const botHistory = document.getElementById('botHistory');
-                    if (botWin && botHistory) {
-                        // Colectăm toate clasele de bannere posibile pentru a le curăța înainte de aplicare
+                    
+                    if (botWin) {
                         const allBannerClasses = BANNERS_DB.map(b => b.cssClass);
 
-                        // Aplicare Banner pe Bordură (Box)
+                        // A. Curățăm TOATE clasele de bannere vechi de pe fereastră
                         botWin.classList.remove(...allBannerClasses);
-                        if (data.kevinBoxBanner) botWin.classList.add(data.kevinBoxBanner);
 
-                        // Aplicare Banner pe Fundal Chat (History)
-                        botHistory.classList.remove(...allBannerClasses);
-                        if (data.kevinChatBanner) botHistory.classList.add(data.kevinChatBanner);
+                        // B. FUNDALUL GLOBAL (kevinChatBanner are prioritate pentru fundal)
+                        // Dacă ai ales un banner de fundal, îl punem pe tot telefonul
+                        if (data.kevinChatBanner) {
+                            botWin.classList.add(data.kevinChatBanner);
+                        }
+
+                        // C. BORDURA / ASPECTUL (kevinBoxBanner)
+                        // Dacă ai ales un banner pentru Box, îl aplicăm tot pe botWin. 
+                        // CSS-ul se va ocupa să le combine (sau Box-ul va adăuga bordura/glow-ul specific)
+                        if (data.kevinBoxBanner && data.kevinBoxBanner !== data.kevinChatBanner) {
+                            botWin.classList.add(data.kevinBoxBanner);
+                        }
+
+                        // D. Fix Vizual pentru Bordură: Dacă nu există banner de Box, 
+                        // ne asigurăm că bordura de bază Cyan este vizibilă
+                        if (!data.kevinBoxBanner) {
+                            botWin.style.border = "2px solid #29f3ff";
+                        } else {
+                            botWin.style.border = "none"; // Lăsăm bannerul să facă bordura
+                        }
                     }
-
                     // --- 3. KEVIN-BOT MOOD SYNC ---
                     if (data.kevinAnger !== undefined) {
                         window.kevinAnger = data.kevinAnger;
