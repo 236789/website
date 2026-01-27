@@ -2145,10 +2145,10 @@ const menuBtn = document.getElementById("menuBtn");
     menuBtn.addEventListener("click", () => sideMenu.classList.add("open"));
     closeMenu.addEventListener("click", () => sideMenu.classList.remove("open"));
  
-
 (function() {
-    // PRE-LOAD ALL SOUNDS WITH CORRECT TOKENS
+    // PRE-LOAD ALL SOUNDS
     const sounds = {
+        intro: new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/count%20down%2FElevenLabs_2026-01-27T00_33_08_Eva%20-%20Futuristic%20Robot%20Helper_pvc_sp86_s55_sb78_se77_b_m2.mp3?alt=media&token=2bae9f05-91cf-44ad-bfb1-0821d4d94cf4"),
         5: new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/count%20down%2F5.mp3?alt=media&token=0b7bd4e9-f809-407f-b95d-190e69248731"),
         4: new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/count%20down%2F4.mp3?alt=media&token=60e0ed23-ed39-48c9-9ab1-494b8f440a4c"),
         3: new Audio("https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/count%20down%2F3.mp3?alt=media&token=003bc9a6-f6bb-4b9a-8934-1e3ad44bd35d"),
@@ -2173,83 +2173,78 @@ const menuBtn = document.getElementById("menuBtn");
             e.preventDefault();
             const targetUrl = this.getAttribute('href');
 
-            // --- INSTANT AUDIO TRIGGER ---
-            // Play ambience and the first number (5) immediately
-            sounds.ambience.currentTime = 0;
-            sounds.ambience.volume = 1.0;
-            sounds.ambience.play().catch(err => console.log("Audio interact requirement:", err));
-            
-            sounds[5].currentTime = 0;
-            sounds[5].play();
-
-            // --- SHOW OVERLAY ---
+            // 1. INSTANT SETUP
             overlay.style.display = 'flex';
             document.body.style.overflow = 'hidden';
+            
+            // Start Ambience Immediately
+            sounds.ambience.currentTime = 0;
+            sounds.ambience.volume = 1.0;
+            sounds.ambience.play();
 
-            let count = 5;
-            timerTxt.innerText = count;
+            // Start the Intro Line
+            sounds.intro.play();
+            statusTxt.innerText = "SYSTEMS INITIALIZING...";
 
-            const countdown = setInterval(() => {
-                count--;
-                
-                if (count >= 0) {
-                    timerTxt.innerText = count;
-                    // Play the specific countdown voice
-                    if(sounds[count]) {
-                        sounds[count].currentTime = 0;
-                        sounds[count].play();
-                    }
+            // 2. WAIT FOR INTRO TO FINISH BEFORE COUNTDOWN (Approx 4.5 seconds)
+            setTimeout(() => {
+                let count = 5;
+                timerTxt.innerText = count;
+                sounds[5].play();
+                statusTxt.innerText = "SEQUENCE STARTED";
+
+                const countdown = setInterval(() => {
+                    count--;
                     
-                    // START WARP & SHAKE AT 3 SECONDS
-                    if (count === 3) {
-                        overlay.classList.add('shake-active');
-                        if(speedLines) speedLines.classList.add('speed-lines-active');
-                    }
+                    if (count >= 0) {
+                        timerTxt.innerText = count;
+                        if(sounds[count]) sounds[count].play();
+                        
+                        // Start Hyperspace FX & Shake at 3 seconds
+                        if (count === 3) {
+                            overlay.classList.add('shake-active');
+                            if(speedLines) speedLines.classList.add('speed-lines-active');
+                        }
 
-                    // RED ALERT AT 1 SECOND
-                    if (count === 1) {
-                        timerTxt.style.webkitTextFillColor = '#ff4757';
-                        statusTxt.innerText = "CORE COLLAPSED";
-                        statusTxt.style.color = "#ff4757";
-                    }
-                } 
+                        // Red Alert buildup
+                        if (count === 1) {
+                            timerTxt.style.webkitTextFillColor = '#ff4757';
+                            statusTxt.innerText = "CORE COLLAPSING";
+                            statusTxt.style.color = "#ff4757";
+                        }
+                    } 
 
-                if (count === 0) {
-                    clearInterval(countdown);
-                    
-                    // --- THE FINALE ---
-                    setTimeout(() => {
-                        // 1. MASSIVE ZOOM INTO THE BLACK HOLE
-                        portalCore.classList.add('zooming-active');
-                        timerTxt.style.opacity = '0';
-                        statusTxt.style.opacity = '0';
-
-                        // 2. FADE OUT AMBIENCE JUST BEFORE FLASH
-                        let fadeInterval = setInterval(() => {
-                            if (sounds.ambience.volume > 0.1) {
-                                sounds.ambience.volume -= 0.1;
-                            } else {
-                                sounds.ambience.pause();
-                                clearInterval(fadeInterval);
-                            }
-                        }, 50);
-
-                        // 3. FLASH TO WHITE (BLANK SCREEN)
+                    if (count === 0) {
+                        clearInterval(countdown);
+                        
+                        // 3. THE FINALE (Zoom + Flash)
                         setTimeout(() => {
-                            if(flash) flash.classList.add('active');
-                        }, 500); 
+                            portalCore.classList.add('zooming-active');
+                            timerTxt.style.opacity = '0';
+                            statusTxt.style.opacity = '0';
 
-                        // 4. GO TO PAGE
-                        setTimeout(() => { 
-                            window.location.href = targetUrl; 
-                        }, 1100);
-                    }, 500);
-                }
-            }, 1000);
+                            // Fade out ambience for the transition
+                            let fadeOut = setInterval(() => {
+                                if (sounds.ambience.volume > 0.1) sounds.ambience.volume -= 0.1;
+                                else { sounds.ambience.pause(); clearInterval(fadeOut); }
+                            }, 50);
+
+                            // Flash to blank white
+                            setTimeout(() => {
+                                if(flash) flash.classList.add('active');
+                            }, 500); 
+
+                            // Redirect to family photos
+                            setTimeout(() => { 
+                                window.location.href = targetUrl; 
+                            }, 1100);
+                        }, 500);
+                    }
+                }, 1000);
+            }, 4500); // This delay matches the length of your intro voice line
         };
     };
 
-    // Auto-init logic
     const checkExist = setInterval(() => {
         if (document.getElementById('timeMachineVisit')) {
             initTimeMachine();
@@ -2257,7 +2252,7 @@ const menuBtn = document.getElementById("menuBtn");
         }
     }, 100);
 })();
-</script> 
+</script>
  <!-- FIREBASE GLOBAL LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
