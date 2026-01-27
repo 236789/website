@@ -2065,6 +2065,44 @@
     border-color: #ffd700;
 }
 .btn-edit:hover { background: #ffd700; color: #000; }
+
+
+
+/* --- LIGHTBOX FIXES --- */
+
+/* 1. Fix "Weird Space" - Let image determine height in lightbox */
+.lightbox-item .img-wrapper {
+    aspect-ratio: auto !important;
+    height: auto !important;
+    background: transparent !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.lightbox-item .gallery-img {
+    position: relative !important;
+    width: auto !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 60vh !important; /* Keeps image from taking full screen so comments fit */
+    object-fit: contain !important;
+    border-radius: 10px;
+}
+
+/* 2. Fix Clicks - Ensure buttons work */
+.lightbox-item .gallery-card {
+    pointer-events: auto !important; 
+    height: auto !important;
+    max-height: 90vh; /* Scroll inside card if needed */
+    display: flex;
+    flex-direction: column;
+}
+
+/* 3. Hide the Close Button inside the card (since we have the top X) */
+.lightbox-item .close-modal-btn {
+    display: none;
+}
   </style>
 </head>
 <body>
@@ -3390,6 +3428,7 @@ document.getElementById('files').onchange = (e) => {
 // --- 2. LIGHTBOX TIKTOK-STYLE (SNAP 1 BY 1) ---
 // --- 1. FIXED LIGHTBOX FUNCTION ---
 // --- LIGHTBOX TIKTOK-STYLE LOGIC (FIXED) ---
+// --- UPDATED OPEN LIGHTBOX (With Interaction Fixes) ---
 window.openLightbox = (activeId) => {
     let lb = document.getElementById('globalLightbox');
     if(!lb) {
@@ -3407,33 +3446,60 @@ window.openLightbox = (activeId) => {
     }
 
     const container = document.getElementById('lbContainer');
-    container.innerHTML = ''; // Clear previous items
+    container.innerHTML = ''; 
 
-    // Select all cards from the gallery
     const allCards = document.querySelectorAll('#galleryContainer .gallery-card');
     
     allCards.forEach(card => {
+        const postId = card.dataset.id; 
+        if (!postId) return; 
+
         const item = document.createElement('div');
         item.className = 'lightbox-item';
         
-        // --- FIX: Target the new class .action-btn-pill ---
-        // This grabs the ID from the "votePost('ID')" onclick attribute
-        const btn = card.querySelector('.action-btn-pill');
-        let postId = null;
-        
-        if (btn) {
-            const match = btn.getAttribute('onclick').match(/'([^']+)'/);
-            if (match) postId = match[1];
-        }
-        
-        // Clone the card for the lightbox
+        // 1. Clone the card
         const clone = card.cloneNode(true);
         
-        // Remove Admin buttons from the view inside Lightbox
+        // 2. Remove Admin/Extra buttons from clone
         const adminBtns = clone.querySelector('.admin-actions-wrapper');
         if(adminBtns) adminBtns.remove();
         
-        // Adjust style for fullscreen view
+        // 3. FIX INTERACTION: RENAME IDs & UPDATE ONCLICKS
+        
+        // A. Rename the Comment Section IDs so they don't conflict with background
+        const comSec = clone.querySelector(`#com-sec-${postId}`);
+        const comList = clone.querySelector(`#list-${postId}`);
+        const comInp = clone.querySelector(`#inp-${postId}`);
+        
+        if (comSec) comSec.id = `lb-com-sec-${postId}`;
+        if (comList) comList.id = `lb-list-${postId}`;
+        if (comInp) comInp.id = `lb-inp-${postId}`;
+
+        // B. Update Buttons to use Lightbox (LB) functions
+        // Find Comment Toggle Button (2nd button usually)
+        const actionBtns = clone.querySelectorAll('.action-btn-pill');
+        
+        // Like Button (Index 0)
+        if(actionBtns[0]) {
+            actionBtns[0].setAttribute('onclick', `votePostLB('${postId}', this)`);
+        }
+        
+        // Comment Button (Index 1)
+        if(actionBtns[1]) {
+            actionBtns[1].setAttribute('onclick', `toggleCommentsLB('${postId}')`);
+        }
+
+        // Send Comment Button
+        const sendBtn = clone.querySelector('.card-send-btn');
+        if(sendBtn) {
+            sendBtn.setAttribute('onclick', `postCommentLB('${postId}')`);
+        }
+
+        // C. Image Click inside lightbox shouldn't do anything (or could close it)
+        const img = clone.querySelector('.gallery-img');
+        if(img) img.onclick = null;
+
+        // Finalize Style
         clone.style.pointerEvents = "auto"; 
         clone.style.width = "100%";
         clone.style.maxWidth = "500px";
@@ -3441,8 +3507,7 @@ window.openLightbox = (activeId) => {
         item.appendChild(clone);
         container.appendChild(item);
 
-        // Scroll to the clicked image
-        if(postId && postId === activeId) {
+        if(postId === activeId) {
             setTimeout(() => {
                 item.scrollIntoView({ behavior: 'auto', block: 'center' });
             }, 10);
@@ -3778,57 +3843,42 @@ window.sharePost = (url) => {
 // --- LOAD GALLERY (ACTUALIZAT) ---
 // --- LOAD GALLERY (UPDATED FOR NEW DESI GN) ---
 
+// --- NEW LIGHTBOX-SPECIFIC FUNCTIONS ---
 
-// --- TOGGLE COMMENTS (CU COSMETICE) ---
-window.toggleComments = async (id) => {
-    const sec = document.getElementById(`com-sec-${id}`);
-    const list = document.getElementById(`list-${id}`);
-    if(sec.style.display === 'block') { sec.style.display = 'none'; return; }
+// 1. Toggle Comments inside Lightbox
+window.toggleCommentsLB = async (id) => {
+    const sec = document.getElementById(`lb-com-sec-${id}`);
+    const list = document.getElementById(`lb-list-${id}`);
+    
+    if(sec.style.display === 'block') { 
+        sec.style.display = 'none'; 
+        return; 
+    }
     
     sec.style.display = 'block';
+    
+    // Use existing Firebase query
     const q = query(collection(db, `pisici_posts/${id}/comments`), orderBy("createdAt", "asc"));
     
     onSnapshot(q, async (cSnap) => {
         list.innerHTML = '';
         for (const cDoc of cSnap.docs) {
             const cData = cDoc.data();
-            
-            // Luăm datele userului pt cosmetice
-            const uSnap = await getDoc(doc(db, "accounts", cData.uid));
-            const u = uSnap.exists() ? uSnap.data() : {};
-
-            const frameImg = u.equippedFrame?.img || "";
-            const bannerClass = u.equippedBanner?.cssClass || "";
-            const textClass = u.equippedText?.cssClass || "";
-            const badge = u.equippedBadge ? `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; color:#000; font-size:7px; padding:2px 4px; border-radius:3px; margin-left:5px;"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>` : "";
-            
-            // Verificare rol
-            let roleHtml = "";
-            if(cData.email === 'nicaemmanuel433qe@gmail.com') roleHtml = `<span class="role-badge badge-owner">OWNER</span>`;
-            else if(cData.email === 'kevin.trinity2020@gmail.com') roleHtml = `<span class="role-badge badge-admin">ADMIN</span>`;
-
+            // Simplify user fetching for lightbox (speed)
             list.innerHTML += `
-                <div class="mini-comment ${bannerClass}">
-                    <div class="profile-frame-wrapper" style="width:35px; height:35px; flex-shrink:0;">
-                        <img src="${cData.photo}" class="pop-img-inner">
-                        ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:145%; height:145%">` : ''}
+                <div class="mini-comment">
+                    <div style="font-weight:bold; color:#29f3ff; font-size:11px; margin-bottom:2px;">
+                        ${cData.name || 'User'}
                     </div>
-                    <div class="com-content">
-                        <div class="com-header">
-                            <span class="com-name ${textClass}">${u.username || cData.name}</span>
-                            ${roleHtml}
-                            ${badge}
-                        </div>
-                        <div class="com-text">${cData.text}</div>
-                    </div>
+                    <div style="font-size:12px; color:#fff;">${cData.text}</div>
                 </div>`;
         }
     });
 };
 
-// POSTARE COMENTARIU
-window.postComment = async (id) => {
-    const inp = document.getElementById(`inp-${id}`);
+// 2. Post Comment inside Lightbox
+window.postCommentLB = async (id) => {
+    const inp = document.getElementById(`lb-inp-${id}`);
     const text = inp.value.trim();
     if(!text || !auth.currentUser) return;
 
@@ -3841,6 +3891,27 @@ window.postComment = async (id) => {
         createdAt: serverTimestamp()
     });
     inp.value = '';
+};
+
+// 3. Vote Post inside Lightbox (Visual Feedback)
+window.votePostLB = async (id, btnElement) => {
+    // Run the original DB logic
+    await window.votePost(id);
+    
+    // Visually toggle the heart immediately in the lightbox
+    const icon = btnElement.querySelector('i');
+    if(icon.classList.contains('far')) {
+        icon.classList.replace('far', 'fas');
+        btnElement.classList.add('liked');
+        // Optional: Update number locally
+        const span = btnElement.querySelector('span');
+        span.innerText = parseInt(span.innerText) + 1;
+    } else {
+        icon.classList.replace('fas', 'far');
+        btnElement.classList.remove('liked');
+        const span = btnElement.querySelector('span');
+        span.innerText = parseInt(span.innerText) - 1;
+    }
 };
 
 window.votePost = async (id) => {
