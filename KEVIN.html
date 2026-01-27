@@ -2305,13 +2305,30 @@ body {
     </div>
 </div>
 
-<!-- MODAL SUCCES (ACTUALIZARE) -->
+<!-- EDIT POST MODAL -->
+<div id="editPostModal" class="account-modal-overlay">
+    <div class="account-card" style="border-color: #ffd700; box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);">
+        <button class="close-pop" onclick="document.getElementById('editPostModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:#ffd700; margin-bottom: 20px;">EDITEAZĂ AMINTIREA</h3>
+        
+        <input type="hidden" id="editPostId">
+        
+        <div style="text-align:left; width:100%;">
+            <label class="edit-label">Titlu / Descriere</label>
+            <input type="text" id="editPostTitle" class="modern-input" style="width:100%; margin-bottom:15px; background:rgba(255,255,255,0.05); color:white;" placeholder="Scrie un titlu nou...">
+        </div>
+        
+        <button onclick="savePostEdit()" class="btn-save-profile" style="background:#ffd700; color:#000; width:100%; font-weight:900;">SALVEAZĂ</button>
+    </div>
+</div>
+
+<!-- SUCCESS MODAL -->
 <div id="successUpdateModal" class="account-modal-overlay">
     <div class="account-card" style="border-color: #2ecc71; box-shadow: 0 0 50px rgba(46, 204, 113, 0.2);">
         <div style="font-size: 40px; color: #2ecc71; margin-bottom: 10px;"><i class="fas fa-check-circle"></i></div>
-        <h3 style="font-family:'Orbitron'; color:#2ecc71; margin-bottom: 15px;">POSTARE ACTUALIZATĂ</h3>
-        <p style="font-size: 14px; color: #fff;">Modificările au fost salvate cu succes în baza de date!</p>
-        <button onclick="document.getElementById('successUpdateModal').classList.remove('active')" class="btn-save-profile" style="background:#2ecc71; color:#000; width:100%; margin-top:20px;">AM ÎNȚELES</button>
+        <h3 style="font-family:'Orbitron'; color:#2ecc71; margin-bottom: 15px;">ACTUALIZAT!</h3>
+        <p style="font-size: 14px; color: #fff;">Modificările au fost salvate.</p>
+        <button onclick="document.getElementById('successUpdateModal').classList.remove('active')" class="btn-save-profile" style="background:#2ecc71; color:#000; width:100%; margin-top:20px;">OK</button>
     </div>
 </div>
 <!-- BANNED OVERLAY -->
@@ -3851,74 +3868,257 @@ document.getElementById('postBtn').onclick = async () => {
     location.reload();
 };
 
-// --- 4. AFIȘARE GALERIE (KEVIN) ---
-async function loadGallery() {
-    const cont = document.getElementById('galleryContainer');
-    if(!cont) return;
-    
-    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Se caută amintiri din ${currentYearFilter}...</p>`;
 
-    const q = query(
-        collection(db, "kevin_posts"), 
-        where("year", "==", currentYearFilter.toString()), 
-        orderBy("createdAt", "desc")
-    );
- 
-    onSnapshot(q, (snap) => {
-        cont.innerHTML = '';
-        if(snap.empty) {
-            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire în anul ${currentYearFilter}.</p>`;
-            return;
+
+// --- 5. FUNCȚII SOCIALE (VIEWS & COMMENTS) ---
+
+    // A. ÎNREGISTRARE VIZUALIZARE (Ochiul)
+    window.registerView = async (id) => {
+        // Numărăm vizualizarea doar dacă nu am mai numărat-o în sesiunea curentă
+        const sessionKey = `viewed_kevin_${id}`;
+        if (sessionStorage.getItem(sessionKey)) return;
+
+        try {
+            const ref = doc(db, "kevin_posts", id);
+            await updateDoc(ref, {
+                views: increment(1)
+            });
+            sessionStorage.setItem(sessionKey, "true"); // Marcăm ca văzut
+        } catch (e) { console.error("Eroare views:", e); }
+    };
+
+    // B. DESCHIDE/ÎNCHIDE COMENTARIILE (Cu Cosmetice)
+    window.toggleComments = async (id) => {
+        const sec = document.getElementById(`com-sec-${id}`);
+        const list = document.getElementById(`list-${id}`);
+        
+        // Toggle vizibilitate
+        if(sec.style.display === 'block') { 
+            sec.style.display = 'none'; 
+            return; 
         }
-        snap.forEach(docSnap => {
-            const data = docSnap.data();
-            const id = docSnap.id;
-            const likesCount = data.likes ? Object.keys(data.likes).length : 0;
-            const views = data.views || 0;
+        sec.style.display = 'block';
+        list.innerHTML = '<div style="color:#aaa; font-size:10px; padding:10px;">Se încarcă...</div>';
 
-            // 1. Logica pentru Buton Admin
-            let deleteBtn = '';
-            if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
-                deleteBtn = `<div class="admin-actions-wrapper"><button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button></div>`;
+        // Ascultăm comentariile în timp real
+        const q = query(collection(db, `kevin_posts/${id}/comments`), orderBy("createdAt", "asc"));
+        
+        onSnapshot(q, async (cSnap) => {
+            list.innerHTML = '';
+            
+            if (cSnap.empty) {
+                list.innerHTML = '<div style="color:#aaa; font-size:10px; padding:10px;">Fii primul care comentează!</div>';
+                return;
             }
 
-            // 2. Logica pentru Like (Inimă plină/goală)
-            const currentUid = auth.currentUser ? auth.currentUser.uid : null;
-            const isLiked = (data.likes && currentUid && data.likes[currentUid]);
-            const likeClass = isLiked ? 'liked' : '';
-            const heartIcon = isLiked ? 'fas fa-heart' : 'far fa-heart';
-
-            // 3. HTML-ul Cardului (Actualizat cu .card-bottom-content)
-            cont.innerHTML += `
-            <div class="gallery-card" data-id="${id}">
-                ${deleteBtn}
+            // Procesăm fiecare comentariu
+            for (const cDoc of cSnap.docs) {
+                const cData = cDoc.data();
                 
-                <div class="card-user-info">
-                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
-                    <div class="card-user-name">${data.authorName || 'Kevin Trinity'}</div>
-                </div>
-                
-                <div class="img-wrapper">
-                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${id}')">
-                </div>
+                // Căutăm datele autorului comentariului pentru a-i afișa cosmeticele
+                let frameImg = "";
+                let bannerClass = "";
+                let textClass = "";
+                let badgeHtml = "";
+                let roleHtml = "";
 
-                <div class="card-bottom-content">
-                    <!-- Titlul este afișat aici -->
-                    ${data.title ? `<h3 class="card-title-static" style="font-size:14px; margin-bottom:5px;">${data.title}</h3>` : ''}
+                try {
+                    const uSnap = await getDoc(doc(db, "accounts", cData.uid));
+                    if (uSnap.exists()) {
+                        const u = uSnap.data();
+                        frameImg = u.equippedFrame?.img || "";
+                        bannerClass = u.equippedBanner?.cssClass || "";
+                        textClass = u.equippedText?.cssClass || "";
+                        
+                        if(u.equippedBadge) {
+                            badgeHtml = `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; color:#000; font-size:8px; padding:2px 4px; border-radius:3px; margin-left:5px; font-weight:bold;"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>`;
+                        }
+                    }
+                } catch(e) { console.log("User data missing for comment"); }
+
+                // Verificare Staff (Hardcoded pentru siguranță vizuală)
+                if(cData.email === 'nicaemmanuel433qe@gmail.com') roleHtml = `<span class="role-badge badge-owner" style="margin-left:5px;">OWNER</span>`;
+                else if(cData.email === 'kevin.trinity2020@gmail.com') roleHtml = `<span class="role-badge badge-admin" style="margin-left:5px;">ADMIN</span>`;
+
+                // Construim HTML-ul comentariului
+                list.innerHTML += `
+                    <div class="mini-comment ${bannerClass}" style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px; padding:10px; border-radius:15px; background:rgba(255,255,255,0.03);">
+                        <div class="profile-frame-wrapper" style="width:35px; height:35px; flex-shrink:0; margin:0;">
+                            <img src="${cData.photo || 'https://iili.io/fXks1Dv.png'}" class="pop-img-inner">
+                            ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:145%; height:145%">` : ''}
+                        </div>
+                        <div class="com-content" style="flex:1;">
+                            <div class="com-header" style="display:flex; align-items:center; flex-wrap:wrap;">
+                                <span class="com-name ${textClass}" style="font-weight:bold; font-size:12px; color:#fff;">${cData.name}</span>
+                                ${roleHtml}
+                                ${badgeHtml}
+                            </div>
+                            <div class="com-text" style="font-size:12px; color:#ddd; margin-top:2px; word-break:break-word;">${cData.text}</div>
+                        </div>
+                    </div>`;
+            }
+        });
+    };
+
+    // C. POSTARE COMENTARIU
+    window.postComment = async (id) => {
+        if(!auth.currentUser) return alert("Trebuie să fii logat!");
+        
+        const inp = document.getElementById(`inp-${id}`);
+        const text = inp.value.trim();
+        if(!text) return;
+
+        inp.disabled = true; // Previne spam
+
+        try {
+            await addDoc(collection(db, `kevin_posts/${id}/comments`), {
+                text: text,
+                uid: auth.currentUser.uid,
+                email: auth.currentUser.email,
+                name: auth.currentUser.displayName,
+                photo: auth.currentUser.photoURL,
+                createdAt: serverTimestamp()
+            });
+            
+            // Actualizăm contorul de comentarii pe postare
+            await updateDoc(doc(db, "kevin_posts", id), {
+                commentCount: increment(1)
+            });
+            
+            inp.value = '';
+        } catch(e) { alert("Eroare: " + e.message); }
+        finally { inp.disabled = false; }
+    };
+
+// --- 4. AFIȘARE GALERIE (KEVIN) - FINAL UPDATE ---
+// --- LOAD GALLERY (ACTUALIZATĂ) ---
+    async function loadGallery() {
+        const cont = document.getElementById('galleryContainer');
+        if(!cont) return;
+        
+        cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Se caută amintiri din ${currentYearFilter}...</p>`;
+
+        const q = query(
+            collection(db, "kevin_posts"), 
+            where("year", "==", currentYearFilter.toString()), 
+            orderBy("createdAt", "desc")
+        );
+
+        onSnapshot(q, (snap) => {
+            cont.innerHTML = '';
+            if(snap.empty) {
+                cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire cu Kevin în anul ${currentYearFilter}.</p>`;
+                return;
+            }
+            snap.forEach(docSnap => {
+                const data = docSnap.data();
+                const id = docSnap.id;
+                const likesCount = data.likes ? Object.keys(data.likes).length : 0;
+                const views = data.views || 0;
+                const comms = data.commentCount || 0;
+
+                // Admin Delete Button
+                let deleteBtn = '';
+                if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
+                    deleteBtn = `<div class="admin-actions-wrapper"><button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button></div>`;
+                }
+
+                // Check Like Status
+                const currentUid = auth.currentUser ? auth.currentUser.uid : null;
+                const isLiked = (data.likes && currentUid && data.likes[currentUid]);
+                const likeClass = isLiked ? 'liked' : '';
+                const heartIcon = isLiked ? 'fas fa-heart' : 'far fa-heart';
+
+                cont.innerHTML += `
+                <div class="gallery-card" data-id="${id}">
+                    ${deleteBtn}
                     
-                    <div class="card-actions-bar">
-                        <button class="action-btn-pill ${likeClass}" onclick="votePost('${id}')">
-                            <i class="${heartIcon}"></i> ${likesCount}
-                        </button>
-                        <div class="action-btn-pill" style="cursor: default; opacity: 0.8;">
-                            <i class="far fa-eye"></i> ${views}
+                    <div class="card-user-info">
+                        <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                        <div class="card-user-name">${data.authorName || 'Kevin Trinity'}</div>
+                    </div>
+                    
+                    <div class="img-wrapper">
+                        <!-- registerView(id) se apelează când dai click pe poză -->
+                        <img src="${data.img}" class="gallery-img" onclick="registerView('${id}'); openLightbox('${id}')">
+                    </div>
+
+                    <div class="card-bottom-content">
+                        ${data.title ? `<h3 class="card-title-static" style="font-size:14px; margin-bottom:5px;">${data.title}</h3>` : ''}
+                        
+                        <div class="card-actions-bar">
+                            <div style="display:flex; gap:10px;">
+                                <button class="action-btn-pill ${likeClass}" onclick="votePost('${id}')">
+                                    <i class="${heartIcon}"></i> ${likesCount}
+                                </button>
+                                <button class="action-btn-pill" onclick="toggleComments('${id}')">
+                                    <i class="far fa-comment-dots"></i> ${comms}
+                                </button>
+                            </div>
+                            <div class="action-btn-pill" style="cursor: default; opacity: 0.8;">
+                                <i class="far fa-eye"></i> ${views}
+                            </div>
+                        </div>
+
+                        <!-- SECȚIUNEA DE COMENTARII (Ascunsă) -->
+                        <div class="card-comments-section" id="com-sec-${id}" style="display:none; margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+                            <div class="card-comments-list" id="list-${id}" style="max-height:200px; overflow-y:auto; margin-bottom:10px;"></div>
+                            
+                            <div class="card-input-area" style="display:flex; gap:10px;">
+                                <input class="modern-input" id="inp-${id}" placeholder="Scrie ceva frumos..." style="margin:0; flex:1; padding:10px; font-size:12px;">
+                                <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:40px; cursor:pointer; color:#000;">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>`;
+                </div>`;
+            });
+        }, (error) => {
+            console.error("Eroare Galerie:", error);
         });
-    });
-}
+    }
+
+
+// --- 5. FUNCȚII EDITARE ---
+
+    // Deschide fereastra de editare
+    window.openEditPost = (id, currentTitle) => {
+        const modal = document.getElementById('editPostModal');
+        const idInput = document.getElementById('editPostId');
+        const titleInput = document.getElementById('editPostTitle');
+
+        if(modal && idInput && titleInput) {
+            idInput.value = id;
+            // Decodează caracterele speciale dacă e cazul, dar de obicei merge direct
+            titleInput.value = currentTitle || ""; 
+            modal.classList.add('active');
+        } else {
+            console.error("Modalul de editare nu a fost găsit în HTML!");
+        }
+    };
+
+    // Salvează modificările în Firebase
+    window.savePostEdit = async () => {
+        const id = document.getElementById('editPostId').value;
+        const newTitle = document.getElementById('editPostTitle').value;
+
+        if(!id) return;
+
+        try {
+            const postRef = doc(db, "kevin_posts", id);
+            await updateDoc(postRef, {
+                title: newTitle
+            });
+
+            // Închide modalul de editare
+            document.getElementById('editPostModal').classList.remove('active');
+            // Deschide modalul de succes
+            document.getElementById('successUpdateModal').classList.add('active');
+        } catch(e) {
+            alert("Eroare la salvare: " + e.message);
+        }
+    };
 
 
 // --- FUNCȚII GLOBALE PENTRU BUTOANELE DIN HTML ---
