@@ -4152,49 +4152,19 @@ window.toggleComments = async (id) => {
     });
 };
 
-    // C. POSTARE COMENTARIU
-    window.postComment = async (id) => {
-        if(!auth.currentUser) return alert("Trebuie să fii logat!");
-        
-        const inp = document.getElementById(`inp-${id}`);
-        const text = inp.value.trim();
-        if(!text) return;
-
-        inp.disabled = true; // Previne spam
-
-        try {
-            await addDoc(collection(db, `kevin_posts/${id}/comments`), {
-                text: text,
-                uid: auth.currentUser.uid,
-                email: auth.currentUser.email,
-                name: auth.currentUser.displayName,
-                photo: auth.currentUser.photoURL,
-                createdAt: serverTimestamp()
-            });
-            
-            // Actualizăm contorul de comentarii pe postare
-            await updateDoc(doc(db, "kevin_posts", id), {
-                commentCount: increment(1)
-            });
-            
-            inp.value = '';
-        } catch(e) { alert("Eroare: " + e.message); }
-        finally { inp.disabled = false; }
-    };
 
 
 
 
-// --- 4. AFIȘARE GALERIE (FINAL CU EDIT BUTTON) ---
-// --- 4. AFIȘARE GALERIE (KEVIN) - FINAL UPDATE v2 ---
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
     if(!cont) return;
     
-    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Se caută amintiri din ${currentYearFilter}...</p>`;
+    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Emmanuel (${currentYearFilter})...</p>`;
 
+    // COLECȚIA: emmanuel_posts
     const q = query(
-        collection(db, "kevin_posts"), 
+        collection(db, "emmanuel_posts"), 
         where("year", "==", currentYearFilter.toString()), 
         orderBy("createdAt", "desc")
     );
@@ -4211,77 +4181,49 @@ async function loadGallery() {
             const likesCount = data.likes ? Object.keys(data.likes).length : 0;
             const comms = data.commentCount || 0;
 
-            // Curățăm textul pentru a nu strica HTML-ul la onclick
             const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+            const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-            // --- ADMIN BUTTONS ---
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
                 adminBtns = `
                 <div class="admin-actions-wrapper">
-                    <!-- Trimitem și descrierea la editare -->
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')">
-                        <i class="fas fa-pen"></i>
-                    </button>
-                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')"><i class="fas fa-pen"></i></button>
+                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
                 </div>`;
             }
 
-            // Like Logic
-            const currentUid = auth.currentUser ? auth.currentUser.uid : null;
-            const isLiked = (data.likes && currentUid && data.likes[currentUid]);
-            const likeClass = isLiked ? 'liked' : '';
-            const heartIcon = isLiked ? 'fas fa-heart' : 'far fa-heart';
+            const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
 
             cont.innerHTML += `
             <div class="gallery-card" data-id="${id}">
                 ${adminBtns}
-                
                 <div class="card-user-info">
                     <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
-                    <div class="card-user-name">${data.authorName || 'Kevin Trinity'}</div>
+                    <div class="card-user-name">${data.authorName}</div>
                 </div>
-                
                 <div class="img-wrapper">
-                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${id}')">
+                    <img src="${data.img}" class="gallery-img">
                 </div>
-
                 <div class="card-bottom-content">
-                    <!-- Titlu și Descriere -->
-                    ${data.title ? `<h3 class="card-title-static" style="font-size:14px; margin-bottom:5px;">${data.title}</h3>` : ''}
-                    ${data.desc ? `<p class="card-desc-static" style="font-size:12px; color:#aaa; margin-bottom:10px;">${data.desc}</p>` : ''}
-                    
+                    ${data.title ? `<h3 class="card-title-static">${data.title}</h3>` : ''}
+                    ${data.desc ? `<p class="card-desc-static">${data.desc}</p>` : ''}
                     <div class="card-actions-bar">
                         <div style="display:flex; gap:10px;">
-                            <button class="action-btn-pill ${likeClass}" onclick="votePost('${id}')">
-                                <i class="${heartIcon}"></i> ${likesCount}
+                            <button class="action-btn-pill ${isLiked ? 'liked' : ''}" onclick="votePost('${id}')">
+                                <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i> ${likesCount}
                             </button>
                             <button class="action-btn-pill" onclick="toggleComments('${id}')">
                                 <i class="far fa-comment-dots"></i> ${comms}
                             </button>
                         </div>
-
-                        <!-- BUTONUL SHARE -->
-                        <button class="action-btn-pill" onclick="sharePost('${data.img}')">
-                            <i class="fas fa-share-alt"></i>
-                        </button>
+                        <button class="action-btn-pill" onclick="sharePost('${data.img}')"><i class="fas fa-share-alt"></i></button>
                     </div>
-
-                    <!-- COMENTARII -->
-                    <div class="card-comments-section" id="com-sec-${id}" style="display:none; margin-top:10px;">
-                        <div class="card-comments-list" id="list-${id}" style="max-height:250px; overflow-y:auto;"></div>
-                        
+                    <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
+                        <div class="card-comments-list" id="list-${id}"></div>
                         <div class="card-input-area">
-                            <input type="text" class="modern-input" id="inp-${id}" 
-                                placeholder="Scrie ceva frumos..." 
-                                onkeypress="if(event.key === 'Enter') postComment('${id}')">
-                                
-                            <button class="card-send-btn" onclick="postComment('${id}')">
-                                <i class="fas fa-paper-plane"></i>
-                            </button>
+                            <input type="text" class="modern-input" id="inp-${id}" placeholder="Scrie ceva..." onkeypress="if(event.key === 'Enter') postComment('${id}')">
+                            <button class="card-send-btn" onclick="postComment('${id}')"><i class="fas fa-paper-plane"></i></button>
                         </div>
                     </div>
                 </div>
@@ -4337,42 +4279,57 @@ async function loadGallery() {
 
 // --- FUNCȚII GLOBALE PENTRU BUTOANELE DIN HTML ---
 
-    // 1. Funcția de Vot (Like)
-    window.votePost = async (id) => {
-        if(!auth.currentUser) return alert("Trebuie să fii logat pentru a da like!");
-        
-        const postRef = doc(db, "kevin_posts", id);
-        const snap = await getDoc(postRef);
-        
-        if (snap.exists()) {
-            const likes = snap.data().likes || {};
-            const uid = auth.currentUser.uid;
-            
-            if(likes[uid]) {
-                delete likes[uid]; // Scoate like-ul
-            } else {
-                likes[uid] = true; // Adaugă like-ul
-            }
-            
-            await updateDoc(postRef, { likes: likes });
-        }
-    };
+// 1. Vote - SCHIMBĂ SĂ FIE CONSISTENT CU loadGallery
+window.votePost = async (id) => {
+    if(!auth.currentUser) return alert("Trebuie să fii logat!");
+    const postRef = doc(db, "emmanuel_posts", id); // Schimbat din kevin în emmanuel
+    const snap = await getDoc(postRef);
+    if (snap.exists()) {
+        const likes = snap.data().likes || {};
+        const uid = auth.currentUser.uid;
+        if(likes[uid]) delete likes[uid];
+        else likes[uid] = true;
+        await updateDoc(postRef, { likes: likes });
+    }
+};
+
+// 2. Post Comment
+window.postComment = async (id) => {
+    if(!auth.currentUser) return alert("Trebuie să fii logat!");
+    const inp = document.getElementById(`inp-${id}`);
+    const text = inp.value.trim();
+    if(!text) return;
+    try {
+        await addDoc(collection(db, `emmanuel_posts/${id}/comments`), { // Schimbat calea
+            text: text,
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email,
+            name: auth.currentUser.displayName,
+            photo: auth.currentUser.photoURL,
+            createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db, "emmanuel_posts", id), { commentCount: increment(1) });
+        inp.value = '';
+    } catch(e) { console.error(e); }
+};
+
+// 3. Delete (executeDelete)
+window.executeDelete = async () => {
+    const id = document.getElementById('deleteTargetId').value;
+    if(!id) return;
+    try {
+        await deleteDoc(doc(db, "emmanuel_posts", id)); // Asigură-te că e emmanuel_posts
+        document.getElementById('deleteConfirmModal').classList.remove('active');
+        alert("Șters!");
+    } catch(e) { console.error(e); }
+};
+
 
     // 2. Funcția de Delete (Admin)
 window.deleteKevinPost = (id) => {
     document.getElementById('deleteTargetId').value = id;
     document.getElementById('deleteConfirmModal').classList.add('active');
 };
-
-window.executeDelete = async () => {
-    const id = document.getElementById('deleteTargetId').value;
-    if(!id) return;
-    await deleteDoc(doc(db, "kevin_posts", id));
-    document.getElementById('deleteConfirmModal').classList.remove('active');
-    alert("Șters cu succes!");
-};
-
-
 
     // 4. Funcția pentru Toggle Menu (Ani)
     window.toggleYearMenu = (menuId) => {
@@ -4498,8 +4455,11 @@ window.flyDiamond = () => {
     }, 100);
     setTimeout(() => { flyer.style.display = 'none'; document.getElementById('streakRewardModal').classList.remove('active'); }, 1100);
 };
-document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
-
+// Înlocuiește ultima linie (document.getElementById('claimStreakBtn').onclick...) cu asta:
+const btnClaim = document.getElementById('claimStreakBtn');
+if (btnClaim) {
+    btnClaim.onclick = window.flyDiamond;
+}
 
   </script>
 </body>
