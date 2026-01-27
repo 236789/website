@@ -2839,6 +2839,8 @@ body {
         </button>
     </div>
 
+
+
     <!-- PANOU UPLOAD ADMIN -->
     <div id="adminUploadPanel" style="display:none; border: 2px solid var(--primary); border-radius: 25px; padding: 30px; background: rgba(13, 25, 41, 0.5); margin-bottom: 50px; text-align:center;">
         <h3 style="font-family:'Orbitron'; color:var(--primary); margin-top:0;">MOD ADMIN: KEVIN ARCHIVES</h3>
@@ -2865,6 +2867,14 @@ body {
         <div class="admin-preview-wrapper" id="previewWrapper" style="display:none;">
             <div id="previewArea" class="preview-slider"></div>
         </div>
+
+<!-- Add this right before the #postBtn button -->
+<div id="uploadProgress" style="display:none; margin: 20px auto; width: 80%; max-width: 400px;">
+    <p style="font-family:'Orbitron'; font-size: 12px; color: var(--primary);">ÎNCĂRCARE ARHIVĂ...</p>
+    <div style="width: 100%; height: 8px; background: #111; border-radius: 10px; overflow: hidden; border: 1px solid var(--primary-dim);">
+        <div id="progressBar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
+    </div>
+</div>
         
         <button id="postBtn" class="btn-post-launch" style="display:none;">
             <i class="fas fa-rocket"></i> LANSEAZĂ ÎN <span id="targetYearLabel">...</span>
@@ -2954,89 +2964,7 @@ import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://w
 
 
 
-// ==========================================
-// 3. UPLOAD FINAL (Butonul "LANSEAZĂ")
-// ==========================================
-document.getElementById('postBtn').onclick = async () => {
-    // 1. Verificări de siguranță
-    if (filesToUpload.length === 0) {
-        return alert("Nu ai selectat nicio poză!");
-    }
-    if (!selectedUploadYear) {
-        return alert("TREBUIE să selectezi anul din meniu înainte să apeși pe lansare!");
-    }
 
-    // 2. Blocăm butonul și arătăm progresul
-    const btn = document.getElementById('postBtn');
-    btn.disabled = true; 
-    btn.innerText = "SE ÎNCARCĂ...";
-    
-    // Dacă ai un element de progres în HTML, îl afișăm
-    const progDiv = document.getElementById('uploadProgress');
-    const progBar = document.getElementById('progressBar');
-    if(progDiv) progDiv.style.display = 'block';
-
-    // 3. Luăm datele userului (pentru autor)
-    let userData = {};
-    if (auth.currentUser) {
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        if (userSnap.exists()) userData = userSnap.data();
-    }
-
-    // 4. Procesăm fiecare fișier
-    for (let i = 0; i < filesToUpload.length; i++) {
-        if(!filesToUpload[i]) continue; // Sărim peste eventuale goluri
-        
-        const file = filesToUpload[i];
-        // Luăm titlul din inputul generat la preview (dacă există)
-        const titleInput = document.getElementById(`t-${i}`);
-        const title = titleInput ? titleInput.value : "";
-        
-        // A. Upload în Storage (Folder: kevin)
-        const sRef = ref(storage, `kevin/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-
-        await new Promise((resolve, reject) => {
-            task.on('state_changed', 
-                (snapshot) => { 
-                    // Update bară progres (opțional)
-                    if(progBar) {
-                        const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                        progBar.style.width = percent + '%';
-                    }
-                },
-                (error) => {
-                    console.error("Eroare upload:", error);
-                    resolve(); // Continuăm chiar dacă una eșuează
-                },
-                async () => {
-                    // B. Obținem URL-ul public
-                    const url = await getDownloadURL(task.snapshot.ref);
-                    
-                    // C. Scriem în baza de date (Colecția: kevin_posts)
-                    await addDoc(collection(db, "kevin_posts"), {
-                        img: url, 
-                        title: title, 
-                        likes: {}, 
-                        views: 0, 
-                        commentCount: 0,
-                        createdAt: serverTimestamp(),
-                        authorName: userData.username || auth.currentUser.displayName || "Admin",
-                        authorPhoto: userData.image || auth.currentUser.photoURL,
-                        authorUid: auth.currentUser.uid,
-                        year: selectedUploadYear.toString(), // AICI SE SALVEAZĂ ANUL SELECTAT
-                        isPinned: false
-                    });
-                    resolve();
-                }
-            );
-        });
-    }
-
-    // 5. Finalizare
-    alert("Succes! Amintirile au fost salvate în anul " + selectedUploadYear);
-    location.reload();
-};
 // --- INVITE SYSTEM LOGIC ---
  
 // 1. Open Modal and Generate Link
@@ -4003,32 +3931,61 @@ document.getElementById('files').onchange = (e) => {
     document.getElementById('previewWrapper').style.display = 'block';
     document.getElementById('adminYearPicker').style.display = 'block';
 };
-// --- 3. UPLOAD FINAL (Butonul LANSEAZĂ) ---
+
+
 document.getElementById('postBtn').onclick = async () => {
-    if (filesToUpload.length === 0 || !selectedUploadYear) return alert("Selectează pozele și anul!");
-    
+    // 1. Safety Checks
+    if (filesToUpload.length === 0) return alert("Nu ai selectat nicio poză!");
+    if (!selectedUploadYear) return alert("Selectează anul din meniu!");
+
     const btn = document.getElementById('postBtn');
-    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
-    document.getElementById('uploadProgress').style.display = 'block';
+    const progressDiv = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('progressBar');
+
+    // 2. UI Feedback
+    btn.disabled = true; 
+    btn.innerText = "SE ÎNCARCĂ...";
+    if (progressDiv) progressDiv.style.display = 'block';
+
+    // 3. Determine which collection to use (based on page title)
+    // Use "emmanuel_posts" for Emmanuel page or "kevin_posts" for Kevin page
+    const collectionName = document.body.innerText.includes("EMMANUEL") ? "emmanuel_posts" : "kevin_posts";
 
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue;
-        const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`).value;
-        const desc = document.getElementById(`d-${i}`).value;
         
-        const sRef = ref(storage, `kevin/${Date.now()}_${file.name}`);
+        const file = filesToUpload[i];
+        const titleInput = document.getElementById(`t-${i}`);
+        const title = titleInput ? titleInput.value : "";
+        const descInput = document.getElementById(`d-${i}`);
+        const desc = descInput ? descInput.value : "";
+        
+        // Upload Path
+        const folder = collectionName === "emmanuel_posts" ? "emmanuel" : "kevin";
+        const sRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
             task.on('state_changed', 
-                (s) => { document.getElementById('progressBar').style.width = ((s.bytesTransferred/s.totalBytes)*100) + '%'; }, 
-                null, 
+                (snapshot) => { 
+                    const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    if (progressBar) progressBar.style.width = percent + '%';
+                },
+                (error) => { console.error(error); resolve(); },
                 async () => {
                     const url = await getDownloadURL(task.snapshot.ref);
-                    await addDoc(collection(db, "kevin_posts"), {
-                        img: url, title: title, desc: desc, likes: {}, views: 0,
-                        createdAt: serverTimestamp(), authorUid: auth.currentUser.uid,
+                    
+                    await addDoc(collection(db, collectionName), {
+                        img: url, 
+                        title: title,
+                        desc: desc,
+                        likes: {}, 
+                        views: 0, 
+                        commentCount: 0,
+                        createdAt: serverTimestamp(),
+                        authorName: auth.currentUser.displayName || "Admin",
+                        authorPhoto: auth.currentUser.photoURL,
+                        authorUid: auth.currentUser.uid,
                         year: selectedUploadYear.toString()
                     });
                     resolve();
@@ -4036,11 +3993,10 @@ document.getElementById('postBtn').onclick = async () => {
             );
         });
     }
+
+    alert("Succes! Amintirile au fost salvate.");
     location.reload();
 };
-
-
-
 // --- 5. FUNCȚII SOCIALE (VIEWS & COMMENTS) ---
 
     // A. ÎNREGISTRARE VIZUALIZARE (Ochiul)
