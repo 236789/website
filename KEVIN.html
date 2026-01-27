@@ -2734,6 +2734,66 @@ import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://w
     const storage = getStorage(app);
 
 
+
+ // --- LOAD GALLERY ---
+    async function loadGallery() {
+        const cont = document.getElementById('galleryContainer');
+        if(!cont) return;
+        
+        cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Se caută amintiri din ${currentYearFilter}...</p>`;
+
+        // Interogare KEVIN_POSTS după AN
+        const q = query(
+            collection(db, "kevin_posts"), 
+            where("year", "==", currentYearFilter.toString()), 
+            orderBy("createdAt", "desc")
+        );
+
+        onSnapshot(q, (snap) => {
+            cont.innerHTML = '';
+            if(snap.empty) {
+                cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire cu Kevin în anul ${currentYearFilter}.</p>`;
+                return;
+            }
+            snap.forEach(docSnap => {
+                const data = docSnap.data();
+                const id = docSnap.id;
+                const likesCount = data.likes ? Object.keys(data.likes).length : 0;
+                const views = data.views || 0;
+
+                // Buton Delete vizibil doar pentru Admini
+                let deleteBtn = '';
+                if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
+                    deleteBtn = `
+                    <div class="admin-actions-wrapper">
+                        <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
+                    </div>`;
+                }
+
+                cont.innerHTML += `
+                <div class="gallery-card" data-id="${id}">
+                    ${deleteBtn}
+                    <div class="card-user-info">
+                        <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                        <div class="card-user-name">${data.authorName || 'Kevin Trinity'}</div>
+                    </div>
+                    <div class="img-wrapper">
+                        <img src="${data.img}" class="gallery-img" onclick="openLightbox('${id}')">
+                        <div class="card-info-overlay"><span class="card-title-text">${data.title || ''}</span></div>
+                    </div>
+                    <div class="card-actions-bar">
+                        <button class="action-btn-pill" onclick="votePost('${id}')"><i class="far fa-heart"></i> ${likesCount}</button>
+                        <div class="action-btn-pill"><i class="far fa-eye"></i> ${views}</div>
+                    </div>
+                </div>`;
+            });
+        }, (error) => {
+            console.error("Eroare Galerie:", error);
+            cont.innerHTML = `<p style="color:red; text-align:center;">Eroare încărcare (Verifică index sau reguli).</p>`;
+        });
+    }
+
+
 // ==========================================
 // 3. UPLOAD FINAL (Butonul "LANSEAZĂ")
 // ==========================================
