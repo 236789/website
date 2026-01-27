@@ -1803,80 +1803,27 @@
 
 
 
-
 /* --- FIX TEXT BREAKING (eeeeeeee fix) --- */
-.com-text, .card-desc-text {
-    word-break: break-word; /* Forțează ruperea cuvintelor lungi */
-    overflow-wrap: break-word;
-    white-space: pre-wrap;
+.com-text, .card-desc-text, .com-name, .card-user-name {
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
 }
 
-/* --- CUSTOM CYBER SCROLLBAR --- */
-.preview-slider::-webkit-scrollbar { height: 6px; width: 6px; }
-.preview-slider::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 10px; }
-.preview-slider::-webkit-scrollbar-thumb { 
-    background: var(--primary); 
-    border-radius: 10px; 
-    box-shadow: 0 0 10px var(--primary); 
-}
-
-/* --- ADMIN SLIDER UI --- */
-.admin-preview-wrapper {
-    position: relative;
-    width: 100%;
-    max-width: 1200px;
-    margin: 20px auto;
-}
-
-.preview-slider {
-    display: flex;
-    gap: 15px;
-    overflow-x: auto;
-    padding: 20px;
-    scroll-snap-type: x mandatory; /* Snap pt fluiditate */
-    scroll-behavior: smooth;
-}
-
-.preview-card {
-    scroll-snap-align: center;
-}
-
-/* Săgeți de navigare slider admin */
-.slider-arrow {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    background: var(--primary);
-    color: #000;
-    border: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    cursor: pointer;
-    z-index: 10;
-    box-shadow: 0 0 15px var(--primary-dim);
-    display: flex; align-items: center; justify-content: center;
-}
-.arrow-left { left: -10px; }
-.arrow-right { right: -10px; }
-
-/* --- LIGHTBOX TIKTOK-STYLE --- */
+/* --- LIGHTBOX TIKTOK STYLE (Snap 1 by 1) --- */
 #globalLightbox {
     position: fixed; inset: 0;
-    background: rgba(0, 0, 0, 0.98);
+    background: #000;
     z-index: 99999;
     display: none;
-    justify-content: center;
-    align-items: center;
-    backdrop-filter: blur(15px);
+    flex-direction: column;
 }
 
 .lightbox-scroll-container {
     width: 100%;
     height: 100%;
     display: flex;
-    overflow-x: auto; /* Default PC: Orizontal */
-    scroll-snap-type: x mandatory;
+    overflow-x: auto; /* PC: Orizontal */
+    scroll-snap-type: x mandatory; /* Forțează oprirea la fiecare card */
     scroll-behavior: smooth;
 }
 
@@ -1888,30 +1835,57 @@
         overflow-x: hidden;
         scroll-snap-type: y mandatory;
     }
-    .preview-card {
-        min-width: 100% !important;
-        height: 60vh !important;
-    }
 }
 
 .lightbox-item {
-    min-width: 100%;
-    height: 100%;
-    scroll-snap-align: center;
+    min-width: 100vw;
+    height: 100vh;
+    scroll-snap-align: start; /* Snap point */
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 20px;
+    padding: 10px;
 }
 
-/* Forțează cardul din lightbox să arate ca cel din galerie */
+/* Stil card în lightbox (Să încapă pe ecran) */
 .lightbox-item .gallery-card {
     width: 100%;
-    max-width: 450px;
-    max-height: 90vh;
+    max-width: 420px;
+    max-height: 95vh;
     overflow-y: auto;
     background: #050b14;
     border: 1px solid var(--primary);
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+}
+
+/* Săgeți Navigare PC */
+.lb-nav-btn {
+    position: fixed; top: 50%; transform: translateY(-50%);
+    background: rgba(255,255,255,0.1); color: white;
+    border: none; width: 50px; height: 50px; border-radius: 50%;
+    cursor: pointer; z-index: 100000; transition: 0.3s;
+}
+.lb-nav-btn:hover { background: var(--primary); color: #000; }
+.btn-prev { left: 20px; }
+.btn-next { right: 20px; }
+
+@media (max-width: 768px) { .lb-nav-btn { display: none; } } /* Ascunse pe mobil */
+
+/* --- ADMIN PREVIEW (Restaurat & Styled) --- */
+.preview-slider {
+    display: flex; gap: 15px; overflow-x: auto; padding: 20px;
+    background: rgba(255,255,255,0.02); border-radius: 20px;
+}
+.preview-card {
+    min-width: 200px; height: 300px; position: relative;
+    border-radius: 15px; overflow: hidden; flex-shrink: 0;
+    border: 1px solid var(--primary-dim);
+}
+.preview-card img { width: 100%; height: 100%; object-fit: cover; }
+.preview-inputs {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(transparent, #000);
+    padding: 10px; display: flex; flex-direction: column; gap: 5px;
 }
   </style>
 </head>
@@ -3189,26 +3163,98 @@ onAuthStateChanged(auth, (user) => {
     loadGallery(); // Încarcă pozele pentru toată lumea
 });
 
-// 1. Selectare fișiere și Preview "Sliding"
+// --- 1. ADMIN PREVIEW (RESTURAT) ---
 document.getElementById('files').onchange = (e) => {
     const files = Array.from(e.target.files).slice(0, 50);
     filesToUpload = files;
     const area = document.getElementById('previewArea');
-    area.innerHTML = '';
+    const wrapper = document.getElementById('previewWrapper');
     
+    area.innerHTML = '';
+    if(wrapper) wrapper.style.display = 'block';
+
     files.forEach((file, i) => {
         const reader = new FileReader();
         reader.onload = (ev) => {
             area.innerHTML += `
                 <div class="preview-card">
                     <img src="${ev.target.result}">
-                    <input type="text" id="t-${i}" placeholder="Titlu poză...">
-                    <textarea id="d-${i}" placeholder="Descriere..."></textarea>
+                    <div class="preview-inputs">
+                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
+                        <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
+                    </div>
                 </div>`;
         };
         reader.readAsDataURL(file);
     });
-    document.getElementById('postBtn').style.display = 'inline-block';
+    document.getElementById('postBtn').style.display = 'inline-flex';
+};
+
+// --- 2. LIGHTBOX TIKTOK-STYLE (SNAP 1 BY 1) ---
+window.openLightbox = (activeId) => {
+    let lb = document.getElementById('globalLightbox');
+    if(!lb) {
+        lb = document.createElement('div');
+        lb.id = 'globalLightbox';
+        lb.innerHTML = `
+            <button onclick="this.parentElement.style.display='none'" style="position:fixed; top:20px; right:20px; z-index:100001; background:rgba(0,0,0,0.5); border:none; color:white; font-size:24px; width:40px; height:40px; border-radius:50%; cursor:pointer;">✕</button>
+            <button class="lb-nav-btn btn-prev" onclick="moveLB(-1)"><i class="fas fa-chevron-left"></i></button>
+            <button class="lb-nav-btn btn-next" onclick="moveLB(1)"><i class="fas fa-chevron-right"></i></button>
+            <div class="lightbox-scroll-container" id="lbContainer"></div>
+        `;
+        document.body.appendChild(lb);
+    }
+
+    const container = document.getElementById('lbContainer');
+    container.innerHTML = ''; 
+
+    // Clonăm postările din galerie
+    const allCards = document.querySelectorAll('#galleryContainer .gallery-card');
+    allCards.forEach(card => {
+        const item = document.createElement('div');
+        item.className = 'lightbox-item';
+        
+        // Clonăm cardul
+        const clone = card.cloneNode(true);
+        const delBtn = clone.querySelector('.delete-btn-admin');
+        if(delBtn) delBtn.remove();
+        
+        // Re-atașăm evenimentele (cloneNode nu le păstrează)
+        const postId = card.id.replace('card-', '');
+        clone.querySelector('.action-btn').onclick = () => window.votePost(postId);
+        clone.querySelectorAll('.action-btn')[1].onclick = () => window.toggleComments(postId);
+        
+        item.appendChild(clone);
+        container.appendChild(item);
+
+        if(card.id === `card-${activeId}`) {
+            setTimeout(() => item.scrollIntoView(), 50);
+        }
+    });
+
+    lb.style.display = 'flex';
+};
+
+// Navigare prin Butoane (PC)
+window.moveLB = (dir) => {
+    const container = document.getElementById('lbContainer');
+    const width = container.offsetWidth;
+    container.scrollBy({ left: dir * width, behavior: 'smooth' });
+};
+
+// Navigare Slider Admin
+window.scrollAdmin = (val) => {
+    document.getElementById('previewArea').scrollBy({ left: val, behavior: 'smooth' });
+};
+
+// --- 3. DELETE DOC FIX ---
+window.deletePost = async (id) => {
+    if(confirm("Ștergi postarea?")) {
+        try {
+            await deleteDoc(doc(db, "pisici_posts", id));
+            window.showToast("Postare ștearsă!");
+        } catch(e) { console.error(e); }
+    }
 };
 
 // 2. Upload în Storage și Salvare în Firestore (Folder: pisici)
