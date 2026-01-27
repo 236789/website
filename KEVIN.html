@@ -4120,6 +4120,7 @@ window.toggleComments = async (id) => {
     };
 
 // --- 4. AFIȘARE GALERIE (FINAL CU EDIT BUTTON) ---
+// --- 4. AFIȘARE GALERIE (KEVIN) - FINAL UPDATE v2 ---
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
     if(!cont) return;
@@ -4144,19 +4145,19 @@ async function loadGallery() {
             const likesCount = data.likes ? Object.keys(data.likes).length : 0;
             const comms = data.commentCount || 0;
 
-            // --- ADMIN LOGIC (EDIT + DELETE) ---
+            // Curățăm textul pentru a nu strica HTML-ul la onclick
+            const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+
+            // --- ADMIN BUTTONS ---
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
-                // Curățăm titlul pentru a putea fi pus în onclick fără să strice HTML-ul
-                const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                
                 adminBtns = `
                 <div class="admin-actions-wrapper">
-                    <!-- Buton Editare (Galben) -->
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}')">
+                    <!-- Trimitem și descrierea la editare -->
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')">
                         <i class="fas fa-pen"></i>
                     </button>
-                    <!-- Buton Ștergere (Roșu) -->
                     <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -4171,7 +4172,7 @@ async function loadGallery() {
 
             cont.innerHTML += `
             <div class="gallery-card" data-id="${id}">
-                ${adminBtns} <!-- AICI APAR BUTOANELE -->
+                ${adminBtns}
                 
                 <div class="card-user-info">
                     <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
@@ -4183,7 +4184,9 @@ async function loadGallery() {
                 </div>
 
                 <div class="card-bottom-content">
+                    <!-- Titlu și Descriere -->
                     ${data.title ? `<h3 class="card-title-static" style="font-size:14px; margin-bottom:5px;">${data.title}</h3>` : ''}
+                    ${data.desc ? `<p class="card-desc-static" style="font-size:12px; color:#aaa; margin-bottom:10px;">${data.desc}</p>` : ''}
                     
                     <div class="card-actions-bar">
                         <div style="display:flex; gap:10px;">
@@ -4194,6 +4197,11 @@ async function loadGallery() {
                                 <i class="far fa-comment-dots"></i> ${comms}
                             </button>
                         </div>
+
+                        <!-- BUTONUL SHARE -->
+                        <button class="action-btn-pill" onclick="sharePost('${data.img}')">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
                     </div>
 
                     <!-- COMENTARII -->
@@ -4298,6 +4306,43 @@ async function loadGallery() {
     window.toggleYearMenu = (menuId) => {
         const menu = document.getElementById(menuId);
         if(menu) menu.classList.toggle('show-menu');
+    };
+
+
+// --- FUNCȚIE PORTAL (FAST JUMP) ---
+    window.triggerFastJump = (targetUrl) => {
+        const overlay = document.getElementById('fastPortalOverlay');
+        const core = document.getElementById('fastPortalCore');
+        const speedLines = document.getElementById('fastSpeedLines');
+        const flash = document.getElementById('fastWarpFlash');
+
+        // Dacă elementele nu există în HTML, facem redirect direct
+        if (!overlay) {
+            window.location.href = targetUrl;
+            return;
+        }
+
+        // 1. Afișăm portalul
+        overlay.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        // 2. Activăm animațiile
+        if (speedLines) speedLines.classList.add('speed-lines-active');
+        overlay.classList.add('shake-active');
+
+        // 3. Secvența de Zoom și Flash
+        setTimeout(() => {
+            if (core) core.classList.add('fast-zooming');
+            
+            setTimeout(() => {
+                if (flash) flash.classList.add('active');
+                
+                // 4. Redirect final
+                setTimeout(() => {
+                    window.location.href = targetUrl;
+                }, 300);
+            }, 400);
+        }, 100);
     };
 
 // Check Admin & Load la pornire
