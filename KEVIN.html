@@ -4052,39 +4052,7 @@ window.savePostEdit = async () => {
         alert("Eroare la editare: " + e.message);
     }
 };
-// 2. Upload în Storage și Salvare în Firestore (Folder: pisici)
-document.getElementById('postBtn').onclick = async () => {
-    const btn = document.getElementById('postBtn');
-    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
-    document.getElementById('uploadProgress').style.display = 'block';
 
-    for (let i = 0; i < filesToUpload.length; i++) {
-        const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`).value || "Fără titlu";
-        const desc = document.getElementById(`d-${i}`).value || "";
-        
-        // Folder dinamic: pisici/
-        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-
-        await new Promise((res) => {
-            task.on('state_changed', 
-                (s) => { document.getElementById('progressBar').style.width = ((s.bytesTransferred/s.totalBytes)*100) + '%'; },
-                null,
-                async () => {
-                    const url = await getDownloadURL(task.snapshot.ref);
-                    await addDoc(collection(db, "pisici_posts"), {
-                        img: url, title: title, desc: desc,
-                        likes: {}, createdAt: serverTimestamp(),
-                        author: auth.currentUser.displayName
-                    });
-                    res();
-                }
-            );
-        });
-    }
-    alert("Postat cu succes!"); location.reload();
-};
 
 // Funcție pentru a genera Badges de rol (ca în galerie.html)
 function getRoleBadge(email) {
@@ -4124,39 +4092,7 @@ document.getElementById('files').onchange = (e) => {
     document.getElementById('postBtn').style.display = 'inline-block';
 };
 
-// 2. LANSEAZĂ POSTAREA (SALVEAZĂ TOT: UID, PHOTO, NAME)
-document.getElementById('postBtn').onclick = async () => {
-    const btn = document.getElementById('postBtn');
-    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
-    
-    // Luăm datele actuale ale userului din Firestore
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const userData = userSnap.data();
 
-    for (let i = 0; i < filesToUpload.length; i++) {
-        const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`).value || "";
-        const desc = document.getElementById(`d-${i}`).value || "";
-        
-        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-
-        await new Promise((res) => {
-            task.on('state_changed', null, null, async () => {
-                const url = await getDownloadURL(task.snapshot.ref);
-                await addDoc(collection(db, "pisici_posts"), {
-                    img: url, title: title, desc: desc,
-                    likes: {}, createdAt: serverTimestamp(),
-                    authorName: userData.username || auth.currentUser.displayName,
-                    authorPhoto: userData.image || auth.currentUser.photoURL,
-                    authorUid: auth.currentUser.uid
-                });
-                res();
-            });
-        });
-    }
-    location.reload();
-};
 
 // 3. SHARE ȘI DELETE
 window.sharePost = (url) => {
