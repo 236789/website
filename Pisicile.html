@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/compressorjs/1.2.1/compressor.min.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
   <script>
@@ -3360,30 +3362,132 @@ onAuthStateChanged(auth, (user) => {
 });
 
 // --- 1. ADMIN PREVIEW (RESTURAT) ---
+// --- OPTIMIZED ADMIN UPLOAD LOGIC ---
+
+// Global array to store the *compressed* files
+let filesToUpload = []; 
+
+// 1. SELECT & COMPRESS (The Magic Happens Here)
 document.getElementById('files').onchange = (e) => {
-    const files = Array.from(e.target.files).slice(0, 50);
-    filesToUpload = files;
+    const rawFiles = Array.from(e.target.files).slice(0, 50); // Limit 50 at a time
+    filesToUpload = []; // Reset global array
+    
     const area = document.getElementById('previewArea');
     const wrapper = document.getElementById('previewWrapper');
     
-    area.innerHTML = '';
+    area.innerHTML = ''; // Clear preview area
     if(wrapper) wrapper.style.display = 'block';
 
-    files.forEach((file, i) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            area.innerHTML += `
-                <div class="preview-card">
-                    <img src="${ev.target.result}">
-                    <div class="preview-inputs">
-                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
-                        <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
-                    </div>
-                </div>`;
-        };
-        reader.readAsDataURL(file);
+    // Loop through files and compress them one by one
+    rawFiles.forEach((file, i) => {
+        
+        new Compressor(file, {
+            quality: 0.6, // 60% Quality (Huge size reduction)
+            maxWidth: 1000, // Resize to max 1000px width
+            maxHeight: 1000,
+            mimeType: 'image/jpeg', // Force JPEG for consistency
+            success(result) {
+                // 'result' is the compressed Blob. We save it to our array.
+                // We add a 'name' property back to it because Blob doesn't have it.
+                result.name = file.name; 
+                filesToUpload[i] = result; 
+
+                // Generate Preview from the compressed result
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    // Create the preview card HTML
+                    // We use 'order: ${i}' to keep them in order since compression is async
+                    const div = document.createElement('div');
+                    div.className = 'preview-card';
+                    div.style.order = i;
+                    div.innerHTML = `
+                        <img src="${ev.target.result}">
+                        <div class="preview-inputs">
+                            <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
+                            <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
+                        </div>
+                    `;
+                    area.appendChild(div);
+                };
+                reader.readAsDataURL(result);
+            },
+            error(err) {
+                console.log(err.message);
+            },
+        });
     });
+
     document.getElementById('postBtn').style.display = 'inline-flex';
+};
+
+// 2. UPLOAD COMPRESSED FILES
+document.getElementById('postBtn').onclick = async () => {
+    // Check if we actually have files
+    if(filesToUpload.length === 0) return alert("Selectează poze!");
+
+    const btn = document.getElementById('postBtn');
+    btn.disabled = true; 
+    btn.innerText = "SE OPTIMIZEAZĂ & ÎNCARCĂ...";
+    
+    const progressContainer = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('progressBar');
+    if(progressContainer) progressContainer.style.display = 'block';
+
+    // Get User Data once
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const userData = userSnap.data();
+
+    let completedCount = 0;
+
+    for (let i = 0; i < filesToUpload.length; i++) {
+        // Skip if compression failed for some reason
+        if(!filesToUpload[i]) continue; 
+
+        const file = filesToUpload[i];
+        const title = document.getElementById(`t-${i}`) ? document.getElementById(`t-${i}`).value : "";
+        const desc = document.getElementById(`d-${i}`) ? document.getElementById(`d-${i}`).value : "";
+        
+        // Upload to 'pisici' folder
+        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
+        const task = uploadBytesResumable(sRef, file);
+
+        await new Promise((resolve, reject) => {
+            task.on('state_changed', 
+                (snapshot) => {
+                    // Calculate individual progress (optional logic)
+                },
+                (error) => {
+                    console.error(error);
+                    resolve(); // Skip error and continue
+                },
+                async () => {
+                    const url = await getDownloadURL(task.snapshot.ref);
+                    
+                    // Save to Firestore
+                    await addDoc(collection(db, "pisici_posts"), {
+                        img: url, 
+                        title: title, 
+                        desc: desc,
+                        likes: {}, 
+                        createdAt: serverTimestamp(),
+                        authorName: userData.username || auth.currentUser.displayName,
+                        authorPhoto: userData.image || auth.currentUser.photoURL,
+                        authorUid: auth.currentUser.uid
+                    });
+                    
+                    completedCount++;
+                    // Update Progress Bar based on total files
+                    if(progressBar) {
+                        progressBar.style.width = (completedCount / filesToUpload.length * 100) + '%';
+                    }
+                    resolve();
+                }
+            );
+        });
+    }
+    
+    alert("Gata! Pozele au fost încărcate.");
+    location.reload();
 };
 
 // --- 2. LIGHTBOX TIKTOK-STYLE (SNAP 1 BY 1) ---
