@@ -1657,6 +1657,78 @@
     color: #fff;
     box-shadow: 0 0 15px #ff4757;
 }
+
+
+/* ADMIN PREVIEW SLIDER - Rezolvă problema cu selecția multor imagini */
+.preview-slider {
+    display: flex;
+    gap: 15px;
+    overflow-x: auto;
+    padding: 15px;
+    margin-top: 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 20px;
+    scrollbar-width: thin;
+}
+.preview-card {
+    min-width: 250px;
+    height: 350px;
+    position: relative;
+    border-radius: 15px;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid var(--primary-dim);
+}
+.preview-card img { width: 100%; height: 100%; object-fit: cover; }
+.preview-inputs {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(transparent, #000);
+    padding: 10px; display: flex; flex-direction: column; gap: 5px;
+}
+
+/* TITLU & DESCRIERE - Overlay elegant pe imagine */
+.card-info-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 40px 15px 15px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    pointer-events: none; /* Să poți da click pe imagine prin el */
+    transition: 0.3s; opacity: 0;
+}
+.gallery-card:hover .card-info-overlay { opacity: 1; }
+.card-title-text { font-family: 'Orbitron'; font-size: 14px; color: var(--primary); font-weight: 800; display: block; }
+.card-desc-text { font-size: 11px; color: #fff; opacity: 0.8; margin-top: 3px; }
+
+/* COMENTARII PREMIUM (Stil Screenshot) */
+.card-comments-list { padding: 10px; display: flex; flex-direction: column; gap: 12px; }
+.mini-comment {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 15px; border-radius: 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    position: relative; transition: 0.3s;
+}
+/* Banner classes are already in your file, they will apply to .mini-comment */
+
+.com-content { flex: 1; }
+.com-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.com-name { font-family: 'Orbitron'; font-size: 11px; font-weight: 800; color: #fff; }
+.com-text { font-size: 12px; color: #eee; line-height: 1.4; }
+
+/* Role Badge */
+.role-badge {
+    font-size: 8px; font-family: 'Orbitron'; font-weight: 900;
+    padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+}
+.badge-owner { background: #00e5ff; color: #000; box-shadow: 0 0 10px #00e5ff; }
+.badge-admin { background: #ff4757; color: #fff; }
+
+/* Lightbox Fix */
+#globalLightbox {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+    z-index: 50000; display: none; justify-content: center; align-items: center;
+    backdrop-filter: blur(10px); cursor: zoom-out;
+}
+#globalLightbox img { max-width: 90%; max-height: 90vh; border-radius: 10px; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
   </style>
 </head>
 <body>
@@ -2020,7 +2092,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 // Import pentru FIRESTORE (Baza de date)
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp, collection, addDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp, collection, addDoc, query, orderBy, limit,deleteDoc  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Import pentru STORAGE (Imagini/Fișiere) - ASTA LIPSEA SAU ERA GREȘIT
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
@@ -3062,7 +3134,31 @@ window.deletePost = async (id) => {
     }
 };
 
-// 4. LOAD GALLERY (TEMPLATE-UL NOU 2030)
+// --- FIX: LIGHTBOX ---
+window.openLightbox = (url) => {
+    let lb = document.getElementById('globalLightbox');
+    if(!lb) {
+        lb = document.createElement('div');
+        lb.id = 'globalLightbox';
+        lb.innerHTML = `<img src="" id="lbImg">`;
+        lb.onclick = () => lb.style.display = 'none';
+        document.body.appendChild(lb);
+    }
+    document.getElementById('lbImg').src = url;
+    lb.style.display = 'flex';
+};
+
+// --- FIX: SHARE ---
+window.sharePost = (url) => {
+    if (navigator.share) {
+        navigator.share({ title: 'Pisicile KSDA', url: url });
+    } else {
+        navigator.clipboard.writeText(url);
+        alert("Link copiat!");
+    }
+};
+
+// --- LOAD GALLERY (ACTUALIZAT) ---
 async function loadGallery() {
     const q = query(collection(db, "pisici_posts"), orderBy("createdAt", "desc"));
     const isAdmin = auth.currentUser && ADMINS.includes(auth.currentUser.email);
@@ -3086,13 +3182,12 @@ async function loadGallery() {
                     <div class="card-user-name">${data.authorName || 'Membru KSDA'}</div>
                 </div>
 
-                <div class="img-wrapper" onclick="openLightbox('${data.img}')">
-                    <img src="${data.img}" class="gallery-img">
-                </div>
-
-                <div class="card-info-box">
-                    ${data.title ? `<span class="card-title-text">${data.title}</span>` : ''}
-                    ${data.desc ? `<p class="card-desc-text">${data.desc}</p>` : ''}
+                <div class="img-wrapper" style="position:relative;">
+                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${data.img}')">
+                    <div class="card-info-overlay">
+                        <span class="card-title-text">${data.title || ''}</span>
+                        <p class="card-desc-text">${data.desc || ''}</p>
+                    </div>
                 </div>
 
                 <div class="card-actions">
@@ -3112,10 +3207,10 @@ async function loadGallery() {
 
                 <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
                     <div class="card-comments-list" id="list-${id}"></div>
-                    <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px;">
+                    <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px; padding:10px;">
                         <input class="modern-input" id="inp-${id}" placeholder="Scrie un comentariu..." style="margin:0; flex:1; padding:10px;">
-                        <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:40px; cursor:pointer;">
-                            <i class="fas fa-paper-plane" style="color:#000"></i>
+                        <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:45px; height:45px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-paper-plane" style="color:#000; font-size:16px;"></i>
                         </button>
                     </div>
                 </div>
@@ -3124,28 +3219,11 @@ async function loadGallery() {
     });
 }
 
-// LOGICĂ LIKE
-window.votePost = async (id) => {
-    if(!auth.currentUser) return alert("Loghează-te!");
-    const postRef = doc(db, "pisici_posts", id);
-    const snap = await getDoc(postRef);
-    const likes = snap.data().likes || {};
-    const uid = auth.currentUser.uid;
-    
-    if(likes[uid]) delete likes[uid];
-    else likes[uid] = true;
-    
-    await updateDoc(postRef, { likes: likes });
-};
-
+// --- TOGGLE COMMENTS (CU COSMETICE) ---
 window.toggleComments = async (id) => {
     const sec = document.getElementById(`com-sec-${id}`);
     const list = document.getElementById(`list-${id}`);
-    
-    if(sec.style.display === 'block') {
-        sec.style.display = 'none';
-        return;
-    }
+    if(sec.style.display === 'block') { sec.style.display = 'none'; return; }
     
     sec.style.display = 'block';
     const q = query(collection(db, `pisici_posts/${id}/comments`), orderBy("createdAt", "asc"));
@@ -3155,27 +3233,33 @@ window.toggleComments = async (id) => {
         for (const cDoc of cSnap.docs) {
             const cData = cDoc.data();
             
-            // Luăm cosmeticele userului în timp real
+            // Luăm datele userului pt cosmetice
             const uSnap = await getDoc(doc(db, "accounts", cData.uid));
             const u = uSnap.exists() ? uSnap.data() : {};
 
             const frameImg = u.equippedFrame?.img || "";
             const bannerClass = u.equippedBanner?.cssClass || "";
             const textClass = u.equippedText?.cssClass || "";
-            const badgeHtml = u.equippedBadge ? `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; font-size:8px; padding:2px 5px; border-radius:4px; margin-left:5px;"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>` : "";
+            const badge = u.equippedBadge ? `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; color:#000; font-size:7px; padding:2px 4px; border-radius:3px; margin-left:5px;"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>` : "";
+            
+            // Verificare rol
+            let roleHtml = "";
+            if(cData.email === 'nicaemmanuel433qe@gmail.com') roleHtml = `<span class="role-badge badge-owner">OWNER</span>`;
+            else if(cData.email === 'kevin.trinity2020@gmail.com') roleHtml = `<span class="role-badge badge-admin">ADMIN</span>`;
 
             list.innerHTML += `
-                <div class="mini-comment ${bannerClass}" style="margin-bottom:10px; position:relative;">
+                <div class="mini-comment ${bannerClass}">
                     <div class="profile-frame-wrapper" style="width:35px; height:35px; flex-shrink:0;">
                         <img src="${cData.photo}" class="pop-img-inner">
-                        ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:140%; height:140%">` : ''}
+                        ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:145%; height:145%">` : ''}
                     </div>
-                    <div style="flex:1">
-                        <div style="font-weight:800; font-size:11px; display:flex; align-items:center;">
-                            <span class="${textClass}">${u.username || cData.name}</span>
-                            ${badgeHtml}
+                    <div class="com-content">
+                        <div class="com-header">
+                            <span class="com-name ${textClass}">${u.username || cData.name}</span>
+                            ${roleHtml}
+                            ${badge}
                         </div>
-                        <div style="font-size:11px; opacity:0.9">${cData.text}</div>
+                        <div class="com-text">${cData.text}</div>
                     </div>
                 </div>`;
         }
@@ -3199,7 +3283,18 @@ window.postComment = async (id) => {
     inp.value = '';
 };
 
-
+window.votePost = async (id) => {
+    if(!auth.currentUser) return alert("Loghează-te!");
+    const postRef = doc(db, "pisici_posts", id);
+    const snap = await getDoc(postRef);
+    const likes = snap.data().likes || {};
+    const uid = auth.currentUser.uid;
+    
+    if(likes[uid]) delete likes[uid];
+    else likes[uid] = true;
+    
+    await updateDoc(postRef, { likes: likes });
+};
 function formatCurrency(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
