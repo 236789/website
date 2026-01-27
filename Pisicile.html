@@ -3302,6 +3302,47 @@ window.deletePost = async (id) => {
     }
 };
 
+
+
+// Funcție pentru a genera Badges de rol (ca în galerie.html)
+function getRoleBadge(email) {
+    if(email === 'nicaemmanuel433qe@gmail.com') return '<span class="owner-badge">OWNER</span>';
+    if(email === 'kevin.trinity2020@gmail.com') return '<span class="admin-badge">ADMIN</span>';
+    return '';
+}
+
+// Funcție pentru clasa bulei de comentariu
+function getCommentClass(email) {
+    if(email === 'nicaemmanuel433qe@gmail.com') return 'mini-owner';
+    if(email === 'kevin.trinity2020@gmail.com') return 'mini-admin';
+    return '';
+}
+
+// 1. SELECTARE ȘI PREVIEW (FIXED UI)
+document.getElementById('files').onchange = (e) => {
+    const files = Array.from(e.target.files).slice(0, 50);
+    filesToUpload = files;
+    const area = document.getElementById('previewArea');
+    area.innerHTML = '';
+    
+    files.forEach((file, i) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            area.innerHTML += `
+                <div class="preview-card">
+                    <img src="${ev.target.result}">
+                    <div class="preview-inputs">
+                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu poză..." style="margin:0">
+                        <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="margin:0; height:60px;"></textarea>
+                    </div>
+                </div>`;
+        };
+        reader.readAsDataURL(file);
+    });
+    document.getElementById('postBtn').style.display = 'inline-block';
+};
+
+// 2. LANSEAZĂ POSTAREA (SALVEAZĂ TOT: UID, PHOTO, NAME)
 // 2. Upload în Storage și Salvare în Firestore (ACTUALIZATĂ PENTRU INDEX)
 document.getElementById('postBtn').onclick = async () => {
     const btn = document.getElementById('postBtn');
@@ -3367,77 +3408,6 @@ document.getElementById('postBtn').onclick = async () => {
     }
 
     alert("Postat cu succes! Pagina se va reîncărca."); 
-    location.reload();
-};
-// Funcție pentru a genera Badges de rol (ca în galerie.html)
-function getRoleBadge(email) {
-    if(email === 'nicaemmanuel433qe@gmail.com') return '<span class="owner-badge">OWNER</span>';
-    if(email === 'kevin.trinity2020@gmail.com') return '<span class="admin-badge">ADMIN</span>';
-    return '';
-}
-
-// Funcție pentru clasa bulei de comentariu
-function getCommentClass(email) {
-    if(email === 'nicaemmanuel433qe@gmail.com') return 'mini-owner';
-    if(email === 'kevin.trinity2020@gmail.com') return 'mini-admin';
-    return '';
-}
-
-// 1. SELECTARE ȘI PREVIEW (FIXED UI)
-document.getElementById('files').onchange = (e) => {
-    const files = Array.from(e.target.files).slice(0, 50);
-    filesToUpload = files;
-    const area = document.getElementById('previewArea');
-    area.innerHTML = '';
-    
-    files.forEach((file, i) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            area.innerHTML += `
-                <div class="preview-card">
-                    <img src="${ev.target.result}">
-                    <div class="preview-inputs">
-                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu poză..." style="margin:0">
-                        <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="margin:0; height:60px;"></textarea>
-                    </div>
-                </div>`;
-        };
-        reader.readAsDataURL(file);
-    });
-    document.getElementById('postBtn').style.display = 'inline-block';
-};
-
-// 2. LANSEAZĂ POSTAREA (SALVEAZĂ TOT: UID, PHOTO, NAME)
-document.getElementById('postBtn').onclick = async () => {
-    const btn = document.getElementById('postBtn');
-    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
-    
-    // Luăm datele actuale ale userului din Firestore
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const userData = userSnap.data();
-
-    for (let i = 0; i < filesToUpload.length; i++) {
-        const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`).value || "";
-        const desc = document.getElementById(`d-${i}`).value || "";
-        
-        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-
-        await new Promise((res) => {
-            task.on('state_changed', null, null, async () => {
-                const url = await getDownloadURL(task.snapshot.ref);
-                await addDoc(collection(db, "pisici_posts"), {
-                    img: url, title: title, desc: desc,
-                    likes: {}, createdAt: serverTimestamp(),
-                    authorName: userData.username || auth.currentUser.displayName,
-                    authorPhoto: userData.image || auth.currentUser.photoURL,
-                    authorUid: auth.currentUser.uid
-                });
-                res();
-            });
-        });
-    }
     location.reload();
 };
 
