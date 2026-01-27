@@ -2734,178 +2734,89 @@ import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://w
     const storage = getStorage(app);
 
 
-
-let selectedUploadYear = null;
-let currentYearFilter = "2026";
-let filesToUpload = []; // Va stoca fișierele compresate
-
-// 1. SELECTARE & COMPRESIE (Păstrat CompressorJS)
-document.getElementById('files').onchange = (e) => {
-    const rawFiles = Array.from(e.target.files).slice(0, 50);
-    filesToUpload = [];
-    
-    const area = document.getElementById('previewArea');
-    const wrapper = document.getElementById('previewWrapper');
-    const countDisp = document.getElementById('countDisplay');
-    
-    area.innerHTML = '';
-    if(wrapper) wrapper.style.display = 'block';
-    countDisp.innerText = `${rawFiles.length}/50 IMAGINI SELECTATE`;
-
-    rawFiles.forEach((file, i) => {
-        new Compressor(file, {
-            quality: 0.6,
-            maxWidth: 1200,
-            success(result) {
-                result.name = file.name;
-                filesToUpload[i] = result;
-
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const div = document.createElement('div');
-                    div.className = 'preview-card';
-                    div.style.order = i;
-                    div.innerHTML = `
-                        <img src="${ev.target.result}">
-                        <div class="preview-inputs">
-                            <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu...">
-                        </div>
-                    `;
-                    area.appendChild(div);
-                };
-                reader.readAsDataURL(result);
-            }
-        });
-    });
-    document.getElementById('adminYearPicker').style.display = 'inline-block';
-};
-
-
-
-// 3. LOAD GALLERY CU FILTRU DE AN
-async function loadGallery() {
-    const cont = document.getElementById('galleryContainer');
-    cont.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare: ' + currentYearFilter + '...</p>';
-
-    // FĂRĂ isPinned (cum ai cerut) pentru a evita erorile de index complex
-    const q = query(
-        collection(db, "kevin_posts"), 
-        where("year", "==", currentYearFilter.toString()), 
-        orderBy("createdAt", "desc")
-    );
-
-    onSnapshot(q, (snap) => {
-        cont.innerHTML = '';
-        if(snap.empty) {
-            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire în anul ${currentYearFilter}.</p>`;
-            return;
-        }
-        snap.forEach(docSnap => {
-            const data = docSnap.data();
-            const id = docSnap.id;
-            const likesCount = Object.keys(data.likes || {}).length;
-            const views = data.views || 0;
-
-            cont.innerHTML += `
-            <div class="gallery-card" id="card-${id}">
-                ${(auth.currentUser && ADMINS.includes(auth.currentUser.email)) ? `
-                <div class="admin-actions-wrapper">
-                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
-                </div>` : ''}
-                <div class="card-user-info">
-                    <img src="${data.authorPhoto}" class="card-avatar">
-                    <div class="card-user-name">${data.authorName}</div>
-                </div>
-                <div class="img-wrapper">
-                    <img src="${data.img}" class="gallery-img" onclick="registerView('${id}'); openLightbox('${id}')">
-                    <div class="card-info-overlay"><span class="card-title-text">${data.title || ''}</span></div>
-                </div>
-                <div class="card-actions-bar">
-                    <button class="action-btn-pill" onclick="votePost('${id}')"><i class="far fa-heart"></i> ${likesCount}</button>
-                    <div class="views-display"><i class="far fa-eye"></i> ${views}</div>
-                </div>
-            </div>`;
-        });
-    }, (error) => {
-        console.error("Firestore Error:", error);
-        // Dacă primești 'permission-denied', verifică Rules în Firebase Console!
-    });
-}
-
-// 4. SETUP DROPDOWNS (Inlocuieste setupYearButtons)
-const setupYearDropdowns = () => {
-    const adminMenu = document.getElementById('adminYearMenu');
-    const publicMenu = document.getElementById('publicYearMenu');
-    
-    for (let year = 2026; year >= 2000; year--) {
-        // Admin Option
-        const optA = document.createElement('div');
-        optA.className = 'tm-year-option';
-        optA.innerText = year;
-        optA.onclick = () => {
-            selectedUploadYear = year;
-            document.getElementById('adminSelectedYearText').innerText = year;
-            document.getElementById('targetYearLabel').innerText = year;
-            document.getElementById('postBtn').style.display = 'inline-flex';
-            adminMenu.classList.remove('show-menu');
-        };
-        adminMenu.appendChild(optA);
-
-        // Public Option
-        const optP = document.createElement('div');
-        optP.className = 'tm-year-option';
-        optP.innerText = year;
-        optP.onclick = () => {
-            currentYearFilter = year.toString();
-            document.getElementById('publicSelectedYearText').innerText = year;
-            publicMenu.classList.remove('show-menu');
-            loadGallery();
-        };
-        publicMenu.appendChild(optP);
+// ==========================================
+// 3. UPLOAD FINAL (Butonul "LANSEAZĂ")
+// ==========================================
+document.getElementById('postBtn').onclick = async () => {
+    // 1. Verificări de siguranță
+    if (filesToUpload.length === 0) {
+        return alert("Nu ai selectat nicio poză!");
     }
-};
-setupYearDropdowns();
-
-// DELETE FIX PENTRU KEVIN
-window.deleteKevinPost = async (id) => {
-    if(confirm("Ștergi din arhivă?")) {
-        await deleteDoc(doc(db, "kevin_posts", id));
-        window.showToast("Eliminat din istorie!");
+    if (!selectedUploadYear) {
+        return alert("TREBUIE să selectezi anul din meniu înainte să apeși pe lansare!");
     }
-};
 
+    // 2. Blocăm butonul și arătăm progresul
+    const btn = document.getElementById('postBtn');
+    btn.disabled = true; 
+    btn.innerText = "SE ÎNCARCĂ...";
+    
+    // Dacă ai un element de progres în HTML, îl afișăm
+    const progDiv = document.getElementById('uploadProgress');
+    const progBar = document.getElementById('progressBar');
+    if(progDiv) progDiv.style.display = 'block';
 
+    // 3. Luăm datele userului (pentru autor)
+    let userData = {};
+    if (auth.currentUser) {
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        if (userSnap.exists()) userData = userSnap.data();
+    }
 
-window.triggerFastJump = (targetUrl) => {
-    const overlay = document.getElementById('fastPortalOverlay');
-    const core = document.getElementById('fastPortalCore');
-    const speedLines = document.getElementById('fastSpeedLines');
-    const flash = document.getElementById('fastWarpFlash');
-
-    // 1. Afișăm portalul instant
-    overlay.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-
-    // 2. Activăm liniile de viteză și tremurul imediat
-    speedLines.classList.add('speed-lines-active');
-    overlay.classList.add('shake-active');
-
-    // 3. Secvența rapidă de salt (800ms)
-    setTimeout(() => {
-        core.classList.add('fast-zooming'); // Zoom super rapid în gaura neagră
+    // 4. Procesăm fiecare fișier
+    for (let i = 0; i < filesToUpload.length; i++) {
+        if(!filesToUpload[i]) continue; // Sărim peste eventuale goluri
         
-        // Flash-ul final
-        setTimeout(() => {
-            flash.classList.add('active');
-            
-            // Redirecționare
-            setTimeout(() => {
-                window.location.href = targetUrl;
-            }, 300);
-        }, 400);
-    }, 400); 
-};
+        const file = filesToUpload[i];
+        // Luăm titlul din inputul generat la preview (dacă există)
+        const titleInput = document.getElementById(`t-${i}`);
+        const title = titleInput ? titleInput.value : "";
+        
+        // A. Upload în Storage (Folder: kevin)
+        const sRef = ref(storage, `kevin/${Date.now()}_${file.name}`);
+        const task = uploadBytesResumable(sRef, file);
 
+        await new Promise((resolve, reject) => {
+            task.on('state_changed', 
+                (snapshot) => { 
+                    // Update bară progres (opțional)
+                    if(progBar) {
+                        const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        progBar.style.width = percent + '%';
+                    }
+                },
+                (error) => {
+                    console.error("Eroare upload:", error);
+                    resolve(); // Continuăm chiar dacă una eșuează
+                },
+                async () => {
+                    // B. Obținem URL-ul public
+                    const url = await getDownloadURL(task.snapshot.ref);
+                    
+                    // C. Scriem în baza de date (Colecția: kevin_posts)
+                    await addDoc(collection(db, "kevin_posts"), {
+                        img: url, 
+                        title: title, 
+                        likes: {}, 
+                        views: 0, 
+                        commentCount: 0,
+                        createdAt: serverTimestamp(),
+                        authorName: userData.username || auth.currentUser.displayName || "Admin",
+                        authorPhoto: userData.image || auth.currentUser.photoURL,
+                        authorUid: auth.currentUser.uid,
+                        year: selectedUploadYear.toString(), // AICI SE SALVEAZĂ ANUL SELECTAT
+                        isPinned: false
+                    });
+                    resolve();
+                }
+            );
+        });
+    }
+
+    // 5. Finalizare
+    alert("Succes! Amintirile au fost salvate în anul " + selectedUploadYear);
+    location.reload();
+};
 // --- INVITE SYSTEM LOGIC ---
  
 // 1. Open Modal and Generate Link
@@ -2928,7 +2839,7 @@ if (inviteBtn) {
         document.getElementById('accountModal').classList.remove('active');
         document.getElementById('shareModal-v2').classList.add('active');
     };
-}
+} 
 
 // 2. Copy to Clipboard Function
 window.copyRefLinkV2 = () => {
