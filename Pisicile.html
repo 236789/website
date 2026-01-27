@@ -1800,6 +1800,119 @@
     box-shadow: none;
     transform: none;
 }
+
+
+
+
+/* --- FIX TEXT BREAKING (eeeeeeee fix) --- */
+.com-text, .card-desc-text {
+    word-break: break-word; /* Forțează ruperea cuvintelor lungi */
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+/* --- CUSTOM CYBER SCROLLBAR --- */
+.preview-slider::-webkit-scrollbar { height: 6px; width: 6px; }
+.preview-slider::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 10px; }
+.preview-slider::-webkit-scrollbar-thumb { 
+    background: var(--primary); 
+    border-radius: 10px; 
+    box-shadow: 0 0 10px var(--primary); 
+}
+
+/* --- ADMIN SLIDER UI --- */
+.admin-preview-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    margin: 20px auto;
+}
+
+.preview-slider {
+    display: flex;
+    gap: 15px;
+    overflow-x: auto;
+    padding: 20px;
+    scroll-snap-type: x mandatory; /* Snap pt fluiditate */
+    scroll-behavior: smooth;
+}
+
+.preview-card {
+    scroll-snap-align: center;
+}
+
+/* Săgeți de navigare slider admin */
+.slider-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--primary);
+    color: #000;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 0 15px var(--primary-dim);
+    display: flex; align-items: center; justify-content: center;
+}
+.arrow-left { left: -10px; }
+.arrow-right { right: -10px; }
+
+/* --- LIGHTBOX TIKTOK-STYLE --- */
+#globalLightbox {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.98);
+    z-index: 99999;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(15px);
+}
+
+.lightbox-scroll-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    overflow-x: auto; /* Default PC: Orizontal */
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+}
+
+/* MOBILE: Vertical Swipe like TikTok */
+@media (max-width: 768px) {
+    .lightbox-scroll-container {
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scroll-snap-type: y mandatory;
+    }
+    .preview-card {
+        min-width: 100% !important;
+        height: 60vh !important;
+    }
+}
+
+.lightbox-item {
+    min-width: 100%;
+    height: 100%;
+    scroll-snap-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* Forțează cardul din lightbox să arate ca cel din galerie */
+.lightbox-item .gallery-card {
+    width: 100%;
+    max-width: 450px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #050b14;
+    border: 1px solid var(--primary);
+}
   </style>
 </head>
 <body>
@@ -2078,7 +2191,6 @@
 </aside>
 
 
-<!-- MAIN CONTENT AREA START -->
 <main class="blank-main-container" style="max-width: 1600px;">
     
     <!-- TITLU METALLIC PRO -->
@@ -2087,39 +2199,49 @@
         Arhivă digitală administrată de <span style="color: var(--primary); font-weight: 800;">LOST SOUL</span> & <span style="color: #ff4757; font-weight: 800;">KEVIN</span>.
     </p>
 
-<!-- PANOU UPLOAD ADMIN -->
-<div id="adminUploadPanel">
-    <h3 style="font-family:'Orbitron'; color:var(--primary); margin-top:0; letter-spacing: 2px;">
-        <i class="fas fa-shield-alt"></i> MOD ADMIN ACTIV
-    </h3>
-    <p style="font-size: 12px; opacity: 0.7; margin-bottom: 20px;">Încarcă imagini noi în baza de date (Max 50 / sesiune)</p>
-    
-    <!-- Buton Selectare -->
-    <input type="file" id="files" multiple accept="image/*" style="display:none">
-    <button class="btn-select-photos" onclick="document.getElementById('files').click()">
-        <i class="fas fa-images"></i> ALEGE POZE
-    </button>
-    
-    <!-- Zona de Preview Slide (pe care am făcut-o data trecută) -->
-    <div id="previewArea" class="preview-slider"></div>
-    
-    <!-- Bara de progres stilizată -->
-    <div id="uploadProgress" style="display:none; width:100%; max-width: 500px; height:6px; background:#111; border-radius:10px; margin:20px auto; overflow:hidden; border: 1px solid #222;">
-        <div id="progressBar" style="width:0%; height:100%; background:var(--primary); box-shadow: 0 0 10px var(--primary);"></div>
+    <!-- PANOU UPLOAD ADMIN -->
+    <div id="adminUploadPanel" style="display:none;">
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-top:0; letter-spacing: 2px;">
+            <i class="fas fa-shield-alt"></i> MOD ADMIN ACTIV
+        </h3>
+        <p style="font-size: 12px; opacity: 0.7; margin-bottom: 20px;">Încarcă imagini noi în baza de date (Max 50 / sesiune)</p>
+        
+        <input type="file" id="files" multiple accept="image/*" style="display:none">
+        <button class="btn-select-photos" onclick="document.getElementById('files').click()">
+            <i class="fas fa-images"></i> ALEGE POZE
+        </button>
+        
+        <!-- WRAPPER SLIDER CU SĂGEȚI -->
+        <div class="admin-preview-wrapper" id="previewWrapper" style="display:none;">
+            <button class="slider-arrow arrow-left" onclick="scrollAdmin(-300)"><i class="fas fa-chevron-left"></i></button>
+            
+            <div id="previewArea" class="preview-slider">
+                <!-- Imaginile cu inputuri suprapuse vor apărea aici prin JS -->
+            </div>
+            
+            <button class="slider-arrow arrow-right" onclick="scrollAdmin(300)"><i class="fas fa-chevron-right"></i></button>
+        </div>
+        
+        <div id="uploadProgress" style="display:none; width:100%; max-width: 500px; height:6px; background:#111; border-radius:10px; margin:20px auto; overflow:hidden; border: 1px solid #222;">
+            <div id="progressBar" style="width:0%; height:100%; background:var(--primary); box-shadow: 0 0 10px var(--primary);"></div>
+        </div>
+        
+        <button id="postBtn" class="btn-post-launch" style="display:none;">
+            <i class="fas fa-rocket"></i> LANSEAZĂ POSTAREA
+        </button>
     </div>
-    
-    <!-- Buton Lansare -->
-    <button id="postBtn" class="btn-post-launch" style="display:none;">
-        <i class="fas fa-rocket"></i> LANSEAZĂ POSTAREA
-    </button>
-</div>
 
-    <!-- CONTAINER GALERIE (5 Coloane pe PC) -->
+    <!-- CONTAINER GALERIE -->
     <div class="gallery-grid" id="galleryContainer">
-        <!-- JS-ul va genera aici cardurile stilizate -->
+        <!-- JS-ul va genera aici cardurile -->
     </div>
-
 </main>
+
+<!-- LIGHTBOX TIKTOK-STYLE (Hidden by default) -->
+<div id="globalLightbox">
+    <button class="close-lightbox-btn" onclick="document.getElementById('globalLightbox').style.display='none'">✕</button>
+    <div class="lightbox-scroll-container" id="lbContainer"></div>
+</div>
 <!-- MAIN CONTENT AREA END -->
 
 <!-- Footer -->
@@ -3208,28 +3330,59 @@ window.deletePost = async (id) => {
     }
 };
 
-// --- FIX: LIGHTBOX ---
-window.openLightbox = (url) => {
+// Navigare Slider Admin
+window.scrollAdmin = (val) => {
+    document.getElementById('previewArea').scrollBy({ left: val, behavior: 'smooth' });
+};
+
+// --- LIGHTBOX TIKTOK-STYLE LOGIC ---
+window.openLightbox = (activeId) => {
     let lb = document.getElementById('globalLightbox');
     if(!lb) {
         lb = document.createElement('div');
         lb.id = 'globalLightbox';
-        lb.innerHTML = `<img src="" id="lbImg">`;
-        lb.onclick = () => lb.style.display = 'none';
+        lb.innerHTML = `
+            <button onclick="this.parentElement.style.display='none'" style="position:fixed; top:20px; right:20px; z-index:100; background:none; border:none; color:white; font-size:30px; cursor:pointer;">✕</button>
+            <div class="lightbox-scroll-container" id="lbContainer"></div>
+        `;
         document.body.appendChild(lb);
     }
-    document.getElementById('lbImg').src = url;
+
+    const container = document.getElementById('lbContainer');
+    container.innerHTML = ''; // Curățăm
+
+    // Clonăm toate cardurile din galerie în lightbox
+    const allCards = document.querySelectorAll('#galleryContainer .gallery-card');
+    allCards.forEach(card => {
+        const item = document.createElement('div');
+        item.className = 'lightbox-item';
+        // Luăm ID-ul postării
+        const postId = card.querySelector('.action-btn').getAttribute('onclick').match(/'([^']+)'/)[1];
+        
+        // Clonăm cardul (fără butoane de admin/delete)
+        const clone = card.cloneNode(true);
+        const delBtn = clone.querySelector('.delete-btn-admin');
+        if(delBtn) delBtn.remove();
+        
+        item.appendChild(clone);
+        container.appendChild(item);
+
+        // Dacă e cardul pe care s-a dat click, facem scroll la el
+        if(postId === activeId) {
+            setTimeout(() => {
+                item.scrollIntoView();
+            }, 50);
+        }
+    });
+
     lb.style.display = 'flex';
 };
 
-// --- FIX: SHARE ---
+// SHARE FIX
 window.sharePost = (url) => {
-    if (navigator.share) {
-        navigator.share({ title: 'Pisicile KSDA', url: url });
-    } else {
-        navigator.clipboard.writeText(url);
-        alert("Link copiat!");
-    }
+    navigator.clipboard.writeText(url).then(() => {
+        alert("Link-ul imaginii a fost copiat! 🔗");
+    });
 };
 
 // --- LOAD GALLERY (ACTUALIZAT) ---
