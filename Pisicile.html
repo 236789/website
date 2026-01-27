@@ -3389,40 +3389,67 @@ document.getElementById('files').onchange = (e) => {
 
 // --- 2. LIGHTBOX TIKTOK-STYLE (SNAP 1 BY 1) ---
 // --- 1. FIXED LIGHTBOX FUNCTION ---
-window.openLightbox = (url) => {
-    // Check if lightbox exists, if not, create it
+// --- LIGHTBOX TIKTOK-STYLE LOGIC (FIXED) ---
+window.openLightbox = (activeId) => {
     let lb = document.getElementById('globalLightbox');
-    
-    if (!lb) {
+    if(!lb) {
         lb = document.createElement('div');
         lb.id = 'globalLightbox';
         lb.style.cssText = `
-            position: fixed; inset: 0; background: rgba(0,0,0,0.95);
-            z-index: 50000; display: none; justify-content: center; align-items: center;
-            backdrop-filter: blur(10px); cursor: zoom-out;
+            position: fixed; inset: 0; background: #000; z-index: 99999; 
+            display: none; flex-direction: column;
         `;
-        
-        // Add image container
-        lb.innerHTML = `<img src="" id="lbImg" style="max-width: 90%; max-height: 90vh; border-radius: 10px; box-shadow: 0 0 50px rgba(0,0,0,0.5); object-fit: contain;">`;
-        
-        // Close on click background
-        lb.onclick = (e) => {
-            if(e.target !== document.getElementById('lbImg')) {
-                lb.style.display = 'none';
-            }
-        };
-        
+        lb.innerHTML = `
+            <button onclick="this.parentElement.style.display='none'" style="position:fixed; top:20px; right:20px; z-index:100; background:rgba(0,0,0,0.5); border:1px solid #fff; color:white; font-size:20px; width:40px; height:40px; border-radius:50%; cursor:pointer;">✕</button>
+            <div class="lightbox-scroll-container" id="lbContainer"></div>
+        `;
         document.body.appendChild(lb);
     }
 
-    // Set Image and Show
-    const imgEl = document.getElementById('lbImg');
-    if(imgEl) {
-        imgEl.src = url;
-        lb.style.display = 'flex';
-    } else {
-        console.error("Lightbox image element missing");
-    }
+    const container = document.getElementById('lbContainer');
+    container.innerHTML = ''; // Clear previous items
+
+    // Select all cards from the gallery
+    const allCards = document.querySelectorAll('#galleryContainer .gallery-card');
+    
+    allCards.forEach(card => {
+        const item = document.createElement('div');
+        item.className = 'lightbox-item';
+        
+        // --- FIX: Target the new class .action-btn-pill ---
+        // This grabs the ID from the "votePost('ID')" onclick attribute
+        const btn = card.querySelector('.action-btn-pill');
+        let postId = null;
+        
+        if (btn) {
+            const match = btn.getAttribute('onclick').match(/'([^']+)'/);
+            if (match) postId = match[1];
+        }
+        
+        // Clone the card for the lightbox
+        const clone = card.cloneNode(true);
+        
+        // Remove Admin buttons from the view inside Lightbox
+        const adminBtns = clone.querySelector('.admin-actions-wrapper');
+        if(adminBtns) adminBtns.remove();
+        
+        // Adjust style for fullscreen view
+        clone.style.pointerEvents = "auto"; 
+        clone.style.width = "100%";
+        clone.style.maxWidth = "500px";
+        
+        item.appendChild(clone);
+        container.appendChild(item);
+
+        // Scroll to the clicked image
+        if(postId && postId === activeId) {
+            setTimeout(() => {
+                item.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }, 10);
+        }
+    });
+
+    lb.style.display = 'flex';
 };
 
 // --- 2. NEW EDIT FUNCTIONS ---
@@ -3462,6 +3489,7 @@ window.savePostEdit = async () => {
 };
 
 // --- 3. UPDATED LOAD GALLERY (With Edit Button) ---
+// --- UPDATED LOAD GALLERY (Fixes Lightbox & Includes Edit) ---
 async function loadGallery() {
     const q = query(collection(db, "pisici_posts"), orderBy("createdAt", "desc"));
     
@@ -3479,7 +3507,7 @@ async function loadGallery() {
             const likesCount = Object.keys(data.likes || {}).length;
             const isLiked = user && data.likes && data.likes[user.uid];
 
-            // Sanitize strings for the onclick function to prevent syntax errors with quotes
+            // Sanitize strings for the JS functions
             const safeTitle = (data.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
 
@@ -3506,7 +3534,8 @@ async function loadGallery() {
 
                 <!-- Middle: Image -->
                 <div class="img-wrapper">
-                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${data.img}')">
+                    <!-- FIX: Passing '${id}' instead of image URL so lightbox knows which one to scroll to -->
+                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${id}')">
                 </div>
 
                 <!-- Bottom: Static Text & Actions -->
