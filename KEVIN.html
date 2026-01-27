@@ -2446,7 +2446,7 @@ body {
 }
 
 /* Flash-ul alb de final */
-.warp-flash {
+.warp-flash { 
     position: fixed; inset: 0; background: #fff;
     opacity: 0; z-index: 300000; pointer-events: none;
     transition: opacity 0.2s;
@@ -2469,12 +2469,11 @@ body {
 <body oncontextmenu="return false;">
 
 
-
 <!-- MODAL CONFIRMARE ȘTERGERE -->
 <div id="deleteConfirmModal" class="account-modal-overlay">
     <div class="account-card" style="border-color: #ff4757; box-shadow: 0 0 50px rgba(255, 71, 87, 0.2);">
-        <h3 style="font-family:'Orbitron'; color:#ff4757; margin-bottom: 15px;">ELIMINĂ POSTAREA?</h3>
-        <p style="font-size: 14px; color: #fff; margin-bottom: 25px;">Ești sigur că vrei să ștergi această amintire cu pisicile? Acțiunea este permanentă.</p>
+        <h3 style="font-family:'Orbitron'; color:#ff4757; margin-bottom: 15px;">ELIMINĂ AMINTIREA?</h3>
+        <p style="font-size: 14px; color: #fff; margin-bottom: 25px;">Ești sigur că vrei să ștergi această imagine cu Kevin? Acțiunea este ireversibilă.</p>
         <input type="hidden" id="deleteTargetId">
         <div style="display:flex; gap:10px;">
             <button onclick="executeDelete()" class="btn-save-profile" style="background:#ff4757; color:#fff; flex:1; margin:0;">ȘTERGE</button>
@@ -3974,34 +3973,26 @@ const setupYearDropdowns = () => {
 };
 setupYearDropdowns(); // Pornim setup-ul
 
-// --- 2. SELECTARE POZE & PREVIEW ---
 document.getElementById('files').onchange = (e) => {
     const rawFiles = Array.from(e.target.files).slice(0, 50);
     filesToUpload = [];
-    
     const area = document.getElementById('previewArea');
-    const wrapper = document.getElementById('previewWrapper');
-    const countDisp = document.getElementById('countDisplay');
-    const yearPicker = document.getElementById('adminYearPicker');
-    
     area.innerHTML = '';
-    if(wrapper) wrapper.style.display = 'block';
-    if(countDisp) countDisp.innerText = `${rawFiles.length}/50 IMAGINI SELECTATE`;
 
     rawFiles.forEach((file, i) => {
         new Compressor(file, {
-            quality: 0.6, maxWidth: 1200,
+            quality: 0.6, maxWidth: 1000,
             success(result) {
                 result.name = file.name;
                 filesToUpload[i] = result;
-
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     area.innerHTML += `
                         <div class="preview-card" style="order:${i}">
                             <img src="${ev.target.result}">
                             <div class="preview-inputs">
-                                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
+                                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px; margin-bottom:5px;">
+                                <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px; margin:0;"></textarea>
                             </div>
                         </div>`;
                 };
@@ -4009,62 +4000,42 @@ document.getElementById('files').onchange = (e) => {
             }
         });
     });
-
-    // Afișăm dropdown-ul de an
-    if(yearPicker) yearPicker.style.display = 'block';
-    // Dacă anul e deja selectat, arătăm direct butonul de upload
-    if(selectedUploadYear) {
-        document.getElementById('postBtn').style.display = 'inline-flex';
-        document.getElementById('targetYearLabel').innerText = selectedUploadYear;
-    }
+    document.getElementById('previewWrapper').style.display = 'block';
+    document.getElementById('adminYearPicker').style.display = 'block';
 };
-
 // --- 3. UPLOAD FINAL (Butonul LANSEAZĂ) ---
 document.getElementById('postBtn').onclick = async () => {
-    if (filesToUpload.length === 0) return alert("Nu ai selectat poze!");
-    if (!selectedUploadYear) return alert("TREBUIE să selectezi anul din meniu!");
-
-    const btn = document.getElementById('postBtn');
-    btn.disabled = true; 
-    btn.innerText = "SE ÎNCARCĂ...";
+    if (filesToUpload.length === 0 || !selectedUploadYear) return alert("Selectează pozele și anul!");
     
-    const progDiv = document.getElementById('uploadProgress'); // Dacă ai div-ul asta în HTML
-    if(progDiv) progDiv.style.display = 'block';
-
-    let userData = {};
-    if(auth.currentUser) {
-        const s = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        if(s.exists()) userData = s.data();
-    }
+    const btn = document.getElementById('postBtn');
+    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
+    document.getElementById('uploadProgress').style.display = 'block';
 
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue;
         const file = filesToUpload[i];
-        const titleInput = document.getElementById(`t-${i}`);
-        const title = titleInput ? titleInput.value : "";
+        const title = document.getElementById(`t-${i}`).value;
+        const desc = document.getElementById(`d-${i}`).value;
         
-        // Upload în 'kevin'
         const sRef = ref(storage, `kevin/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
-            task.on('state_changed', null, null, async () => {
-                const url = await getDownloadURL(task.snapshot.ref);
-                // Scriere în 'kevin_posts'
-                await addDoc(collection(db, "kevin_posts"), {
-                    img: url, title: title, likes: {}, views: 0,
-                    createdAt: serverTimestamp(),
-                    authorName: userData.username || auth.currentUser?.displayName || "Admin",
-                    authorPhoto: userData.image || auth.currentUser?.photoURL,
-                    authorUid: auth.currentUser?.uid,
-                    year: selectedUploadYear.toString(),
-                    isPinned: false
-                });
-                resolve();
-            });
+            task.on('state_changed', 
+                (s) => { document.getElementById('progressBar').style.width = ((s.bytesTransferred/s.totalBytes)*100) + '%'; }, 
+                null, 
+                async () => {
+                    const url = await getDownloadURL(task.snapshot.ref);
+                    await addDoc(collection(db, "kevin_posts"), {
+                        img: url, title: title, desc: desc, likes: {}, views: 0,
+                        createdAt: serverTimestamp(), authorUid: auth.currentUser.uid,
+                        year: selectedUploadYear.toString()
+                    });
+                    resolve();
+                }
+            );
         });
     }
-    alert("Upload complet!");
     location.reload();
 };
 
@@ -4388,12 +4359,18 @@ async function loadGallery() {
     };
 
     // 2. Funcția de Delete (Admin)
-    window.deleteKevinPost = async (id) => {
-        if(confirm("Sigur vrei să ștergi această amintire?")) {
-            await deleteDoc(doc(db, "kevin_posts", id));
-            alert("Amintire ștearsă!");
-        }
-    };
+window.deleteKevinPost = (id) => {
+    document.getElementById('deleteTargetId').value = id;
+    document.getElementById('deleteConfirmModal').classList.add('active');
+};
+
+window.executeDelete = async () => {
+    const id = document.getElementById('deleteTargetId').value;
+    if(!id) return;
+    await deleteDoc(doc(db, "kevin_posts", id));
+    document.getElementById('deleteConfirmModal').classList.remove('active');
+    alert("Șters cu succes!");
+};
 
 
 
