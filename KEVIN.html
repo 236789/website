@@ -2284,6 +2284,105 @@ body {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+
+
+/* --- FIX INPUT AREA & COMMENTS --- */
+.card-input-area {
+    display: flex;
+    align-items: center; /* Centrează vertical */
+    gap: 10px;
+    padding: 10px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 15px;
+    margin-top: 10px;
+}
+
+.modern-input {
+    flex: 1; /* Inputul ocupă tot spațiul rămas */
+    margin: 0 !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: #fff !important;
+    height: 40px; /* Înălțime fixă pentru aliniere */
+}
+
+.card-send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--primary);
+    border: none;
+    color: #000;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0; /* Previne turtirea butonului */
+    transition: 0.2s;
+}
+.card-send-btn:hover { transform: scale(1.1); box-shadow: 0 0 10px var(--primary); }
+
+/* Stilul pentru Comentariile Full (Banner, Frame etc) */
+.full-comment-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    position: relative;
+    /* Bannerul va fi aplicat aici prin clasa JS */
+}
+
+/* Badge-uri în comentarii */
+.role-badge, .cosmetic-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-family: 'Orbitron';
+    font-weight: 800;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.badge-owner { background: #00ffff; color: #000; box-shadow: 0 0 10px #00ffff; }
+.badge-admin { background: #ff4757; color: #fff; }
+
+
+/* Stil Buton Editare */
+.btn-edit {
+    background: rgba(255, 215, 0, 0.2); /* Galben transparent */
+    color: #ffd700;
+    border: 1px solid #ffd700;
+}
+.btn-edit:hover {
+    background: #ffd700;
+    color: #000;
+    box-shadow: 0 0 15px #ffd700;
+}
+
+/* Container Admin (poziționat dreapta-sus pe card) */
+.admin-actions-wrapper {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 5px;
+    z-index: 20;
+}
+.admin-icon-btn {
+    width: 32px; 
+    height: 32px; 
+    border-radius: 8px; 
+    cursor: pointer;
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    backdrop-filter: blur(5px);
+    transition: 0.2s;
+}
   </style>
 </head>
 <body>
@@ -2309,16 +2408,19 @@ body {
 <div id="editPostModal" class="account-modal-overlay">
     <div class="account-card" style="border-color: #ffd700; box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);">
         <button class="close-pop" onclick="document.getElementById('editPostModal').classList.remove('active')">✕</button>
-        <h3 style="font-family:'Orbitron'; color:#ffd700; margin-bottom: 20px;">EDITEAZĂ AMINTIREA</h3>
+        <h3 style="font-family:'Orbitron'; color:#ffd700; margin-bottom: 20px;">EDITEAZĂ POSTAREA</h3>
         
+        <!-- Câmpuri ascunse și inputuri -->
         <input type="hidden" id="editPostId">
         
         <div style="text-align:left; width:100%;">
-            <label class="edit-label">Titlu / Descriere</label>
-            <input type="text" id="editPostTitle" class="modern-input" style="width:100%; margin-bottom:15px; background:rgba(255,255,255,0.05); color:white;" placeholder="Scrie un titlu nou...">
+            <label class="edit-label" style="color:#ffd700;">Titlu Nou</label>
+            <input type="text" id="editPostTitle" class="modern-input" style="width:100%; margin-bottom:15px; background:rgba(255,255,255,0.05); color:white;">
         </div>
         
-        <button onclick="savePostEdit()" class="btn-save-profile" style="background:#ffd700; color:#000; width:100%; font-weight:900;">SALVEAZĂ</button>
+        <button onclick="savePostEdit()" class="btn-save-profile" style="background:#ffd700; color:#000; width:100%; font-weight:900;">
+            <i class="fas fa-save"></i> SALVEAZĂ
+        </button>
     </div>
 </div>
 
@@ -3888,77 +3990,98 @@ document.getElementById('postBtn').onclick = async () => {
     };
 
     // B. DESCHIDE/ÎNCHIDE COMENTARIILE (Cu Cosmetice)
-    window.toggleComments = async (id) => {
-        const sec = document.getElementById(`com-sec-${id}`);
-        const list = document.getElementById(`list-${id}`);
-        
-        // Toggle vizibilitate
-        if(sec.style.display === 'block') { 
-            sec.style.display = 'none'; 
-            return; 
+// --- 5. TOGGLE COMMENTS CU COSMETICE FULL ---
+window.toggleComments = async (id) => {
+    const sec = document.getElementById(`com-sec-${id}`);
+    const list = document.getElementById(`list-${id}`);
+    
+    if(sec.style.display === 'block') { 
+        sec.style.display = 'none'; 
+        return; 
+    }
+    sec.style.display = 'block';
+    list.innerHTML = '<div style="padding:10px; color:#aaa; font-size:10px;">Se încarcă...</div>';
+
+    const q = query(collection(db, `kevin_posts/${id}/comments`), orderBy("createdAt", "asc"));
+    
+    onSnapshot(q, async (cSnap) => {
+        list.innerHTML = '';
+        if (cSnap.empty) {
+            list.innerHTML = '<div style="padding:10px; color:#aaa; font-size:10px;">Niciun comentariu încă.</div>';
+            return;
         }
-        sec.style.display = 'block';
-        list.innerHTML = '<div style="color:#aaa; font-size:10px; padding:10px;">Se încarcă...</div>';
 
-        // Ascultăm comentariile în timp real
-        const q = query(collection(db, `kevin_posts/${id}/comments`), orderBy("createdAt", "asc"));
-        
-        onSnapshot(q, async (cSnap) => {
-            list.innerHTML = '';
+        // Folosim un array de promisiuni pentru viteză
+        const commentPromises = cSnap.docs.map(async (cDoc) => {
+            const cData = cDoc.data();
             
-            if (cSnap.empty) {
-                list.innerHTML = '<div style="color:#aaa; font-size:10px; padding:10px;">Fii primul care comentează!</div>';
-                return;
-            }
+            // Default-uri
+            let frameImg = "";
+            let bannerClass = ""; 
+            let textClass = "";
+            let badgeHtml = "";
+            let roleHtml = "";
 
-            // Procesăm fiecare comentariu
-            for (const cDoc of cSnap.docs) {
-                const cData = cDoc.data();
-                
-                // Căutăm datele autorului comentariului pentru a-i afișa cosmeticele
-                let frameImg = "";
-                let bannerClass = "";
-                let textClass = "";
-                let badgeHtml = "";
-                let roleHtml = "";
-
-                try {
-                    const uSnap = await getDoc(doc(db, "accounts", cData.uid));
-                    if (uSnap.exists()) {
-                        const u = uSnap.data();
-                        frameImg = u.equippedFrame?.img || "";
-                        bannerClass = u.equippedBanner?.cssClass || "";
-                        textClass = u.equippedText?.cssClass || "";
-                        
-                        if(u.equippedBadge) {
-                            badgeHtml = `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; color:#000; font-size:8px; padding:2px 4px; border-radius:3px; margin-left:5px; font-weight:bold;"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>`;
-                        }
+            // Încercăm să luăm datele utilizatorului pentru cosmetice
+            try {
+                const uSnap = await getDoc(doc(db, "accounts", cData.uid));
+                if (uSnap.exists()) {
+                    const u = uSnap.data();
+                    
+                    // 1. Frame
+                    if (u.equippedFrame && u.equippedFrame.img) {
+                        frameImg = `<img src="${u.equippedFrame.img}" class="pop-frame-overlay" style="width:145%; height:145%; top:50%; left:50%; transform:translate(-50%, -50%);">`;
                     }
-                } catch(e) { console.log("User data missing for comment"); }
+                    
+                    // 2. Banner
+                    if (u.equippedBanner && u.equippedBanner.cssClass) {
+                        bannerClass = u.equippedBanner.cssClass;
+                    }
+                    
+                    // 3. Text Color
+                    if (u.equippedText && u.equippedText.cssClass) {
+                        textClass = u.equippedText.cssClass;
+                    }
+                    
+                    // 4. Badge (Insignă)
+                    if (u.equippedBadge) {
+                        badgeHtml = `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; color:#000; box-shadow:0 0 5px ${u.equippedBadge.color};">
+                                        <i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}
+                                     </span>`;
+                    }
+                }
+            } catch(e) { console.log("User load error", e); }
 
-                // Verificare Staff (Hardcoded pentru siguranță vizuală)
-                if(cData.email === 'nicaemmanuel433qe@gmail.com') roleHtml = `<span class="role-badge badge-owner" style="margin-left:5px;">OWNER</span>`;
-                else if(cData.email === 'kevin.trinity2020@gmail.com') roleHtml = `<span class="role-badge badge-admin" style="margin-left:5px;">ADMIN</span>`;
+            // 5. Role Badge (Manual check)
+            if(cData.email === 'nicaemmanuel433qe@gmail.com') roleHtml = `<span class="role-badge badge-owner">OWNER</span>`;
+            else if(cData.email === 'kevin.trinity2020@gmail.com') roleHtml = `<span class="role-badge badge-admin">ADMIN</span>`;
 
-                // Construim HTML-ul comentariului
-                list.innerHTML += `
-                    <div class="mini-comment ${bannerClass}" style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px; padding:10px; border-radius:15px; background:rgba(255,255,255,0.03);">
-                        <div class="profile-frame-wrapper" style="width:35px; height:35px; flex-shrink:0; margin:0;">
-                            <img src="${cData.photo || 'https://iili.io/fXks1Dv.png'}" class="pop-img-inner">
-                            ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:145%; height:145%">` : ''}
+            // Construim HTML-ul (full-comment-card e stilizat să suporte bannere)
+            return `
+                <div class="full-comment-card ${bannerClass}" style="position:relative; background:rgba(255,255,255,0.03); border-radius:12px; padding:10px; margin-bottom:8px; display:flex; gap:10px; border:1px solid rgba(255,255,255,0.05);">
+                    <!-- Avatar + Frame Wrapper -->
+                    <div class="profile-frame-wrapper" style="width:40px; height:40px; flex-shrink:0; margin:0;">
+                        <img src="${cData.photo || 'https://iili.io/fXks1Dv.png'}" class="pop-img-inner">
+                        ${frameImg}
+                    </div>
+                    
+                    <!-- Content -->
+                    <div style="flex:1; overflow:hidden;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; margin-bottom:2px;">
+                            <span class="${textClass}" style="font-family:'Orbitron'; font-weight:700; font-size:12px; color:#fff;">${cData.name}</span>
+                            ${roleHtml}
+                            ${badgeHtml}
                         </div>
-                        <div class="com-content" style="flex:1;">
-                            <div class="com-header" style="display:flex; align-items:center; flex-wrap:wrap;">
-                                <span class="com-name ${textClass}" style="font-weight:bold; font-size:12px; color:#fff;">${cData.name}</span>
-                                ${roleHtml}
-                                ${badgeHtml}
-                            </div>
-                            <div class="com-text" style="font-size:12px; color:#ddd; margin-top:2px; word-break:break-word;">${cData.text}</div>
-                        </div>
-                    </div>`;
-            }
+                        <div style="font-size:13px; color:#ddd; line-height:1.4; word-break:break-word;">${cData.text}</div>
+                    </div>
+                </div>
+            `;
         });
-    };
+
+        const commentsHTML = await Promise.all(commentPromises);
+        list.innerHTML = commentsHTML.join('');
+    });
+};
 
     // C. POSTARE COMENTARIU
     window.postComment = async (id) => {
@@ -3990,111 +4113,132 @@ document.getElementById('postBtn').onclick = async () => {
         finally { inp.disabled = false; }
     };
 
-// --- 4. AFIȘARE GALERIE (KEVIN) - FINAL UPDATE ---
-// --- LOAD GALLERY (ACTUALIZATĂ) ---
-    async function loadGallery() {
-        const cont = document.getElementById('galleryContainer');
-        if(!cont) return;
-        
-        cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Se caută amintiri din ${currentYearFilter}...</p>`;
+// --- 4. AFIȘARE GALERIE (FINAL CU EDIT BUTTON) ---
+async function loadGallery() {
+    const cont = document.getElementById('galleryContainer');
+    if(!cont) return;
+    
+    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Se caută amintiri din ${currentYearFilter}...</p>`;
 
-        const q = query(
-            collection(db, "kevin_posts"), 
-            where("year", "==", currentYearFilter.toString()), 
-            orderBy("createdAt", "desc")
-        );
+    const q = query(
+        collection(db, "kevin_posts"), 
+        where("year", "==", currentYearFilter.toString()), 
+        orderBy("createdAt", "desc")
+    );
+ 
+    onSnapshot(q, (snap) => {
+        cont.innerHTML = '';
+        if(snap.empty) {
+            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire în anul ${currentYearFilter}.</p>`;
+            return;
+        }
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            const id = docSnap.id;
+            const likesCount = data.likes ? Object.keys(data.likes).length : 0;
+            const comms = data.commentCount || 0;
 
-        onSnapshot(q, (snap) => {
-            cont.innerHTML = '';
-            if(snap.empty) {
-                cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire cu Kevin în anul ${currentYearFilter}.</p>`;
-                return;
-            }
-            snap.forEach(docSnap => {
-                const data = docSnap.data();
-                const id = docSnap.id;
-                const likesCount = data.likes ? Object.keys(data.likes).length : 0;
-                const views = data.views || 0;
-                const comms = data.commentCount || 0;
-
-                // Admin Delete Button
-                let deleteBtn = '';
-                if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
-                    deleteBtn = `<div class="admin-actions-wrapper"><button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button></div>`;
-                }
-
-                // Check Like Status
-                const currentUid = auth.currentUser ? auth.currentUser.uid : null;
-                const isLiked = (data.likes && currentUid && data.likes[currentUid]);
-                const likeClass = isLiked ? 'liked' : '';
-                const heartIcon = isLiked ? 'fas fa-heart' : 'far fa-heart';
-
-                cont.innerHTML += `
-                <div class="gallery-card" data-id="${id}">
-                    ${deleteBtn}
-                    
-                    <div class="card-user-info">
-                        <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
-                        <div class="card-user-name">${data.authorName || 'Kevin Trinity'}</div>
-                    </div>
-                    
-                    <div class="img-wrapper">
-                        <!-- registerView(id) se apelează când dai click pe poză -->
-                        <img src="${data.img}" class="gallery-img" onclick="registerView('${id}'); openLightbox('${id}')">
-                    </div>
-
-                    <div class="card-bottom-content">
-                        ${data.title ? `<h3 class="card-title-static" style="font-size:14px; margin-bottom:5px;">${data.title}</h3>` : ''}
-                        
-                        <div class="card-actions-bar">
-                            <div style="display:flex; gap:10px;">
-                                <button class="action-btn-pill ${likeClass}" onclick="votePost('${id}')">
-                                    <i class="${heartIcon}"></i> ${likesCount}
-                                </button>
-                                <button class="action-btn-pill" onclick="toggleComments('${id}')">
-                                    <i class="far fa-comment-dots"></i> ${comms}
-                                </button>
-                            </div>
-                            <div class="action-btn-pill" style="cursor: default; opacity: 0.8;">
-                                <i class="far fa-eye"></i> ${views}
-                            </div>
-                        </div>
-
-                        <!-- SECȚIUNEA DE COMENTARII (Ascunsă) -->
-                        <div class="card-comments-section" id="com-sec-${id}" style="display:none; margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
-                            <div class="card-comments-list" id="list-${id}" style="max-height:200px; overflow-y:auto; margin-bottom:10px;"></div>
-                            
-                            <div class="card-input-area" style="display:flex; gap:10px;">
-                                <input class="modern-input" id="inp-${id}" placeholder="Scrie ceva frumos..." style="margin:0; flex:1; padding:10px; font-size:12px;">
-                                <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:40px; cursor:pointer; color:#000;">
-                                    <i class="fas fa-paper-plane"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+            // --- ADMIN LOGIC (EDIT + DELETE) ---
+            let adminBtns = '';
+            if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
+                // Curățăm titlul pentru a putea fi pus în onclick fără să strice HTML-ul
+                const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                
+                adminBtns = `
+                <div class="admin-actions-wrapper">
+                    <!-- Buton Editare (Galben) -->
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}')">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <!-- Buton Ștergere (Roșu) -->
+                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>`;
-            });
-        }, (error) => {
-            console.error("Eroare Galerie:", error);
+            }
+
+            // Like Logic
+            const currentUid = auth.currentUser ? auth.currentUser.uid : null;
+            const isLiked = (data.likes && currentUid && data.likes[currentUid]);
+            const likeClass = isLiked ? 'liked' : '';
+            const heartIcon = isLiked ? 'fas fa-heart' : 'far fa-heart';
+
+            cont.innerHTML += `
+            <div class="gallery-card" data-id="${id}">
+                ${adminBtns} <!-- AICI APAR BUTOANELE -->
+                
+                <div class="card-user-info">
+                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                    <div class="card-user-name">${data.authorName || 'Kevin Trinity'}</div>
+                </div>
+                
+                <div class="img-wrapper">
+                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${id}')">
+                </div>
+
+                <div class="card-bottom-content">
+                    ${data.title ? `<h3 class="card-title-static" style="font-size:14px; margin-bottom:5px;">${data.title}</h3>` : ''}
+                    
+                    <div class="card-actions-bar">
+                        <div style="display:flex; gap:10px;">
+                            <button class="action-btn-pill ${likeClass}" onclick="votePost('${id}')">
+                                <i class="${heartIcon}"></i> ${likesCount}
+                            </button>
+                            <button class="action-btn-pill" onclick="toggleComments('${id}')">
+                                <i class="far fa-comment-dots"></i> ${comms}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- COMENTARII -->
+                    <div class="card-comments-section" id="com-sec-${id}" style="display:none; margin-top:10px;">
+                        <div class="card-comments-list" id="list-${id}" style="max-height:250px; overflow-y:auto;"></div>
+                        
+                        <div class="card-input-area">
+                            <input type="text" class="modern-input" id="inp-${id}" 
+                                placeholder="Scrie ceva frumos..." 
+                                onkeypress="if(event.key === 'Enter') postComment('${id}')">
+                                
+                            <button class="card-send-btn" onclick="postComment('${id}')">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
         });
-    }
+    });
+}
 
 
 // --- 5. FUNCȚII EDITARE ---
 
     // Deschide fereastra de editare
+// --- FUNCȚII PENTRU EDITARE ---
+    
+    // 1. Deschide fereastra
     window.openEditPost = (id, currentTitle) => {
-        const modal = document.getElementById('editPostModal');
-        const idInput = document.getElementById('editPostId');
-        const titleInput = document.getElementById('editPostTitle');
+        document.getElementById('editPostId').value = id;
+        // Decodează titlul dacă are caractere speciale
+        document.getElementById('editPostTitle').value = currentTitle || "";
+        document.getElementById('editPostModal').classList.add('active');
+    };
 
-        if(modal && idInput && titleInput) {
-            idInput.value = id;
-            // Decodează caracterele speciale dacă e cazul, dar de obicei merge direct
-            titleInput.value = currentTitle || ""; 
-            modal.classList.add('active');
-        } else {
-            console.error("Modalul de editare nu a fost găsit în HTML!");
+    // 2. Salvează modificările
+    window.savePostEdit = async () => {
+        const id = document.getElementById('editPostId').value;
+        const newTitle = document.getElementById('editPostTitle').value;
+
+        if(!id) return;
+
+        try {
+            await updateDoc(doc(db, "kevin_posts", id), {
+                title: newTitle
+            });
+            document.getElementById('editPostModal').classList.remove('active');
+            alert("Titlu actualizat!");
+        } catch(e) {
+            alert("Eroare: " + e.message);
         }
     };
 
