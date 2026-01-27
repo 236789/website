@@ -2869,6 +2869,14 @@ body {
         <div class="admin-preview-wrapper" id="previewWrapper" style="display:none;">
             <div id="previewArea" class="preview-slider"></div>
         </div>
+
+<!-- Add this right before the #postBtn button -->
+<div id="uploadProgress" style="display:none; margin: 20px auto; width: 80%; max-width: 400px;">
+    <p style="font-family:'Orbitron'; font-size: 12px; color: var(--primary);">ÎNCĂRCARE ARHIVĂ...</p>
+    <div style="width: 100%; height: 8px; background: #111; border-radius: 10px; overflow: hidden; border: 1px solid var(--primary-dim);">
+        <div id="progressBar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
+    </div>
+</div>
         
         <button id="postBtn" class="btn-post-launch" style="display:none;">
             <i class="fas fa-rocket"></i> LANSEAZĂ ÎN <span id="targetYearLabel">...</span>
@@ -2961,84 +2969,59 @@ import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://w
 // ==========================================
 // 3. UPLOAD FINAL (Butonul "LANSEAZĂ")
 // ==========================================
+// --- UPLOAD LOGIC FOR EMMANUEL ---
 document.getElementById('postBtn').onclick = async () => {
-    // 1. Verificări de siguranță
-    if (filesToUpload.length === 0) {
-        return alert("Nu ai selectat nicio poză!");
-    }
-    if (!selectedUploadYear) {
-        return alert("TREBUIE să selectezi anul din meniu înainte să apeși pe lansare!");
-    }
+    if (filesToUpload.length === 0) return alert("Nu ai selectat nicio poză!");
+    if (!selectedUploadYear) return alert("Selectează anul!");
 
-    // 2. Blocăm butonul și arătăm progresul
     const btn = document.getElementById('postBtn');
+    const progressDiv = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('progressBar');
+
     btn.disabled = true; 
     btn.innerText = "SE ÎNCARCĂ...";
-    
-    // Dacă ai un element de progres în HTML, îl afișăm
-    const progDiv = document.getElementById('uploadProgress');
-    const progBar = document.getElementById('progressBar');
-    if(progDiv) progDiv.style.display = 'block';
+    if (progressDiv) progressDiv.style.display = 'block';
 
-    // 3. Luăm datele userului (pentru autor)
-    let userData = {};
-    if (auth.currentUser) {
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        if (userSnap.exists()) userData = userSnap.data();
-    }
-
-    // 4. Procesăm fiecare fișier
     for (let i = 0; i < filesToUpload.length; i++) {
-        if(!filesToUpload[i]) continue; // Sărim peste eventuale goluri
+        if(!filesToUpload[i]) continue;
         
         const file = filesToUpload[i];
-        // Luăm titlul din inputul generat la preview (dacă există)
-        const titleInput = document.getElementById(`t-${i}`);
-        const title = titleInput ? titleInput.value : "";
+        const title = document.getElementById(`t-${i}`)?.value || "";
+        const desc = document.getElementById(`d-${i}`)?.value || "";
         
-        // A. Upload în Storage (Folder: kevin)
+        // FOLDER: emmanuel
         const sRef = ref(storage, `emmanuel/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
             task.on('state_changed', 
                 (snapshot) => { 
-                    // Update bară progres (opțional)
-                    if(progBar) {
-                        const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                        progBar.style.width = percent + '%';
-                    }
+                    const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    if (progressBar) progressBar.style.width = percent + '%';
                 },
-                (error) => {
-                    console.error("Eroare upload:", error);
-                    resolve(); // Continuăm chiar dacă una eșuează
-                },
+                null,
                 async () => {
-                    // B. Obținem URL-ul public
                     const url = await getDownloadURL(task.snapshot.ref);
                     
-                    // C. Scriem în baza de date (Colecția: kevin_posts)
+                    // COLLECTION: emmanuel_posts
                     await addDoc(collection(db, "emmanuel_posts"), {
                         img: url, 
-                        title: title, 
+                        title: title,
+                        desc: desc,
                         likes: {}, 
                         views: 0, 
                         commentCount: 0,
                         createdAt: serverTimestamp(),
-                        authorName: userData.username || auth.currentUser.displayName || "Admin",
-                        authorPhoto: userData.image || auth.currentUser.photoURL,
+                        authorName: auth.currentUser.displayName || "Admin",
+                        authorPhoto: auth.currentUser.photoURL,
                         authorUid: auth.currentUser.uid,
-                        year: selectedUploadYear.toString(), // AICI SE SALVEAZĂ ANUL SELECTAT
-                        isPinned: false
+                        year: selectedUploadYear.toString()
                     });
                     resolve();
                 }
             );
         });
     }
-
-    // 5. Finalizare
-    alert("Succes! Amintirile au fost salvate în anul " + selectedUploadYear);
     location.reload();
 };
 // --- INVITE SYSTEM LOGIC ---
@@ -4208,14 +4191,50 @@ window.deleteKevinPost = (id) => {
     document.getElementById('deleteConfirmModal').classList.add('active');
 };
 
+// FIXED VOTE
+window.votePost = async (id) => {
+    if(!auth.currentUser) return alert("Loghează-te!");
+    const postRef = doc(db, "emmanuel_posts", id); 
+    const snap = await getDoc(postRef);
+    if (snap.exists()) {
+        const likes = snap.data().likes || {};
+        const uid = auth.currentUser.uid;
+        if(likes[uid]) delete likes[uid];
+        else likes[uid] = true;
+        await updateDoc(postRef, { likes: likes });
+    }
+};
+
+// FIXED COMMENTS
+window.postComment = async (id) => {
+    if(!auth.currentUser) return alert("Loghează-te!");
+    const inp = document.getElementById(`inp-${id}`);
+    const text = inp.value.trim();
+    if(!text) return;
+    try {
+        await addDoc(collection(db, `emmanuel_posts/${id}/comments`), { 
+            text: text,
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email,
+            name: auth.currentUser.displayName,
+            photo: auth.currentUser.photoURL,
+            createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db, "emmanuel_posts", id), { commentCount: increment(1) });
+        inp.value = '';
+    } catch(e) { console.error(e); }
+};
+
+// FIXED DELETE
 window.executeDelete = async () => {
     const id = document.getElementById('deleteTargetId').value;
     if(!id) return;
-    await deleteDoc(doc(db, "emmanuel_posts", id));
-    document.getElementById('deleteConfirmModal').classList.remove('active');
-    alert("Șters cu succes!");
+    try {
+        await deleteDoc(doc(db, "emmanuel_posts", id));
+        document.getElementById('deleteConfirmModal').classList.remove('active');
+        alert("Șters!");
+    } catch(e) { console.error(e); }
 };
-
 
 
     // 4. Funcția pentru Toggle Menu (Ani)
@@ -4262,13 +4281,13 @@ window.triggerFastJump = (targetUrl) => {
 
 
 
-    async function loadGallery() {
+async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
     if(!cont) return;
     
     cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Emmanuel (${currentYearFilter})...</p>`;
 
-    // COLECȚIA: emmanuel_posts
+    // FIXED COLLECTION: emmanuel_posts
     const q = query(
         collection(db, "emmanuel_posts"), 
         where("year", "==", currentYearFilter.toString()), 
@@ -4295,7 +4314,7 @@ window.triggerFastJump = (targetUrl) => {
                 adminBtns = `
                 <div class="admin-actions-wrapper">
                     <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')"><i class="fas fa-pen"></i></button>
-                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
+                    <button class="admin-icon-btn btn-del" onclick="deletePost('${id}')"><i class="fas fa-trash"></i></button>
                 </div>`;
             }
 
