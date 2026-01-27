@@ -3302,40 +3302,73 @@ window.deletePost = async (id) => {
     }
 };
 
-// 2. Upload în Storage și Salvare în Firestore (Folder: pisici)
+// 2. Upload în Storage și Salvare în Firestore (ACTUALIZATĂ PENTRU INDEX)
 document.getElementById('postBtn').onclick = async () => {
     const btn = document.getElementById('postBtn');
-    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
+    if (filesToUpload.length === 0) return alert("Selectează măcar o poză!");
+
+    btn.disabled = true; 
+    btn.innerText = "SE ÎNCARCĂ...";
     document.getElementById('uploadProgress').style.display = 'block';
 
+    // 1. Luăm datele profilului (Real Name/Photo) din colecția accounts pentru consistență
+    let authorProfile = {
+        name: auth.currentUser.displayName,
+        photo: auth.currentUser.photoURL
+    };
+
+    try {
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        if (userSnap.exists()) {
+            const d = userSnap.data();
+            authorProfile.name = d.username || authorProfile.name;
+            authorProfile.photo = d.image || authorProfile.photo;
+        }
+    } catch (e) { console.log("Nu s-a putut lua profilul, folosim datele Google."); }
+
+    // 2. Începem încărcarea fișierelor
     for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`).value || "Fără titlu";
-        const desc = document.getElementById(`d-${i}`).value || "";
+        const title = document.getElementById(`t-${i}`).value.trim() || "";
+        const desc = document.getElementById(`d-${i}`).value.trim() || "";
         
-        // Folder dinamic: pisici/
         const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
-        await new Promise((res) => {
+        await new Promise((resolve) => {
             task.on('state_changed', 
-                (s) => { document.getElementById('progressBar').style.width = ((s.bytesTransferred/s.totalBytes)*100) + '%'; },
-                null,
+                (s) => { 
+                    const progress = (s.bytesTransferred / s.totalBytes) * 100;
+                    document.getElementById('progressBar').style.width = progress + '%'; 
+                },
+                (err) => { console.error("Upload error:", err); resolve(); },
                 async () => {
                     const url = await getDownloadURL(task.snapshot.ref);
+
+                    // 3. SALVAREA ÎN FIRESTORE CU TOATE CÂMPURILE PENTRU INDEX
                     await addDoc(collection(db, "pisici_posts"), {
-                        img: url, title: title, desc: desc,
-                        likes: {}, createdAt: serverTimestamp(),
-                        author: auth.currentUser.displayName
+                        img: url, 
+                        title: title, 
+                        desc: desc,
+                        likes: {}, 
+                        createdAt: serverTimestamp(),
+                        authorName: authorProfile.name,
+                        authorPhoto: authorProfile.photo,
+                        authorUid: auth.currentUser.uid,
+                        // CÂMPURI CRITICE PENTRU INDEX:
+                        isPinned: false, // Dacă lipsește, postarea e invizibilă în noul query
+                        views: 0,
+                        commentCount: 0
                     });
-                    res();
+                    resolve();
                 }
             );
         });
     }
-    alert("Postat cu succes!"); location.reload();
-};
 
+    alert("Postat cu succes! Pagina se va reîncărca."); 
+    location.reload();
+};
 // Funcție pentru a genera Badges de rol (ca în galerie.html)
 function getRoleBadge(email) {
     if(email === 'nicaemmanuel433qe@gmail.com') return '<span class="owner-badge">OWNER</span>';
@@ -3476,14 +3509,22 @@ window.sharePost = (url) => {
     });
 };
 
-// --- 1. QUERY ACTUALIZAT (Pin-ul e primul) ---
 async function loadGallery() {
-    // Ordonăm după isPinned (true/false) și apoi după dată
+    const cont = document.getElementById('galleryContainer');
+    // Adăugăm un indicator de încărcare
+    cont.innerHTML = '<p style="text-align:center; color:var(--primary); font-family:Orbitron;">Se încarcă baza de date...</p>';
+
+    // IMPORTANT: Ordonăm după isPinned și createdAt
+    // Dacă ai creat indexul, interogarea va merge.
     const q = query(collection(db, "pisici_posts"), orderBy("isPinned", "desc"), orderBy("createdAt", "desc"));
     const isAdmin = auth.currentUser && ADMINS.includes(auth.currentUser.email);
 
     onSnapshot(q, (snap) => {
-        const cont = document.getElementById('galleryContainer');
+        if (snap.empty) {
+            cont.innerHTML = '<p style="text-align:center; color:#555; font-family:Orbitron;">Momentan nu există postări care să aibă câmpul de sortare definit.</p>';
+            return;
+        }
+
         cont.innerHTML = '';
         
         snap.forEach(docSnap => {
@@ -3497,7 +3538,6 @@ async function loadGallery() {
 
             cont.innerHTML += `
             <div class="gallery-card" id="card-${id}">
-                <!-- BUTOANE ADMIN -->
                 ${isAdmin ? `
                     <button class="delete-btn-admin" onclick="deletePost('${id}')"><i class="fas fa-trash"></i></button>
                     <button class="pin-btn-admin ${pinned ? 'active' : ''}" onclick="togglePin('${id}', ${pinned})">
@@ -3513,7 +3553,7 @@ async function loadGallery() {
                 <div class="img-wrapper" style="position:relative;">
                     <img src="${data.img}" class="gallery-img" onclick="registerView('${id}'); openLightbox('${id}')">
                     <div class="card-info-overlay">
-                        <span class="card-title-text">${data.title || ''}</span>
+                        <span class="card-title-text">${data.title || 'Fără Titlu'}</span>
                         <p class="card-desc-text">${data.desc || ''}</p>
                     </div>
                 </div>
@@ -3529,9 +3569,8 @@ async function loadGallery() {
                             <span>${commsCount}</span>
                         </button>
                     </div>
-                    <!-- CONTOR VIZUALIZĂRI (În loc de Share) -->
                     <div class="views-display">
-                        <i class="far fa-eye"></i>
+                        <i class="far fa-eye" style="margin-right:5px;"></i>
                         <span>${views}</span>
                     </div>
                 </div>
@@ -3547,6 +3586,9 @@ async function loadGallery() {
                 </div>
             </div>`;
         });
+    }, (error) => {
+        console.error("Eroare Firestore:", error);
+        cont.innerHTML = `<p style="color:red;">Eroare la încărcare. Verifică dacă indexul s-a terminat de construit. Detalii: ${error.message}</p>`;
     });
 }
 
