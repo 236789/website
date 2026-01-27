@@ -2025,6 +2025,46 @@
     top: 10px;
     right: 10px;
 }
+
+
+
+/* Container for Admin Buttons (Top Right) */
+.admin-actions-wrapper {
+    position: absolute; 
+    top: 10px; 
+    right: 10px; 
+    display: flex; 
+    gap: 8px; 
+    z-index: 10;
+}
+
+/* Base style for Admin Buttons */
+.admin-icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.2s;
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.btn-del {
+    background: rgba(255, 71, 87, 0.2);
+    color: #ff4757;
+    border-color: #ff4757;
+}
+.btn-del:hover { background: #ff4757; color: #fff; }
+
+.btn-edit {
+    background: rgba(255, 215, 0, 0.2);
+    color: #ffd700;
+    border-color: #ffd700;
+}
+.btn-edit:hover { background: #ffd700; color: #000; }
   </style>
 </head>
 <body>
@@ -2060,6 +2100,25 @@
         </div>
         <p style="color: #ffd700; font-weight: 800; font-family: 'Orbitron'; font-size: 12px; letter-spacing: 2px;">KSDA COINS</p>
         <button class="super-btn" onclick="document.getElementById('rewardModal').classList.remove('active')">SUPER!</button>
+    </div>
+</div>
+
+
+<!-- EDIT POST MODAL -->
+<div id="editPostModal" class="account-modal-overlay">
+    <div class="account-card" style="border-color: #ffd700;"> <!-- Gold border for Admin -->
+        <button class="close-pop" onclick="document.getElementById('editPostModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:#ffd700; margin-bottom: 20px;">EDIT POST</h3>
+        
+        <input type="hidden" id="editPostId">
+        
+        <label class="edit-label">Titlu</label>
+        <input type="text" id="editPostTitle" class="modern-input" style="width:100%; margin-bottom:15px;" placeholder="Titlu nou...">
+        
+        <label class="edit-label">Descriere</label>
+        <textarea id="editPostDesc" class="modern-input" style="width:100%; height:100px; margin-bottom:15px;" placeholder="Descriere nouă..."></textarea>
+        
+        <button onclick="savePostEdit()" class="btn-save-profile" style="background:#ffd700; color:#000;">SALVEAZĂ MODIFICĂRILE</button>
     </div>
 </div>
 
@@ -3329,49 +3388,162 @@ document.getElementById('files').onchange = (e) => {
 };
 
 // --- 2. LIGHTBOX TIKTOK-STYLE (SNAP 1 BY 1) ---
-window.openLightbox = (activeId) => {
+// --- 1. FIXED LIGHTBOX FUNCTION ---
+window.openLightbox = (url) => {
+    // Check if lightbox exists, if not, create it
     let lb = document.getElementById('globalLightbox');
-    if(!lb) {
+    
+    if (!lb) {
         lb = document.createElement('div');
         lb.id = 'globalLightbox';
-        lb.innerHTML = `
-            <button onclick="this.parentElement.style.display='none'" style="position:fixed; top:20px; right:20px; z-index:100001; background:rgba(0,0,0,0.5); border:none; color:white; font-size:24px; width:40px; height:40px; border-radius:50%; cursor:pointer;">✕</button>
-            <button class="lb-nav-btn btn-prev" onclick="moveLB(-1)"><i class="fas fa-chevron-left"></i></button>
-            <button class="lb-nav-btn btn-next" onclick="moveLB(1)"><i class="fas fa-chevron-right"></i></button>
-            <div class="lightbox-scroll-container" id="lbContainer"></div>
+        lb.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+            z-index: 50000; display: none; justify-content: center; align-items: center;
+            backdrop-filter: blur(10px); cursor: zoom-out;
         `;
+        
+        // Add image container
+        lb.innerHTML = `<img src="" id="lbImg" style="max-width: 90%; max-height: 90vh; border-radius: 10px; box-shadow: 0 0 50px rgba(0,0,0,0.5); object-fit: contain;">`;
+        
+        // Close on click background
+        lb.onclick = (e) => {
+            if(e.target !== document.getElementById('lbImg')) {
+                lb.style.display = 'none';
+            }
+        };
+        
         document.body.appendChild(lb);
     }
 
-    const container = document.getElementById('lbContainer');
-    container.innerHTML = ''; 
-
-    // Clonăm postările din galerie
-    const allCards = document.querySelectorAll('#galleryContainer .gallery-card');
-    allCards.forEach(card => {
-        const item = document.createElement('div');
-        item.className = 'lightbox-item';
-        
-        // Clonăm cardul
-        const clone = card.cloneNode(true);
-        const delBtn = clone.querySelector('.delete-btn-admin');
-        if(delBtn) delBtn.remove();
-        
-        // Re-atașăm evenimentele (cloneNode nu le păstrează)
-        const postId = card.id.replace('card-', '');
-        clone.querySelector('.action-btn').onclick = () => window.votePost(postId);
-        clone.querySelectorAll('.action-btn')[1].onclick = () => window.toggleComments(postId);
-        
-        item.appendChild(clone);
-        container.appendChild(item);
-
-        if(card.id === `card-${activeId}`) {
-            setTimeout(() => item.scrollIntoView(), 50);
-        }
-    });
-
-    lb.style.display = 'flex';
+    // Set Image and Show
+    const imgEl = document.getElementById('lbImg');
+    if(imgEl) {
+        imgEl.src = url;
+        lb.style.display = 'flex';
+    } else {
+        console.error("Lightbox image element missing");
+    }
 };
+
+// --- 2. NEW EDIT FUNCTIONS ---
+
+// Open Modal with existing data
+window.openEditPost = (id, oldTitle, oldDesc) => {
+    // Decode special chars if necessary, but usually passing strings works fine
+    document.getElementById('editPostId').value = id;
+    document.getElementById('editPostTitle').value = oldTitle;
+    document.getElementById('editPostDesc').value = oldDesc;
+    
+    document.getElementById('editPostModal').classList.add('active');
+};
+
+// Save to Firebase
+window.savePostEdit = async () => {
+    const id = document.getElementById('editPostId').value;
+    const newTitle = document.getElementById('editPostTitle').value;
+    const newDesc = document.getElementById('editPostDesc').value;
+
+    if(!id) return;
+
+    try {
+        const postRef = doc(db, "pisici_posts", id);
+        await updateDoc(postRef, {
+            title: newTitle,
+            desc: newDesc
+        });
+        
+        alert("Postare actualizată!");
+        document.getElementById('editPostModal').classList.remove('active');
+        // No need to reload, onSnapshot in loadGallery will auto-update the UI
+    } catch(e) {
+        console.error(e);
+        alert("Eroare la editare: " + e.message);
+    }
+};
+
+// --- 3. UPDATED LOAD GALLERY (With Edit Button) ---
+async function loadGallery() {
+    const q = query(collection(db, "pisici_posts"), orderBy("createdAt", "desc"));
+    
+    // Check Admin Status
+    const user = auth.currentUser;
+    const isAdmin = user && (user.email === 'nicaemmanuel433qe@gmail.com' || user.email === 'kevin.trinity2020@gmail.com');
+
+    onSnapshot(q, (snap) => {
+        const cont = document.getElementById('galleryContainer');
+        cont.innerHTML = '';
+        
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            const id = docSnap.id;
+            const likesCount = Object.keys(data.likes || {}).length;
+            const isLiked = user && data.likes && data.likes[user.uid];
+
+            // Sanitize strings for the onclick function to prevent syntax errors with quotes
+            const safeTitle = (data.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const safeDesc = (data.desc || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+
+            cont.innerHTML += `
+            <div class="gallery-card">
+                
+                <!-- ADMIN BUTTONS (Edit + Delete) -->
+                ${isAdmin ? `
+                <div class="admin-actions-wrapper">
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button class="admin-icon-btn btn-del" onclick="deletePost('${id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                ` : ''}
+                
+                <!-- Top: User Info -->
+                <div class="card-user-info">
+                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                    <div class="card-user-name">${data.authorName || 'Membru KSDA'}</div>
+                </div>
+
+                <!-- Middle: Image -->
+                <div class="img-wrapper">
+                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${data.img}')">
+                </div>
+
+                <!-- Bottom: Static Text & Actions -->
+                <div class="card-bottom-content">
+                    <h3 class="card-title-static">${data.title || ''}</h3>
+                    <p class="card-desc-static">${data.desc || ''}</p>
+                    
+                    <div class="card-actions-bar">
+                        <div style="display: flex; gap: 10px;">
+                            <button class="action-btn-pill ${isLiked ? 'liked' : ''}" onclick="votePost('${id}')">
+                                <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
+                                <span>${likesCount}</span>
+                            </button>
+                            <button class="action-btn-pill" onclick="toggleComments('${id}')">
+                                <i class="far fa-comment-dots"></i>
+                            </button>
+                        </div>
+                        <button class="action-btn-pill" onclick="sharePost('${data.img}')" style="padding: 8px 12px;">
+                            <i class="fas fa-share-nodes"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Comments Section -->
+                <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
+                    <div class="card-comments-list" id="list-${id}"></div>
+                    <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px; padding:10px;">
+                        <input class="modern-input" id="inp-${id}" placeholder="Scrie un comentariu..." style="margin:0; flex:1; padding:10px;">
+                        <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:45px; height:45px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-paper-plane" style="color:#000; font-size:16px;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        });
+    });
+}
 
 // Navigare prin Butoane (PC)
 window.moveLB = (dir) => {
@@ -3570,71 +3742,8 @@ window.sharePost = (url) => {
 };
 
 // --- LOAD GALLERY (ACTUALIZAT) ---
-// --- LOAD GALLERY (UPDATED FOR NEW DESIGN) ---
-async function loadGallery() {
-    const q = query(collection(db, "pisici_posts"), orderBy("createdAt", "desc"));
-    const isAdmin = auth.currentUser && ADMINS.includes(auth.currentUser.email);
+// --- LOAD GALLERY (UPDATED FOR NEW DESI GN) ---
 
-    onSnapshot(q, (snap) => {
-        const cont = document.getElementById('galleryContainer');
-        cont.innerHTML = '';
-        
-        snap.forEach(docSnap => {
-            const data = docSnap.data();
-            const id = docSnap.id;
-            const likesCount = Object.keys(data.likes || {}).length;
-            const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
-
-            cont.innerHTML += `
-            <div class="gallery-card">
-                ${isAdmin ? `<button class="delete-btn-admin" onclick="deletePost('${id}')"><i class="fas fa-trash"></i></button>` : ''}
-                
-                <!-- 1. Top: User Info -->
-                <div class="card-user-info">
-                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
-                    <div class="card-user-name">${data.authorName || 'Membru KSDA'}</div>
-                </div>
-
-                <!-- 2. Middle: Image -->
-                <div class="img-wrapper">
-                    <img src="${data.img}" class="gallery-img" onclick="openLightbox('${data.img}')">
-                </div>
-
-                <!-- 3. Bottom: Static Text & Actions -->
-                <div class="card-bottom-content">
-                    <h3 class="card-title-static">${data.title || 'Fără Titlu'}</h3>
-                    <p class="card-desc-static">${data.desc || 'Fără descriere...'}</p>
-                    
-                    <div class="card-actions-bar">
-                        <div style="display: flex; gap: 10px;">
-                            <button class="action-btn-pill ${isLiked ? 'liked' : ''}" onclick="votePost('${id}')">
-                                <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
-                                <span>${likesCount}</span>
-                            </button>
-                            <button class="action-btn-pill" onclick="toggleComments('${id}')">
-                                <i class="far fa-comment-dots"></i>
-                            </button>
-                        </div>
-                        <button class="action-btn-pill" onclick="sharePost('${data.img}')" style="padding: 8px 12px;">
-                            <i class="fas fa-share-nodes"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Comments Section (Hidden by default) -->
-                <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
-                    <div class="card-comments-list" id="list-${id}"></div>
-                    <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px; padding:10px;">
-                        <input class="modern-input" id="inp-${id}" placeholder="Scrie un comentariu..." style="margin:0; flex:1; padding:10px;">
-                        <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:45px; height:45px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
-                            <i class="fas fa-paper-plane" style="color:#000; font-size:16px;"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>`;
-        });
-    });
-}
 
 // --- TOGGLE COMMENTS (CU COSMETICE) ---
 window.toggleComments = async (id) => {
