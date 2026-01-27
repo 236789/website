@@ -3934,35 +3934,26 @@ document.getElementById('files').onchange = (e) => {
 
 
 document.getElementById('postBtn').onclick = async () => {
-    // 1. Safety Checks
     if (filesToUpload.length === 0) return alert("Nu ai selectat nicio poză!");
-    if (!selectedUploadYear) return alert("Selectează anul din meniu!");
+    if (!selectedUploadYear) return alert("Selectează anul!");
 
     const btn = document.getElementById('postBtn');
     const progressDiv = document.getElementById('uploadProgress');
     const progressBar = document.getElementById('progressBar');
 
-    // 2. UI Feedback
     btn.disabled = true; 
     btn.innerText = "SE ÎNCARCĂ...";
     if (progressDiv) progressDiv.style.display = 'block';
-
-    // 3. Determine which collection to use (based on page title)
-    // Use "emmanuel_posts" for Emmanuel page or "kevin_posts" for Kevin page
-    const collectionName = document.body.innerText.includes("EMMANUEL") ? "emmanuel_posts" : "kevin_posts";
 
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue;
         
         const file = filesToUpload[i];
-        const titleInput = document.getElementById(`t-${i}`);
-        const title = titleInput ? titleInput.value : "";
-        const descInput = document.getElementById(`d-${i}`);
-        const desc = descInput ? descInput.value : "";
+        const title = document.getElementById(`t-${i}`)?.value || "";
+        const desc = document.getElementById(`d-${i}`)?.value || "";
         
-        // Upload Path
-        const folder = collectionName === "emmanuel_posts" ? "emmanuel" : "kevin";
-        const sRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+        // ONLY FOR KEVIN
+        const sRef = ref(storage, `kevin/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
@@ -3971,11 +3962,12 @@ document.getElementById('postBtn').onclick = async () => {
                     const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
                     if (progressBar) progressBar.style.width = percent + '%';
                 },
-                (error) => { console.error(error); resolve(); },
+                null,
                 async () => {
                     const url = await getDownloadURL(task.snapshot.ref);
                     
-                    await addDoc(collection(db, collectionName), {
+                    // SAVING TO KEVIN_POSTS
+                    await addDoc(collection(db, "kevin_posts"), {
                         img: url, 
                         title: title,
                         desc: desc,
@@ -3993,8 +3985,6 @@ document.getElementById('postBtn').onclick = async () => {
             );
         });
     }
-
-    alert("Succes! Amintirile au fost salvate.");
     location.reload();
 };
 // --- 5. FUNCȚII SOCIALE (VIEWS & COMMENTS) ---
@@ -4110,17 +4100,16 @@ window.toggleComments = async (id) => {
 
 
 
-
-
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
     if(!cont) return;
     
-    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Emmanuel (${currentYearFilter})...</p>`;
+    // Updated text to say Kevin
+    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Kevin (${currentYearFilter})...</p>`;
 
-    // COLECȚIA: emmanuel_posts
+    // FIXED: Correct collection is kevin_posts
     const q = query(
-        collection(db, "emmanuel_posts"), 
+        collection(db, "kevin_posts"), 
         where("year", "==", currentYearFilter.toString()), 
         orderBy("createdAt", "desc")
     );
