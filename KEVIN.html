@@ -2715,7 +2715,7 @@ body {
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 // Import pentru FIRESTORE (Baza de date)
-import { getFirestore, doc, getDoc, setDoc,where, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp, collection, addDoc, query, orderBy, limit,deleteDoc  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp, collection, addDoc, query, orderBy, limit,deleteDoc  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Import pentru STORAGE (Imagini/Fișiere) - ASTA LIPSEA SAU ERA GREȘIT
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
@@ -2822,9 +2822,9 @@ document.getElementById('postBtn').onclick = async () => {
 // 3. LOAD GALLERY CU FILTRU DE AN
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
-    cont.innerHTML = '<p style="text-align:center; color:var(--primary);">Sincronizare temporală: ' + currentYearFilter + '...</p>';
+    cont.innerHTML = '<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare: ' + currentYearFilter + '...</p>';
 
-    // FILTRAM DUPA ANUL SELECTAT
+    // FĂRĂ isPinned (cum ai cerut) pentru a evita erorile de index complex
     const q = query(
         collection(db, "kevin_posts"), 
         where("year", "==", currentYearFilter.toString()), 
@@ -2834,14 +2834,14 @@ async function loadGallery() {
     onSnapshot(q, (snap) => {
         cont.innerHTML = '';
         if(snap.empty) {
-            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire găsită în anul ${currentYearFilter}.</p>`;
+            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire în anul ${currentYearFilter}.</p>`;
             return;
         }
         snap.forEach(docSnap => {
             const data = docSnap.data();
             const id = docSnap.id;
+            const likesCount = Object.keys(data.likes || {}).length;
             const views = data.views || 0;
-            const likes = Object.keys(data.likes || {}).length;
 
             cont.innerHTML += `
             <div class="gallery-card" id="card-${id}">
@@ -2858,11 +2858,14 @@ async function loadGallery() {
                     <div class="card-info-overlay"><span class="card-title-text">${data.title || ''}</span></div>
                 </div>
                 <div class="card-actions-bar">
-                    <button class="action-btn-pill" onclick="votePost('${id}')"><i class="far fa-heart"></i> ${likes}</button>
+                    <button class="action-btn-pill" onclick="votePost('${id}')"><i class="far fa-heart"></i> ${likesCount}</button>
                     <div class="views-display"><i class="far fa-eye"></i> ${views}</div>
                 </div>
             </div>`;
         });
+    }, (error) => {
+        console.error("Firestore Error:", error);
+        // Dacă primești 'permission-denied', verifică Rules în Firebase Console!
     });
 }
 
@@ -4027,7 +4030,13 @@ window.openEditPost = (id, oldTitle, oldDesc) => {
 
 
 
- 
+ // --- FIX: Atașăm funcțiile la window pentru a fi văzute de HTML ---
+window.toggleYearMenu = (menuId) => {
+    document.querySelectorAll('.tm-drop-content').forEach(m => {
+        if(m.id !== menuId) m.classList.remove('show-menu');
+    });
+    document.getElementById(menuId).classList.toggle('show-menu');
+};
 // Remove window.openLightbox() and window.moveLB() entirely from your script
 
 // Navigare prin Butoane (PC)
