@@ -3488,12 +3488,10 @@ window.savePostEdit = async () => {
     }
 };
 
-// --- 3. UPDATED LOAD GALLERY (With Edit Button) ---
-// --- UPDATED LOAD GALLERY (Fixes Lightbox & Includes Edit) ---
+// --- UPDATED LOAD GALLERY (With data-id for stability) ---
 async function loadGallery() {
     const q = query(collection(db, "pisici_posts"), orderBy("createdAt", "desc"));
     
-    // Check Admin Status
     const user = auth.currentUser;
     const isAdmin = user && (user.email === 'nicaemmanuel433qe@gmail.com' || user.email === 'kevin.trinity2020@gmail.com');
 
@@ -3507,14 +3505,13 @@ async function loadGallery() {
             const likesCount = Object.keys(data.likes || {}).length;
             const isLiked = user && data.likes && data.likes[user.uid];
 
-            // Sanitize strings for the JS functions
             const safeTitle = (data.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
 
+            // --- CHANGE HERE: Added data-id="${id}" to the main div ---
             cont.innerHTML += `
-            <div class="gallery-card">
+            <div class="gallery-card" data-id="${id}">
                 
-                <!-- ADMIN BUTTONS (Edit + Delete) -->
                 ${isAdmin ? `
                 <div class="admin-actions-wrapper">
                     <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')">
@@ -3526,19 +3523,15 @@ async function loadGallery() {
                 </div>
                 ` : ''}
                 
-                <!-- Top: User Info -->
                 <div class="card-user-info">
                     <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
                     <div class="card-user-name">${data.authorName || 'Membru KSDA'}</div>
                 </div>
 
-                <!-- Middle: Image -->
                 <div class="img-wrapper">
-                    <!-- FIX: Passing '${id}' instead of image URL so lightbox knows which one to scroll to -->
                     <img src="${data.img}" class="gallery-img" onclick="openLightbox('${id}')">
                 </div>
 
-                <!-- Bottom: Static Text & Actions -->
                 <div class="card-bottom-content">
                     <h3 class="card-title-static">${data.title || ''}</h3>
                     <p class="card-desc-static">${data.desc || ''}</p>
@@ -3559,7 +3552,6 @@ async function loadGallery() {
                     </div>
                 </div>
 
-                <!-- Comments Section -->
                 <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
                     <div class="card-comments-list" id="list-${id}"></div>
                     <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px; padding:10px;">
@@ -3720,43 +3712,56 @@ window.scrollAdmin = (val) => {
     document.getElementById('previewArea').scrollBy({ left: val, behavior: 'smooth' });
 };
 
-// --- LIGHTBOX TIKTOK-STYLE LOGIC ---
+// --- ROBUST LIGHTBOX FUNCTION ---
 window.openLightbox = (activeId) => {
     let lb = document.getElementById('globalLightbox');
     if(!lb) {
         lb = document.createElement('div');
         lb.id = 'globalLightbox';
+        lb.style.cssText = `
+            position: fixed; inset: 0; background: #000; z-index: 99999; 
+            display: none; flex-direction: column;
+        `;
         lb.innerHTML = `
-            <button onclick="this.parentElement.style.display='none'" style="position:fixed; top:20px; right:20px; z-index:100; background:none; border:none; color:white; font-size:30px; cursor:pointer;">✕</button>
+            <button onclick="this.parentElement.style.display='none'" style="position:fixed; top:20px; right:20px; z-index:100; background:rgba(0,0,0,0.5); border:1px solid #fff; color:white; font-size:20px; width:40px; height:40px; border-radius:50%; cursor:pointer;">✕</button>
             <div class="lightbox-scroll-container" id="lbContainer"></div>
         `;
         document.body.appendChild(lb);
     }
 
     const container = document.getElementById('lbContainer');
-    container.innerHTML = ''; // Curățăm
+    container.innerHTML = ''; 
 
-    // Clonăm toate cardurile din galerie în lightbox
     const allCards = document.querySelectorAll('#galleryContainer .gallery-card');
+    
     allCards.forEach(card => {
+        // --- SAFE FIX: Get ID directly from the card dataset ---
+        // This prevents the "getAttribute of null" error completely
+        const postId = card.dataset.id; 
+
+        if (!postId) return; // Skip if something is wrong with a specific card
+
         const item = document.createElement('div');
         item.className = 'lightbox-item';
-        // Luăm ID-ul postării
-        const postId = card.querySelector('.action-btn').getAttribute('onclick').match(/'([^']+)'/)[1];
         
-        // Clonăm cardul (fără butoane de admin/delete)
         const clone = card.cloneNode(true);
-        const delBtn = clone.querySelector('.delete-btn-admin');
-        if(delBtn) delBtn.remove();
+        
+        // Cleanup UI for lightbox
+        const adminBtns = clone.querySelector('.admin-actions-wrapper');
+        if(adminBtns) adminBtns.remove();
+        
+        clone.style.pointerEvents = "auto"; 
+        clone.style.width = "100%";
+        clone.style.maxWidth = "500px";
         
         item.appendChild(clone);
         container.appendChild(item);
 
-        // Dacă e cardul pe care s-a dat click, facem scroll la el
         if(postId === activeId) {
+            // Using a tiny timeout ensures the DOM is ready for scrolling
             setTimeout(() => {
-                item.scrollIntoView();
-            }, 50);
+                item.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }, 10);
         }
     });
 
