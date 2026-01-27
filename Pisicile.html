@@ -1575,6 +1575,88 @@
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+
+/* Fix Admin Preview - Imaginile rămân mari, inputurile sunt suprapuse elegant */
+.preview-slider {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 20px;
+    scrollbar-width: thin;
+}
+
+.preview-card {
+    position: relative;
+    min-width: 300px;
+    height: 400px;
+    border-radius: 20px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.preview-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.preview-card .preview-inputs {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0,0,0,0.9));
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Stil pentru Titlu și Descriere pe Cardul din Galerie */
+.card-info-box {
+    padding: 0 20px 15px 20px;
+}
+
+.card-title-text {
+    font-family: 'Orbitron';
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 5px;
+    display: block;
+}
+
+.card-desc-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Buton Ștergere Admin */
+.delete-btn-admin {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: rgba(255, 71, 87, 0.2);
+    border: 1px solid #ff4757;
+    color: #ff4757;
+    width: 35px;
+    height: 35px;
+    border-radius: 10px;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.3s;
+}
+
+.delete-btn-admin:hover {
+    background: #ff4757;
+    color: #fff;
+    box-shadow: 0 0 15px #ff4757;
+}
   </style>
 </head>
 <body>
@@ -2909,62 +2991,136 @@ function getCommentClass(email) {
     return '';
 }
 
-// AFISARE DINAMICĂ COMPLETĂ
+// 1. SELECTARE ȘI PREVIEW (FIXED UI)
+document.getElementById('files').onchange = (e) => {
+    const files = Array.from(e.target.files).slice(0, 50);
+    filesToUpload = files;
+    const area = document.getElementById('previewArea');
+    area.innerHTML = '';
+    
+    files.forEach((file, i) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            area.innerHTML += `
+                <div class="preview-card">
+                    <img src="${ev.target.result}">
+                    <div class="preview-inputs">
+                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu poză..." style="margin:0">
+                        <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="margin:0; height:60px;"></textarea>
+                    </div>
+                </div>`;
+        };
+        reader.readAsDataURL(file);
+    });
+    document.getElementById('postBtn').style.display = 'inline-block';
+};
+
+// 2. LANSEAZĂ POSTAREA (SALVEAZĂ TOT: UID, PHOTO, NAME)
+document.getElementById('postBtn').onclick = async () => {
+    const btn = document.getElementById('postBtn');
+    btn.disabled = true; btn.innerText = "SE ÎNCARCĂ...";
+    
+    // Luăm datele actuale ale userului din Firestore
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const userData = userSnap.data();
+
+    for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const title = document.getElementById(`t-${i}`).value || "";
+        const desc = document.getElementById(`d-${i}`).value || "";
+        
+        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
+        const task = uploadBytesResumable(sRef, file);
+
+        await new Promise((res) => {
+            task.on('state_changed', null, null, async () => {
+                const url = await getDownloadURL(task.snapshot.ref);
+                await addDoc(collection(db, "pisici_posts"), {
+                    img: url, title: title, desc: desc,
+                    likes: {}, createdAt: serverTimestamp(),
+                    authorName: userData.username || auth.currentUser.displayName,
+                    authorPhoto: userData.image || auth.currentUser.photoURL,
+                    authorUid: auth.currentUser.uid
+                });
+                res();
+            });
+        });
+    }
+    location.reload();
+};
+
+// 3. SHARE ȘI DELETE
+window.sharePost = (url) => {
+    navigator.clipboard.writeText(url);
+    alert("Link imagine copiat în clipboard! 🔗");
+};
+
+window.deletePost = async (id) => {
+    if(confirm("Sigur ștergi această postare?")) {
+        await deleteDoc(doc(db, "pisici_posts", id));
+        alert("Șters!");
+    }
+};
+
+// 4. LOAD GALLERY (TEMPLATE-UL NOU 2030)
 async function loadGallery() {
     const q = query(collection(db, "pisici_posts"), orderBy("createdAt", "desc"));
-    
+    const isAdmin = auth.currentUser && ADMINS.includes(auth.currentUser.email);
+
     onSnapshot(q, (snap) => {
         const cont = document.getElementById('galleryContainer');
         cont.innerHTML = '';
         
-snap.forEach(docSnap => {
-    const data = docSnap.data();
-    const id = docSnap.id;
-    const likesCount = Object.keys(data.likes || {}).length;
-    const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            const id = docSnap.id;
+            const likesCount = Object.keys(data.likes || {}).length;
+            const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
 
-   // Exemplu de structură pentru un card generat în JS ( loadGallery() )
-const cardHTML = `
-    <div class="gallery-card" id="card-${id}">
-        <div class="card-user-info">
-            <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
-            <div>
-                <div class="card-user-name">${data.author || 'Membru KSDA'}</div>
-                <div style="font-size: 9px; color: var(--primary); font-family: 'Orbitron';">VERIFIED ASSET</div>
-            </div>
-        </div>
+            cont.innerHTML += `
+            <div class="gallery-card">
+                ${isAdmin ? `<button class="delete-btn-admin" onclick="deletePost('${id}')"><i class="fas fa-trash"></i></button>` : ''}
+                
+                <div class="card-user-info">
+                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                    <div class="card-user-name">${data.authorName || 'Membru KSDA'}</div>
+                </div>
 
-        <div class="img-wrapper" onclick="openLightbox('${data.img}')">
-            <img src="${data.img}" class="gallery-img" loading="lazy">
-        </div>
+                <div class="img-wrapper" onclick="openLightbox('${data.img}')">
+                    <img src="${data.img}" class="gallery-img">
+                </div>
 
-        <div class="card-actions">
-            <div style="display: flex; gap: 12px;">
-                <button class="action-btn ${isLiked ? 'active' : ''}" onclick="votePost('${id}')">
-                    <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
-                    <span>${likesCount}</span>
-                </button>
-                <button class="action-btn" onclick="toggleComments('${id}')">
-                    <i class="far fa-comment-dots"></i>
-                </button>
-            </div>
-            <button class="action-btn" onclick="sharePost('${data.img}')">
-                <i class="fas fa-share-nodes"></i>
-            </button>
-        </div>
+                <div class="card-info-box">
+                    ${data.title ? `<span class="card-title-text">${data.title}</span>` : ''}
+                    ${data.desc ? `<p class="card-desc-text">${data.desc}</p>` : ''}
+                </div>
 
-        <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
-            <div class="card-comments-list" id="list-${id}"></div>
-            <div class="card-input-area" style="display:flex; gap:10px; margin-top:15px;">
-                <input class="modern-input" id="inp-${id}" placeholder="Type a message..." style="margin-bottom:0; flex:1;">
-                <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:15px; padding:0 15px; cursor:pointer;">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-        </div>
-    </div>`;
-    cont.innerHTML += cardHTML;
-});
+                <div class="card-actions">
+                    <div style="display: flex; gap: 12px;">
+                        <button class="action-btn ${isLiked ? 'active' : ''}" onclick="votePost('${id}')">
+                            <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
+                            <span>${likesCount}</span>
+                        </button>
+                        <button class="action-btn" onclick="toggleComments('${id}')">
+                            <i class="far fa-comment-dots"></i>
+                        </button>
+                    </div>
+                    <button class="action-btn" onclick="sharePost('${data.img}')">
+                        <i class="fas fa-share-nodes"></i>
+                    </button>
+                </div>
+
+                <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
+                    <div class="card-comments-list" id="list-${id}"></div>
+                    <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px;">
+                        <input class="modern-input" id="inp-${id}" placeholder="Scrie un comentariu..." style="margin:0; flex:1; padding:10px;">
+                        <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:40px; cursor:pointer;">
+                            <i class="fas fa-paper-plane" style="color:#000"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        });
     });
 }
 
@@ -2982,31 +3138,48 @@ window.votePost = async (id) => {
     await updateDoc(postRef, { likes: likes });
 };
 
-// LOGICĂ COMENTARII (Toggle & Load)
 window.toggleComments = async (id) => {
     const sec = document.getElementById(`com-sec-${id}`);
     const list = document.getElementById(`list-${id}`);
+    
     if(sec.style.display === 'block') {
         sec.style.display = 'none';
-    } else {
-        sec.style.display = 'block';
-        // Ascultă live comentariile pt această poză
-        const q = query(collection(db, `pisici_posts/${id}/comments`), orderBy("createdAt", "asc"));
-        onSnapshot(q, (cSnap) => {
-            list.innerHTML = '';
-            cSnap.forEach(cDoc => {
-                const cData = cDoc.data();
-                list.innerHTML += `
-                    <div class="mini-comment ${getCommentClass(cData.email)}">
-                        <img src="${cData.photo}" style="width:20px; height:20px; border-radius:50%;">
-                        <div>
-                            <div style="font-weight:700;">${cData.name} ${getRoleBadge(cData.email)}</div>
-                            <div>${cData.text}</div>
-                        </div>
-                    </div>`;
-            });
-        });
+        return;
     }
+    
+    sec.style.display = 'block';
+    const q = query(collection(db, `pisici_posts/${id}/comments`), orderBy("createdAt", "asc"));
+    
+    onSnapshot(q, async (cSnap) => {
+        list.innerHTML = '';
+        for (const cDoc of cSnap.docs) {
+            const cData = cDoc.data();
+            
+            // Luăm cosmeticele userului în timp real
+            const uSnap = await getDoc(doc(db, "accounts", cData.uid));
+            const u = uSnap.exists() ? uSnap.data() : {};
+
+            const frameImg = u.equippedFrame?.img || "";
+            const bannerClass = u.equippedBanner?.cssClass || "";
+            const textClass = u.equippedText?.cssClass || "";
+            const badgeHtml = u.equippedBadge ? `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; font-size:8px; padding:2px 5px; border-radius:4px; margin-left:5px;"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>` : "";
+
+            list.innerHTML += `
+                <div class="mini-comment ${bannerClass}" style="margin-bottom:10px; position:relative;">
+                    <div class="profile-frame-wrapper" style="width:35px; height:35px; flex-shrink:0;">
+                        <img src="${cData.photo}" class="pop-img-inner">
+                        ${frameImg ? `<img src="${frameImg}" class="pop-frame-overlay" style="width:140%; height:140%">` : ''}
+                    </div>
+                    <div style="flex:1">
+                        <div style="font-weight:800; font-size:11px; display:flex; align-items:center;">
+                            <span class="${textClass}">${u.username || cData.name}</span>
+                            ${badgeHtml}
+                        </div>
+                        <div style="font-size:11px; opacity:0.9">${cData.text}</div>
+                    </div>
+                </div>`;
+        }
+    });
 };
 
 // POSTARE COMENTARIU
