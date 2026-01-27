@@ -4260,6 +4260,84 @@ window.triggerFastJump = (targetUrl) => {
     }, 400); 
 };
 
+
+
+    async function loadGallery() {
+    const cont = document.getElementById('galleryContainer');
+    if(!cont) return;
+    
+    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Emmanuel (${currentYearFilter})...</p>`;
+
+    // COLECȚIA: emmanuel_posts
+    const q = query(
+        collection(db, "emmanuel_posts"), 
+        where("year", "==", currentYearFilter.toString()), 
+        orderBy("createdAt", "desc")
+    );
+ 
+    onSnapshot(q, (snap) => {
+        cont.innerHTML = '';
+        if(snap.empty) {
+            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire în anul ${currentYearFilter}.</p>`;
+            return;
+        }
+        snap.forEach(docSnap => {
+            const data = docSnap.data();
+            const id = docSnap.id;
+            const likesCount = data.likes ? Object.keys(data.likes).length : 0;
+            const comms = data.commentCount || 0;
+
+            const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+            let adminBtns = '';
+            if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
+                adminBtns = `
+                <div class="admin-actions-wrapper">
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')"><i class="fas fa-pen"></i></button>
+                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
+                </div>`;
+            }
+
+            const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
+
+            cont.innerHTML += `
+            <div class="gallery-card" data-id="${id}">
+                ${adminBtns}
+                <div class="card-user-info">
+                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                    <div class="card-user-name">${data.authorName}</div>
+                </div>
+                <div class="img-wrapper">
+                    <img src="${data.img}" class="gallery-img">
+                </div>
+                <div class="card-bottom-content">
+                    ${data.title ? `<h3 class="card-title-static">${data.title}</h3>` : ''}
+                    ${data.desc ? `<p class="card-desc-static">${data.desc}</p>` : ''}
+                    <div class="card-actions-bar">
+                        <div style="display:flex; gap:10px;">
+                            <button class="action-btn-pill ${isLiked ? 'liked' : ''}" onclick="votePost('${id}')">
+                                <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i> ${likesCount}
+                            </button>
+                            <button class="action-btn-pill" onclick="toggleComments('${id}')">
+                                <i class="far fa-comment-dots"></i> ${comms}
+                            </button>
+                        </div>
+                        <button class="action-btn-pill" onclick="sharePost('${data.img}')"><i class="fas fa-share-alt"></i></button>
+                    </div>
+                    <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
+                        <div class="card-comments-list" id="list-${id}"></div>
+                        <div class="card-input-area">
+                            <input type="text" class="modern-input" id="inp-${id}" placeholder="Scrie ceva..." onkeypress="if(event.key === 'Enter') postComment('${id}')">
+                            <button class="card-send-btn" onclick="postComment('${id}')"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        });
+    });
+}
+
 // Check Admin & Load la pornire
 onAuthStateChanged(auth, (user) => {
     if (user && ADMINS.includes(user.email)) {
