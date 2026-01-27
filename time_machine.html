@@ -1638,10 +1638,72 @@
 }
 
 
+/* --- FAST PORTAL ANIMATIONS --- */
+.portal-core {
+    position: relative;
+    width: 300px; height: 300px;
+    display: flex; justify-content: center; align-items: center;
+    z-index: 2; transition: transform 0.6s cubic-bezier(0.9, 0, 0.1, 1);
+}
 
+.portal-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%; border: 6px solid transparent;
+}
+
+.ring-1 {
+    border-top: 8px solid #ff8c00;
+    border-bottom: 8px solid #7000ff;
+    box-shadow: 0 0 60px rgba(255, 140, 0, 0.5);
+    animation: rotateRing 0.3s linear infinite;
+}
+
+.ring-2 {
+    inset: 20px;
+    border-left: 4px solid #29f3ff;
+    border-right: 4px solid #ff00ff;
+    animation: rotateRing 0.5s linear infinite reverse;
+}
+
+.portal-scanner {
+    width: 80%; height: 80%;
+    background: #000; border-radius: 50%;
+    box-shadow: 0 0 100px #000;
+}
+
+@keyframes rotateRing {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.warp-flash {
+    position: fixed; inset: 0; background: #fff;
+    opacity: 0; z-index: 300000; pointer-events: none;
+    transition: opacity 0.2s;
+}
+.warp-flash.active { opacity: 1; }
+
+.fast-zooming { transform: scale(150) !important; }
+
+.shake-active { animation: violentShake 0.05s infinite alternate; }
+@keyframes violentShake {
+    0% { transform: translate(3px, 3px); }
+    100% { transform: translate(-3px, -3px); }
+}
   </style>
 </head>
 <body>
+
+
+<!-- FAST TEMPORAL JUMP OVERLAY -->
+<div id="fastPortalOverlay" class="portal-overlay" style="display:none; position:fixed; inset:0; background:radial-gradient(circle at center, #001a33 0%, #050b14 100%); z-index:200000; flex-direction:column; justify-content:center; align-items:center;">
+    <div class="portal-core" id="fastPortalCore">
+        <div class="portal-ring ring-1"></div>
+        <div class="portal-ring ring-2"></div>
+        <div class="portal-scanner"></div>
+    </div>
+    <div class="warp-flash" id="fastWarpFlash"></div>
+</div>
 <!-- BANNED OVERLAY -->
 <div id="bannedOverlay">
     <i class="fas fa-ban ban-icon"></i>
@@ -2071,6 +2133,45 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+
+// --- FAST TEMPORAL JUMP LOGIC ---
+window.triggerFastJump = (targetUrl) => {
+    const overlay = document.getElementById('fastPortalOverlay');
+    const core = document.getElementById('fastPortalCore');
+    const flash = document.getElementById('fastWarpFlash');
+
+    // 1. Arătăm portalul
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    // 2. Secvența de salt (aprox 700ms)
+    setTimeout(() => {
+        overlay.classList.add('shake-active'); // Începe tremurul
+        
+        setTimeout(() => {
+            core.classList.add('fast-zooming'); // Zoom masiv
+            
+            setTimeout(() => {
+                flash.classList.add('active'); // Flash alb
+                
+                setTimeout(() => {
+                    window.location.href = targetUrl; // Navigare la pagină
+                }, 200);
+            }, 300);
+        }, 200);
+    }, 10);
+};
+
+// Atașăm animația la toate cele 6 blocuri din grid
+document.querySelectorAll('.time-block').forEach(block => {
+    block.onclick = function(e) {
+        e.preventDefault(); // Oprim navigarea instantă
+        const url = this.getAttribute('href');
+        window.triggerFastJump(url);
+    };
+});
 
 // --- INVITE SYSTEM LOGIC ---
 
