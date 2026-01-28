@@ -2984,6 +2984,18 @@ Fiecare imagine surprinde momente prețioase, legături puternice și iubirea ca
             </button>
             <div id="publicYearMenu" class="tm-drop-content"></div>
         </div>
+
+
+    <!-- BUTOANE FILTRU MEDIA -->
+    <div class="media-filter-row" style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
+        <button id="filterBtnImg" class="action-btn-pill active-media" onclick="setMediaTypeFilter('image')">
+            <i class="fas fa-image"></i> IMAGINI
+        </button>
+        <button id="filterBtnVid" class="action-btn-pill" onclick="setMediaTypeFilter('video')">
+            <i class="fas fa-video"></i> VIDEOCLIPURI
+        </button>
+    </div>
+</div>
     </div>
 
     <div class="gallery-grid" id="galleryContainer"></div>
@@ -3950,7 +3962,7 @@ const ADMINS = ['nicaemmanuel433qe@gmail.com', 'kevin.trinity2020@gmail.com'];
 let filesToUpload = [];
 let selectedUploadYear = null;
 let currentYearFilter = "2026";
-let currentMediaTypeFilter = "image";
+let currentMediaTypeFilter = "image"; // Aceasta controlează ce vezi la început
 
 
 // --- 1. SETUP DROPDOWNS (ANI) ---
@@ -4020,30 +4032,29 @@ document.getElementById('files').onchange = (e) => {
 document.getElementById('postBtn').onclick = async () => {
     if (filesToUpload.length === 0) return alert("Selectează media!");
     const btn = document.getElementById('postBtn');
-    const prog = document.getElementById('uploadProgress');
-    const bar = document.getElementById('progressBar');
-    btn.disabled = true; 
-    prog.style.display = 'block';
+    btn.disabled = true; btn.innerText = "ÎNCĂRCARE...";
 
     for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
         if(!file) continue;
-        const type = file.type.startsWith('video/') ? 'video' : 'image';
         
-        // PATH CHANGED TO familia_ksda
         const sRef = ref(storage, `familia_ksda/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
-            task.on('state_changed', (s) => {
-                bar.style.width = ((s.bytesTransferred / s.totalBytes) * 100) + '%';
-            }, null, async () => {
+            task.on('state_changed', null, null, async () => {
                 const url = await getDownloadURL(task.snapshot.ref);
                 await addDoc(collection(db, "familia_ksda_posts"), {
-                    img: url, type: type, likes: {}, commentCount: 0,
-                    createdAt: serverTimestamp(), authorName: auth.currentUser.displayName,
-                    authorPhoto: auth.currentUser.photoURL, authorUid: auth.currentUser.uid,
-                    year: selectedUploadYear.toString(), rotation: 0
+                    img: url, 
+                    type: file.type.startsWith('video/') ? 'video' : 'image', // ASTA E CHEIA
+                    likes: {}, 
+                    commentCount: 0,
+                    createdAt: serverTimestamp(),
+                    authorName: auth.currentUser.displayName,
+                    authorPhoto: auth.currentUser.photoURL,
+                    authorUid: auth.currentUser.uid,
+                    year: selectedUploadYear.toString(),
+                    rotation: 0
                 });
                 resolve();
             });
@@ -4163,10 +4174,27 @@ window.toggleComments = async (id) => {
 };
 
 
+window.setMediaTypeFilter = (type) => {
+    currentMediaTypeFilter = type;
+    
+    // Vizual: Schimbăm clasa activă pe butoane
+    const btnImg = document.getElementById('filterBtnImg');
+    const btnVid = document.getElementById('filterBtnVid');
+    
+    if(btnImg) btnImg.classList.toggle('active-media', type === 'image');
+    if(btnVid) btnVid.classList.toggle('active-media', type === 'video');
+    
+    console.log("Schimbat filtru media pe:", type);
+    loadGallery(); // Reîncărcăm datele din Firebase
+};
+
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
-    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare...</p>`;
+    if(!cont) return;
+    
+    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă (${currentYearFilter})...</p>`;
 
+    // IMPORTANT: Filtrare după An ȘI Tip Media
     const q = query(
         collection(db, "familia_ksda_posts"), 
         where("year", "==", currentYearFilter.toString()), 
@@ -4176,42 +4204,76 @@ async function loadGallery() {
  
     onSnapshot(q, (snap) => {
         cont.innerHTML = '';
+        
         if(snap.empty) {
-            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire aici.</p>`;
+            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire (${currentMediaTypeFilter}) găsită în anul ${currentYearFilter}.</p>`;
             return;
         }
+
         snap.forEach(docSnap => {
             const data = docSnap.data();
             const id = docSnap.id;
-            const rot = data.rotation || 0;
-            const isVertical = Math.abs(rot) % 180 === 90;
-            const scale = isVertical ? 1.25 : 1;
+            const rotation = data.rotation || 0;
+            const isVertical = Math.abs(rotation) % 180 === 90;
+            const scaleFactor = isVertical ? 1.25 : 1;
 
+            // Logica Admin Buttons
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
-                adminBtns = `<div class="admin-actions-wrapper">
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${(data.title||"").replace(/'/g, "\\'")}', '${(data.desc||"").replace(/'/g, "\\'")}', '${data.img}', ${rot}, '${data.year}', '${data.type}')"><i class="fas fa-pen"></i></button>
-                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
+                adminBtns = `
+                <div class="admin-actions-wrapper">
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${(data.title||"").replace(/'/g, "\\'")}', '${(data.desc||"").replace(/'/g, "\\'")}', '${data.img}', ${rotation}, '${data.year}', '${data.type || 'image'}')">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>`;
             }
 
-            const media = data.type === 'video' 
-                ? `<video src="${data.img}" class="gallery-img" controls style="transform: rotate(${rot}deg) scale(${scale}); width:100%; height:100%; object-fit:cover; background:#000;"></video>`
-                : `<img src="${data.img}" class="gallery-img" style="transform: rotate(${rot}deg) scale(${scale}); width:100%; height:100%; object-fit:cover;">`;
+            // Randare Media: VIDEO sau IMAGINE
+            let mediaElement = '';
+            if (data.type === 'video') {
+                mediaElement = `
+                    <video src="${data.img}" class="gallery-img" controls preload="metadata" 
+                           style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
+                                  width: 100%; height: 100%; 
+                                  object-fit: cover; background: #000; position: relative; z-index:5;">
+                    </video>`;
+            } else {
+                mediaElement = `
+                    <img src="${data.img}" class="gallery-img" 
+                         style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
+                                width: 100%; height: 100%; 
+                                object-fit: cover;">`;
+            }
 
-            cont.innerHTML += `<div class="gallery-card">
+            cont.innerHTML += `
+            <div class="gallery-card">
                 ${adminBtns}
-                <div class="card-user-info"><img src="${data.authorPhoto}" class="card-avatar"><div class="card-user-name">${data.authorName}</div></div>
-                <div class="img-wrapper">${media}</div>
+                <div class="card-user-info">
+                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
+                    <div class="card-user-name">${data.authorName}</div>
+                </div>
+                <div class="img-wrapper" style="pointer-events: auto !important;">
+                    ${mediaElement}
+                </div>
                 <div class="card-bottom-content">
                     <div class="card-actions-bar">
                         <button class="action-btn-pill" onclick="votePost('${id}')"><i class="far fa-heart"></i> ${Object.keys(data.likes||{}).length}</button>
-                        <button class="action-btn-pill" onclick="toggleComments('${id}')"><i class="far fa-comment"></i> ${data.commentCount}</button>
+                        <button class="action-btn-pill" onclick="toggleComments('${id}')"><i class="far fa-comment"></i> ${data.commentCount || 0}</button>
                     </div>
-                    <div class="card-comments-section" id="com-sec-${id}" style="display:none;"><div class="card-comments-list" id="list-${id}"></div></div>
+                    <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
+                        <div class="card-comments-list" id="list-${id}"></div>
+                    </div>
                 </div>
             </div>`;
         });
+    }, (error) => {
+        console.error("Firebase Error:", error);
+        if(error.message.includes("index")) {
+            cont.innerHTML = `<p style="grid-column:1/-1; color:orange; padding:20px;">Trebuie să creezi un index în Firebase. Verifică link-ul din consola browserului.</p>`;
+        }
     });
 }
 
