@@ -4027,56 +4027,42 @@ document.getElementById('files').onchange = (e) => {
 
 
 document.getElementById('postBtn').onclick = async () => {
-    if (filesToUpload.length === 0) return alert("Nu ai selectat nicio poză!");
-    if (!selectedUploadYear) return alert("Selectează anul!");
+    if (filesToUpload.length === 0) return alert("Selectează media!");
+    if (!selectedUploadYear) return alert("Alege anul!");
 
     const btn = document.getElementById('postBtn');
-    const progressDiv = document.getElementById('uploadProgress');
-    const progressBar = document.getElementById('progressBar');
-
     btn.disabled = true; 
-    btn.innerText = "SE ÎNCARCĂ...";
-    if (progressDiv) progressDiv.style.display = 'block';
+    btn.innerText = "ÎNCĂRCARE...";
 
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue;
-        
         const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`)?.value || "";
-        const desc = document.getElementById(`d-${i}`)?.value || "";
         
-        // ONLY FOR KEVIN
-        (storage, `florica/${Date.now()}_${file.name}`);
+        // --- FIX AICI: Definim sRef corect ---
+        const sRef = ref(storage, `florica/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
-            task.on('state_changed', 
-                (snapshot) => { 
-                    const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    if (progressBar) progressBar.style.width = percent + '%';
-                },
-                null,
-                async () => {
-                    const url = await getDownloadURL(task.snapshot.ref);
-                    
-                    // SAVING TO
-                    await addDoc(collection(db, "florica_posts"), {
-                        img: url, 
-    type: file.type.startsWith('video/') ? 'video' : 'image', // <--- Salvează tipul
-                        title: title,
-                        desc: desc,
-                        likes: {}, 
-                        views: 0, 
-                        commentCount: 0,
-                        createdAt: serverTimestamp(),
-                        authorName: auth.currentUser.displayName || "Admin",
-                        authorPhoto: auth.currentUser.photoURL,
-                        authorUid: auth.currentUser.uid,
-                        year: selectedUploadYear.toString()
-                    });
-                    resolve();
-                }
-            );
+            task.on('state_changed', null, null, async () => {
+                const url = await getDownloadURL(task.snapshot.ref);
+                
+                // Salvare în colecția florica_posts
+                await addDoc(collection(db, "florica_posts"), {
+                    img: url, 
+                    type: file.type.startsWith('video/') ? 'video' : 'image', 
+                    title: document.getElementById(`t-${i}`)?.value || "",
+                    desc: "",
+                    likes: {}, 
+                    commentCount: 0,
+                    createdAt: serverTimestamp(),
+                    authorName: auth.currentUser.displayName,
+                    authorPhoto: auth.currentUser.photoURL,
+                    authorUid: auth.currentUser.uid,
+                    year: selectedUploadYear.toString(),
+                    rotation: 0
+                });
+                resolve();
+            });
         });
     }
     location.reload();
