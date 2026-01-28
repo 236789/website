@@ -2934,29 +2934,40 @@ body {
         </div>
     </div>
 
-    <!-- ADMIN UPLOAD PANEL -->
-<!-- ADMIN UPLOAD PANEL -->
-<div id="adminUploadPanel" style="display:none; margin: 20px auto; padding: 20px; border: 1px dashed var(--primary); border-radius: 20px; text-align: center;">
-    <p style="font-family:'Orbitron'; color: #ffd700; font-size: 12px; margin-bottom: 15px;">
-        PANOUL ADMIN: ANUL <span id="targetYearLabel">2026</span> 
-        (<span id="fileCountText" style="color: var(--primary);">0/50</span>)
-    </p>
+<!-- ADMIN UPLOAD PANEL (COPIED FROM KEVIN) -->
+<div id="adminUploadPanel" style="display:none; border: 2px solid var(--primary); border-radius: 25px; padding: 30px; background: rgba(13, 25, 41, 0.5); margin-bottom: 50px; text-align:center;">
+    <h3 style="font-family:'Orbitron'; color:var(--primary); margin-top:0;">MOD ADMIN: FLORICA ARCHIVES</h3>
     
-    <button class="btn-select-photos" onclick="document.getElementById('files').click()">ALEGE MEDIA</button>
-    <input type="file" id="files" multiple accept="image/*,video/*" style="display:none">
-    
+    <div style="margin-bottom: 20px;">
+        <input type="file" id="files" multiple accept="image/*,video/*" style="display:none">
+        <button class="btn-select-photos" onclick="document.getElementById('files').click()">
+            <i class="fas fa-images"></i> ALEGE POZE/VIDEO
+        </button>
+        <!-- COUNTER -->
+        <div id="fileCountText" style="font-family:'Orbitron'; color: var(--primary); margin-top: 10px; font-size: 14px;">0/50 IMAGINI SELECTATE</div>
+    </div>
+
+    <!-- YEAR SELECTOR FOR ADMIN -->
+    <div id="adminYearPicker" style="margin-bottom: 20px;">
+        <div class="custom-tm-dropdown">
+            <button class="tm-drop-btn" id="adminYearToggle" onclick="toggleYearMenu('adminYearMenu')" style="border-color: #ffd700; color: #ffd700;">
+                ANUL: <span id="adminSelectedYearText">2026</span> <i class="fas fa-edit"></i>
+            </button>
+            <div id="adminYearMenu" class="tm-drop-content"></div>
+        </div>
+    </div>
+
+    <div id="previewArea" class="preview-slider"></div>
+
     <div id="uploadProgress" style="display:none; margin: 20px auto; width: 80%; max-width: 400px;">
         <div style="width: 100%; height: 8px; background: #111; border-radius: 10px; overflow: hidden;">
             <div id="progressBar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
         </div>
     </div>
-
-    <!-- This is the button that was missing -->
-    <div style="margin-top: 20px;">
-        <button id="postBtn" class="btn-post-launch" style="display:none;">LANSEAZĂ ÎN ARHIVĂ</button>
-    </div>
-
-    <div id="previewArea" class="preview-slider" style="margin-top: 20px; display: flex; gap: 10px; overflow-x: auto;"></div>
+    
+    <button id="postBtn" class="btn-post-launch" style="display:none;">
+        <i class="fas fa-rocket"></i> LANSEAZĂ ÎN <span id="targetYearLabel">2026</span>
+    </button>
 </div>
 
     <!-- CONTAINER GALERIE -->
@@ -3930,24 +3941,36 @@ let currentMediaTypeFilter = "image";
 // --- 1. SETUP DROPDOWNS (ANI) ---
 const setupYearDropdowns = () => {
     const publicMenu = document.getElementById('publicYearMenu');
-    if(publicMenu) {
-        publicMenu.innerHTML = '';
-        for (let year = 2026; year >= 2005; year--) {
-            const optP = document.createElement('div');
-            optP.className = 'tm-year-option';
-            optP.innerText = year;
-            optP.onclick = () => {
-                currentYearFilter = year.toString();
-                selectedUploadYear = year; // Setăm și anul de upload să fie același cu filtrul
-                document.getElementById('publicSelectedYearText').innerText = year;
-                if(document.getElementById('targetYearLabel')) {
-                    document.getElementById('targetYearLabel').innerText = year;
-                }
-                publicMenu.classList.remove('show-menu');
-                loadGallery(); 
-            };
-            publicMenu.appendChild(optP);
-        }
+    const adminMenu = document.getElementById('adminYearMenu');
+    
+    if(publicMenu) publicMenu.innerHTML = '';
+    if(adminMenu) adminMenu.innerHTML = '';
+
+    for (let year = 2026; year >= 2000; year--) {
+        // Public Filter
+        const optP = document.createElement('div');
+        optP.className = 'tm-year-option';
+        optP.innerText = year;
+        optP.onclick = () => {
+            currentYearFilter = year.toString();
+            document.getElementById('publicSelectedYearText').innerText = year;
+            publicMenu.classList.remove('show-menu');
+            loadGallery();
+        };
+        if(publicMenu) publicMenu.appendChild(optP);
+
+        // Admin Uploader Selector
+        const optA = document.createElement('div');
+        optA.className = 'tm-year-option';
+        optA.innerText = year;
+        optA.style.color = "#ffd700";
+        optA.onclick = () => {
+            selectedUploadYear = year;
+            document.getElementById('adminSelectedYearText').innerText = year;
+            document.getElementById('targetYearLabel').innerText = year;
+            adminMenu.classList.remove('show-menu');
+        };
+        if(adminMenu) adminMenu.appendChild(optA);
     }
 };
 setupYearDropdowns(); // Pornim setup-ul
@@ -3960,34 +3983,28 @@ document.getElementById('files').onchange = (e) => {
     const postBtn = document.getElementById('postBtn');
     
     area.innerHTML = '';
-    
     if (rawFiles.length > 0) {
-        countText.innerText = `${rawFiles.length}/50 IMAGINI`;
-        postBtn.style.display = 'inline-flex'; // Show Launch button
-    } else {
-        countText.innerText = `0/50 IMAGINI`;
-        postBtn.style.display = 'none';
+        countText.innerText = `${rawFiles.length}/50 IMAGINI SELECTATE`;
+        postBtn.style.display = 'inline-flex';
     }
 
     rawFiles.forEach((file, i) => {
         if (file.type.startsWith('video/')) {
             filesToUpload[i] = file;
             area.innerHTML += `
-                <div class="preview-card" style="min-width: 150px; height: 200px; position: relative;">
-                    <video src="${URL.createObjectURL(file)}" muted style="width:100%; height:100%; object-fit:cover; border-radius: 10px;"></video>
+                <div class="preview-card" style="min-width: 150px; height: 200px;">
+                    <video src="${URL.createObjectURL(file)}" muted style="width:100%; height:100%; object-fit:cover; border-radius:10px;"></video>
                 </div>`;
         } else {
-            // Compress and preview images
             new Compressor(file, {
-                quality: 0.6,
-                maxWidth: 1200,
+                quality: 0.6, maxWidth: 1000,
                 success(result) {
                     filesToUpload[i] = result;
                     const reader = new FileReader();
                     reader.onload = (ev) => {
                         area.innerHTML += `
-                            <div class="preview-card" style="min-width: 150px; height: 200px; position: relative;">
-                                <img src="${ev.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius: 10px; border: 1px solid var(--primary-dim);">
+                            <div class="preview-card" style="min-width: 150px; height: 200px;">
+                                <img src="${ev.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius:10px;">
                             </div>`;
                     };
                     reader.readAsDataURL(result);
