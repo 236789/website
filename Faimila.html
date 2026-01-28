@@ -2102,8 +2102,8 @@ body {
     inset: 0;
     z-index: 10;
     background: transparent;
+    pointer-events: none; /* ADD THIS LINE */
 }
-
 
 
 /* Stil pentru portalul rapid */
@@ -2945,7 +2945,7 @@ body {
                 <i class="fas fa-file-upload"></i> ALEGE MEDIA
             </button>
             <!-- FIX: ID-ul a fost schimbat din countDisplay în fileCountText pentru a se potrivi cu JS-ul tău -->
-            <div id="fileCountText" style="font-family:'Orbitron'; color: var(--primary); margin-top: 10px; font-size: 14px;">0/50 IMAGINI SELECTATE</div>
+<div id="countDisplay" style="font-family:'Orbitron'; color: var(--primary); margin-top: 10px; font-size: 14px;">0/50 MEDIA SELECTATĂ</div>
         </div>
 
         <!-- DROPDOWN AN ADMIN -->
@@ -4006,7 +4006,6 @@ document.getElementById('files').onchange = (e) => {
     const rawFiles = Array.from(e.target.files).slice(0, 50);
     filesToUpload = [];
     const area = document.getElementById('previewArea');
-    // FIX: Match your HTML ID 'countDisplay'
     const countText = document.getElementById('countDisplay'); 
     const postBtn = document.getElementById('postBtn');
     
@@ -4014,20 +4013,21 @@ document.getElementById('files').onchange = (e) => {
     if (rawFiles.length > 0) {
         countText.innerText = `${rawFiles.length}/50 MEDIA SELECTATĂ`;
         postBtn.style.display = 'inline-flex';
-        // Show the year picker when files are chosen
         document.getElementById('adminYearPicker').style.display = 'block';
-        document.getElementById('previewWrapper').style.display = 'block';
     }
 
     rawFiles.forEach((file, i) => {
         if (file.type.startsWith('video/')) {
             filesToUpload[i] = file;
-            area.innerHTML += `<div class="preview-card" style="min-width:150px; height:200px;"><video src="${URL.createObjectURL(file)}" muted style="width:100%;height:100%;object-fit:cover;border-radius:10px;"></video></div>`;
+            const url = URL.createObjectURL(file);
+            area.innerHTML += `<div class="preview-card"><video src="${url}" muted style="width:100%;height:100%;object-fit:cover;border-radius:10px;"></video></div>`;
         } else {
             new Compressor(file, { quality: 0.6, maxWidth: 1200, success(result) {
                 filesToUpload[i] = result;
                 const reader = new FileReader();
-                reader.onload = (ev) => { area.innerHTML += `<div class="preview-card" style="min-width:150px; height:200px;"><img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;"></div>`; };
+                reader.onload = (ev) => { 
+                    area.innerHTML += `<div class="preview-card"><img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;"></div>`; 
+                };
                 reader.readAsDataURL(result);
             }});
         }
@@ -4036,36 +4036,51 @@ document.getElementById('files').onchange = (e) => {
 
 document.getElementById('postBtn').onclick = async () => {
     if (filesToUpload.length === 0) return alert("Selectează media!");
+    if (!selectedUploadYear) return alert("Alege anul din dropdown!");
+    
     const btn = document.getElementById('postBtn');
-    btn.disabled = true; btn.innerText = "ÎNCĂRCARE...";
+    const progressBar = document.getElementById('progressBar');
+    const progressDiv = document.getElementById('uploadProgress');
+    
+    btn.disabled = true; 
+    btn.innerText = "ÎNCĂRCARE...";
+    progressDiv.style.display = 'block';
 
     for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
         if(!file) continue;
         
-        const sRef = ref(storage, `familia_ksda/${Date.now()}_${file.name}`);
+        const isVideo = file.type && file.type.startsWith('video/');
+        const sRef = ref(storage, `familia_ksda/${Date.now()}_${file.name || 'upload'}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
-            task.on('state_changed', null, null, async () => {
-                const url = await getDownloadURL(task.snapshot.ref);
-                await addDoc(collection(db, "familia_ksda_posts"), {
-                    img: url, 
-                    type: file.type.startsWith('video/') ? 'video' : 'image', // ASTA E CHEIA
-                    likes: {}, 
-                    commentCount: 0,
-                    createdAt: serverTimestamp(),
-                    authorName: auth.currentUser.displayName,
-                    authorPhoto: auth.currentUser.photoURL,
-                    authorUid: auth.currentUser.uid,
-                    year: selectedUploadYear.toString(),
-                    rotation: 0
-                });
-                resolve();
-            });
+            task.on('state_changed', 
+                (snapshot) => {
+                    const prog = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    progressBar.style.width = prog + '%';
+                }, 
+                null, 
+                async () => {
+                    const url = await getDownloadURL(task.snapshot.ref);
+                    await addDoc(collection(db, "familia_ksda_posts"), {
+                        img: url, 
+                        type: isVideo ? 'video' : 'image', 
+                        likes: {}, 
+                        commentCount: 0,
+                        createdAt: serverTimestamp(),
+                        authorName: auth.currentUser.displayName,
+                        authorPhoto: auth.currentUser.photoURL,
+                        authorUid: auth.currentUser.uid,
+                        year: selectedUploadYear.toString(),
+                        rotation: 0
+                    });
+                    resolve();
+                }
+            );
         });
     }
-    location.reload();
+    window.location.reload();
 };
 // --- 5. FUNCȚII SOCIALE (VIEWS & COMMENTS) ---
 
