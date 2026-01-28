@@ -4173,11 +4173,8 @@ window.setMediaTypeFilter = (type) => {
 };
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
-    if(!cont) return;
-    
-    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă (${currentYearFilter})...</p>`;
+    cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă...</p>`;
 
-    // IMPORTANT: Filtrare după An ȘI Tip Media
     const q = query(
         collection(db, "familia_ksda_posts"), 
         where("year", "==", currentYearFilter.toString()), 
@@ -4187,76 +4184,53 @@ async function loadGallery() {
  
     onSnapshot(q, (snap) => {
         cont.innerHTML = '';
-        
         if(snap.empty) {
-            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire (${currentMediaTypeFilter}) găsită în anul ${currentYearFilter}.</p>`;
+            cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; opacity:0.5; padding:50px;">Nicio amintire în anul ${currentYearFilter}.</p>`;
             return;
         }
-
         snap.forEach(docSnap => {
             const data = docSnap.data();
             const id = docSnap.id;
+            const likesCount = Object.keys(data.likes || {}).length;
+            const isLiked = auth.currentUser && data.likes?.[auth.currentUser.uid];
             const rotation = data.rotation || 0;
-            const isVertical = Math.abs(rotation) % 180 === 90;
-            const scaleFactor = isVertical ? 1.25 : 1;
+            const scaleFactor = (Math.abs(rotation) % 180 === 90) ? 1.25 : 1;
 
-            // Logica Admin Buttons
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
-                adminBtns = `
-                <div class="admin-actions-wrapper">
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${(data.title||"").replace(/'/g, "\\'")}', '${(data.desc||"").replace(/'/g, "\\'")}', '${data.img}', ${rotation}, '${data.year}', '${data.type || 'image'}')">
-                        <i class="fas fa-pen"></i>
-                    </button>
-                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                adminBtns = `<div class="admin-actions-wrapper">
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${(data.title||"").replace(/'/g, "\\'")}', '${(data.desc||"").replace(/'/g, "\\'")}', '${data.img}', ${rotation}, '${data.year}', '${data.type}')"><i class="fas fa-pen"></i></button>
+                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
                 </div>`;
             }
 
-            // Randare Media: VIDEO sau IMAGINE
-            let mediaElement = '';
-            if (data.type === 'video') {
-                mediaElement = `
-                    <video src="${data.img}" class="gallery-img" controls preload="metadata" 
-                           style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
-                                  width: 100%; height: 100%; 
-                                  object-fit: cover; background: #000; position: relative; z-index:5;">
-                    </video>`;
-            } else {
-                mediaElement = `
-                    <img src="${data.img}" class="gallery-img" 
-                         style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
-                                width: 100%; height: 100%; 
-                                object-fit: cover;">`;
-            }
+            let mediaElement = data.type === 'video' 
+                ? `<video src="${data.img}" class="gallery-img" controls style="transform: rotate(${rotation}deg) scale(${scaleFactor}); object-fit: cover;"></video>`
+                : `<img src="${data.img}" class="gallery-img" style="transform: rotate(${rotation}deg) scale(${scaleFactor}); object-fit: cover;">`;
 
             cont.innerHTML += `
             <div class="gallery-card">
                 ${adminBtns}
-                <div class="card-user-info">
-                    <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
-                    <div class="card-user-name">${data.authorName}</div>
-                </div>
-                <div class="img-wrapper" style="pointer-events: auto !important;">
-                    ${mediaElement}
-                </div>
+                <div class="card-user-info"><img src="${data.authorPhoto || ''}" class="card-avatar"><div class="card-user-name">${data.authorName}</div></div>
+                <div class="img-wrapper" style="pointer-events: auto !important;">${mediaElement}</div>
                 <div class="card-bottom-content">
+                    ${data.title ? `<h3 class="card-title-static">${data.title}</h3>` : ''}
                     <div class="card-actions-bar">
-                        <button class="action-btn-pill" onclick="votePost('${id}')"><i class="far fa-heart"></i> ${Object.keys(data.likes||{}).length}</button>
-                        <button class="action-btn-pill" onclick="toggleComments('${id}')"><i class="far fa-comment"></i> ${data.commentCount || 0}</button>
+                        <div style="display:flex; gap:10px;">
+                            <button class="action-btn-pill ${isLiked ? 'liked' : ''}" onclick="votePost('${id}')"><i class="${isLiked?'fas':'far'} fa-heart"></i> ${likesCount}</button>
+                            <button class="action-btn-pill" onclick="toggleComments('${id}')"><i class="far fa-comment"></i> ${data.commentCount || 0}</button>
+                        </div>
                     </div>
                     <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
                         <div class="card-comments-list" id="list-${id}"></div>
+                        <div class="card-input-area">
+                            <input type="text" class="modern-input" id="inp-${id}" placeholder="Comentează..." onkeypress="if(event.key === 'Enter') postComment('${id}')">
+                            <button class="card-send-btn" onclick="postComment('${id}')"><i class="fas fa-paper-plane"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>`;
         });
-    }, (error) => {
-        console.error("Firebase Error:", error);
-        if(error.message.includes("index")) {
-            cont.innerHTML = `<p style="grid-column:1/-1; color:orange; padding:20px;">Trebuie să creezi un index în Firebase. Verifică link-ul din consola browserului.</p>`;
-        }
     });
 }
 
@@ -4330,10 +4304,10 @@ window.savePostEdit = async () => {
 
 // --- FUNCȚII GLOBALE PENTRU BUTOANELE DIN HTML ---
 
-// 1. Vote - SCHIMBĂ SĂ FIE CONSISTENT CU loadGallery
+// 1. LIKE LOGIC
 window.votePost = async (id) => {
     if(!auth.currentUser) return alert("Trebuie să fii logat!");
-    const postRef = doc(db, "familia_ksda_posts", id); // Schimbat din kevin în emmanuel
+    const postRef = doc(db, "familia_ksda_posts", id);
     const snap = await getDoc(postRef);
     if (snap.exists()) {
         const likes = snap.data().likes || {};
@@ -4344,14 +4318,14 @@ window.votePost = async (id) => {
     }
 };
 
-// 2. Post Comment
+// 2. COMMENT LOGIC
 window.postComment = async (id) => {
     if(!auth.currentUser) return alert("Trebuie să fii logat!");
     const inp = document.getElementById(`inp-${id}`);
     const text = inp.value.trim();
     if(!text) return;
     try {
-        await addDoc(collection(db, `familia_ksda_posts/${id}/comments`), { // Schimbat calea
+        await addDoc(collection(db, `familia_ksda_posts/${id}/comments`), {
             text: text,
             uid: auth.currentUser.uid,
             email: auth.currentUser.email,
@@ -4362,6 +4336,49 @@ window.postComment = async (id) => {
         await updateDoc(doc(db, "familia_ksda_posts", id), { commentCount: increment(1) });
         inp.value = '';
     } catch(e) { console.error(e); }
+};
+
+// 3. STYLE & VIEW COMMENTS LOGIC (TAKEN FROM KEVIN)
+window.toggleComments = async (id) => {
+    const sec = document.getElementById(`com-sec-${id}`);
+    const list = document.getElementById(`list-${id}`);
+    if(sec.style.display === 'block') { sec.style.display = 'none'; return; }
+    sec.style.display = 'block';
+    list.innerHTML = '<div style="padding:10px; color:#aaa; font-size:10px;">Se încarcă...</div>';
+
+    const q = query(collection(db, `familia_ksda_posts/${id}/comments`), orderBy("createdAt", "asc"));
+    onSnapshot(q, async (cSnap) => {
+        list.innerHTML = '';
+        const commentPromises = cSnap.docs.map(async (cDoc) => {
+            const cData = cDoc.data();
+            let frameImg = "", bannerClass = "", textClass = "", badgeHtml = "", roleHtml = "";
+
+            try {
+                const uSnap = await getDoc(doc(db, "accounts", cData.uid));
+                if (uSnap.exists()) {
+                    const u = uSnap.data();
+                    if (u.equippedFrame?.img) frameImg = `<img src="${u.equippedFrame.img}" class="pop-frame-overlay" style="width:145%; height:145%; top:50%; left:50%; transform:translate(-50%, -50%);">`;
+                    if (u.equippedBanner?.cssClass) bannerClass = u.equippedBanner.cssClass;
+                    if (u.equippedText?.cssClass) textClass = u.equippedText.cssClass;
+                    if (u.equippedBadge) badgeHtml = `<span class="cosmetic-badge" style="background:${u.equippedBadge.color}; color:#000; box-shadow:0 0 5px ${u.equippedBadge.color};"><i class="fas ${u.equippedBadge.icon}"></i> ${u.equippedBadge.text}</span>`;
+                }
+            } catch(e) {}
+
+            if(cData.email === 'nicaemmanuel433qe@gmail.com') roleHtml = `<span class="role-badge badge-owner">OWNER</span>`;
+            else if(cData.email === 'kevin.trinity2020@gmail.com') roleHtml = `<span class="role-badge badge-admin">ADMIN</span>`;
+
+            return `
+                <div class="full-comment-card ${bannerClass}" style="position:relative; background:rgba(255,255,255,0.03); border-radius:12px; padding:10px; margin-bottom:8px; display:flex; gap:10px; border:1px solid rgba(255,255,255,0.05);">
+                    <div class="profile-frame-wrapper" style="width:40px; height:40px; flex-shrink:0; margin:0;"><img src="${cData.photo || ''}" class="pop-img-inner">${frameImg}</div>
+                    <div style="flex:1; overflow:hidden;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; margin-bottom:2px;"><span class="${textClass}" style="font-family:'Orbitron'; font-weight:700; font-size:12px; color:#fff;">${cData.name}</span>${roleHtml}${badgeHtml}</div>
+                        <div style="font-size:13px; color:#ddd; line-height:1.4; word-break:break-word;">${cData.text}</div>
+                    </div>
+                </div>`;
+        });
+        const commentsHTML = await Promise.all(commentPromises);
+        list.innerHTML = commentsHTML.join('');
+    });
 };
 
 // 3. Delete (executeDelete)
