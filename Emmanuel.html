@@ -2482,7 +2482,7 @@ body {
     </div>
 </div>
 
-<!-- EDIT POST MODAL (Titlu + Descriere) -->
+<!-- EDIT POST MODAL (Updated with Rotation) -->
 <div id="editPostModal" class="account-modal-overlay">
     <div class="account-card" style="border-color: #ffd700; box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);">
         <button class="close-pop" onclick="document.getElementById('editPostModal').classList.remove('active')">✕</button>
@@ -2490,6 +2490,18 @@ body {
         
         <input type="hidden" id="editPostId">
         
+        <!-- NEW: Image Preview & Rotate Button -->
+        <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; gap: 10px;">
+            <div style="width: 150px; height: 150px; background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 12px;">
+                <!-- We use transition for smooth rotation effect -->
+                <img id="editPostPreview" src="" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.3s ease;">
+            </div>
+            
+            <button type="button" onclick="rotateCurrentEditImage()" class="action-btn-pill" style="border-color: #ffd700; color: #ffd700;">
+                <i class="fas fa-sync-alt"></i> ROTEȘTE (+90°)
+            </button>
+        </div>
+
         <div style="text-align:left; width:100%; display:flex; flex-direction:column; gap:15px;">
             <div>
                 <label class="edit-label" style="color:#ffd700; font-size:10px;">TITLU</label>
@@ -4118,34 +4130,61 @@ document.getElementById('files').onchange = (e) => {
         }).catch(err => console.error("Fail:", err));
     };
 
+// --- ROTATION LOGIC ---
+let currentEditRotation = 0;
+
+window.rotateCurrentEditImage = () => {
+    // Increment by 90 degrees
+    currentEditRotation = (currentEditRotation + 90) % 360;
+    
+    // Apply visual transform to the preview image
+    const img = document.getElementById('editPostPreview');
+    if(img) {
+        img.style.transform = `rotate(${currentEditRotation}deg)`;
+    }
+};
+
     // B. OPEN EDIT (Titlu + Descriere)
-    window.openEditPost = (id, currentTitle, currentDesc) => {
-        document.getElementById('editPostId').value = id;
-        document.getElementById('editPostTitle').value = currentTitle || "";
-        document.getElementById('editPostDesc').value = currentDesc || ""; // Populează descrierea
-        document.getElementById('editPostModal').classList.add('active');
-    };
+// B. OPEN EDIT (Updated params)
+window.openEditPost = (id, currentTitle, currentDesc, currentImg, currentRot) => {
+    document.getElementById('editPostId').value = id;
+    document.getElementById('editPostTitle').value = currentTitle || "";
+    document.getElementById('editPostDesc').value = currentDesc || "";
+    
+    // Set Preview Image
+    const preview = document.getElementById('editPostPreview');
+    preview.src = currentImg || "";
+    
+    // Set Rotation State
+    currentEditRotation = currentRot ? parseInt(currentRot) : 0;
+    preview.style.transform = `rotate(${currentEditRotation}deg)`;
+    
+    document.getElementById('editPostModal').classList.add('active');
+};
 
-    // C. SAVE EDIT (Titlu + Descriere)
-    window.savePostEdit = async () => {
-        const id = document.getElementById('editPostId').value;
-        const newTitle = document.getElementById('editPostTitle').value;
-        const newDesc = document.getElementById('editPostDesc').value; // Ia valoarea nouă
+ // C. SAVE EDIT (Updated to save rotation)
+window.savePostEdit = async () => {
+    const id = document.getElementById('editPostId').value;
+    const newTitle = document.getElementById('editPostTitle').value;
+    const newDesc = document.getElementById('editPostDesc').value;
 
-        if(!id) return;
+    if(!id) return;
 
-        try {
-            const postRef = doc(db, "emmanuel_posts", id);
-            await updateDoc(postRef, {
-                title: newTitle,
-                desc: newDesc // Salvează în Firebase
-            });
-            document.getElementById('editPostModal').classList.remove('active');
-            alert("Actualizat cu succes!");
-        } catch(e) {
-            alert("Eroare: " + e.message);
-        }
-    };
+    try {
+        const postRef = doc(db, "emmanuel_posts", id);
+        await updateDoc(postRef, {
+            title: newTitle,
+            desc: newDesc,
+            rotation: currentEditRotation // Save the rotation number (0, 90, 180, 270)
+        });
+        document.getElementById('editPostModal').classList.remove('active');
+        alert("Actualizat cu succes!");
+        // Optional: reload gallery to see changes immediately if not using realtime listener
+        // loadGallery(); 
+    } catch(e) {
+        alert("Eroare: " + e.message);
+    }
+};
 
 
 // --- FUNCȚII GLOBALE PENTRU BUTOANELE DIN HTML ---
@@ -4253,7 +4292,6 @@ window.triggerFastJump = (targetUrl) => {
 };
 
 
-
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
     if(!cont) return;
@@ -4278,21 +4316,26 @@ async function loadGallery() {
             const id = docSnap.id;
             const likesCount = data.likes ? Object.keys(data.likes).length : 0;
             const comms = data.commentCount || 0;
+            
+            // 1. GET ROTATION FROM DB (Default 0)
+            const rotation = data.rotation || 0;
 
             const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
+                // 2. PASS IMAGE & ROTATION TO EDIT FUNCTION
                 adminBtns = `
                 <div class="admin-actions-wrapper">
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')"><i class="fas fa-pen"></i></button>
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}', '${data.img}', ${rotation})"><i class="fas fa-pen"></i></button>
                     <button class="admin-icon-btn btn-del" onclick="deletePost('${id}')"><i class="fas fa-trash"></i></button>
                 </div>`;
             }
 
             const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
 
+            // 3. APPLY CSS ROTATION AND OBJECT-FIT: CONTAIN
             cont.innerHTML += `
             <div class="gallery-card" data-id="${id}">
                 ${adminBtns}
@@ -4300,8 +4343,8 @@ async function loadGallery() {
                     <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
                     <div class="card-user-name">${data.authorName}</div>
                 </div>
-                <div class="img-wrapper">
-                    <img src="${data.img}" class="gallery-img">
+                <div class="img-wrapper" style="background:#000;">
+                    <img src="${data.img}" class="gallery-img" style="transform: rotate(${rotation}deg); width: 100%; height: 100%; object-fit: contain;">
                 </div>
                 <div class="card-bottom-content">
                     ${data.title ? `<h3 class="card-title-static">${data.title}</h3>` : ''}
