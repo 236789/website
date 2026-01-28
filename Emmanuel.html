@@ -1474,20 +1474,21 @@
     letter-spacing: 0.5px;
 }
 
-/* Image Wrapper conținând imaginea */
+/* Update these specific lines */
 .img-wrapper {
     width: 100%;
-    aspect-ratio: 4 / 5; /* Format portret modern */
+    /* Remove aspect-ratio here if you want cards to grow/shrink with the image height */
     overflow: hidden;
     position: relative;
     cursor: zoom-in;
+    background: transparent; /* Changed from #000 */
 }
 
 .gallery-img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    transition: transform 1s ease;
+    object-fit: cover; /* Changed from contain to cover to fill the box */
+    transition: transform 0.5s ease;
 }
 
 .gallery-card:hover .gallery-img {
@@ -2461,6 +2462,11 @@ body {
 @keyframes violentShake {
     0% { transform: translate(3px, 3px); }
     100% { transform: translate(-3px, -3px); }
+}
+
+
+.gallery-img {
+    image-rendering: -webkit-optimize-contrast; /* Makes old photos look sharper */
 }
   </style>
 </head>
@@ -4321,12 +4327,13 @@ async function loadGallery() {
             
             const rotation = data.rotation || 0;
 
-            // --- NEW LOGIC START ---
-            // If rotation is 90 or 270, the image is physically sideways. 
-            // We change the box shape to Landscape (4/3) instead of Portrait (4/5)
-            const isSideways = Math.abs(rotation) % 180 === 90;
-            const dynamicRatio = isSideways ? 'aspect-ratio: 4 / 3;' : 'aspect-ratio: 4 / 5;';
-            // --- NEW LOGIC END ---
+            // --- IMPROVED ROTATION LOGIC ---
+            // Detect if image is vertical (90 or 270 degrees)
+            const isVertical = Math.abs(rotation) % 180 === 90;
+            
+            // When rotated 90deg, we scale the image up so it fills the 4:5 box 
+            // without showing black bars. 1.25 is the magic number for a 4:5 ratio.
+            const scaleFactor = isVertical ? 1.25 : 1;
 
             const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -4350,9 +4357,13 @@ async function loadGallery() {
                     <div class="card-user-name">${data.authorName}</div>
                 </div>
                 
-                <!-- UPDATED WRAPPER STYLE -->
-                <div class="img-wrapper" style="background:#000; ${dynamicRatio}">
-                    <img src="${data.img}" class="gallery-img" style="transform: rotate(${rotation}deg); width: 100%; height: 100%; object-fit: contain;">
+                <!-- REMOVED BLACK BG, FORCED COVER FIT -->
+                <div class="img-wrapper" style="background:transparent; aspect-ratio: 4/5; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+                    <img src="${data.img}" class="gallery-img" 
+                         style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
+                                width: 100%; height: 100%; 
+                                object-fit: cover; 
+                                transition: transform 0.3s ease;">
                 </div>
 
                 <div class="card-bottom-content">
