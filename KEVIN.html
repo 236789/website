@@ -2528,8 +2528,7 @@ body {
     </div>
 </div>
 
-<!-- EDIT POST MODAL (Titlu + Descriere) -->
-<!-- EDIT POST MODAL (Updated with Rotation) -->
+
 <div id="editPostModal" class="account-modal-overlay">
     <div class="account-card" style="border-color: #ffd700; box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);">
         <button class="close-pop" onclick="document.getElementById('editPostModal').classList.remove('active')">✕</button>
@@ -2537,31 +2536,38 @@ body {
         
         <input type="hidden" id="editPostId">
         
-        <!-- Image Preview & Rotate Button -->
         <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; gap: 10px;">
-            <div style="width: 150px; height: 150px; background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 12px;">
-                <img id="editPostPreview" src="" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.3s ease;">
+            <div id="editMediaContainer" style="width: 150px; height: 150px; background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 12px;">
+                <!-- JS will inject <img> or <video> here -->
             </div>
             
-            <button type="button" onclick="rotateCurrentEditImage()" class="action-btn-pill" style="border-color: #ffd700; color: #ffd700;">
+            <button type="button" id="rotateBtnEdit" onclick="rotateCurrentEditImage()" class="action-btn-pill" style="border-color: #ffd700; color: #ffd700;">
                 <i class="fas fa-sync-alt"></i> ROTEȘTE (+90°)
             </button>
         </div>
 
         <div style="text-align:left; width:100%; display:flex; flex-direction:column; gap:15px;">
+            <!-- MOVE TO YEAR -->
+            <div>
+                <label class="edit-label" style="color:#ffd700; font-size:10px;">MUTĂ ÎN ANUL</label>
+                <select id="editPostYear" class="modern-input" style="width:100%; background:rgba(255,255,255,0.05); color:white; border: 1px solid var(--primary);">
+                    <!-- JS will populate years 2000-2026 -->
+                </select>
+            </div>
+
             <div>
                 <label class="edit-label" style="color:#ffd700; font-size:10px;">TITLU</label>
-                <input type="text" id="editPostTitle" class="modern-input" style="width:100%; margin:0; background:rgba(255,255,255,0.05); color:white;">
+                <input type="text" id="editPostTitle" class="modern-input" style="width:100%; margin:0;">
             </div>
 
             <div>
                 <label class="edit-label" style="color:#ffd700; font-size:10px;">DESCRIERE</label>
-                <textarea id="editPostDesc" class="modern-input" style="width:100%; height:80px; margin:0; background:rgba(255,255,255,0.05); color:white; resize:none;"></textarea>
+                <textarea id="editPostDesc" class="modern-input" style="width:100%; height:60px; margin:0; resize:none;"></textarea>
             </div>
         </div>
         
         <button onclick="savePostEdit()" class="btn-save-profile" style="background:#ffd700; color:#000; width:100%; font-weight:900; margin-top:20px;">
-            <i class="fas fa-save"></i> SALVEAZĂ
+            <i class="fas fa-save"></i> SALVEAZĂ MODIFICĂRILE
         </button>
     </div>
 </div>
@@ -2915,9 +2921,9 @@ body {
         <h3 style="font-family:'Orbitron'; color:var(--primary); margin-top:0;">MOD ADMIN: KEVIN ARCHIVES</h3>
         
         <div style="margin-bottom: 20px;">
-            <input type="file" id="files" multiple accept="image/*" style="display:none">
+<input type="file" id="files" multiple accept="image/*,video/*" style="display:none">
             <button class="btn-select-photos" onclick="document.getElementById('files').click()">
-                <i class="fas fa-images"></i> ALEGE POZE
+                <i class="fas fa-images"></i> ALEGE POZE/VIDEO
             </button>
             <!-- 1. COUNTER IMAGINI -->
             <div id="countDisplay" style="font-family:'Orbitron'; color: var(--primary); margin-top: 10px; font-size: 14px;">0/50 IMAGINI SELECTATE</div>
@@ -3977,25 +3983,38 @@ document.getElementById('files').onchange = (e) => {
     area.innerHTML = '';
 
     rawFiles.forEach((file, i) => {
-        new Compressor(file, {
-            quality: 0.6, maxWidth: 1000,
-            success(result) {
-                result.name = file.name;
-                filesToUpload[i] = result;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    area.innerHTML += `
-                        <div class="preview-card" style="order:${i}">
-                            <img src="${ev.target.result}">
-                            <div class="preview-inputs">
-                                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px; margin-bottom:5px;">
-                                <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px; margin:0;"></textarea>
-                            </div>
-                        </div>`;
-                };
-                reader.readAsDataURL(result);
-            }
-        });
+        // Check if video
+        if (file.type.startsWith('video/')) {
+            filesToUpload[i] = file; // Skip CompressorJS for videos
+            const url = URL.createObjectURL(file);
+            area.innerHTML += `
+                <div class="preview-card" style="order:${i}">
+                    <video src="${url}" muted style="width:100%; height:100%; object-fit:cover;"></video>
+                    <div class="preview-inputs">
+                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu Video..." style="font-size:10px;">
+                    </div>
+                </div>`;
+        } else {
+            // It's an image - use Compressor
+            new Compressor(file, {
+                quality: 0.6, maxWidth: 1000,
+                success(result) {
+                    result.name = file.name;
+                    filesToUpload[i] = result;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        area.innerHTML += `
+                            <div class="preview-card" style="order:${i}">
+                                <img src="${ev.target.result}">
+                                <div class="preview-inputs">
+                                    <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu Imagine..." style="font-size:10px;">
+                                </div>
+                            </div>`;
+                    };
+                    reader.readAsDataURL(result);
+                }
+            });
+        }
     });
     document.getElementById('previewWrapper').style.display = 'block';
     document.getElementById('adminYearPicker').style.display = 'block';
@@ -4003,55 +4022,39 @@ document.getElementById('files').onchange = (e) => {
 
 
 document.getElementById('postBtn').onclick = async () => {
-    if (filesToUpload.length === 0) return alert("Nu ai selectat nicio poză!");
-    if (!selectedUploadYear) return alert("Selectează anul!");
+    if (filesToUpload.length === 0) return alert("Selectează media!");
+    if (!selectedUploadYear) return alert("Alege anul!");
 
     const btn = document.getElementById('postBtn');
-    const progressDiv = document.getElementById('uploadProgress');
-    const progressBar = document.getElementById('progressBar');
-
     btn.disabled = true; 
-    btn.innerText = "SE ÎNCARCĂ...";
-    if (progressDiv) progressDiv.style.display = 'block';
+    btn.innerText = "ÎNCĂRCARE...";
 
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue;
-        
         const file = filesToUpload[i];
-        const title = document.getElementById(`t-${i}`)?.value || "";
-        const desc = document.getElementById(`d-${i}`)?.value || "";
+        const isVideo = file.type.startsWith('video/');
         
-        // ONLY FOR KEVIN
         const sRef = ref(storage, `kevin/${Date.now()}_${file.name}`);
         const task = uploadBytesResumable(sRef, file);
 
         await new Promise((resolve) => {
-            task.on('state_changed', 
-                (snapshot) => { 
-                    const percent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    if (progressBar) progressBar.style.width = percent + '%';
-                },
-                null,
-                async () => {
-                    const url = await getDownloadURL(task.snapshot.ref);
-                    
-                    // SAVING TO KEVIN_POSTS
-                    await addDoc(collection(db, "kevin_posts"), {
-                        img: url, 
-                        title: title,
-                        desc: desc,
-                        likes: {}, 
-                        views: 0, 
-                        commentCount: 0,
-                        createdAt: serverTimestamp(),
-                        authorName: auth.currentUser.displayName || "Admin",
-                        authorPhoto: auth.currentUser.photoURL,
-                        authorUid: auth.currentUser.uid,
-                        year: selectedUploadYear.toString()
-                    });
-                    resolve();
-                }
-            );
+            task.on('state_changed', null, null, async () => {
+                const url = await getDownloadURL(task.snapshot.ref);
+                await addDoc(collection(db, "kevin_posts"), {
+                    img: url, 
+                    type: isVideo ? 'video' : 'image', // Save type
+                    title: document.getElementById(`t-${i}`)?.value || "",
+                    desc: "",
+                    likes: {}, 
+                    commentCount: 0,
+                    createdAt: serverTimestamp(),
+                    authorName: auth.currentUser.displayName,
+                    authorPhoto: auth.currentUser.photoURL,
+                    year: selectedUploadYear.toString(),
+                    rotation: 0
+                });
+                resolve();
+            });
         });
     }
     location.reload();
@@ -4167,7 +4170,6 @@ window.toggleComments = async (id) => {
     });
 };
 
-
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
     if(!cont) return;
@@ -4193,23 +4195,46 @@ async function loadGallery() {
             const comms = data.commentCount || 0;
             
             const rotation = data.rotation || 0;
-            // If rotated 90 or 270, scale up to fill the 4:5 vertical box
+            // Daca este rotita la 90/270 grade, marim putin imaginea sa acopere marginile negre
             const isVertical = Math.abs(rotation) % 180 === 90;
             const scaleFactor = isVertical ? 1.25 : 1;
 
             const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
+            // --- ADMIN BUTTONS ACTUALIZATE ---
+            // Trimitem ID, Titlu, Desc, Imagine, Rotatie, Anul Curent si Tipul (video/image)
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
                 adminBtns = `
                 <div class="admin-actions-wrapper">
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}', '${data.img}', ${rotation})"><i class="fas fa-pen"></i></button>
-                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')"><i class="fas fa-trash"></i></button>
+                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}', '${data.img}', ${rotation}, '${data.year}', '${data.type || 'image'}')">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </div>`;
             }
 
             const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
+
+            // --- LOGICĂ AFIȘARE MEDIA (VIDEO VS IMAGE) ---
+            let mediaElement = '';
+            if (data.type === 'video') {
+                mediaElement = `
+                    <video src="${data.img}" class="gallery-img" controls muted loop 
+                           style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
+                                  width: 100%; height: 100%; 
+                                  object-fit: cover; background: #000;">
+                    </video>`;
+            } else {
+                mediaElement = `
+                    <img src="${data.img}" class="gallery-img" 
+                         style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
+                                width: 100%; height: 100%; 
+                                object-fit: cover;">`;
+            }
 
             cont.innerHTML += `
             <div class="gallery-card" data-id="${id}">
@@ -4220,10 +4245,7 @@ async function loadGallery() {
                 </div>
                 
                 <div class="img-wrapper" style="background:transparent; aspect-ratio: 4/5; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-                    <img src="${data.img}" class="gallery-img" 
-                         style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
-                                width: 100%; height: 100%; 
-                                object-fit: cover;">
+                    ${mediaElement}
                 </div>
 
                 <div class="card-bottom-content">
@@ -4269,17 +4291,36 @@ window.rotateCurrentEditImage = () => {
     if(img) img.style.transform = `rotate(${currentEditRotation}deg)`;
 };
 
-window.openEditPost = (id, currentTitle, currentDesc, currentImg, currentRot) => {
+window.openEditPost = (id, currentTitle, currentDesc, currentImg, currentRot, currentYear, type) => {
     document.getElementById('editPostId').value = id;
-    document.getElementById('editPostTitle').value = currentTitle || "";
-    document.getElementById('editPostDesc').value = currentDesc || "";
+    document.getElementById('editPostTitle').value = currentTitle;
+    document.getElementById('editPostDesc').value = currentDesc;
     
-    const preview = document.getElementById('editPostPreview');
-    preview.src = currentImg || "";
-    
+    // Populate the year dropdown in modal
+    const yearSelect = document.getElementById('editPostYear');
+    yearSelect.innerHTML = '';
+    for(let y=2026; y>=2000; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.innerText = y;
+        if(y.toString() === currentYear) opt.selected = true;
+        yearSelect.appendChild(opt);
+    }
+
+    const container = document.getElementById('editMediaContainer');
+    if (type === 'video') {
+        container.innerHTML = `<video src="${currentImg}" muted style="max-width:100%; max-height:100%;"></video>`;
+        document.getElementById('rotateBtnEdit').style.display = 'none'; // Videos usually don't need CSS rotate
+    } else {
+        container.innerHTML = `<img src="${currentImg}" id="editPostPreview" style="max-width:100%; max-height:100%; object-fit:contain; transition:0.3s;">`;
+        document.getElementById('rotateBtnEdit').style.display = 'block';
+        setTimeout(() => {
+            const img = document.getElementById('editPostPreview');
+            img.style.transform = `rotate(${currentRot}deg)`;
+        }, 50);
+    }
+
     currentEditRotation = currentRot ? parseInt(currentRot) : 0;
-    preview.style.transform = `rotate(${currentEditRotation}deg)`;
-    
     document.getElementById('editPostModal').classList.add('active');
 };
 
@@ -4287,21 +4328,19 @@ window.savePostEdit = async () => {
     const id = document.getElementById('editPostId').value;
     const newTitle = document.getElementById('editPostTitle').value;
     const newDesc = document.getElementById('editPostDesc').value;
-
-    if(!id) return;
+    const newYear = document.getElementById('editPostYear').value; // Get the year from modal
 
     try {
         const postRef = doc(db, "kevin_posts", id);
         await updateDoc(postRef, {
             title: newTitle,
             desc: newDesc,
+            year: newYear.toString(), // Move to new year
             rotation: currentEditRotation
         });
-        document.getElementById('editPostModal').classList.remove('active');
-        alert("Actualizat cu succes!");
-    } catch(e) {
-        alert("Eroare: " + e.message);
-    }
+        alert("Modificat cu succes! Amintirea a fost mutată în anul " + newYear);
+        location.reload();
+    } catch(e) { alert("Eroare: " + e.message); }
 };
 
 // --- FUNCȚII GLOBALE PENTRU BUTOANELE DIN HTML ---
