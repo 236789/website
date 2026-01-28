@@ -2096,12 +2096,14 @@ body {
 }
 
 /* Overlay invizibil peste imagini (Protecție extra la click) */
+/* CHANGE THIS */
 .img-wrapper::after {
     content: "";
     position: absolute;
     inset: 0;
     z-index: 10;
     background: transparent;
+    pointer-events: none; /* ADD THIS LINE so you can click the video buttons behind it */
 }
 
 
@@ -4176,6 +4178,7 @@ async function loadGallery() {
     
     cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Kevin (${currentYearFilter})...</p>`;
 
+    // Păstrăm referința la kevin_posts pentru această pagină
     const q = query(
         collection(db, "kevin_posts"), 
         where("year", "==", currentYearFilter.toString()), 
@@ -4195,20 +4198,19 @@ async function loadGallery() {
             const comms = data.commentCount || 0;
             
             const rotation = data.rotation || 0;
-            // Daca este rotita la 90/270 grade, marim putin imaginea sa acopere marginile negre
             const isVertical = Math.abs(rotation) % 180 === 90;
             const scaleFactor = isVertical ? 1.25 : 1;
 
             const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-            // --- ADMIN BUTTONS ACTUALIZATE ---
-            // Trimitem ID, Titlu, Desc, Imagine, Rotatie, Anul Curent si Tipul (video/image)
+            // --- ADMIN BUTTONS ACTUALIZATE (7 Parametri) ---
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
                 adminBtns = `
                 <div class="admin-actions-wrapper">
-                    <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}', '${data.img}', ${rotation}, '${data.year}', '${data.type || 'image'}')">
+                    <button class="admin-icon-btn btn-edit" 
+                        onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}', '${data.img}', ${rotation}, '${data.year}', '${data.type || 'image'}')">
                         <i class="fas fa-pen"></i>
                     </button>
                     <button class="admin-icon-btn btn-del" onclick="deleteKevinPost('${id}')">
@@ -4219,14 +4221,17 @@ async function loadGallery() {
 
             const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
 
-            // --- LOGICĂ AFIȘARE MEDIA (VIDEO VS IMAGE) ---
+            // --- MEDIA RENDER LOGIC (VIDEO FIX) ---
             let mediaElement = '';
             if (data.type === 'video') {
+                // Am scos 'muted' și 'loop' pentru a permite control manual, am lăsat 'controls'
                 mediaElement = `
-                    <video src="${data.img}" class="gallery-img" controls muted loop 
+                    <video src="${data.img}" class="gallery-img" 
+                           controls 
+                           preload="metadata"
                            style="transform: rotate(${rotation}deg) scale(${scaleFactor}); 
                                   width: 100%; height: 100%; 
-                                  object-fit: cover; background: #000;">
+                                  object-fit: cover; background: #000; z-index: 5;">
                     </video>`;
             } else {
                 mediaElement = `
@@ -4244,7 +4249,7 @@ async function loadGallery() {
                     <div class="card-user-name">${data.authorName}</div>
                 </div>
                 
-                <div class="img-wrapper" style="background:transparent; aspect-ratio: 4/5; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+                <div class="img-wrapper" style="background:transparent; aspect-ratio: 4/5; overflow:hidden; display:flex; align-items:center; justify-content:center; position: relative;">
                     ${mediaElement}
                 </div>
 
@@ -4291,32 +4296,35 @@ window.rotateCurrentEditImage = () => {
     if(img) img.style.transform = `rotate(${currentEditRotation}deg)`;
 };
 
+// --- UPDATED EDIT LOGIC ---
 window.openEditPost = (id, currentTitle, currentDesc, currentImg, currentRot, currentYear, type) => {
     document.getElementById('editPostId').value = id;
     document.getElementById('editPostTitle').value = currentTitle;
     document.getElementById('editPostDesc').value = currentDesc;
     
-    // Populate the year dropdown in modal
+    // 1. Populate Year Selector (2000 - 2026)
     const yearSelect = document.getElementById('editPostYear');
     yearSelect.innerHTML = '';
-    for(let y=2026; y>=2000; y--) {
+    for(let y = 2026; y >= 2000; y--) {
         const opt = document.createElement('option');
         opt.value = y;
         opt.innerText = y;
-        if(y.toString() === currentYear) opt.selected = true;
+        if(y.toString() === currentYear.toString()) opt.selected = true;
         yearSelect.appendChild(opt);
     }
 
+    // 2. Handle Media Preview in Modal
     const container = document.getElementById('editMediaContainer');
     if (type === 'video') {
-        container.innerHTML = `<video src="${currentImg}" muted style="max-width:100%; max-height:100%;"></video>`;
-        document.getElementById('rotateBtnEdit').style.display = 'none'; // Videos usually don't need CSS rotate
+        container.innerHTML = `<video src="${currentImg}" muted autoplay loop style="max-width:100%; max-height:100%; object-fit:contain;"></video>`;
+        document.getElementById('rotateBtnEdit').style.display = 'none'; // Hide rotate for videos
     } else {
         container.innerHTML = `<img src="${currentImg}" id="editPostPreview" style="max-width:100%; max-height:100%; object-fit:contain; transition:0.3s;">`;
         document.getElementById('rotateBtnEdit').style.display = 'block';
+        // Apply rotation after a tiny delay so the element exists
         setTimeout(() => {
             const img = document.getElementById('editPostPreview');
-            img.style.transform = `rotate(${currentRot}deg)`;
+            if(img) img.style.transform = `rotate(${currentRot}deg)`;
         }, 50);
     }
 
@@ -4328,21 +4336,28 @@ window.savePostEdit = async () => {
     const id = document.getElementById('editPostId').value;
     const newTitle = document.getElementById('editPostTitle').value;
     const newDesc = document.getElementById('editPostDesc').value;
-    const newYear = document.getElementById('editPostYear').value; // Get the year from modal
+    const newYear = document.getElementById('editPostYear').value;
+
+    if(!id) return;
 
     try {
         const postRef = doc(db, "kevin_posts", id);
         await updateDoc(postRef, {
             title: newTitle,
             desc: newDesc,
-            year: newYear.toString(), // Move to new year
+            year: newYear.toString(), // Save the new year
             rotation: currentEditRotation
         });
-        alert("Modificat cu succes! Amintirea a fost mutată în anul " + newYear);
-        location.reload();
-    } catch(e) { alert("Eroare: " + e.message); }
+        
+        document.getElementById('editPostModal').classList.remove('active');
+        window.showToast("Actualizat cu succes! 🎉");
+        
+        // No need to reload if using onSnapshot, but helps clean up state
+        // location.reload(); 
+    } catch(e) {
+        alert("Eroare: " + e.message);
+    }
 };
-
 // --- FUNCȚII GLOBALE PENTRU BUTOANELE DIN HTML ---
 
 // 1. Vote - SCHIMBĂ SĂ FIE CONSISTENT CU loadGallery
