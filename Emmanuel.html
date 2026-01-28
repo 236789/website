@@ -4298,7 +4298,6 @@ async function loadGallery() {
     
     cont.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--primary); font-family:Orbitron;">Sincronizare Arhivă Emmanuel (${currentYearFilter})...</p>`;
 
-    // FIXED COLLECTION: emmanuel_posts
     const q = query(
         collection(db, "emmanuel_posts"), 
         where("year", "==", currentYearFilter.toString()), 
@@ -4317,15 +4316,20 @@ async function loadGallery() {
             const likesCount = data.likes ? Object.keys(data.likes).length : 0;
             const comms = data.commentCount || 0;
             
-            // 1. GET ROTATION FROM DB (Default 0)
             const rotation = data.rotation || 0;
+
+            // --- NEW LOGIC START ---
+            // If rotation is 90 or 270, the image is physically sideways. 
+            // We change the box shape to Landscape (4/3) instead of Portrait (4/5)
+            const isSideways = Math.abs(rotation) % 180 === 90;
+            const dynamicRatio = isSideways ? 'aspect-ratio: 4 / 3;' : 'aspect-ratio: 4 / 5;';
+            // --- NEW LOGIC END ---
 
             const safeTitle = (data.title || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
             let adminBtns = '';
             if(auth.currentUser && ADMINS.includes(auth.currentUser.email)) {
-                // 2. PASS IMAGE & ROTATION TO EDIT FUNCTION
                 adminBtns = `
                 <div class="admin-actions-wrapper">
                     <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}', '${data.img}', ${rotation})"><i class="fas fa-pen"></i></button>
@@ -4335,7 +4339,6 @@ async function loadGallery() {
 
             const isLiked = auth.currentUser && data.likes && data.likes[auth.currentUser.uid];
 
-            // 3. APPLY CSS ROTATION AND OBJECT-FIT: CONTAIN
             cont.innerHTML += `
             <div class="gallery-card" data-id="${id}">
                 ${adminBtns}
@@ -4343,9 +4346,12 @@ async function loadGallery() {
                     <img src="${data.authorPhoto || 'https://iili.io/fXks1Dv.png'}" class="card-avatar">
                     <div class="card-user-name">${data.authorName}</div>
                 </div>
-                <div class="img-wrapper" style="background:#000;">
+                
+                <!-- UPDATED WRAPPER STYLE -->
+                <div class="img-wrapper" style="background:#000; ${dynamicRatio}">
                     <img src="${data.img}" class="gallery-img" style="transform: rotate(${rotation}deg); width: 100%; height: 100%; object-fit: contain;">
                 </div>
+
                 <div class="card-bottom-content">
                     ${data.title ? `<h3 class="card-title-static">${data.title}</h3>` : ''}
                     ${data.desc ? `<p class="card-desc-static">${data.desc}</p>` : ''}
