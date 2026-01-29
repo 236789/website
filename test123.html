@@ -2581,6 +2581,53 @@
         LIVE TRANSACTIONS
     </h2>
 
+    <!-- BARĂ CĂUTARE TRANZACȚII -->
+    <div class="search-container-center">
+        <input type="text" id="txnSearchInput" class="search-input-neon" 
+               placeholder="🔍 CAUTĂ DUPĂ NUME UTILIZATOR..." onkeyup="applyTxnFilters()">
+    </div>
+
+    <!-- FILTRE TRANZACȚII -->
+    <div class="filter-row">
+        <!-- Stânga: Tip Monedă -->
+        <div class="filter-group">
+            <button class="filter-btn active" id="txnFilterAll" onclick="filterTxnType('ALL', this)">
+                TOATE
+            </button>
+            <button class="filter-btn" onclick="filterTxnType('COINS', this)">
+                <img src="https://iili.io/fhc1SKQ.png" style="width:18px;">
+            </button>
+            <button class="filter-btn" onclick="filterTxnType('DIAMONDS', this)">
+                <img src="https://iili.io/fv5bmtj.png" style="width:18px;">
+            </button>
+        </div>
+
+        <!-- Dreapta: Dropdown Filtru Sursă -->
+        <div class="custom-dropdown" id="txnSourceDropdown">
+            <div class="dropdown-trigger" onclick="toggleTxnSourceMenu()">
+                <span id="currentTxnSourceLabel"><i class="fas fa-filter"></i> Toate Sursele</span>
+                <i class="fas fa-chevron-down" style="color:var(--primary);"></i>
+            </div>
+            <div class="dropdown-options" id="txnSourceOptions">
+                <div class="dropdown-option" onclick="filterTxnSource('ALL', this)">
+                    <i class="fas fa-list"></i> Toate Sursele
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Daily Tasks', this)">
+                    <i class="fas fa-tasks"></i> Daily Tasks
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Spin Wheel', this)">
+                    <i class="fas fa-sync-alt"></i> Spin Wheel
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Community Wall', this)">
+                    <i class="fas fa-comment-alt"></i> Community Wall
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('System', this)">
+                    <i class="fas fa-robot"></i> System
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="table-glass-container">
         <table class="neon-table" id="txnTable">
             <thead>
@@ -2672,74 +2719,115 @@ import { getFirestore, doc, getDocs, collection, query, orderBy, limit, where, a
 
 let dashboardTxnUnsub = null;
 
+// Variabile globale pentru filtrarea tranzacțiilor
+let rawTxns = []; 
+let currentTxnType = 'ALL';
+let currentTxnSource = 'ALL';
+
 window.loadTransactions = function() {
     const tableBody = document.getElementById('txnTableBody');
     if (!tableBody) return;
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    console.log("🚀 Starting Transaction Listener...");
-    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
 
-    // Query matching your Firestore screenshot
-    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
+    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(100));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
-        console.log("📥 Data Received! Count:", snapshot.size);
-        
-        if (snapshot.empty) {
-            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nicio tranzacție găsită.</td></tr>";
-            return;
-        }
-
-        let rowsHTML = "";
+        rawTxns = [];
         snapshot.forEach((doc) => {
             const t = doc.data();
-            
-            // Mapping fields exactly from your Firebase screenshot
-            const pfp = t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png";
-            const uName = t.username || "Anonim";
-            const amountVal = Number(t.amount || 0);
-            const type = t.type || "COINS";
-            
-            // Format Date
-            let dateStr = "Recent";
-            if (t.timestamp && t.timestamp.toDate) {
-                const d = t.timestamp.toDate();
-                dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-            }
-
-            const iconUrl = type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            const amountClass = amountVal >= 0 ? "val-plus" : "val-minus";
-            const amountSign = amountVal >= 0 ? "+" : "";
-
-            rowsHTML += `
-                <tr>
-                    <td class="sticky-left">
-                        <div class="td-user">
-                            <img src="${pfp}" class="td-pfp">
-                            <div class="td-name">${uName}</div>
-                        </div>
-                    </td>
-                    <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
-                    <td style="font-size:12px; color:#fff;">${t.description || "-"}</td>
-                    <td><span class="source-tag">${t.source || "SYSTEM"}</span></td>
-                    <td>
-                        <div class="currency-simple ${amountClass}">
-                            ${amountSign}${amountVal} <img src="${iconUrl}" width="16" style="margin-left:5px;">
-                        </div>
-                    </td>
-                </tr>`;
+            rawTxns.push({
+                id: doc.id,
+                username: t.username || "Utilizator",
+                pfp: t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png",
+                timestamp: t.timestamp,
+                description: t.description || "-",
+                source: t.source || "SYSTEM",
+                amount: Number(t.amount || 0),
+                type: t.type || "COINS"
+            });
         });
-        tableBody.innerHTML = rowsHTML;
-
-    }, (error) => {
-        console.error("❌ Firebase Error:", error);
-        tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">
-            ⚠️ EROARE: ${error.message}
-        </td></tr>`;
+        applyTxnFilters(); // Randăm tabelul cu filtrele aplicate
     });
 };
+
+// Logica de randare a tabelului cu filtre
+window.applyTxnFilters = function() {
+    const tableBody = document.getElementById('txnTableBody');
+    const searchVal = document.getElementById('txnSearchInput').value.toLowerCase();
+
+    const filtered = rawTxns.filter(t => {
+        const matchesSearch = t.username.toLowerCase().includes(searchVal);
+        const matchesType = (currentTxnType === 'ALL' || t.type === currentTxnType);
+        const matchesSource = (currentTxnSource === 'ALL' || t.source === currentTxnSource);
+        return matchesSearch && matchesType && matchesSource;
+    });
+
+    if (filtered.length === 0) {
+        tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nicio tranzacție găsită pentru aceste filtre.</td></tr>";
+        return;
+    }
+
+    tableBody.innerHTML = filtered.map(t => {
+        let dateStr = "Recent";
+        if (t.timestamp && t.timestamp.toDate) {
+            const d = t.timestamp.toDate();
+            dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+
+        const isDiamonds = (t.type === "DIAMONDS");
+        const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+        const amountClass = t.amount >= 0 ? "val-plus" : "val-minus";
+        const amountSign = t.amount >= 0 ? "+" : "";
+
+        return `
+            <tr>
+                <td class="sticky-left">
+                    <div class="td-user">
+                        <img src="${t.pfp}" class="td-pfp">
+                        <div class="td-name">${t.username}</div>
+                    </div>
+                </td>
+                <td style="color:#888; font-size:11px;">${dateStr}</td>
+                <td style="font-size:12px; color:#fff;">${t.description}</td>
+                <td><span class="source-tag">${t.source}</span></td>
+                <td>
+                    <div class="currency-simple ${amountClass}">
+                        ${amountSign}${t.amount} <img src="${iconUrl}" width="16" style="margin-left:5px;">
+                    </div>
+                </td>
+            </tr>`;
+    }).join('');
+};
+
+// Handlers pentru butoane și dropdown
+window.filterTxnType = function(type, btn) {
+    document.querySelectorAll('#transactions-history-view .filter-group .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTxnType = type;
+    applyTxnFilters();
+};
+
+window.toggleTxnSourceMenu = function() {
+    document.getElementById('txnSourceOptions').classList.toggle('open');
+};
+
+window.filterTxnSource = function(source, element) {
+    currentTxnSource = source;
+    document.getElementById('currentTxnSourceLabel').innerHTML = element.innerHTML;
+    document.getElementById('txnSourceOptions').classList.remove('open');
+    applyTxnFilters();
+};
+
+// Închide dropdown-ul la click în afară
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('txnSourceDropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        document.getElementById('txnSourceOptions').classList.remove('open');
+    }
+});
 
 // THE ONLY SWITCH SECTION FUNCTION YOU NEED
 window.switchSection = (sectionId, btnElement) => {
