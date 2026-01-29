@@ -2691,23 +2691,27 @@ window.switchSection = (sectionId, btnElement) => {
     }
 };
 
-// --- 2. NEW TRANSACTION LOADER ---
-let txnUnsubscribe = null; // To stop listening when not on page
+// --- UNIQUE VARIABLE FOR DASHBOARD (Prevents conflict with old page) ---
+let dashboardTxnUnsub = null; 
 
 function loadTransactions() {
     const tableBody = document.getElementById('txnTableBody');
     
-    // Prevent double listeners
-    if(txnUnsubscribe) return; 
+    // 1. Reset: If we are already listening, stop and restart (forces refresh)
+    if (dashboardTxnUnsub) {
+        dashboardTxnUnsub();
+        dashboardTxnUnsub = null;
+    }
 
     tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px;">Se conectează la server...</td></tr>';
 
-    // Query last 50 transactions
+    // 2. Query: Get last 50 transactions
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
 
-    txnUnsubscribe = onSnapshot(q, (snapshot) => {
+    // 3. Listen
+    dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         if (snapshot.empty) {
-            tableBody.innerHTML = "<tr><td colspan='5'>Nu există tranzacții.</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; color:#888;'>Nu există tranzacții.</td></tr>";
             return;
         }
 
@@ -2716,7 +2720,7 @@ function loadTransactions() {
         snapshot.forEach((doc) => {
             const t = doc.data();
 
-            // 1. Date Format
+            // Format Date
             let dateStr = "Recent";
             if(t.timestamp && t.timestamp.toDate) {
                 const d = t.timestamp.toDate();
@@ -2724,13 +2728,13 @@ function loadTransactions() {
                 dateStr = `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
-            // 2. Icon & Amount Style
+            // Icon & Amount
             const isDiamonds = t.type === "DIAMONDS";
             const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
             const amountClass = t.amount >= 0 ? "val-plus" : "val-minus";
             const amountSign = t.amount >= 0 ? "+" : "";
 
-            // 3. User Image (Fallback if missing)
+            // User Image
             const pfp = t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png";
 
             rowsHTML += `
@@ -2759,7 +2763,9 @@ function loadTransactions() {
         tableBody.innerHTML = rowsHTML;
 
     }, (error) => {
-        console.error("Txn Error:", error);
+        console.error("Dashboard Txn Error:", error);
+        // If console says "Missing or insufficient permissions" or "Index required", click the link in console!
+        tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757;">Eroare: ${error.message}</td></tr>`;
     });
 }
 
