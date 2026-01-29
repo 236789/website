@@ -2158,28 +2158,28 @@ function renderQuests(userData) {
     const completed = userData.completedQuests || [];
     const activeIds = userData.activeDailyQuests || [];
 
-    // Calculate current skip cost (250, 500, 1000, 2000, 4000 max)
+    // Calculate current skip cost
     const skipsUsed = userData.skipsUsedInBlock || 0;
     const skipCost = Math.min(250 * Math.pow(2, skipsUsed), 4000);
 
     quests.forEach(q => {
-        // Logic 1: One-Time quests - Hide if completed
+        const isCompleted = completed.includes(q.id);
+
+        // LOGIC: 
+        // 1. If it's a One-Time quest, show it ONLY if NOT completed.
+        // 2. If it's a Daily quest, show it ONLY if it's in the activeIds list.
         if (q.oneTime) {
-            if (completed.includes(q.id)) return;
-        } 
-        // Logic 2: Daily Rotation - ONLY show if the ID exists in the active rotation list
-        // This fixes the bug where all quests show if activeIds is empty.
-        else {
+            if (isCompleted) return; 
+        } else {
             if (!activeIds.includes(q.id)) return;
         }
 
-        const isCompleted = completed.includes(q.id);
         const card = document.createElement('div');
         card.className = 'quest-card';
         let progressHTML = '';
         let canAward = false;
 
-        // --- SPECIAL: GALLERY (2 BARS) ---
+        // --- PROGRESS BAR LOGIC ---
         if (q.id === 'gallery_task') {
             const curL = Math.min(userData.galleryLikesToday || 0, q.targetLikes);
             const curC = Math.min(userData.galleryCommentsToday || 0, q.targetComments);
@@ -2194,9 +2194,7 @@ function renderQuests(userData) {
                 </div>
             `;
             if (curL >= q.targetLikes && curC >= q.targetComments) canAward = true;
-        } 
-        // --- STANDARD QUESTS ---
-        else {
+        } else {
             let current = 0;
             const mapping = {
                 msg3: 'messagesSentToday', wall_reply_5: 'wallRepliesToday', wall_react_10: 'wallReactionsToday',
@@ -2206,10 +2204,9 @@ function renderQuests(userData) {
                 buy_frame: 'shopFrameBought', donate_100: 'coinsDonatedToday', trivia_single_5: 'triviaSingleCorrectToday', 
                 trivia_multi_5: 'triviaMultiCorrectToday'
             };
+            
             if(q.id === 'meet_team_hunt') {
                 current = (userData.visited_lost_soul_today ? 1 : 0) + (userData.visited_kevin_trinity_today ? 1 : 0);
-            } else if (q.id === 'donate_100') {
-                current = userData.coinsDonatedToday >= 100 ? 1 : 0; 
             } else {
                 current = userData[mapping[q.id]] || 0;
                 if (typeof current === 'boolean') current = current ? 1 : 0;
@@ -2218,20 +2215,15 @@ function renderQuests(userData) {
             if (current >= q.target) canAward = true;
         } 
 
-        // --- ACTION AREA ---
-        let actionArea = "";
-        if (isCompleted) {
-            actionArea = `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`;
-        } else {
-            actionArea = `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>`;
-            actionArea += `
-                <button class="skip-btn" onclick="window.confirmSkip('${q.id}', '${q.title.replace(/'/g, "\\'")}', ${skipCost}, ${q.reward})">
-                    <span class="skip-cost-val">-${skipCost}</span>
-                    <img src="https://iili.io/fhc1SKQ.png" class="skip-coin-icon">
-                    <span class="skip-text-label">Sari peste</span>
-                </button>
-            `;
-        }
+        // --- BUTTONS ---
+        let actionArea = isCompleted 
+            ? `<div class="status-completed"><i class="fas fa-check-circle"></i><span>Completat</span></div>`
+            : `<a href="${q.link}" class="quest-btn">Mergi la ${q.pageName}</a>
+               <button class="skip-btn" onclick="window.confirmSkip('${q.id}', '${q.title.replace(/'/g, "\\'")}', ${skipCost}, ${q.reward})">
+                   <span class="skip-cost-val">-${skipCost}</span>
+                   <img src="https://iili.io/fhc1SKQ.png" class="skip-coin-icon">
+                   <span>Sari peste</span>
+               </button>`;
 
         card.innerHTML = `<div class="quest-header"><span class="quest-title">${q.title}</span><span class="quest-reward">+${q.reward} <img src="https://iili.io/fhc1SKQ.png" class="reward-icon"></span></div>${progressHTML}${actionArea}`;
         questGrid.appendChild(card);
@@ -2546,7 +2538,6 @@ onSnapshot(userRef, async (snap) => {
     }
 });
 
-// --- UPDATED RESET FUNCTION (Adds questsCount) ---
 async function resetUserQuests(userRef, snapData) {
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Bucharest" });
@@ -2554,9 +2545,24 @@ async function resetUserQuests(userRef, snapData) {
     const block = hours < 12 ? 'AM' : 'PM';
     const resetKey = `${dateStr}-${block}`;
 
+    // Helper to generate 6 random IDs
+    const getNewDailyList = () => {
+        return quests.filter(q => !q.oneTime)
+                     .sort(() => 0.5 - Math.random())
+                     .slice(0, 6)
+                     .map(q => q.id);
+    };
+
+    // CONDITION 1: Time Block Changed (Regular Reset)
     if (snapData.lastResetBlock && snapData.lastResetBlock !== resetKey) {
         let finalStreak = snapData.streak || 0;
-        if (snapData.lastStreakAwardedBlock !== snapData.lastResetBlock) {
+        
+        // Check if they finished the previous block to keep streak
+        const prevActive = snapData.activeDailyQuests || [];
+        const prevDone = snapData.completedQuests || [];
+        const wasFinished = prevActive.length > 0 && prevActive.every(id => prevDone.includes(id));
+
+        if (!wasFinished && snapData.lastResetBlock !== "FORCE_RESET") {
             window.runAdaptiveStreakAnimation(finalStreak);
             finalStreak = 0; 
         }
@@ -2565,17 +2571,11 @@ async function resetUserQuests(userRef, snapData) {
             quests.find(x => x.id === id)?.oneTime
         );
 
-        const newDailyIds = quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id);
-
         await updateDoc(userRef, {
             streak: finalStreak,
             lastResetBlock: resetKey,
-            activeDailyQuests: newDailyIds,
+            activeDailyQuests: getNewDailyList(),
             completedQuests: persistentCompleted,
-            
-            // ✅ IMPORTANT: Reset count to 0 so Backend knows you are incomplete
-            questsCount: 0, 
-
             skipsUsedInBlock: 0,
             messagesSentToday: 0, wallRepliesToday: 0, wallReactionsToday: 0,
             kevinMessagesToday: 0, galleryLikesToday: 0, galleryCommentsToday: 0,
@@ -2584,10 +2584,14 @@ async function resetUserQuests(userRef, snapData) {
             coinsDonatedToday: 0, triviaSingleCorrectToday: 0, triviaMultiCorrectToday: 0,
             visited_lost_soul_today: false, visited_kevin_trinity_today: false, wallLongMsgSent: false
         });
-
-    } else if (!snapData.lastResetBlock) {
-        const firstDailyIds = quests.filter(q => !q.oneTime).sort(() => 0.5 - Math.random()).slice(0, 6).map(q => q.id);
-        await updateDoc(userRef, { lastResetBlock: resetKey, activeDailyQuests: firstDailyIds, questsCount: 0 });
+    } 
+    // CONDITION 2: No Block recorded OR List is empty (Self-Healing)
+    else if (!snapData.lastResetBlock || !snapData.activeDailyQuests || snapData.activeDailyQuests.length === 0) {
+        console.log("Initializing/Fixing Quest List...");
+        await updateDoc(userRef, { 
+            lastResetBlock: resetKey, 
+            activeDailyQuests: getNewDailyList() 
+        });
     }
 }
 
