@@ -1320,7 +1320,7 @@
     padding: 10px 20px; border-radius: 50px; font-size: 11px; cursor: pointer;
     display: flex; align-items: center; justify-content: center; /* Centered Text */
     gap: 8px; transition: 0.3s; font-family: 'Orbitron'; text-transform: uppercase; font-weight: 700;
-}
+} 
 .btn-cosmetics-v2 { border-color: #d63384; color: #d63384; }
 .btn-edit-profile-v2:hover { background: var(--primary); color: #000; }
 .btn-cosmetics-v2:hover { background: #d63384; color: #fff; }
@@ -2609,6 +2609,78 @@
     color: #555;
     margin-top: 5px;
 }
+
+
+
+/* --- ENGINE PENTRU OBIECTE SPECIALE (JACKPOT & ANIMATED) --- */
+
+/* 1. QUANTUM VOID BADGE */
+.badge-wheel-god {
+    position: relative !important;
+    background: #050b14 !important;
+    color: #fff !important;
+    border: 1.5px solid #29f3ff !important;
+    padding: 3px 10px !important;
+    border-radius: 50px !important;
+    font-family: 'Orbitron', sans-serif !important;
+    font-weight: 900 !important;
+    text-transform: uppercase !important;
+    font-size: 9px !important;
+    box-shadow: 0 0 15px rgba(41, 243, 255, 0.5), inset 0 0 8px #7000ff !important;
+    overflow: hidden !important;
+    display: inline-flex !important;
+    align-items: center;
+    text-shadow: 0 0 5px #29f3ff;
+}
+.badge-wheel-god::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -150%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(41, 243, 255, 0.8), transparent);
+    animation: quantumGlobalScan 2.5s infinite linear !important;
+}
+
+/* 2. VOID BANNER */
+.bubble-jackpot {
+    position: relative !important;
+    background: #050b14 !important;
+    color: #fff !important;
+    border: 2px solid #29f3ff !important;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    box-shadow: 0 0 15px rgba(41, 243, 255, 0.4), inset 0 0 15px #7000ff !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+.bubble-jackpot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -150%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(41, 243, 255, 0.5), transparent);
+    animation: quantumGlobalScan 3s infinite linear;
+}
+
+@keyframes quantumGlobalScan {
+    0% { left: -150%; }
+    30% { left: 150%; }
+    100% { left: 150%; }
+}
+
+/* 3. TEXTUL QUANTUM */
+.t-quantum {
+    background: linear-gradient(90deg, #29f3ff, #b66fff, #29f3ff);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: quantumTextFlow 3s linear infinite;
+    font-weight: 900;
+}
+@keyframes quantumTextFlow { to { background-position: 200% center; } }
+
+/* Adaugă aici și restul de .t-fire, .t-glitch, etc. dacă lipsesc */
   </style>
 </head>
 <body>
@@ -3986,65 +4058,54 @@ window.changeInventoryFilter = function(cat, btn) {
     window.runInventoryAnalytics();
 };
 
+// --- FIXED ANALYTICS PREVIEW LOGIC ---
 window.runInventoryAnalytics = function() {
     const grid = document.getElementById('inventoryStatsGrid');
     if (!grid) return;
 
-    // 1. Calculăm frecvența fiecărui ID
-    let counts = {};
-    let totalUsers = cachedUsers.length || 1;
-
-    cachedUsers.forEach(u => {
-        let list = [];
-        if (currentInventoryCat === 'badges') list = u.ownedBadges;
-        else if (currentInventoryCat === 'frames') list = u.ownedFrames;
-        else if (currentInventoryCat === 'banners') list = u.ownedBanners;
-        else if (currentInventoryCat === 'texts') list = u.ownedTexts;
-
-        list.forEach(itemId => {
-            counts[itemId] = (counts[itemId] || 0) + 1;
-        });
-    });
-
-    // 2. Mapăm spre bazele de date corespunzătoare
-    let dbToUse = [];
-    if (currentInventoryCat === 'badges') dbToUse = BADGES_DB;
-    else if (currentInventoryCat === 'frames') dbToUse = FRAMES_DB;
-    else if (currentInventoryCat === 'banners') dbToUse = BANNERS_DB;
-    else if (currentInventoryCat === 'texts') dbToUse = TEXTS_DB;
-
-    // 3. Transformăm în array de obiecte pentru sortare
-    let results = Object.entries(counts).map(([id, count]) => {
-        const itemInfo = dbToUse.find(i => i.id === id) || { name: "Obiect Șters", text: "Necunoscut" };
-        return { id, count, ...itemInfo };
-    });
-
-    // Sortăm: Cele mai deținute primele
-    results.sort((a, b) => b.count - a.count);
-
-    if (results.length === 0) {
-        grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; color:#555;">Niciun obiect din această categorie nu este deținut de utilizatori.</div>`;
+    if (cachedUsers.length === 0) {
+        grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; color:var(--primary);">
+            <i class="fas fa-spinner fa-spin"></i> Se încarcă baza de date...
+        </div>`;
         return;
     }
 
-    // 4. Randare Carduri
+    let counts = {};
+    let totalUsers = cachedUsers.length;
+
+    cachedUsers.forEach(u => {
+        let list = [];
+        if (currentInventoryCat === 'badges') list = u.ownedBadges || [];
+        else if (currentInventoryCat === 'frames') list = u.ownedFrames || [];
+        else if (currentInventoryCat === 'banners') list = u.ownedBanners || [];
+        else if (currentInventoryCat === 'texts') list = u.ownedTexts || [];
+
+        list.forEach(itemId => { counts[itemId] = (counts[itemId] || 0) + 1; });
+    });
+
+    let dbToUse = (currentInventoryCat === 'badges') ? BADGES_DB : 
+                  (currentInventoryCat === 'frames') ? FRAMES_DB : 
+                  (currentInventoryCat === 'banners') ? BANNERS_DB : TEXTS_DB;
+
+    let results = Object.entries(counts).map(([id, count]) => {
+        const itemInfo = dbToUse.find(i => i.id === id) || { name: "Obiect Necunoscut", text: id, color: "#555", icon: "fa-question", cssClass: "" };
+        return { id, count, ...itemInfo };
+    });
+
+    results.sort((a, b) => b.count - a.count);
+
     grid.innerHTML = results.map(item => {
         const percent = ((item.count / totalUsers) * 100).toFixed(1);
         let previewHtml = "";
 
-        // Generăm preview în funcție de tip
         if (currentInventoryCat === 'badges') {
-            previewHtml = `<span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 10px ${item.color}; margin:0;"><i class="fas ${item.icon}"></i> ${item.text}</span>`;
+            previewHtml = `<span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 10px ${item.color};"><i class="fas ${item.icon}"></i> ${item.text}</span>`;
         } else if (currentInventoryCat === 'frames') {
-            previewHtml = `
-                <div class="frame-preview-box" style="margin:0;">
-                    <img src="https://iili.io/fXks1Dv.png" class="frame-preview-user" style="width:50px; height:50px;">
-                    <img src="${item.img}" class="frame-preview-img" style="width:75px; height:75px;">
-                </div>`;
+            previewHtml = `<div class="frame-preview-box"><img src="https://iili.io/fXks1Dv.png" class="frame-preview-user"><img src="${item.img}" class="frame-preview-img"></div>`;
         } else if (currentInventoryCat === 'banners') {
-            previewHtml = `<div class="${item.cssClass}" style="width:100%; padding:10px; border-radius:10px; font-size:9px;">BANNER STYLE</div>`;
+            previewHtml = `<div class="${item.cssClass}" style="width:100%; padding:10px; border-radius:10px; font-size:9px; text-align:center;">PREVIEW BANNER</div>`;
         } else if (currentInventoryCat === 'texts') {
-            previewHtml = `<span class="${item.cssClass}" style="font-size:18px; font-weight:900;">TEXT PREVIEW</span>`;
+            previewHtml = `<span class="${item.cssClass}" style="font-size:16px; font-weight:900;">${item.name}</span>`;
         }
 
         return `
@@ -4053,8 +4114,7 @@ window.runInventoryAnalytics = function() {
                 <div class="pop-preview-box">${previewHtml}</div>
                 <div class="pop-item-name">${item.name || item.text}</div>
                 <div class="pop-item-percent">${percent}% din utilizatori</div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 };
 
@@ -4865,32 +4925,26 @@ function loadAllUsers() {
 
 // ... în interiorul loadAllUsers, înSnapshot ...
 cachedUsers.push({
-    uid: doc.id, // Adăugăm și UID-ul pentru referință
+    uid: doc.id,
     username: data.username || "Unknown",
     email: data.email || "",
-    pfp: data.image || "https://i.ibb.co/XyqWk9N/def-user.png",
-    
-    // Cifre economice
+    pfp: data.image || "https://iili.io/fXks1Dv.png",
     coins: Number(data.coins) || 0,
     diamonds: Number(data.diamonds) || 0,
     donated: cleanDonation,
     streak: Number(data.streak) || 0,
-    
-    // DATELE PENTRU INVITAȚII (Lipseau!)
-    referralHistory: data.referralHistory || [], 
-    
-    // Date tehnice
+    referralHistory: data.referralHistory || [],
     joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
     joinDateStr: joinDate,
     statusHtml: statusHtml,
     isOnlineBool: isOnline,
     ip: data.ip || "Hidden",
 
-
+    // ACESTE LINII SUNT OBLIGATORII PENTRU STATISTICI:
     ownedBadges: data.ownedBadges || [],
     ownedBanners: data.ownedBanners || [],
     ownedFrames: data.ownedFrames || [],
-    ownedTexts: data.ownedTexts || [],
+    ownedTexts: data.ownedTexts || []
 });
         });
 
