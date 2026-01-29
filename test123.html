@@ -3043,6 +3043,40 @@
         </a>
     </div>
 </div>
+
+
+<!-- Group 5: Gaming Analytics -->
+<div class="ga-nav-group">
+    <div class="ga-folder-header" onclick="toggleFolder(this)">
+        <i class="fas fa-gamepad" style="color: #a2cfff;"></i>
+        <span>Gaming Analytics</span>
+        <i class="fas fa-chevron-right arrow"></i>
+    </div>
+    <div class="ga-folder-content">
+        <!-- Sub-Folder: Spin Wheel -->
+        <div class="ga-nav-group" style="border-left: 1px dashed rgba(255,255,255,0.1); margin-left: 20px;">
+            <div class="ga-folder-header" onclick="toggleFolder(this)" style="font-size: 12px; padding-left: 10px;">
+                <i class="fas fa-dharmachakra"></i>
+                <span>Spin Wheel</span>
+                <i class="fas fa-chevron-right arrow"></i>
+            </div>
+            <div class="ga-folder-content">
+                <a href="#" class="ga-nav-item" onclick="switchSection('wheel-jackpots-view', this)" style="padding-left: 30px;">
+                    <i class="fas fa-trophy" style="color: #ffd700;"></i>
+                    <span>Istoric Jackpots</span>
+                </a>
+                <a href="#" class="ga-nav-item" onclick="switchSection('wheel-winners-view', this)" style="padding-left: 30px;">
+                    <i class="fas fa-star" style="color: #2ecc71;"></i>
+                    <span>Top Câștigători</span>
+                </a>
+                <a href="#" class="ga-nav-item" onclick="switchSection('wheel-losers-view', this)" style="padding-left: 30px;">
+                    <i class="fas fa-skull" style="color: #ff4757;"></i>
+                    <span>Top Ghinioniști</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
 </aside>
 
 
@@ -3706,6 +3740,67 @@
         </table>
     </div>
 </div>
+
+
+
+<!-- VIEW 19: SPIN WHEEL JACKPOTS -->
+<div id="wheel-jackpots-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 25px;">🏆 ISTORIC ULTIMELE JACKPOT-URI</h2>
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">CÂȘTIGĂTOR</th>
+                    <th>DATA & ORA</th>
+                    <th>PREMIU</th>
+                    <th>TIP</th>
+                </tr>
+            </thead>
+            <tbody id="analJackpotTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se încarcă istoricul...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- VIEW 20: SPIN WHEEL WINNERS -->
+<div id="wheel-winners-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 25px;">📊 TOP PROFIT ROATĂ</h2>
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">JUCĂTOR</th>
+                    <th>DIAMANTE TOTALE</th>
+                    <th>MONEDE TOTALE</th>
+                    <th>VALOARE ESTIMATĂ</th>
+                </tr>
+            </thead>
+            <tbody id="analWinnersTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se calculează clasamentul...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- VIEW 21: SPIN WHEEL LOSERS -->
+<div id="wheel-losers-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 25px; color: #ff4757;">💀 TOP GHINIONIȘTI (XP)</h2>
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">JUCĂTOR</th>
+                    <th>XP ADUNAT</th>
+                    <th>FRECVENȚĂ LOSS</th>
+                </tr>
+            </thead>
+            <tbody id="analLosersTableBody">
+                <tr><td colspan="3" style="padding:40px; text-align:center;">Se caută magnetii de ghinion...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -4156,6 +4251,96 @@ window.runLiveAnalytics = function() {
         counter.innerText = count;
         tableBody.innerHTML = html || "<tr><td colspan='4'>Niciun vizitator activ.</td></tr>";
     });
+};
+
+
+// --- SPIN WHEEL ANALYTICS ENGINE ---
+
+window.runWheelJackpotAnalytics = async function() {
+    const tableBody = document.getElementById('analJackpotTableBody');
+    if (!tableBody) return;
+
+    try {
+        const q = query(collection(db, "wheel_jackpot_history"), orderBy("timestamp", "desc"), limit(30));
+        const snapshot = await getDocs(q);
+        
+        if(snapshot.empty) {
+            tableBody.innerHTML = '<tr><td colspan="4" style="padding:20px;">Niciun jackpot înregistrat.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = snapshot.docs.map(doc => {
+            const d = doc.data();
+            const date = d.timestamp ? d.timestamp.toDate() : new Date();
+            const dateStr = `${date.getDate()}/${date.getMonth()+1} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            
+            const color = d.rewardType === 'diamonds' ? '#00ffcc' : '#ffd700';
+            const icon = d.rewardType === 'diamonds' ? 'https://iili.io/fv5bmtj.png' : 'https://iili.io/fhc1SKQ.png';
+
+            return `
+            <tr>
+                <td class="sticky-left">
+                    <div class="td-user">
+                        <img src="${d.userPhoto}" class="td-pfp" style="border-color:${color};">
+                        <div class="td-name">${d.username}</div>
+                    </div>
+                </td>
+                <td style="color:#888; font-family:'Orbitron'; font-size:11px;">${dateStr}</td>
+                <td style="font-weight:900; color:${color};">
+                    ${d.rewardLabel} <img src="${icon}" width="16" style="margin-left:5px;">
+                </td>
+                <td><span class="source-tag" style="border-color:${color}; color:${color};">JACKPOT</span></td>
+            </tr>`;
+        }).join('');
+    } catch(e) { console.error(e); }
+};
+
+window.runWheelWinnersAnalytics = function() {
+    const tableBody = document.getElementById('analWinnersTableBody');
+    if (!tableBody) return;
+
+    // Filter users who have wheel stats
+    let players = cachedUsers.filter(u => u.wheelStats && (u.wheelStats.diamonds > 0 || u.wheelStats.coins > 0));
+    
+    // Sort by Diamonds first, then Coins
+    players.sort((a, b) => (b.wheelStats.diamonds * 1000 + b.wheelStats.coins) - (a.wheelStats.diamonds * 1000 + a.wheelStats.coins));
+
+    tableBody.innerHTML = players.map(u => `
+        <tr>
+            <td class="sticky-left">
+                <div class="td-user">
+                    <img src="${u.pfp}" class="td-pfp">
+                    <div class="td-name">${u.username}</div>
+                </div>
+            </td>
+            <td class="val-diamonds">+${u.wheelStats.diamonds}</td>
+            <td class="val-coins">+${formatCurrency(u.wheelStats.coins)}</td>
+            <td style="font-family:'Orbitron'; font-size:11px; color:#aaa;">VIP PLAYER</td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" style="padding:20px;">Nicio dată disponibilă.</td></tr>';
+};
+
+window.runWheelLosersAnalytics = function() {
+    const tableBody = document.getElementById('analLosersTableBody');
+    if (!tableBody) return;
+
+    let losers = cachedUsers.filter(u => u.wheelStats && u.wheelStats.xpLandings > 0);
+    losers.sort((a, b) => b.wheelStats.xpLandings - a.wheelStats.xpLandings);
+
+    tableBody.innerHTML = losers.map(u => `
+        <tr>
+            <td class="sticky-left">
+                <div class="td-user">
+                    <img src="${u.pfp}" class="td-pfp" style="border-color:#ff4757;">
+                    <div class="td-name">${u.username}</div>
+                </div>
+            </td>
+            <td style="font-family:'Orbitron'; font-weight:900; color:#ff4757; font-size:18px;">
+                ${u.wheelStats.xpLandings} <span style="font-size:10px;">XP</span>
+            </td>
+            <td><span class="risk-badge risk-high">UNLUCKY</span></td>
+        </tr>
+    `).join('') || '<tr><td colspan="3" style="padding:20px;">Toată lumea a fost norocoasă!</td></tr>';
 };
 
 
@@ -4946,8 +5131,19 @@ window.switchSection = (sectionId, btnElement) => {
     if(btnElement) btnElement.classList.add('active');
 
     // 2. Verificăm dacă secțiunea are nevoie de datele utilizatorilor (cachedUsers)
-    // Adăugat 'shop-stats-view' în listă pentru a asigura încărcarea datelor din Firebase
-    const needsUsers = ['transactions-view', 'economy-view', 'user-growth-view', 'alt-detector-view', 'referral-network-view', 'shop-stats-view'];
+    // Am adăugat noile secțiuni 'wheel-winners-view' și 'wheel-losers-view' care depind de profilul userilor
+    const needsUsers = [
+        'transactions-view', 
+        'economy-view', 
+        'user-growth-view', 
+        'alt-detector-view', 
+        'referral-network-view', 
+        'shop-stats-view', 
+        'donation-history-view',
+        'wheel-winners-view',
+        'wheel-losers-view'
+    ];
+
     if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
         loadAllUsers();
     }
@@ -5008,25 +5204,44 @@ window.switchSection = (sectionId, btnElement) => {
             }
             break;
 
-case 'donation-history-view':
-    // Nu mai avem nevoie de loadTransactions() aici pentru ca citim direct din profilele userilor
-    if (cachedUsers.length === 0) {
-        loadAllUsers();
-        setTimeout(() => { window.runDonationAnalytics(); }, 1500);
-    } else {
-        window.runDonationAnalytics();
-    }
-    break;
+        case 'donation-history-view':
+            if (cachedUsers.length === 0) {
+                loadAllUsers();
+                setTimeout(() => { window.runDonationAnalytics(); }, 1500);
+            } else {
+                window.runDonationAnalytics();
+            }
+            break;
 
-        // --- NOU: ANALIZĂ SHOP ---
         case 'shop-stats-view':
             if (cachedUsers.length === 0) {
-                // Așteptăm sincronizarea bazei de date
                 setTimeout(() => { 
                     if(typeof window.runShopAnalytics === "function") window.runShopAnalytics(); 
                 }, 1000);
             } else {
                 if(typeof window.runShopAnalytics === "function") window.runShopAnalytics();
+            }
+            break;
+
+        // --- NOU: GAMING / SPIN WHEEL ---
+        case 'wheel-jackpots-view':
+            // Aceasta citește dintr-o colecție separată, nu are nevoie de cache-ul de useri
+            if (typeof window.runWheelJackpotAnalytics === "function") window.runWheelJackpotAnalytics();
+            break;
+
+        case 'wheel-winners-view':
+            if (cachedUsers.length === 0) {
+                setTimeout(() => { if(typeof window.runWheelWinnersAnalytics === "function") window.runWheelWinnersAnalytics(); }, 1000);
+            } else {
+                if (typeof window.runWheelWinnersAnalytics === "function") window.runWheelWinnersAnalytics();
+            }
+            break;
+
+        case 'wheel-losers-view':
+            if (cachedUsers.length === 0) {
+                setTimeout(() => { if(typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics(); }, 1000);
+            } else {
+                if (typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics();
             }
             break;
     }
