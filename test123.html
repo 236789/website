@@ -3300,77 +3300,70 @@ window.loadBotAnalytics = function() {
     
     if (!topUsersTable || !questionsTable || !repliesTable) return;
 
-    // --- 1. TOP UTILIZATORI (Logică de calcul) ---
-    // Definim o funcție internă pe care o putem apela de mai multe ori
-    const refreshTopUsers = () => {
-        if (cachedUsers.length === 0) {
-            topUsersTable.innerHTML = "<tr><td style='padding:20px; color:#888;'>Se așteaptă datele de la utilizatori...</td></tr>";
-            return;
-        }
-
-        let botUsers = cachedUsers
-            .filter(u => (u.kevinMessagesToday || 0) > 0)
-            .sort((a, b) => b.kevinMessagesToday - a.kevinMessagesToday);
-
-        document.getElementById('botActiveUsers').innerText = botUsers.length;
-        
+    // --- 1. REALTIME TOP USERS (Calculated from Accounts) ---
+    // We listen to accounts to see who is chatting with Kevin today
+    onSnapshot(collection(db, "accounts"), (snapshot) => {
+        let botUsers = [];
         let totalMsgs = 0;
-        botUsers.forEach(u => totalMsgs += (u.kevinMessagesToday || 0));
+
+        snapshot.forEach(doc => {
+            const u = doc.data();
+            const msgCount = u.kevinMessagesToday || 0;
+            if (msgCount > 0) {
+                totalMsgs += msgCount;
+                botUsers.push({
+                    username: u.username || "Anonim",
+                    pfp: u.image || "https://i.ibb.co/XyqWk9N/def-user.png",
+                    count: msgCount
+                });
+            }
+        });
+
+        // Update Header Stats
+        document.getElementById('botActiveUsers').innerText = botUsers.length;
         document.getElementById('botTotalMsgs').innerText = totalMsgs;
 
+        // Sort and Render Table
+        botUsers.sort((a, b) => b.count - a.count);
         topUsersTable.innerHTML = botUsers.slice(0, 10).map(u => `
             <tr>
-                <td style="text-align:left; padding-left:15px; display:flex; align-items:center; gap:10px;">
+                <td style="text-align:left; padding: 10px 15px; display:flex; align-items:center; gap:10px;">
                     <img src="${u.pfp}" style="width:25px; height:25px; border-radius:50%; border:1px solid var(--primary);">
                     <span style="font-size:12px; color:#fff;">${u.username}</span>
                 </td>
-                <td style="font-family:'Orbitron'; font-weight:800; color:var(--primary);">${u.kevinMessagesToday}</td>
+                <td style="font-family:'Orbitron'; font-weight:800; color:var(--primary);">${u.count}</td>
             </tr>
         `).join('') || "<tr><td style='padding:20px; color:#888;'>Nicio interacțiune azi.</td></tr>";
-    };
+    });
 
-    // Rulăm o dată la început
-    refreshTopUsers();
-
-    // --- 2. CELE MAI FRECVENTE ÎNTREBĂRI ȘI RĂSPUNSURI (Realtime) ---
-    // Adăugăm un console.log aici să vedem dacă Firebase răspunde
+    // --- 2. REALTIME QUESTIONS & REPLIES (From usage stats) ---
     onSnapshot(collection(db, "bot_usage_stats"), (snapshot) => {
-        console.log("📥 Bot Stats received, docs:", snapshot.size);
-        
         let questions = [];
         let replies = [];
 
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Folosim data.text (salvat de index.html) sau doc.id ca fallback
             const label = data.text || doc.id.replace(/^q_|^r_/, "");
-            
             if (data.type === "question") questions.push({ text: label, count: data.count });
             if (data.type === "reply") replies.push({ text: label, count: data.count });
         });
 
-        // Sortăm după cele mai folosite
         questions.sort((a, b) => b.count - a.count);
         replies.sort((a, b) => b.count - a.count);
 
         questionsTable.innerHTML = questions.slice(0, 10).map(q => `
             <tr>
-                <td style="text-align:left; padding-left:15px; font-size:11px; color:#ccc;">"${q.text}"</td>
+                <td style="text-align:left; padding: 10px 15px; font-size:11px; color:#ccc;">"${q.text}"</td>
                 <td style="font-family:'Orbitron'; font-weight:800; color:#ffd700; width:50px; text-align:center;">${q.count}</td>
             </tr>
         `).join('') || "<tr><td style='padding:20px; color:#888;'>Lipsă date întrebări</td></tr>";
 
         repliesTable.innerHTML = replies.slice(0, 10).map(r => `
             <tr>
-                <td style="text-align:left; padding-left:25px; font-size:11px; color:#888;">${r.text}</td>
+                <td style="text-align:left; padding: 10px 25px; font-size:11px; color:#888;">${r.text}</td>
                 <td style="font-family:'Orbitron'; font-weight:800; color:#2ecc71; width:80px; text-align:center;">${r.count}</td>
             </tr>
         `).join('') || "<tr><td colspan='2' style='padding:20px; color:#888;'>Lipsă date răspunsuri</td></tr>";
-        
-        // De fiecare dată când se schimbă ceva la bot, mai verificăm o dată și topul userilor
-        refreshTopUsers();
-    }, (err) => {
-        console.error("❌ Eroare la citirea bot_usage_stats:", err);
     });
 };
 
@@ -3703,7 +3696,6 @@ document.addEventListener('click', (e) => {
         document.getElementById('txnSourceOptions').classList.remove('open');
     }
 });
-// THE ONLY SWITCH SECTION FUNCTION YOU NEED
 window.switchSection = (sectionId, btnElement) => {
     // 1. Gestionare vizibilitate interfață
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -3713,61 +3705,61 @@ window.switchSection = (sectionId, btnElement) => {
     if(target) target.classList.add('active');
     if(btnElement) btnElement.classList.add('active');
 
-    // 2. Încărcare date pentru secțiunea Bază de Date Utilizatori
+    // 2. Bază de Date Utilizatori
     if(sectionId === 'transactions-view') {
         if(cachedUsers.length === 0) loadAllUsers();
     }
     
-    // 3. Încărcare date pentru secțiunea Istoric Tranzacții
+    // 3. Istoric Tranzacții
     if(sectionId === 'transactions-history-view') {
         window.loadTransactions();
     }
 
+    // 4. Trafic și Popularitate
+    if(sectionId === 'traffic-view') {
+        window.loadTrafficStats();
+    }
 
-
-
-if(sectionId === 'traffic-view') {
-    window.loadTrafficStats();
-}
-
-    // 4. Încărcare și procesare date pentru secțiunea Analiză Economică
+    // 5. Analiză Economică
     if(sectionId === 'economy-view') {
-        // Ne asigurăm că avem ambele fluxuri de date pornite pentru calcule
         if(cachedUsers.length === 0) loadAllUsers();
         if(rawTxns.length === 0) window.loadTransactions();
-        
-        // Executăm calculul statisticilor (actualizat realtime de listeners)
         if(typeof updateEconomyStats === "function") {
             updateEconomyStats();
         }
     }
 
- 
-// Actualizează switchSection adăugând acest bloc:
-if(sectionId === 'user-growth-view') {
-    if(cachedUsers.length === 0) {
-        loadAllUsers();
-        setTimeout(() => window.runUserGrowthAnalytics(), 1000);
-    } else {
-        window.runUserGrowthAnalytics();
-    }
-}
-
-    // 5. Logica pentru Detectorul Multi-Account
-    if(sectionId === 'alt-detector-view') {
-        // Detectorul funcționează pe baza listei de utilizatori (pentru scanare IP-uri)
+    // 6. Analiză Utilizatori Noi (Growth)
+    if(sectionId === 'user-growth-view') {
         if(cachedUsers.length === 0) {
             loadAllUsers();
-            // Buffer pentru descărcarea inițială a datelor înainte de scanare
+            setTimeout(() => window.runUserGrowthAnalytics(), 1000);
+        } else {
+            window.runUserGrowthAnalytics();
+        }
+    }
+
+    // 7. Detector Multi-Account (Alt Detector)
+    if(sectionId === 'alt-detector-view') {
+        if(cachedUsers.length === 0) {
+            loadAllUsers();
             setTimeout(() => {
-                if(typeof runAltAccountDetector === "function") {
-                    runAltAccountDetector();
-                }
+                if(typeof runAltAccountDetector === "function") runAltAccountDetector();
             }, 1000);
         } else {
-            if(typeof runAltAccountDetector === "function") {
-                runAltAccountDetector();
-            }
+            if(typeof runAltAccountDetector === "function") runAltAccountDetector();
+        }
+    }
+
+    // 8. KEVIN BOT ANALYTICS (NOU - ADAUGĂ ASTA)
+    if(sectionId === 'bot-analytics-view') {
+        // Ne asigurăm că datele userilor sunt încărcate (pentru topul mesajelor)
+        if(cachedUsers.length === 0) {
+            loadAllUsers();
+        }
+        // Apelăm funcția care ascultă statisticile bot-ului
+        if(typeof window.loadBotAnalytics === "function") {
+            window.loadBotAnalytics();
         }
     }
 };
