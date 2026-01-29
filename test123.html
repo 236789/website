@@ -3024,7 +3024,6 @@
     </div>
 </div>
 
-
 <!-- Group 4: Shop Analytics -->
 <div class="ga-nav-group">
     <div class="ga-folder-header" onclick="toggleFolder(this)">
@@ -3036,6 +3035,11 @@
         <a href="#" class="ga-nav-item" onclick="switchSection('shop-stats-view', this)">
             <i class="fas fa-chart-bar" style="color: #ff00ff;"></i>
             <span>Statistici Obiecte</span>
+        </a>
+        <!-- ADAUGĂ ASTA: -->
+        <a href="#" class="ga-nav-item" onclick="switchSection('donation-history-view', this)">
+            <i class="fas fa-hand-holding-heart" style="color: #00ff88;"></i>
+            <span>Istoric Donații</span>
         </a>
     </div>
 </div>
@@ -3639,6 +3643,36 @@
         <!-- JS will inject cards here -->
     </div>
 </div>
+
+
+
+<!-- VIEW 18: DONATION HISTORY ANALYTICS -->
+<div id="donation-history-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; font-size:24px;">
+        ISTORIC DONAȚII UTILIZATORI
+    </h2>
+
+    <div class="search-container-center">
+        <input type="text" id="donationSearchInput" class="search-input-neon" 
+               placeholder="🔍 CAUTĂ DONATOR SAU RECEPTOR..." onkeyup="runDonationAnalytics()">
+    </div>
+
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">DONATOR</th>
+                    <th>DATA</th>
+                    <th>CĂTRE (RECEPTOR)</th>
+                    <th>SUMĂ DONATĂ</th>
+                </tr>
+            </thead>
+            <tbody id="donationHistoryTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se analizează tranzacțiile...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -3706,6 +3740,8 @@ window.toggleFolder = function(element) {
 // Update switchSection slightly to make sure the text stays visible 
 // and doesn't conflict with folder clicks.
 const originalSwitchSection = window.switchSection;
+
+
 window.switchSection = (sectionId, btnElement) => {
     // Keep your existing switchSection logic...
     originalSwitchSection(sectionId, btnElement);
@@ -3805,6 +3841,63 @@ window.loadMoreTransactions = function() {
     window.loadTransactions();
 };
 
+
+
+window.runDonationAnalytics = function() {
+    const tableBody = document.getElementById('donationHistoryTableBody');
+    const searchVal = document.getElementById('donationSearchInput').value.toLowerCase();
+    if (!tableBody) return;
+
+    // 1. Filtrăm tranzacțiile să fie doar Donații
+    // Verificăm dacă sursa este "Donatie", "Donation" sau dacă descrierea implică o donație
+    const donations = rawTxns.filter(t => {
+        const isDonation = t.source.toLowerCase().includes('donat') || 
+                           t.description.toLowerCase().includes('donat');
+        
+        const matchesSearch = t.username.toLowerCase().includes(searchVal) || 
+                             t.description.toLowerCase().includes(searchVal);
+
+        return isDonation && matchesSearch;
+    });
+
+    if (donations.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio donație găsită.</td></tr>';
+        return;
+    }
+
+    // 2. Randare Tabel
+    tableBody.innerHTML = donations.map(t => {
+        let dateStr = "Recent";
+        if (t.timestamp && t.timestamp.toDate) {
+            const d = t.timestamp.toDate();
+            dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+
+        // Extragem numele receptorului din descriere (Ex: "Donatie catre Lost Soul" -> "Lost Soul")
+        let receptor = t.description.split('catre').pop().split('to').pop().trim();
+        if (receptor === t.description) receptor = "Sistem / Altul";
+
+        return `
+            <tr>
+                <td class="sticky-left">
+                    <div class="td-user">
+                        <img src="${t.pfp}" class="td-pfp" style="border-color: #00ff88;">
+                        <div class="td-name">${t.username}</div>
+                    </div>
+                </td>
+                <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
+                <td style="font-weight:700; color:var(--primary); font-family:'Orbitron'; font-size:12px;">
+                    <i class="fas fa-user-tag" style="font-size:10px; opacity:0.5;"></i> ${receptor}
+                </td>
+                <td>
+                    <div class="currency-simple val-plus" style="color:#00ff88;">
+                        ${t.amount} <img src="https://iili.io/fhc1SKQ.png" width="16" style="margin-left:5px;">
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+};
 
 
 window.showOwners = function(itemID, itemName) {
@@ -4798,6 +4891,11 @@ window.switchSection = (sectionId, btnElement) => {
             }
             break;
 
+        case 'donation-history-view':
+            if (rawTxns.length === 0) window.loadTransactions();
+            setTimeout(() => { window.runDonationAnalytics(); }, 500);
+            break;
+
         // --- NOU: ANALIZĂ SHOP ---
         case 'shop-stats-view':
             if (cachedUsers.length === 0) {
@@ -4877,21 +4975,32 @@ let currentSortCriteria = 'alpha'; // Default sort
 
 function loadAllUsers() {
     const tableBody = document.getElementById('analyticsTableBody');
-    if(tableBody) tableBody.innerHTML = '<tr><td colspan="8" style="padding:40px;">Se conectează la server...</td></tr>';
+    if(tableBody) tableBody.innerHTML = '<tr><td colspan="8" style="padding:40px;">🔌 Se conectează la server...</td></tr>';
     
-    console.log("📡 Pornire conexiune Real-time cu Firebase (Accounts)...");
+    console.log("📡 Pornire Sync Real-time cu Firebase (Accounts)...");
     const q = query(collection(db, "accounts")); 
     
     onSnapshot(q, (snapshot) => {
-        if (snapshot.empty) {
-            console.warn("⚠️ Firebase a returnat 0 documente în 'accounts'. Verifică Rules sau baza de date.");
-        }
-
         cachedUsers = []; 
+
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
             
-            // --- PROTECȚIE DATE ---
+            // 1. CALCUL STATUS (Online/Offline)
+            let isOnline = false;
+            let statusHtml = '<span class="status-dot offline"></span>Offline';
+            
+            // Verificăm dacă isOnline e true și dacă ultima activitate a fost în ultimele 5 minute
+            if (data.isOnline === true && data.lastActive) {
+                const lastActiveDate = data.lastActive.toDate ? data.lastActive.toDate() : new Date(data.lastActive);
+                const diffMinutes = (new Date() - lastActiveDate) / 1000 / 60;
+                if (diffMinutes < 5) {
+                    isOnline = true;
+                    statusHtml = '<span class="status-dot online" style="background:#00ff88; box-shadow:0 0 10px #00ff88;"></span>Online';
+                }
+            }
+
+            // 2. FORMATARE DATĂ ÎNSCRIERE
             let joinDate = "N/A";
             let joinedAtMillis = 0;
             if (data.joinedAt) {
@@ -4900,9 +5009,10 @@ function loadAllUsers() {
                 joinedAtMillis = d.getTime();
             }
 
+            // 3. NORMALIZARE DATE MONETARE
             let donationValue = Number(data.totalCoinsDonated || data.donatedCoins || data.totalDonated || 0);
 
-            // --- PUSH ÎN CACHE ---
+            // 4. CONSTRUIRE OBIECT UTILIZATOR (Include Inventarele)
             cachedUsers.push({
                 uid: docSnap.id,
                 username: data.username || "Unknown",
@@ -4912,33 +5022,40 @@ function loadAllUsers() {
                 diamonds: Number(data.diamonds) || 0,
                 donated: donationValue,
                 streak: Number(data.streak) || 0,
+                
+                // DATA PENTRU SHOP ANALYTICS
                 ownedBadges: data.ownedBadges || [],
                 ownedBanners: data.ownedBanners || [],
                 ownedFrames: data.ownedFrames || [],
                 ownedTexts: data.ownedTexts || [],
+                
                 referralHistory: data.referralHistory || [], 
                 joinedAt: joinedAtMillis,
                 joinDateStr: joinDate,
+                statusHtml: statusHtml, // Fix pentru coloana STATUS
+                isOnlineBool: isOnline,
                 ip: data.ip || "Hidden"
             });
         });
 
-        console.log(`✅ Date primite! Avem ${cachedUsers.length} utilizatori încărcați.`);
+        console.log(`✅ ${cachedUsers.length} utilizatori sincronizați.`);
 
-        // Actualizăm tabelele dacă suntem pe ele
-        applySort(currentSortCriteria);
+        // 5. RE-RENDER AUTOMAT PENTRU TOATE SECȚIUNILE ACTIVE
+        applySort(currentSortCriteria); // Actualizează tabelul Database
+        
         if(typeof updateEconomyStats === "function") updateEconomyStats();
         if(typeof runAltAccountDetector === "function") runAltAccountDetector();
         if(typeof runUserGrowthAnalytics === "function") runUserGrowthAnalytics();
-        
-        // REFRESH PENTRU SHOP
         if(typeof runShopAnalytics === "function") runShopAnalytics();
+        if(typeof runDonationAnalytics === "function") runDonationAnalytics();
 
     }, (error) => {
         console.error("❌ EROARE FIREBASE RULES:", error);
-        alert("Eroare de permisiune! Verifică dacă ești logat ca admin.");
     });
 }
+
+
+
 window.sortData = (criteria) => {
     currentSortCriteria = criteria; // Save state
     applySort(criteria);
