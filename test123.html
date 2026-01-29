@@ -2561,6 +2561,81 @@
     color: #fff;
     box-shadow: 0 0 15px #ff4757;
 }
+
+
+
+/* SHOP ANALYTICS VISUAL CARDS */
+.shop-analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 25px;
+    padding: 20px 0;
+}
+
+.item-anal-card {
+    position: relative;
+    background: rgba(13, 25, 41, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    padding: 30px 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    min-height: 150px;
+    text-align: center;
+}
+
+.item-anal-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary);
+    background: rgba(41, 243, 255, 0.05);
+}
+
+/* Corner Count Badge */
+.owner-count-badge {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--primary);
+    color: #000;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 14px;
+    padding: 6px 12px;
+    border-radius: 12px;
+    box-shadow: 0 0 15px var(--primary);
+    z-index: 10;
+}
+
+.item-anal-name {
+    margin-top: 15px;
+    font-family: 'Orbitron';
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Specific item previews in analytics */
+.anal-frame-preview {
+    position: relative;
+    width: 60px;
+    height: 60px;
+}
+.anal-frame-img {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+.anal-text-preview {
+    font-size: 18px;
+    font-weight: 800;
+    padding: 5px 10px;
+}
   </style>
 </head>
 <body>
@@ -2932,6 +3007,22 @@
     <span>Vizitatori Live</span>
 </a>
 
+    </div>
+</div>
+
+
+<!-- Group 4: Shop Analytics -->
+<div class="ga-nav-group">
+    <div class="ga-folder-header" onclick="toggleFolder(this)">
+        <i class="fas fa-shopping-bag"></i>
+        <span>Magazin & Inventar</span>
+        <i class="fas fa-chevron-right arrow"></i>
+    </div>
+    <div class="ga-folder-content">
+        <a href="#" class="ga-nav-item" onclick="switchSection('shop-stats-view', this)">
+            <i class="fas fa-chart-bar" style="color: #ff00ff;"></i>
+            <span>Statistici Obiecte</span>
+        </a>
     </div>
 </div>
 </aside>
@@ -3512,6 +3603,28 @@
 
     </div>
 </div>
+
+
+<!-- VIEW 17: SHOP ITEM ANALYTICS (VISUAL) -->
+<div id="shop-stats-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; font-size:24px;">
+        SHOP INVENTORY ANALYTICS
+    </h2>
+
+    <div class="filter-row">
+        <div class="filter-group">
+            <button class="filter-btn active" onclick="changeShopFilter('badges', this)">BADGES</button>
+            <button class="filter-btn" onclick="changeShopFilter('frames', this)">FRAMES</button>
+            <button class="filter-btn" onclick="changeShopFilter('banners', this)">BANNERS</button>
+            <button class="filter-btn" onclick="changeShopFilter('texts', this)">TEXTS</button>
+        </div>
+    </div>
+
+    <!-- The visual container -->
+    <div class="shop-analytics-grid" id="shopVisualContainer">
+        <!-- JS will inject cards here -->
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -3768,6 +3881,81 @@ window.runLiveAnalytics = function() {
         counter.innerText = count;
         tableBody.innerHTML = html || "<tr><td colspan='4'>Niciun vizitator activ.</td></tr>";
     });
+};
+
+
+let currentShopCategory = 'badges';
+
+window.changeShopFilter = function(category, btn) {
+    document.querySelectorAll('#shop-stats-view .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentShopCategory = category;
+    window.runShopAnalytics();
+};
+
+window.runShopAnalytics = function() {
+    const container = document.getElementById('shopVisualContainer');
+    if (!container) return;
+
+    let dbReference = [];
+    let userArrayKey = "";
+
+    switch(currentShopCategory) {
+        case 'badges': dbReference = BADGES_DB; userArrayKey = "ownedBadges"; break;
+        case 'frames': dbReference = FRAMES_DB; userArrayKey = "ownedFrames"; break;
+        case 'banners': dbReference = BANNERS_DB; userArrayKey = "ownedBanners"; break;
+        case 'texts': dbReference = TEXTS_DB; userArrayKey = "ownedTexts"; break;
+    }
+
+    // 1. Tally counts
+    let stats = {};
+    dbReference.forEach(item => stats[item.id] = 0);
+
+    cachedUsers.forEach(user => {
+        const owned = user[userArrayKey] || [];
+        owned.forEach(itemID => {
+            if (stats[itemID] !== undefined) stats[itemID]++;
+        });
+    });
+
+    // 2. Render Visual Cards
+    container.innerHTML = dbReference.map(item => {
+        const count = stats[item.id] || 0;
+        let visualHtml = "";
+
+        // Build the preview based on the type
+        if (currentShopCategory === 'badges') {
+            visualHtml = `
+                <span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 15px ${item.color}; font-size:12px; padding: 8px 15px;">
+                    <i class="fas ${item.icon}"></i> ${item.text}
+                </span>`;
+        } 
+        else if (currentShopCategory === 'frames') {
+            const scale = item.scale || 1.45;
+            visualHtml = `
+                <div class="anal-frame-preview">
+                    <img src="https://i.ibb.co/XyqWk9N/def-user.png" style="width:100%; height:100%; border-radius:50%; opacity:0.3;">
+                    <img src="${item.img}" class="anal-frame-img" style="width:${scale * 100}%; height:${scale * 100}%;">
+                </div>`;
+        } 
+        else if (currentShopCategory === 'banners') {
+            visualHtml = `<div class="${item.cssClass}" style="width:100%; padding:15px; border-radius:10px; font-size:10px; font-weight:bold;">PREVIEW BANNER</div>`;
+        } 
+        else if (currentShopCategory === 'texts') {
+            visualHtml = `<div class="${item.cssClass} anal-text-preview">LOST SOUL</div>`;
+        }
+
+        return `
+            <div class="item-anal-card">
+                <div class="owner-count-badge">${count}</div>
+                <div style="flex:1; display:flex; align-items:center; justify-content:center; width:100%;">
+                    ${visualHtml}
+                </div>
+                <div class="item-anal-name">${item.name || item.text}</div>
+                <div style="font-size:9px; color:#444; margin-top:5px; font-family:monospace;">${item.id}</div>
+            </div>
+        `;
+    }).join('');
 };
 
 window.runWallAnalytics = async function() {
@@ -4489,8 +4677,8 @@ window.switchSection = (sectionId, btnElement) => {
     if(btnElement) btnElement.classList.add('active');
 
     // 2. Verificăm dacă secțiunea are nevoie de datele utilizatorilor (cachedUsers)
-    // Am adăugat 'referral-network-view' în listă
-    const needsUsers = ['transactions-view', 'economy-view', 'user-growth-view', 'alt-detector-view', 'referral-network-view'];
+    // Adăugat 'shop-stats-view' în listă pentru a asigura încărcarea datelor din Firebase
+    const needsUsers = ['transactions-view', 'economy-view', 'user-growth-view', 'alt-detector-view', 'referral-network-view', 'shop-stats-view'];
     if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
         loadAllUsers();
     }
@@ -4537,20 +4725,29 @@ window.switchSection = (sectionId, btnElement) => {
             }
             break;
 
+        case 'sanctions-view':
+            window.runSanctionsAnalytics();
+            break;
 
-case 'sanctions-view':
-    window.runSanctionsAnalytics();
-    break;
-
-        // --- NOU: REȚEA REFERINȚE ---
         case 'referral-network-view':
             if (cachedUsers.length === 0) {
-                // Așteptăm să se încarce datele din Firebase dacă array-ul e gol
                 setTimeout(() => { 
                     if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics(); 
                 }, 1000);
             } else {
                 if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics();
+            }
+            break;
+
+        // --- NOU: ANALIZĂ SHOP ---
+        case 'shop-stats-view':
+            if (cachedUsers.length === 0) {
+                // Așteptăm sincronizarea bazei de date
+                setTimeout(() => { 
+                    if(typeof window.runShopAnalytics === "function") window.runShopAnalytics(); 
+                }, 1000);
+            } else {
+                if(typeof window.runShopAnalytics === "function") window.runShopAnalytics();
             }
             break;
     }
