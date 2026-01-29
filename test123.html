@@ -2678,16 +2678,17 @@ window.loadTransactions = function() {
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    console.log("🔄 Se inițializează ascultătorul pentru tranzacții...");
+    console.log("🚀 Starting Transaction Listener...");
     tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
 
+    // Query matching your Firestore screenshot
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
-        console.log("📥 Snapshot primit! Documente găsite:", snapshot.size);
+        console.log("📥 Data Received! Count:", snapshot.size);
         
         if (snapshot.empty) {
-            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nu s-au găsit tranzacții în baza de date.</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nicio tranzacție găsită.</td></tr>";
             return;
         }
 
@@ -2695,20 +2696,20 @@ window.loadTransactions = function() {
         snapshot.forEach((doc) => {
             const t = doc.data();
             
-            // Mapăm câmpurile exact cum sunt în baza de date (folosim câmpurile din pagina veche care funcționa)
-            const pfp = t.userImage || t.image || "https://i.ibb.co/XyqWk9N/def-user.png";
-            const uName = t.username || "Utilizator";
+            // Mapping fields exactly from your Firebase screenshot
+            const pfp = t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png";
+            const uName = t.username || "Anonim";
+            const amountVal = Number(t.amount || 0);
+            const type = t.type || "COINS";
             
+            // Format Date
             let dateStr = "Recent";
             if (t.timestamp && t.timestamp.toDate) {
                 const d = t.timestamp.toDate();
                 dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
-            const amountVal = Number(t.amount || 0);
-            const isDiamonds = (t.type === "DIAMONDS" || t.currency === "DIAMONDS");
-            const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            
+            const iconUrl = type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
             const amountClass = amountVal >= 0 ? "val-plus" : "val-minus";
             const amountSign = amountVal >= 0 ? "+" : "";
 
@@ -2717,7 +2718,7 @@ window.loadTransactions = function() {
                     <td class="sticky-left">
                         <div class="td-user">
                             <img src="${pfp}" class="td-pfp">
-                            <div><div class="td-name">${uName}</div></div>
+                            <div class="td-name">${uName}</div>
                         </div>
                     </td>
                     <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
@@ -2733,33 +2734,34 @@ window.loadTransactions = function() {
         tableBody.innerHTML = rowsHTML;
 
     }, (error) => {
-        console.error("❌ Eroare Firebase Transactions:", error);
+        console.error("❌ Firebase Error:", error);
         tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">
-            ⚠️ Eroare: ${error.message}
+            ⚠️ EROARE: ${error.message}
         </td></tr>`;
     });
 };
 
-// FUNCȚIA DE SCHIMBARE SECȚIUNE (SINGURA CARE TREBUIE SĂ RĂMÂNĂ)
+// THE ONLY SWITCH SECTION FUNCTION YOU NEED
 window.switchSection = (sectionId, btnElement) => {
-    // 1. Ascunde tot
+    // 1. Switch Views
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
 
-    // 2. Arată secțiunea cerută
     const target = document.getElementById(sectionId);
     if(target) target.classList.add('active');
     if(btnElement) btnElement.classList.add('active');
 
-    // 3. Încarcă datele în funcție de ce am deschis
+    // 2. Load Data based on ID
     if(sectionId === 'transactions-view') {
         if(cachedUsers.length === 0) loadAllUsers();
     }
     
     if(sectionId === 'transactions-history-view') {
-        window.loadTransactions(); // Aici pornim încărcarea tranzacțiilor
+        window.loadTransactions(); // This triggers the function above
     }
 };
+
+
 
 window.filterData = (type, btn) => {
     // 1. Visual: Update Active Button
@@ -3006,29 +3008,6 @@ window.filterUserTable = () => {
     }
 };
 
-// --- VIEW SWITCHER LOGIC ---
-// We attach it to 'window' so the HTML onclick="" can find it
-window.switchSection = (sectionId, btnElement) => {
-    
-    // 1. Hide all main sections
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    
-    // 2. Show the target section
-    const target = document.getElementById(sectionId);
-    if(target) target.classList.add('active');
-
-    // 3. Update Sidebar Visuals (Active State)
-    document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
-    if(btnElement) btnElement.classList.add('active');
-
-    // 4. Lazy Load Data
-    // If user clicked "Database" and we haven't loaded data yet, load it now.
-    if(sectionId === 'transactions-view') {
-        if(cachedUsers.length === 0) { 
-            loadAllUsers();
-        }
-    }
-};
 
 window.filterData = (type, btn) => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
