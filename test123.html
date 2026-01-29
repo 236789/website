@@ -3657,21 +3657,21 @@
                placeholder="🔍 CAUTĂ DONATOR SAU RECEPTOR..." onkeyup="runDonationAnalytics()">
     </div>
 
-    <div class="table-glass-container">
-        <table class="neon-table">
-            <thead>
-                <tr>
-                    <th class="sticky-left">DONATOR</th>
-                    <th>DATA</th>
-                    <th>CĂTRE (RECEPTOR)</th>
-                    <th>SUMĂ DONATĂ</th>
-                </tr>
-            </thead>
-            <tbody id="donationHistoryTableBody">
-                <tr><td colspan="4" style="padding:40px; text-align:center;">Se analizează tranzacțiile...</td></tr>
-            </tbody>
-        </table>
-    </div>
+<div class="table-glass-container">
+    <table class="neon-table">
+        <thead>
+            <tr>
+                <th class="sticky-left" style="width: 250px; text-align: left;">DONATOR</th>
+                <th style="width: 120px;">DATA</th>
+                <th style="text-align: left;">CĂTRE (RECEPTOR)</th>
+                <th style="text-align: right; padding-right: 30px; width: 180px;">SUMĂ DONATĂ</th>
+            </tr>
+        </thead>
+        <tbody id="donationHistoryTableBody">
+            <!-- Data will be injected here -->
+        </tbody>
+    </table>
+</div>
 </div>
 </main>
 <!-- MAIN CONTENT AREA END -->
@@ -3851,73 +3851,73 @@ window.runDonationAnalytics = function() {
     const searchVal = document.getElementById('donationSearchInput').value.toLowerCase();
     if (!tableBody) return;
 
-    // 1. Filtrăm tranzacțiile de tip donație
-    const donations = rawTxns.filter(t => {
-        const desc = t.description.toLowerCase();
-        const isDonation = t.source.toLowerCase().includes('donat') || 
-                           desc.includes('donat') || 
-                           desc.includes('trimis monede');
-        
-        const matchesSearch = t.username.toLowerCase().includes(searchVal) || 
-                             desc.includes(searchVal);
-        return isDonation && matchesSearch;
+    let allDonations = [];
+
+    // 1. EXTRACTION: Scanam toti utilizatorii si extragem array-ul lor de donatii
+    cachedUsers.forEach(user => {
+        if (user.donationHistory && Array.isArray(user.donationHistory)) {
+            user.donationHistory.forEach(don => {
+                allDonations.push({
+                    donatorName: user.username,
+                    donatorPfp: user.pfp,
+                    donatorEmail: user.email,
+                    receiverName: don.receiverName || "Necunoscut",
+                    receiverUid: don.receiverUid,
+                    amount: Number(don.amount || 0),
+                    timestamp: don.timestamp
+                });
+            });
+        }
     });
 
-    if (donations.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio donație găsită în ultimele 2000 de tranzacții.</td></tr>';
+    // 2. FILTER: Cautare dupa donator sau receptor
+    let filtered = allDonations.filter(d => 
+        d.donatorName.toLowerCase().includes(searchVal) || 
+        d.receiverName.toLowerCase().includes(searchVal)
+    );
+
+    // 3. SORT: De la cea mai mare suma la cea mai mica
+    filtered.sort((a, b) => b.amount - a.amount);
+
+    if (filtered.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio donatie gasita in baza de date a utilizatorilor.</td></tr>';
         return;
     }
 
-    // 2. Randare cu identificare inteligenta
-    tableBody.innerHTML = donations.map(t => {
-        let dateStr = "Recent";
-        if (t.timestamp && t.timestamp.toDate) {
-            const d = t.timestamp.toDate();
-            dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    // 4. RENDER: Cu aliniere corecta
+    tableBody.innerHTML = filtered.map(d => {
+        // Formatam data din timestamp (ms)
+        let dateStr = "N/A";
+        if (d.timestamp) {
+            const date = new Date(d.timestamp);
+            dateStr = `${date.getDate()}/${date.getMonth() + 1} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
         }
 
-        // --- CĂUTARE RECEPTOR (CINE A PRIMIT) ---
-        let recPfp = "https://i.ibb.co/XyqWk9N/def-user.png";
-        let recName = "Utilizator Necunoscut";
-
-        // Metoda 1: După targetUid (ID fix)
-        let foundUser = cachedUsers.find(u => u.uid === t.targetUid);
-
-        // Metoda 2: Dacă nu avem ID, căutăm dacă numele vreunui user apare în descriere
-        if (!foundUser) {
-            foundUser = cachedUsers.find(u => 
-                t.description.toLowerCase().includes(u.username.toLowerCase()) && 
-                u.username.toLowerCase() !== t.username.toLowerCase()
-            );
-        }
-
-        if (foundUser) {
-            recPfp = foundUser.pfp;
-            recName = foundUser.username;
-        } else {
-            // Metoda 3: Extracție brută din text (fallback)
-            recName = t.description.split(/catre|to|pentru/i).pop().trim();
-            if (recName.length > 20 || recName === t.description) recName = "Sistem / Altul";
-        }
+        // Cautam poza receptorului in baza de date live pentru a nu avea imagini lipsa
+        const recData = cachedUsers.find(u => u.uid === d.receiverUid);
+        const recPfp = recData ? recData.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
 
         return `
             <tr>
                 <td class="sticky-left">
                     <div class="td-user">
-                        <img src="${t.pfp}" class="td-pfp">
-                        <div class="td-name">${t.username}</div>
+                        <img src="${d.donatorPfp}" class="td-pfp">
+                        <div style="text-align:left;">
+                            <div class="td-name">${d.donatorName}</div>
+                            <div style="font-size:9px; color:#555;">${d.donatorEmail}</div>
+                        </div>
                     </div>
                 </td>
-                <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
+                <td style="color:#888; font-family:'Orbitron'; font-size:11px;">${dateStr}</td>
                 <td>
-                    <div class="td-user">
-                        <img src="${recPfp}" class="td-pfp" style="width:25px; height:25px; border-color: #7000ff;">
-                        <div class="td-name" style="font-size:11px; color:var(--primary);">${recName}</div>
+                    <div class="td-user" style="justify-content: flex-start;">
+                        <img src="${recPfp}" class="td-pfp" style="width:25px; height:25px; border-color:#7000ff;">
+                        <div class="td-name" style="font-size:11px; color:var(--primary);">${d.receiverName}</div>
                     </div>
                 </td>
-                <td>
-                    <div class="currency-simple" style="color:#00ff88; font-weight:900;">
-                        ${Math.abs(t.amount)} <img src="https://iili.io/fhc1SKQ.png" width="16" style="margin-left:5px;">
+                <td style="text-align: right; padding-right: 30px;">
+                    <div class="currency-simple" style="color:#00ff88; font-weight:900; justify-content: flex-end;">
+                        ${formatCurrency(d.amount)} <img src="https://iili.io/fhc1SKQ.png" width="18" style="margin-left:8px;">
                     </div>
                 </td>
             </tr>
@@ -4918,16 +4918,14 @@ window.switchSection = (sectionId, btnElement) => {
             break;
 
 case 'donation-history-view':
-            // Mărim limita la 2000 pentru a găsi donațiile vechi îngropate sub mesaje
-            if (txnLimit < 2000) {
-                txnLimit = 2000;
-                window.loadTransactions(); 
-            }
-            // Așteptăm 1 secundă să vină datele masive de la Firebase, apoi procesăm
-            setTimeout(() => { 
-                if(typeof window.runDonationAnalytics === "function") window.runDonationAnalytics(); 
-            }, 1000);
-            break;
+    // Nu mai avem nevoie de loadTransactions() aici pentru ca citim direct din profilele userilor
+    if (cachedUsers.length === 0) {
+        loadAllUsers();
+        setTimeout(() => { window.runDonationAnalytics(); }, 1500);
+    } else {
+        window.runDonationAnalytics();
+    }
+    break;
 
         // --- NOU: ANALIZĂ SHOP ---
         case 'shop-stats-view':
