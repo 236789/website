@@ -3659,14 +3659,16 @@
 
 <div class="table-glass-container">
     <table class="neon-table">
-        <thead>
-            <tr>
-                <th class="sticky-left" style="width: 250px; text-align: left;">DONATOR</th>
-                <th style="width: 120px;">DATA</th>
-                <th style="text-align: left;">CĂTRE (RECEPTOR)</th>
-                <th style="text-align: right; padding-right: 30px; width: 180px;">SUMĂ DONATĂ</th>
-            </tr>
-        </thead>
+<thead>
+    <tr>
+        <th class="sticky-left" style="width: 220px; text-align: left;">DONATOR</th>
+        <th style="width: 100px;">DATA</th>
+        <th style="width: 80px;">ORA</th>
+        <th style="text-align: left;">RECEPTOR (DESTINATAR)</th>
+        <th style="width: 100px;">VALUTĂ</th>
+        <th style="text-align: right; padding-right: 30px; width: 140px;">SUMĂ</th>
+    </tr>
+</thead>
         <tbody id="donationHistoryTableBody">
             <!-- Data will be injected here -->
         </tbody>
@@ -3845,7 +3847,6 @@ window.loadMoreTransactions = function() {
 };
 
 
-
 window.runDonationAnalytics = function() {
     const tableBody = document.getElementById('donationHistoryTableBody');
     const searchVal = document.getElementById('donationSearchInput').value.toLowerCase();
@@ -3853,71 +3854,100 @@ window.runDonationAnalytics = function() {
 
     let allDonations = [];
 
-    // 1. EXTRACTION: Scanam toti utilizatorii si extragem array-ul lor de donatii
+    // 1. EXTRACTION & ENRICHMENT
     cachedUsers.forEach(user => {
         if (user.donationHistory && Array.isArray(user.donationHistory)) {
             user.donationHistory.forEach(don => {
+                // Căutăm datele receptorului în cache pentru a lua Email-ul și Poza
+                const receiverObj = cachedUsers.find(u => u.uid === don.receiverUid);
+                
                 allDonations.push({
                     donatorName: user.username,
                     donatorPfp: user.pfp,
                     donatorEmail: user.email,
-                    receiverName: don.receiverName || "Necunoscut",
-                    receiverUid: don.receiverUid,
+                    receiverName: don.receiverName || "Utilizator Sistem",
+                    receiverEmail: receiverObj ? receiverObj.email : "Email indisponibil",
+                    receiverPfp: receiverObj ? receiverObj.pfp : "https://i.ibb.co/XyqWk9N/def-user.png",
                     amount: Number(don.amount || 0),
+                    currency: don.currency || "COINS", // Viitor: "DIAMONDS"
                     timestamp: don.timestamp
                 });
             });
         }
     });
 
-    // 2. FILTER: Cautare dupa donator sau receptor
+    // 2. FILTER
     let filtered = allDonations.filter(d => 
         d.donatorName.toLowerCase().includes(searchVal) || 
-        d.receiverName.toLowerCase().includes(searchVal)
+        d.receiverName.toLowerCase().includes(searchVal) ||
+        d.donatorEmail.toLowerCase().includes(searchVal) ||
+        d.receiverEmail.toLowerCase().includes(searchVal)
     );
 
-    // 3. SORT: De la cea mai mare suma la cea mai mica
+    // 3. SORT: Highest to Lowest
     filtered.sort((a, b) => b.amount - a.amount);
 
     if (filtered.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio donatie gasita in baza de date a utilizatorilor.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6" style="padding:40px; text-align:center; color:#888;">Nicio donatie gasita.</td></tr>';
         return;
     }
 
-    // 4. RENDER: Cu aliniere corecta
+    // 4. RENDER
     tableBody.innerHTML = filtered.map(d => {
-        // Formatam data din timestamp (ms)
-        let dateStr = "N/A";
+        // Separare Data și Ora
+        let datePart = "N/A";
+        let hourPart = "N/A";
         if (d.timestamp) {
-            const date = new Date(d.timestamp);
-            dateStr = `${date.getDate()}/${date.getMonth() + 1} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            const dateObj = new Date(d.timestamp);
+            datePart = `${dateObj.getDate()}/${dateObj.getMonth() + 1}/${dateObj.getFullYear()}`;
+            hourPart = dateObj.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
         }
 
-        // Cautam poza receptorului in baza de date live pentru a nu avea imagini lipsa
-        const recData = cachedUsers.find(u => u.uid === d.receiverUid);
-        const recPfp = recData ? recData.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
+        // Logică iconiță monedă
+        const iconUrl = d.currency === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+        const currencyColor = d.currency === "DIAMONDS" ? "#00e5ff" : "#ffd700";
 
         return `
             <tr>
+                <!-- DONATOR -->
                 <td class="sticky-left">
                     <div class="td-user">
                         <img src="${d.donatorPfp}" class="td-pfp">
                         <div style="text-align:left;">
-                            <div class="td-name">${d.donatorName}</div>
+                            <div class="td-name" style="font-size:12px;">${d.donatorName}</div>
                             <div style="font-size:9px; color:#555;">${d.donatorEmail}</div>
                         </div>
                     </div>
                 </td>
-                <td style="color:#888; font-family:'Orbitron'; font-size:11px;">${dateStr}</td>
+                
+                <!-- DATA -->
+                <td style="color:#fff; font-family:'Orbitron'; font-size:10px;">${datePart}</td>
+                
+                <!-- ORA -->
+                <td style="color:#888; font-family:'Orbitron'; font-size:10px;">${hourPart}</td>
+                
+                <!-- RECEPTOR (DESTINATAR) -->
                 <td>
                     <div class="td-user" style="justify-content: flex-start;">
-                        <img src="${recPfp}" class="td-pfp" style="width:25px; height:25px; border-color:#7000ff;">
-                        <div class="td-name" style="font-size:11px; color:var(--primary);">${d.receiverName}</div>
+                        <img src="${d.receiverPfp}" class="td-pfp" style="width:28px; height:28px; border-color:#7000ff;">
+                        <div style="text-align:left;">
+                            <div class="td-name" style="font-size:11px; color:var(--primary);">${d.receiverName}</div>
+                            <div style="font-size:9px; color:#444;">${d.receiverEmail}</div>
+                        </div>
                     </div>
                 </td>
+                
+                <!-- VALUTA -->
+                <td>
+                    <span style="color:${currencyColor}; font-family:'Orbitron'; font-size:10px; font-weight:800;">
+                        ${d.currency.toUpperCase()}
+                    </span>
+                </td>
+                
+                <!-- SUMA -->
                 <td style="text-align: right; padding-right: 30px;">
                     <div class="currency-simple" style="color:#00ff88; font-weight:900; justify-content: flex-end;">
-                        ${formatCurrency(d.amount)} <img src="https://iili.io/fhc1SKQ.png" width="18" style="margin-left:8px;">
+                        ${formatCurrency(d.amount)} <img src="${iconUrl}" width="16" style="margin-left:8px;">
                     </div>
                 </td>
             </tr>
