@@ -4299,11 +4299,20 @@ window.runWheelWinnersAnalytics = function() {
     const tableBody = document.getElementById('analWinnersTableBody');
     if (!tableBody) return;
 
-    // Filter users who have wheel stats
+    // Filtrăm userii care au câștigat ceva la roată
     let players = cachedUsers.filter(u => u.wheelStats && (u.wheelStats.diamonds > 0 || u.wheelStats.coins > 0));
     
-    // Sort by Diamonds first, then Coins
-    players.sort((a, b) => (b.wheelStats.diamonds * 1000 + b.wheelStats.coins) - (a.wheelStats.diamonds * 1000 + a.wheelStats.coins));
+    // Sortăm: Cele mai multe diamante primele, apoi monede
+    players.sort((a, b) => {
+        const scoreA = (a.wheelStats.diamonds * 1000) + a.wheelStats.coins;
+        const scoreB = (b.wheelStats.diamonds * 1000) + b.wheelStats.coins;
+        return scoreB - scoreA;
+    });
+
+    if (players.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:20px; color:#888;">Nicio victorie înregistrată.</td></tr>';
+        return;
+    }
 
     tableBody.innerHTML = players.map(u => `
         <tr>
@@ -4313,11 +4322,42 @@ window.runWheelWinnersAnalytics = function() {
                     <div class="td-name">${u.username}</div>
                 </div>
             </td>
-            <td class="val-diamonds">+${u.wheelStats.diamonds}</td>
-            <td class="val-coins">+${formatCurrency(u.wheelStats.coins)}</td>
-            <td style="font-family:'Orbitron'; font-size:11px; color:#aaa;">VIP PLAYER</td>
+            <td class="val-diamonds" style="color:#00ffcc; font-weight:900;">+${u.wheelStats.diamonds}</td>
+            <td class="val-coins" style="color:#ffd700; font-weight:900;">+${formatCurrency(u.wheelStats.coins)}</td>
+            <td><span class="source-tag" style="border-color:#2ecc71; color:#2ecc71;">WINNER</span></td>
         </tr>
-    `).join('') || '<tr><td colspan="4" style="padding:20px;">Nicio dată disponibilă.</td></tr>';
+    `).join('');
+};
+
+window.runWheelLosersAnalytics = function() {
+    const tableBody = document.getElementById('analLosersTableBody');
+    if (!tableBody) return;
+
+    // Filtrăm userii care au nimerit pe XP
+    let losers = cachedUsers.filter(u => u.wheelStats && u.wheelStats.xpLandings > 0);
+    
+    // Sortăm: Cei cu cele mai multe aterizări pe XP primii
+    losers.sort((a, b) => b.wheelStats.xpLandings - a.wheelStats.xpLandings);
+
+    if (losers.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="3" style="padding:20px; color:#888;">Toată lumea e norocoasă azi!</td></tr>';
+        return;
+    }
+
+    tableBody.innerHTML = losers.map(u => `
+        <tr>
+            <td class="sticky-left">
+                <div class="td-user">
+                    <img src="${u.pfp}" class="td-pfp" style="border-color:#ff4757;">
+                    <div class="td-name">${u.username}</div>
+                </div>
+            </td>
+            <td style="font-family:'Orbitron'; font-weight:900; color:#ff4757; font-size:18px;">
+                ${u.wheelStats.xpLandings} <span style="font-size:10px;">HIT-URI XP</span>
+            </td>
+            <td><span class="risk-badge risk-high">UNLUCKY</span></td>
+        </tr>
+    `).join('');
 };
 
 window.runWheelLosersAnalytics = function() {
@@ -5371,6 +5411,7 @@ function loadAllUsers() {
                 joinDateStr: joinDate,
                 statusHtml: statusHtml, // Fix pentru coloana STATUS
                 donationHistory: data.donationHistory || [], // <--- ADAUGĂ ACEASTĂ LINIE
+                wheelStats: data.wheelStats || { diamonds: 0, coins: 0, xpLandings: 0 },
                 isOnlineBool: isOnline,
                 ip: data.ip || "Hidden"
             });
