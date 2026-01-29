@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -3290,53 +3291,50 @@ function setupLeaderboardListener() {
     if(unsubscribeLeaderboard) unsubscribeLeaderboard();
 
     let q; 
+    const accountsRef = collection(db, "accounts");
 
-    // 1. STANDARD LEADERBOARDS (Keep these as is)
+    // Construim query-ul în funcție de tab-ul selectat
     if(currentMode === 'coins') {
-        q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(50));
+        q = query(accountsRef, orderBy("coins", "desc"), limit(50));
     } 
     else if(currentMode === 'diamonds') {
-        q = query(collection(db, "accounts"), orderBy("diamonds", "desc"), limit(50));
+        q = query(accountsRef, orderBy("diamonds", "desc"), limit(50));
     }
     else if(currentMode === 'donated') {
-        q = query(collection(db, "accounts"), orderBy("totalCoinsDonated", "desc"), limit(50));
+        q = query(accountsRef, orderBy("totalCoinsDonated", "desc"), limit(50));
     }
-    
-    // 2. REFERRALS FIX (Client-Side Sort)
     else if(currentMode === 'referrals') {
-        // ERROR FIX: We query by 'coins' first to ensure we get a list of active users,
-        // even if they don't have the 'totalReferrals' field yet.
-        // We assume active users (with coins) are the ones we want to check.
-        q = query(collection(db, "accounts"), orderBy("coins", "desc"), limit(100));
+        // Query-ul original era riscant. Folosim orderBy pe totalReferrals
+        q = query(accountsRef, orderBy("totalReferrals", "desc"), limit(50));
     }
-
-    // 3. SUSTINATORI MODE
     else if(currentMode === 'sustinatori') {
-        q = query(
-            collection(db, "accounts"), 
-            where("isSustinatori", "==", true), 
-            orderBy("sustinatorOrder", "asc"), 
-            limit(100)
-        );
+        q = query(accountsRef, where("isSustinatori", "==", true), orderBy("sustinatorOrder", "asc"), limit(100));
     }
 
     unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
         currentLeaderboardData = [];
-        snapshot.forEach(doc => currentLeaderboardData.push({ id: doc.id, ...doc.data() }));
-
-        // MANUAL SORT FIX FOR REFERRALS
-        // This ensures users with 'undefined' referrals are treated as '0' and still show up.
-        if (currentMode === 'referrals') {
-            currentLeaderboardData.sort((a, b) => {
-                let refA = a.totalReferrals || 0;
-                let refB = b.totalReferrals || 0;
-                return refB - refA; // Descending sort
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            currentLeaderboardData.push({ 
+                id: doc.id, 
+                ...data,
+                // Fallback-uri pentru a preveni crash-ul UI-ului
+                coins: data.coins || 0,
+                diamonds: data.diamonds || 0,
+                totalCoinsDonated: data.totalCoinsDonated || 0,
+                totalReferrals: data.totalReferrals || 0,
+                image: data.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png"
             });
-            // Slice to top 50 after sorting
-            currentLeaderboardData = currentLeaderboardData.slice(0, 50);
-        }
+        });
 
         renderLeaderboard();
+    }, (error) => {
+        console.error("Eroare Leaderboard:", error);
+        // Dacă vezi în consola browser-ului un mesaj cu "The query requires an index", 
+        // dă click pe link-ul furnizat de Google pentru a-l crea automat.
+        if (error.code === 'failed-precondition') {
+             topListEl.innerHTML = '<div style="color:#ff4757; text-align:center; padding:20px;">Eroare: Index Firebase lipsă. Te rugăm să contactezi administratorul.</div>';
+        }
     });
 }
 
