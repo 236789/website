@@ -2711,6 +2711,12 @@
     <span>Analiză Utilizatori Noi</span>
 </a>
 
+<!-- SIDEBAR LINK: INVITES -->
+<a href="#" class="ga-nav-item" onclick="switchSection('invites-view', this)">
+    <i class="fas fa-handshake" style="color: #ff00ff;"></i>
+    <span>Sistem Referințe</span>
+</a>
+
 
 <!-- SIDEBAR LINK: TRAFFIC ANALYTICS -->
 <a href="#" class="ga-nav-item" onclick="switchSection('traffic-view', this)">
@@ -3153,6 +3159,30 @@
     </div>
 </div>
 
+
+<!-- VIEW 11: INVITES ANALYTICS -->
+<div id="invites-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 30px; font-size:24px;">
+        MONITORIZARE REȚEA INVITAȚII
+    </h2>
+
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">INVITATOR (Sursa)</th>
+                    <th>UTILIZATORI ADUȘI</th>
+                    <th>TOTAL INVITAȚI</th>
+                    <th>RECOMPENSE ESTIMATE</th>
+                </tr>
+            </thead>
+            <tbody id="invitesTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se analizează legăturile între conturi...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -3290,6 +3320,71 @@ window.loadTransactions = function() {
 window.loadMoreTransactions = function() {
     txnLimit += 100;
     window.loadTransactions();
+};
+
+window.runInvitesAnalytics = function() {
+    const tableBody = document.getElementById('invitesTableBody');
+    if (!tableBody) return;
+
+    // 1. Creăm un dicționar: { UID_Invitator: [Lista_utilizatori_invitați] }
+    let inviteMap = {};
+
+    // Mapăm toți utilizatorii pentru acces rapid după UID
+    let userLookup = {};
+    cachedUsers.forEach(u => {
+        userLookup[u.uid] = u;
+    });
+
+    // Grupare
+    cachedUsers.forEach(user => {
+        const inviterUid = user.referredBy; // Presupunem că acest câmp există în DB
+        if (inviterUid) {
+            if (!inviteMap[inviterUid]) inviteMap[inviterUid] = [];
+            inviteMap[inviterUid].push(user);
+        }
+    });
+
+    // 2. Transformăm harta în array pentru sortare (Cei mai mulți invitați primii)
+    let sortedInviters = Object.entries(inviteMap).sort((a, b) => b[1].length - a[1].length);
+
+    if (sortedInviters.length === 0) {
+        tableBody.innerHTML = "<tr><td colspan='4' style='padding:40px; text-align:center; color:#888;'>Momentan nu există invitații înregistrate în baza de date.</td></tr>";
+        return;
+    }
+
+    // 3. Randare Tabel
+    tableBody.innerHTML = sortedInviters.map(([inviterUid, invitedUsers]) => {
+        const inviter = userLookup[inviterUid] || { username: "Utilizator Șters/Necunoscut", pfp: "https://i.ibb.co/XyqWk9N/def-user.png" };
+        
+        const invitedListHtml = invitedUsers.map(u => `
+            <div class="alt-user-pill" style="border-color: #ff00ff22;">
+                <img src="${u.pfp}" style="width:16px; height:16px; border-radius:50%; margin-right:5px;">
+                ${u.username}
+            </div>
+        `).join('');
+
+        return `
+            <tr>
+                <td class="sticky-left">
+                    <div class="td-user">
+                        <img src="${inviter.pfp}" class="td-pfp" style="border-color: #ff00ff;">
+                        <div class="td-name">${inviter.username}</div>
+                    </div>
+                </td>
+                <td style="text-align:left; max-width: 400px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                        ${invitedListHtml}
+                    </div>
+                </td>
+                <td style="font-family:'Orbitron'; font-weight:900; color:#ff00ff;">${invitedUsers.length}</td>
+                <td>
+                    <div class="currency-simple c-gold">
+                        ${invitedUsers.length * 1000} <img src="https://iili.io/fhc1SKQ.png" width="16">
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
 };
 
 
@@ -3751,15 +3846,26 @@ window.switchSection = (sectionId, btnElement) => {
         }
     }
 
-    // 8. KEVIN BOT ANALYTICS (NOU - ADAUGĂ ASTA)
+    // 8. KEVIN BOT ANALYTICS
     if(sectionId === 'bot-analytics-view') {
-        // Ne asigurăm că datele userilor sunt încărcate (pentru topul mesajelor)
         if(cachedUsers.length === 0) {
             loadAllUsers();
         }
-        // Apelăm funcția care ascultă statisticile bot-ului
         if(typeof window.loadBotAnalytics === "function") {
             window.loadBotAnalytics();
+        }
+    }
+
+    // 9. MONITORIZARE INVITAȚII (NOU)
+    if(sectionId === 'invites-view') {
+        if(cachedUsers.length === 0) {
+            loadAllUsers();
+            // Așteptăm puțin să se populeze array-ul cachedUsers din Firebase
+            setTimeout(() => {
+                if(typeof window.runInvitesAnalytics === "function") window.runInvitesAnalytics();
+            }, 1000);
+        } else {
+            if(typeof window.runInvitesAnalytics === "function") window.runInvitesAnalytics();
         }
     }
 };
@@ -4498,6 +4604,7 @@ window.equipText = async (id, cssClass) => {
                     username: user.displayName,
                     email: user.email,
                     image: user.photoURL,
+                referredBy: refId || null, // AICI SALVĂM CINE L-A INVITAT
                     coins: 250,
                     streak: 0,
                     ip: ip,
