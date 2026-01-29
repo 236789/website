@@ -3594,7 +3594,7 @@ window.switchSection = (sectionId, btnElement) => {
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, getDocs,deleteDoc, collection, query, orderBy, limit, where, addDoc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, getDocs, collection, query, orderBy, limit, where, addDoc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com",
@@ -3858,37 +3858,37 @@ window.runWallAnalytics = async function() {
 window.runSanctionsAnalytics = function() {
     const mutedContainer = document.getElementById('mutedListContainer');
     const bannedContainer = document.getElementById('bannedListContainer');
+    if(!mutedContainer || !bannedContainer) return;
 
     // 1. LISTEN PENTRU MUTE (Real-time)
     onSnapshot(collection(db, "muted_users"), (snap) => {
         mutedContainer.innerHTML = '';
         if (snap.empty) {
             mutedContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#444;">Libertate deplină. Niciun Mute activ.</div>';
-            return;
+        } else {
+            snap.forEach(docSnap => {
+                const d = docSnap.data();
+                const userData = cachedUsers.find(u => u.uid === d.uid) || {};
+                // REPARAT: Link imagine valid
+                const pfp = userData.pfp || 'https://iili.io/fXks1Dv.png';
+                const timeLeft = d.unmuteAt ? new Date(d.unmuteAt).toLocaleString('ro-RO') : "PERMANENT";
+
+                mutedContainer.innerHTML += `
+                    <div class="sanction-card" style="border-left: 3px solid #ff9f43;">
+                        <img src="${pfp}" class="sanc-img" style="border-color: #ff9f43;">
+                        <div class="sanc-info">
+                            <span class="sanc-name">${d.name || 'Utilizator'}</span>
+                            <span class="sanc-reason">"${d.reason}"</span>
+                            <div class="sanc-meta"><i class="fas fa-clock"></i> Expiră: ${timeLeft}</div>
+                        </div>
+                        <button class="btn-release" onclick="window.unmuteUser('${docSnap.id}', '${d.name}')">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>`;
+            });
         }
-
-        snap.forEach(docSnap => {
-            const d = docSnap.data();
-            // Căutăm poza userului în cache
-            const userData = cachedUsers.find(u => u.uid === d.uid) || {};
-            const pfp = userData.pfp || 'https://i.ibb.co/XyqWk9N/def-user.png';
-            
-            const timeLeft = d.unmuteAt ? new Date(d.unmuteAt).toLocaleString('ro-RO') : "PERMANENT";
-
-            mutedContainer.innerHTML += `
-                <div class="sanction-card" style="border-left: 3px solid #ff9f43;">
-                    <img src="${pfp}" class="sanc-img" style="border-color: #ff9f43;">
-                    <div class="sanc-info">
-                        <span class="sanc-name">${d.name || 'Utilizator'}</span>
-                        <span class="sanc-reason">"${d.reason}"</span>
-                        <div class="sanc-meta"><i class="fas fa-clock"></i> Expiră: ${timeLeft}</div>
-                    </div>
-                    <button class="btn-release" onclick="window.unmuteUser('${docSnap.id}', '${d.name}')" title="Scoate Mute">
-                        <i class="fas fa-microphone"></i>
-                    </button>
-                </div>
-            `;
-        });
+    }, (err) => { 
+        mutedContainer.innerHTML = `<div style="color:#ff4757; padding:20px;">Eroare: Lipsă permisiuni Mute</div>`;
     });
 
     // 2. LISTEN PENTRU BAN (Real-time)
@@ -3896,26 +3896,24 @@ window.runSanctionsAnalytics = function() {
         bannedContainer.innerHTML = '';
         if (snap.empty) {
             bannedContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#444;">Închisoarea e goală.</div>';
-            return;
+        } else {
+            snap.forEach(docSnap => {
+                const d = docSnap.data();
+                bannedContainer.innerHTML += `
+                    <div class="sanction-card" style="border-left: 3px solid #ff4757;">
+                        <div class="sanc-info">
+                            <span class="sanc-name">${d.username || 'Necunoscut'}</span>
+                            <span class="sanc-reason">IP: ${docSnap.id}</span>
+                            <span class="sanc-reason" style="color:#ff4757; font-weight:bold;">Motiv: ${d.reason}</span>
+                        </div>
+                        <button class="btn-release red" onclick="window.unbanIP('${docSnap.id}')">
+                            <i class="fas fa-unlock"></i>
+                        </button>
+                    </div>`;
+            });
         }
-
-        snap.forEach(docSnap => {
-            const d = docSnap.data();
-            const ip = docSnap.id;
-            
-            bannedContainer.innerHTML += `
-                <div class="sanction-card" style="border-left: 3px solid #ff4757;">
-                    <div class="sanc-info">
-                        <span class="sanc-name">${d.username || 'Necunoscut'}</span>
-                        <span class="sanc-reason">IP: ${ip}</span>
-                        <span class="sanc-reason" style="color:#ff4757; font-weight:bold;">Motiv: ${d.reason}</span>
-                    </div>
-                    <button class="btn-release red" onclick="window.unbanIP('${ip}')" title="Scoate BAN">
-                        <i class="fas fa-unlock"></i>
-                    </button>
-                </div>
-            `;
-        });
+    }, (err) => {
+        bannedContainer.innerHTML = `<div style="color:#ff4757; padding:20px;">Eroare: Lipsă permisiuni Ban</div>`;
     });
 };
 
