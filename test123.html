@@ -3990,41 +3990,55 @@ window.loadTransactions = function() {
     const loadMoreBtn = document.getElementById('loadMoreTxnsBtn');
     if (!tableBody) return;
 
-    if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
-
-    if (rawTxns.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
-    } else {
-        if (loadMoreBtn) {
-            loadMoreBtn.disabled = true;
-            loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SE ÎNCARCĂ...';
-        }
+    // Închidem orice ascultător vechi pentru a preveni dublarea datelor sau scurgerile de memorie
+    if (dashboardTxnUnsub) { 
+        dashboardTxnUnsub(); 
+        dashboardTxnUnsub = null; 
     }
 
+    // Afișăm starea inițială de încărcare dacă nu avem date deloc
+    if (rawTxns.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
+    }
+
+    // Actualizăm starea butonului de încărcare
+    if (loadMoreBtn) {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SE ÎNCARCĂ...';
+    }
+
+    // Creăm interogarea către Firestore (sortată după timp, limitată la txnLimit setat global)
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(txnLimit));
 
+    // Pornim ascultătorul în timp real
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
+        // Resetăm array-ul local pentru a reflecta exact ce este în Snapshot-ul curent
         rawTxns = [];
-// În interiorul window.loadTransactions, înlocuiește snapshot.forEach cu asta:
-snapshot.forEach((docSnap) => {
-    const t = docSnap.data();
-    rawTxns.push({
-        id: docSnap.id,
-        username: t.username || "Utilizator",
-        pfp: t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png",
-        timestamp: t.timestamp,
-        description: t.description || "-",
-        source: t.source || "SYSTEM",
-        amount: Number(t.amount || 0),
-        // ADAUGĂ ACEASTĂ LINIE (Esențială pentru a ști CUI s-a donat)
-        targetUid: t.targetUid || null, 
-        type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
-    });
-});
 
+        snapshot.forEach((docSnap) => {
+            const t = docSnap.data();
+            
+            // Procesăm fiecare tranzacție cu noile câmpuri necesare pentru Analytics
+            rawTxns.push({
+                id: docSnap.id,
+                userId: t.userId || t.uid || null, // ID-ul celui care a generat tranzacția
+                username: t.username || "Utilizator",
+                pfp: t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png",
+                timestamp: t.timestamp,
+                description: t.description || "-",
+                source: t.source || "SYSTEM",
+                amount: Number(t.amount || 0),
+                targetUid: t.targetUid || null, // UID-ul destinatarului (pentru donații)
+                type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
+            });
+        });
+
+        // Gestionăm vizibilitatea butonului "Load More"
         if (loadMoreBtn) {
             loadMoreBtn.disabled = false;
             loadMoreBtn.innerHTML = '<i class="fas fa-arrow-down"></i> ÎNCARCĂ MAI MULTE';
+            
+            // Dacă am primit mai puține documente decât limita, înseamnă că nu mai sunt date de încărcat
             if (snapshot.size >= txnLimit) {
                 loadMoreBtn.style.display = 'flex';
             } else {
@@ -4032,14 +4046,20 @@ snapshot.forEach((docSnap) => {
             }
         }
 
-        applyTxnFilters();
+        // Re-aplicăm filtrele vizuale pe tabelul HTML
+        if (typeof applyTxnFilters === "function") {
+            applyTxnFilters();
+        }
         
-        // --- REAL-TIME UPDATE PENTRU ECONOMIE ---
-        if(typeof updateEconomyStats === "function") updateEconomyStats();
+        // Actualizăm cifrele economice (Total Coins, Burn, Mint etc.)
+        if (typeof updateEconomyStats === "function") { 
+            updateEconomyStats(); 
+        }
         
     }, (error) => {
-        console.error(error);
+        console.error("Eroare la încărcarea tranzacțiilor:", error);
         if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+        tableBody.innerHTML = '<tr><td colspan="5" style="color:red;">Eroare de permisiuni Firestore.</td></tr>';
     });
 };
 
@@ -4216,10 +4236,20 @@ window.runTriviaUserAnalytics = function() {
     const tableBody = document.getElementById('triviaUserTableBody');
     if (!tableBody) return;
 
-    // Filtrăm utilizatorii care au jucat trivia (au câmpul triviaStats)
-    let players = cachedUsers.filter(u => u.triviaStats && (u.triviaStats.correctTotal > 0 || u.triviaStats.wrongTotal > 0));
-    
-    // Sortăm după cele mai multe răspunsuri corecte
+    // Luăm userii care au jucat măcar o dată
+    let players = cachedUsers.filter(u => 
+        u.triviaStats && 
+        (Number(u.triviaStats.correctTotal) > 0 || Number(u.triviaStats.wrongTotal) > 0)
+    );
+
+    console.log("Jucători Trivia detectați în cache:", players.length); // DEBUG
+
+    if (players.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Niciun jucător nu a terminat o rundă de Trivia încă.</td></tr>';
+        return;
+    }
+
+    // Sortăm după cele mai multe corecte
     players.sort((a, b) => (b.triviaStats.correctTotal || 0) - (a.triviaStats.correctTotal || 0));
 
     tableBody.innerHTML = players.map(u => {
@@ -4228,10 +4258,6 @@ window.runTriviaUserAnalytics = function() {
         const total = correct + wrong;
         const accuracy = total > 0 ? ((correct / total) * 100).toFixed(1) : 0;
         
-        let accColor = "#ff4757"; // Roșu sub 50%
-        if (accuracy > 50) accColor = "#ffd700"; // Galben peste 50%
-        if (accuracy > 80) accColor = "#00ffcc"; // Cyan peste 80%
-
         return `
             <tr>
                 <td class="sticky-left">
@@ -4243,12 +4269,7 @@ window.runTriviaUserAnalytics = function() {
                 <td style="color:#2ecc71; font-weight:900;">${correct}</td>
                 <td style="color:#ff4757; font-weight:900;">${wrong}</td>
                 <td>
-                    <div style="display:flex; align-items:center; gap:10px; justify-content:center;">
-                        <span style="color:${accColor}; font-weight:900; font-family:'Orbitron';">${accuracy}%</span>
-                        <div style="width:100px; height:4px; background:rgba(255,255,255,0.05); border-radius:10px; overflow:hidden;">
-                            <div style="width:${accuracy}%; height:100%; background:${accColor};"></div>
-                        </div>
-                    </div>
+                    <span style="color:var(--primary); font-weight:900;">${accuracy}%</span>
                 </td>
             </tr>
         `;
