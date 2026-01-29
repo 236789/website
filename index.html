@@ -8164,6 +8164,11 @@ function processUserMessage(input, userLabel = null) {
     }
     lastUserMessage = val;
 
+// ADAUGĂ ASTA CHIAR ÎNAINTE DE sendBotResponseWithDelay
+if(typeof window.logBotInteraction === "function") window.logBotInteraction(val, response);
+
+sendBotResponseWithDelay(response, audioFile); // Asta e linia care există deja
+
     // 2. BAD WORDS DETECTION
     const badWords = /(pula|pizda|coaie|muie|futu|dracu|mata|morti|fraier|prost|fuck|shit|bitch|dick|sloboz|gay|lesbi|sperma)/;
 
@@ -8422,7 +8427,40 @@ window.doc = doc;
 window.updateDoc = updateDoc;
 
 
+// --- SISTEM LOGARE ACTIVITATE BOT ---
+window.logBotInteraction = async function(userText, botResponse) {
+    if (!db || !userText || !botResponse) return;
 
+    // Curățăm textul pentru a-l folosi ca ID (fără puncte, slash-uri sau caractere interzise în Firebase)
+    const cleanQuestion = userText.toLowerCase().trim().substring(0, 100).replace(/[.#$[\]]/g, "_");
+    
+    // Curățăm răspunsul de tag-uri HTML (ca să nu avem cod în ID)
+    const cleanReply = botResponse.replace(/<[^>]*>?/gm, '').substring(0, 100).replace(/[.#$[\]]/g, "_");
+
+    if (!cleanQuestion || !cleanReply) return;
+
+    try {
+        // Document pentru Întrebarea utilizatorului
+        const qRef = doc(db, "bot_usage_stats", `q_${cleanQuestion}`);
+        // Document pentru Răspunsul botului
+        const rRef = doc(db, "bot_usage_stats", `r_${cleanReply}`);
+
+        // Incrementăm întrebarea
+        await setDoc(qRef, { 
+            text: userText, 
+            count: increment(1), 
+            type: "question" 
+        }, { merge: true });
+
+        // Incrementăm răspunsul
+        await setDoc(rRef, { 
+            text: botResponse.replace(/<[^>]*>?/gm, ''), 
+            count: increment(1), 
+            type: "reply" 
+        }, { merge: true });
+
+    } catch (e) { console.error("Bot Logging Error:", e); }
+};
 // Helper să vedem dacă suntem pe PC
 const isPC = () => window.innerWidth > 768;
 
@@ -10138,4 +10176,5 @@ function generateDailyIds() {
   </script>
 </body>
 </html>
+
 
