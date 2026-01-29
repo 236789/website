@@ -2665,6 +2665,13 @@
             </tbody>
         </table>
     </div>
+
+    <!-- BUTON ÎNCARCĂ MAI MULTE -->
+    <div style="text-align:center; margin-top: 20px; margin-bottom: 40px;">
+        <button id="loadMoreTxnsBtn" class="filter-btn" style="display:none; margin: 0 auto; border-color: var(--primary); color: var(--primary);" onclick="loadMoreTransactions()">
+            <i class="fas fa-arrow-down"></i> ÎNCARCĂ MAI MULTE
+        </button>
+    </div>
 </div>
 
 </main>
@@ -2743,16 +2750,19 @@ let dashboardTxnUnsub = null;
 let rawTxns = []; 
 let currentTxnType = 'ALL';
 let currentTxnSource = 'ALL';
+let txnLimit = 100; // Începem cu 100
 
 window.loadTransactions = function() {
     const tableBody = document.getElementById('txnTableBody');
+    const loadMoreBtn = document.getElementById('loadMoreTxnsBtn');
     if (!tableBody) return;
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
     tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
 
-    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(150));
+    // Folosim variabila txnLimit pentru a putea încărca mai multe
+    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(txnLimit));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         rawTxns = [];
@@ -2769,8 +2779,22 @@ window.loadTransactions = function() {
                 type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
             });
         });
+
+        // Arătăm butonul doar dacă am ajuns la limită (semn că mai sunt date)
+        if (snapshot.size >= txnLimit) {
+            loadMoreBtn.style.display = 'flex';
+        } else {
+            loadMoreBtn.style.display = 'none';
+        }
+
         applyTxnFilters();
     });
+};
+
+// FUNCȚIA PENTRU BUTONUL "MAI MULTE"
+window.loadMoreTransactions = function() {
+    txnLimit += 100; // Mai adăugăm 100 de rânduri la fiecare click
+    window.loadTransactions();
 };
 
 // --- LOGICA DE FILTRARE ---
