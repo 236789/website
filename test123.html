@@ -2158,16 +2158,17 @@
 .val-plus { color: #2ecc71; font-weight: 800; text-shadow: 0 0 10px rgba(46, 204, 113, 0.3); }
 .val-minus { color: #ff4757; font-weight: 800; text-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
 
-/* Source Badge */
+/* Source Badge Style */
 .source-tag {
     background: rgba(41, 243, 255, 0.1);
     border: 1px solid var(--primary);
-    padding: 2px 8px;
+    padding: 3px 10px;
     border-radius: 4px;
     font-size: 9px;
     text-transform: uppercase;
     color: var(--primary);
     font-weight: 700;
+    font-family: 'Orbitron', sans-serif;
 }
   </style>
 </head>
@@ -2471,7 +2472,7 @@
             <span>Baza de Date Utilizatori</span>
         </a>
 
-<!-- SIDEBAR LINK -->
+<!-- SIDEBAR LINK: TRANSACTIONS -->
 <a href="#" class="ga-nav-item" onclick="switchSection('transactions-history-view', this)">
     <i class="fas fa-exchange-alt" style="color: #00ff88;"></i> <!-- Green Icon -->
     <span>Istoric Tranzacții</span>
@@ -2592,7 +2593,7 @@
                 </tr>
             </thead>
             <tbody id="txnTableBody">
-                <tr><td colspan="5" style="padding:40px;">Se încarcă tranzacțiile...</td></tr>
+                <tr><td colspan="5" style="padding:40px; text-align:center;">Se așteaptă datele...</td></tr>
             </tbody>
         </table>
     </div>
@@ -2670,104 +2671,100 @@ navItems.forEach(item => {
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-// --- 1. UPDATED SWITCHER ---
-window.switchSection = (sectionId, btnElement) => {
-    // Hide all sections
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    // Show target
-    document.getElementById(sectionId).classList.add('active');
 
-    // Sidebar Active
-    document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
-    if(btnElement) btnElement.classList.add('active');
+let dashboardTxnUnsub = null;
 
-    // Lazy Load Data
-    if(sectionId === 'transactions-view' && cachedUsers.length === 0) {
-        loadAllUsers();
-    }
-    // NEW: Load Transactions when clicking the tab
-    if(sectionId === 'transactions-history-view') {
-        loadTransactions();
-    }
-};
-
-// --- UNIQUE VARIABLE FOR DASHBOARD (Prevents conflict with old page) ---
-let dashboardTxnUnsub = null; 
-
-function loadTransactions() {
+window.loadTransactions = function() {
     const tableBody = document.getElementById('txnTableBody');
-    
-    // 1. Reset: If we are already listening, stop and restart (forces refresh)
-    if (dashboardTxnUnsub) {
-        dashboardTxnUnsub();
-        dashboardTxnUnsub = null;
-    }
+    if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px;">Se conectează la server...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
 
-    // 2. Query: Get last 50 transactions
+    // Make sure the collection name is EXACTLY the same as on your other page
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
 
-    // 3. Listen
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         if (snapshot.empty) {
-            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; color:#888;'>Nu există tranzacții.</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nu există tranzacții în baza de date.</td></tr>";
             return;
         }
 
         let rowsHTML = "";
-
         snapshot.forEach((doc) => {
             const t = doc.data();
-
-            // Format Date
+            
+            // --- SAFE DATE FIX ---
             let dateStr = "Recent";
-            if(t.timestamp && t.timestamp.toDate) {
-                const d = t.timestamp.toDate();
-                // Format: 29 Jan 10:45
-                dateStr = `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+            if (t.timestamp) {
+                if (t.timestamp.toDate) {
+                    const d = t.timestamp.toDate();
+                    dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+                } else {
+                    // Fallback if timestamp is just a number/string
+                    const d = new Date(t.timestamp);
+                    dateStr = d.toLocaleDateString();
+                }
             }
 
-            // Icon & Amount
-            const isDiamonds = t.type === "DIAMONDS";
+            // --- DATA MAPPING ---
+            // Ensure these match the fields you used on the OTHER page!
+            const amountVal = Number(t.amount || 0);
+            const isDiamonds = (t.type === "DIAMONDS" || t.currency === "DIAMONDS");
             const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            const amountClass = t.amount >= 0 ? "val-plus" : "val-minus";
-            const amountSign = t.amount >= 0 ? "+" : "";
-
-            // User Image
-            const pfp = t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png";
+            const amountClass = amountVal >= 0 ? "val-plus" : "val-minus";
+            const amountSign = amountVal >= 0 ? "+" : "";
+            const pfp = t.userImage || t.image || "https://i.ibb.co/XyqWk9N/def-user.png";
 
             rowsHTML += `
                 <tr>
                     <td class="sticky-left">
                         <div class="td-user">
                             <img src="${pfp}" class="td-pfp">
-                            <div>
-                                <div class="td-name">${t.username || "Unknown"}</div>
-                            </div>
+                            <div><div class="td-name">${t.username || "Unknown"}</div></div>
                         </div>
                     </td>
                     <td style="color:#888; font-size:11px;">${dateStr}</td>
-                    <td style="font-size:12px; color:#fff;">${t.description || "Nicio descriere"}</td>
+                    <td style="font-size:12px; color:#fff;">${t.description || "N/A"}</td>
                     <td><span class="source-tag">${t.source || "SYSTEM"}</span></td>
                     <td>
                         <div class="currency-simple ${amountClass}">
-                            ${amountSign}${t.amount} 
-                            <img src="${iconUrl}" width="16" style="margin-left:5px;">
+                            ${amountSign}${amountVal} <img src="${iconUrl}" width="16" style="margin-left:5px;">
                         </div>
                     </td>
-                </tr>
-            `;
+                </tr>`;
         });
-
         tableBody.innerHTML = rowsHTML;
 
     }, (error) => {
-        console.error("Dashboard Txn Error:", error);
-        // If console says "Missing or insufficient permissions" or "Index required", click the link in console!
-        tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757;">Eroare: ${error.message}</td></tr>`;
+        console.error("Transaction Error:", error);
+        tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">⚠️ Eroare: ${error.message}</td></tr>`;
     });
+};
+
+// --- 1. VIEW SWITCHER LOGIC (Sidebar) ---
+window.switchSection = (sectionId, btnElement) => {
+    // Hide all sections
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    // Show target section
+    document.getElementById(sectionId).classList.add('active');
+
+    // Update Sidebar Active Class
+    document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
+    btnElement.classList.add('active');
+
+    // If opening users view, load data if empty
+    if(sectionId === 'transactions-view') {
+        const body = document.getElementById('analyticsTableBody');
+        if(body.innerHTML.includes("Se încarcă")) {
+            loadAllUsers();
+        }
+    }
+
+// Add this INSIDE your existing switchSection function
+if(sectionId === 'transactions-history-view') {
+    loadTransactions();
 }
+};
 
 window.filterData = (type, btn) => {
     // 1. Visual: Update Active Button
