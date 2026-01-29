@@ -2925,11 +2925,9 @@ window.loadTransactions = function() {
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    // MODIFICARE AICI: Ștergem tabelul DOAR dacă este prima încărcare (rawTxns e gol)
     if (rawTxns.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
     } else {
-        // Dacă deja avem date, doar schimbăm textul butonului ca feedback vizual
         if (loadMoreBtn) {
             loadMoreBtn.disabled = true;
             loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SE ÎNCARCĂ...';
@@ -2954,12 +2952,9 @@ window.loadTransactions = function() {
             });
         });
 
-        // Resetăm butonul după ce vin datele
         if (loadMoreBtn) {
             loadMoreBtn.disabled = false;
             loadMoreBtn.innerHTML = '<i class="fas fa-arrow-down"></i> ÎNCARCĂ MAI MULTE';
-            
-            // Arătăm butonul doar dacă am ajuns la limită
             if (snapshot.size >= txnLimit) {
                 loadMoreBtn.style.display = 'flex';
             } else {
@@ -2968,6 +2963,10 @@ window.loadTransactions = function() {
         }
 
         applyTxnFilters();
+        
+        // --- REAL-TIME UPDATE PENTRU ECONOMIE ---
+        if(typeof updateEconomyStats === "function") updateEconomyStats();
+        
     }, (error) => {
         console.error(error);
         if (loadMoreBtn) loadMoreBtn.style.display = 'none';
@@ -2982,66 +2981,54 @@ window.loadMoreTransactions = function() {
 
 
 
-window.runEconomyReport = async function() {
-    console.log("📊 Generare raport economic...");
+window.updateEconomyStats = function() {
+    // 1. CALCUL CIRCULAȚIE (Din array-ul cachedUsers care se actualizează live)
+    let totalC = 0;
+    let totalD = 0;
+    cachedUsers.forEach(u => {
+        totalC += Number(u.coins || 0);
+        totalD += Number(u.diamonds || 0);
+    });
 
-    // 1. Ne asigurăm că avem utilizatorii încărcați pentru CIRCULAȚIE
-    if (cachedUsers.length === 0) {
-        // Dacă lista e goală, așteptăm puțin sau forțăm încărcarea
-        loadAllUsers(); 
-    }
+    const elTotalC = document.getElementById('statTotalCoins');
+    const elTotalD = document.getElementById('statTotalDiamonds');
+    
+    if(elTotalC) elTotalC.innerText = totalC.toLocaleString('ro-RO');
+    if(elTotalD) elTotalD.innerText = totalD.toLocaleString('ro-RO');
 
-    // 2. Ne asigurăm că avem tranzacțiile pentru FLUXUL DE 24H
-    // Dacă rawTxns e gol, apelăm loadTransactions care populează array-ul
-    if (rawTxns.length === 0) {
-        window.loadTransactions();
-    }
+    // 2. CALCUL FLUX 24H (Din array-ul rawTxns care se actualizează live)
+    const acum = Date.now();
+    const oZiInMs = 24 * 60 * 60 * 1000;
+    
+    let generat = 0;
+    let cheltuit = 0;
 
-    // Așteptăm un mic buffer pentru procesare
-    setTimeout(() => {
-        // CALCUL CIRCULAȚIE (Banii din buzunarele userilor)
-        let totalC = 0;
-        let totalD = 0;
-        cachedUsers.forEach(u => {
-            totalC += Number(u.coins || 0);
-            totalD += Number(u.diamonds || 0);
-        });
-
-        document.getElementById('statTotalCoins').innerText = totalC.toLocaleString('ro-RO');
-        document.getElementById('statTotalDiamonds').innerText = totalD.toLocaleString('ro-RO');
-
-        // CALCUL FLUX (Ce s-a întâmplat în ultimele 24 ore)
-        const acum = Date.now();
-        const oZiInMs = 24 * 60 * 60 * 1000;
-        
-        let generat = 0;
-        let cheltuit = 0;
-
-        rawTxns.forEach(t => {
-            if (t.timestamp && t.timestamp.toDate) {
-                const dataTxn = t.timestamp.toDate().getTime();
-                // Verificăm dacă tranzacția e în ultimele 24h
-                if (acum - dataTxn <= oZiInMs) {
-                    // Calculăm doar pentru COINS (masa monetară principală)
-                    if (t.type === "COINS") {
-                        if (t.amount > 0) generat += t.amount;
-                        else cheltuit += Math.abs(t.amount);
-                    }
+    rawTxns.forEach(t => {
+        if (t.timestamp && t.timestamp.toDate) {
+            const dataTxn = t.timestamp.toDate().getTime();
+            if (acum - dataTxn <= oZiInMs) {
+                if (t.type === "COINS") {
+                    if (t.amount > 0) generat += t.amount;
+                    else cheltuit += Math.abs(t.amount);
                 }
             }
-        });
+        }
+    });
 
-        const net = generat - cheltuit;
-        const netColor = net >= 0 ? "text-green" : "text-red";
+    const net = generat - cheltuit;
+    const netColor = net >= 0 ? "text-green" : "text-red";
 
-        document.getElementById('statDailyMint').innerText = "+" + generat.toLocaleString('ro-RO');
-        document.getElementById('statDailyBurn').innerText = "-" + cheltuit.toLocaleString('ro-RO');
-        
-        const netFlowEl = document.getElementById('statNetFlow');
-        netFlowEl.innerText = (net >= 0 ? "+" : "") + net.toLocaleString('ro-RO');
-        netFlowEl.className = "stat-card-value " + netColor;
+    const elGen = document.getElementById('statDailyMint');
+    const elSpent = document.getElementById('statDailyBurn');
+    const elNet = document.getElementById('statNetFlow');
 
-    }, 800); // Buffer de 800ms pentru a fi siguri că datele din Firebase au ajuns în array-uri
+    if(elGen) elGen.innerText = "+" + generat.toLocaleString('ro-RO');
+    if(elSpent) elSpent.innerText = "-" + cheltuit.toLocaleString('ro-RO');
+    
+    if(elNet) {
+        elNet.innerText = (net >= 0 ? "+" : "") + net.toLocaleString('ro-RO');
+        elNet.className = "stat-card-value " + netColor;
+    }
 };
 
 // Helper formatare profesională
@@ -3215,29 +3202,24 @@ let cachedUsers = [];
 let currentFilter = 'all';
 let currentSortCriteria = 'alpha'; // Default sort
 
-// --- REAL-TIME DATA LISTENER ---
 function loadAllUsers() {
     const tableBody = document.getElementById('analyticsTableBody');
-    tableBody.innerHTML = '<tr><td colspan="8" style="padding:40px;">Se conectează la server...</td></tr>';
+    if(tableBody) tableBody.innerHTML = '<tr><td colspan="8" style="padding:40px;">Se conectează la server...</td></tr>';
     
-    // Listen to the entire collection
     const q = query(collection(db, "accounts")); 
     
-    // onSnapshot runs immediately, AND whenever data changes
     onSnapshot(q, (snapshot) => {
         cachedUsers = []; 
 
         snapshot.forEach((doc) => {
             const data = doc.data();
             
-            // --- DATE ---
             let joinDate = "N/A";
             if (data.joinedAt && data.joinedAt.toDate) {
                 const d = data.joinedAt.toDate();
                 joinDate = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
             }
 
-            // --- ONLINE STATUS ---
             let isOnline = false;
             let statusHtml = '<span class="status-dot offline"></span>Offline';
             if (data.isOnline === true && data.lastActive && data.lastActive.toDate) {
@@ -3248,7 +3230,6 @@ function loadAllUsers() {
                 }
             }
 
-            // --- DONATION FIX ---
             let donationValue = 0;
             if (data.totalCoinsDonated !== undefined) donationValue = data.totalCoinsDonated;
             else if (data.donatedCoins !== undefined) donationValue = data.donatedCoins;
@@ -3261,14 +3242,10 @@ function loadAllUsers() {
                 username: data.username || "Unknown",
                 email: data.email || "",
                 pfp: data.image || "https://i.ibb.co/XyqWk9N/def-user.png",
-                
-                // Numbers
                 coins: Number(data.coins) || 0,
                 diamonds: Number(data.diamonds) || 0,
                 donated: cleanDonation,
                 streak: Number(data.streak) || 0,
-                
-                // Helpers
                 joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
                 joinDateStr: joinDate,
                 statusHtml: statusHtml,
@@ -3277,14 +3254,15 @@ function loadAllUsers() {
             });
         });
 
-        // Apply the current sort (Default is Alpha)
         applySort(currentSortCriteria);
+        
+        // --- REAL-TIME UPDATE PENTRU ECONOMIE ---
+        if(typeof updateEconomyStats === "function") updateEconomyStats();
 
     }, (error) => {
         console.error("Realtime Error:", error);
     });
 }
-
 // --- SORTING LOGIC ---
 // We split this into 'sortData' (UI trigger) and 'applySort' (Internal logic)
 window.sortData = (criteria) => {
