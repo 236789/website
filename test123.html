@@ -2746,6 +2746,11 @@
     <i class="fas fa-network-wired" style="color: #E600A9;"></i>
     <span>Rețea Referințe (Detaliat)</span>
 </a>
+
+<a href="#" class="ga-nav-item" onclick="switchSection('sanctions-view', this)">
+    <i class="fas fa-gavel" style="color: #ff4757;"></i>
+    <span>Listă Sancțiuni</span>
+</a>
         </div>
     </div>
 
@@ -3348,6 +3353,36 @@
         </table>
     </div>
 </div>
+
+
+<!-- VIEW 16: SANCTIONS LIST -->
+<div id="sanctions-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; color:#ff4757;">CENTRU DE DETENȚIE</h2>
+    
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:30px;">
+        <!-- TABEL MUTE -->
+        <div class="table-glass-container">
+            <div style="padding:15px; border-bottom:1px solid #ff475755; color:#ff4757; font-family:'Orbitron'; font-size:12px;">UTILIZATORI CU MUTE</div>
+            <table class="neon-table">
+                <thead>
+                    <tr><th>User</th><th>Motiv</th><th>Expiră</th></tr>
+                </thead>
+                <tbody id="mutedListTable"></tbody>
+            </table>
+        </div>
+
+        <!-- TABEL BAN -->
+        <div class="table-glass-container">
+            <div style="padding:15px; border-bottom:1px solid #ff475755; color:#ff4757; font-family:'Orbitron'; font-size:12px;">IP-URI BANATE</div>
+            <table class="neon-table">
+                <thead>
+                    <tr><th>IP / Nume</th><th>Motiv</th><th>Acțiune</th></tr>
+                </thead>
+                <tbody id="bannedListTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -3687,6 +3722,48 @@ window.runWallAnalytics = async function() {
 
     } catch (e) {
         console.error("Eroare Wall Analytics:", e);
+    }
+};
+
+
+window.runSanctionsAnalytics = function() {
+    const mutedTable = document.getElementById('mutedListTable');
+    const bannedTable = document.getElementById('bannedListTable');
+
+    // 1. Listen pentru Muted Users
+    onSnapshot(collection(db, "muted_users"), (snap) => {
+        mutedTable.innerHTML = '';
+        snap.forEach(doc => {
+            const d = doc.data();
+            const expires = d.unmuteAt ? new Date(d.unmuteAt).toLocaleTimeString() : "Niciodată";
+            mutedTable.innerHTML += `
+                <tr>
+                    <td style="font-weight:bold; color:var(--primary);">${d.name}</td>
+                    <td style="font-size:10px;">${d.reason}</td>
+                    <td style="color:#ff4757; font-size:10px;">${expires}</td>
+                </tr>`;
+        });
+    });
+
+    // 2. Listen pentru Banned IPs
+    onSnapshot(collection(db, "banned_ips"), (snap) => {
+        bannedTable.innerHTML = '';
+        snap.forEach(docSnap => {
+            const d = docSnap.data();
+            bannedTable.innerHTML += `
+                <tr>
+                    <td style="font-size:10px;">${docSnap.id}<br><small>${d.username || 'N/A'}</small></td>
+                    <td style="font-size:10px;">${d.reason}</td>
+                    <td><button class="filter-btn" style="padding:5px 10px; font-size:8px; border-color:#ff4757;" onclick="unbanIP('${docSnap.id}')">UNBAN</button></td>
+                </tr>`;
+        });
+    });
+};
+
+window.unbanIP = async (ip) => {
+    if(confirm(`Scoți ban-ul pentru ${ip}?`)) {
+        await deleteDoc(doc(db, "banned_ips", ip));
+        showToast("IP Debanat!");
     }
 };
 
@@ -4244,6 +4321,11 @@ window.switchSection = (sectionId, btnElement) => {
                 if(typeof runAltAccountDetector === "function") runAltAccountDetector();
             }
             break;
+
+
+case 'sanctions-view':
+    window.runSanctionsAnalytics();
+    break;
 
         // --- NOU: REȚEA REFERINȚE ---
         case 'referral-network-view':
