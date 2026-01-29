@@ -8388,38 +8388,35 @@ window.doc = doc;
 window.updateDoc = updateDoc;
 
 
-// --- SISTEM LOGARE ACTIVITATE BOT ---
+// --- SISTEM LOGARE ACTIVITATE BOT (ACTUALIZAT) ---
 window.logBotInteraction = async function(userText, botResponse) {
     if (!db || !userText || !botResponse) return;
 
-    // Curățăm textul pentru a-l folosi ca ID (fără puncte, slash-uri sau caractere interzise în Firebase)
-    const cleanQuestion = userText.toLowerCase().trim().substring(0, 100).replace(/[.#$[\]]/g, "_");
-    
-    // Curățăm răspunsul de tag-uri HTML (ca să nu avem cod în ID)
-    const cleanReply = botResponse.replace(/<[^>]*>?/gm, '').substring(0, 100).replace(/[.#$[\]]/g, "_");
+    // Curățăm textele pentru a genera ID-uri sigure (fără caractere interzise)
+    const qId = userText.toLowerCase().trim().substring(0, 50).replace(/[.#$[\]/]/g, "_");
+    const rId = botResponse.replace(/<[^>]*>?/gm, '').toLowerCase().trim().substring(0, 50).replace(/[.#$[\]/]/g, "_");
 
-    if (!cleanQuestion || !cleanReply) return;
+    if (!qId || !rId) return;
 
     try {
-        // Document pentru Întrebarea utilizatorului
-        const qRef = doc(db, "bot_usage_stats", `q_${cleanQuestion}`);
-        // Document pentru Răspunsul botului
-        const rRef = doc(db, "bot_usage_stats", `r_${cleanReply}`);
+        const qRef = doc(db, "bot_usage_stats", `q_${qId}`);
+        const rRef = doc(db, "bot_usage_stats", `r_${rId}`);
 
-        // Incrementăm întrebarea
+        // Salvăm/Incrementăm întrebarea
         await setDoc(qRef, { 
-            text: userText, 
+            text: userText.trim(), 
             count: increment(1), 
             type: "question" 
         }, { merge: true });
 
-        // Incrementăm răspunsul
+        // Salvăm/Incrementăm răspunsul
         await setDoc(rRef, { 
-            text: botResponse.replace(/<[^>]*>?/gm, ''), 
+            text: botResponse.replace(/<[^>]*>?/gm, '').trim(), 
             count: increment(1), 
             type: "reply" 
         }, { merge: true });
 
+        console.log("Log Bot: Success");
     } catch (e) { console.error("Bot Logging Error:", e); }
 };
 // Helper să vedem dacă suntem pe PC
@@ -10137,4 +10134,5 @@ function generateDailyIds() {
   </script>
 </body>
 </html>
+
 
