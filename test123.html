@@ -2678,10 +2678,10 @@ window.loadTransactions = function() {
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    // Acum tabelul se va schimba din "Se așteaptă datele" în "Se conectează"
-    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
 
-    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(100));
+    // IMPORTANT: Asigură-te că ai index creat pentru "timestamp" desc
+    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         if (snapshot.empty) {
@@ -2693,19 +2693,24 @@ window.loadTransactions = function() {
         snapshot.forEach((doc) => {
             const t = doc.data();
             
-            // --- FIX DATE VECHI ---
+            // Mapare câmpuri conform paginii vechi (Istoric)
+            // Pagina veche folosește 'userImage', nu 'image'
             const pfp = t.userImage || t.image || "https://i.ibb.co/XyqWk9N/def-user.png";
-            const uName = t.username || "Utilizator Anonim";
+            const uName = t.username || "Anonim";
             
+            // Formatare Dată
             let dateStr = "Recent";
             if (t.timestamp && t.timestamp.toDate) {
                 const d = t.timestamp.toDate();
                 dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
+            // Calcul Sumă (Unele sunt stringuri în DB, le forțăm în Number)
             const amountVal = Number(t.amount || 0);
-            const isDiamonds = (t.type === "DIAMONDS" || t.currency === "DIAMONDS");
+            const isDiamonds = (t.type === "DIAMONDS");
             const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+            
+            // Culori ca în pagina veche
             const amountClass = amountVal >= 0 ? "val-plus" : "val-minus";
             const amountSign = amountVal >= 0 ? "+" : "";
 
@@ -2717,7 +2722,7 @@ window.loadTransactions = function() {
                             <div><div class="td-name">${uName}</div></div>
                         </div>
                     </td>
-                    <td style="color:#888; font-size:11px;">${dateStr}</td>
+                    <td style="color:#888; font-size:11px; font-family: 'Orbitron';">${dateStr}</td>
                     <td style="font-size:12px; color:#fff;">${t.description || "-"}</td>
                     <td><span class="source-tag">${t.source || "SYSTEM"}</span></td>
                     <td>
@@ -2731,12 +2736,9 @@ window.loadTransactions = function() {
 
     }, (error) => {
         console.error("Firestore Error:", error);
-        if (error.message.includes("index")) {
-            const url = error.message.match(/https:\/\/[^ ]*/)[0];
-            tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">
-                ⚠️ Trebuie să activezi Indexul: <br> <a href="${url}" target="_blank" style="color:#fff;">CLICK AICI</a>
-            </td></tr>`;
-        }
+        tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">
+            ⚠️ Eroare: ${error.message}
+        </td></tr>`;
     });
 };
 
