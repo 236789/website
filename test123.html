@@ -2750,7 +2750,6 @@ let dashboardTxnUnsub = null;
 let rawTxns = []; 
 let currentTxnType = 'ALL';
 let currentTxnSource = 'ALL';
-let txnLimit = 100; // Începem cu 100
 
 window.loadTransactions = function() {
     const tableBody = document.getElementById('txnTableBody');
@@ -2759,9 +2758,17 @@ window.loadTransactions = function() {
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
+    // MODIFICARE AICI: Ștergem tabelul DOAR dacă este prima încărcare (rawTxns e gol)
+    if (rawTxns.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
+    } else {
+        // Dacă deja avem date, doar schimbăm textul butonului ca feedback vizual
+        if (loadMoreBtn) {
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SE ÎNCARCĂ...';
+        }
+    }
 
-    // Folosim variabila txnLimit pentru a putea încărca mai multe
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(txnLimit));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
@@ -2780,20 +2787,29 @@ window.loadTransactions = function() {
             });
         });
 
-        // Arătăm butonul doar dacă am ajuns la limită (semn că mai sunt date)
-        if (snapshot.size >= txnLimit) {
-            loadMoreBtn.style.display = 'flex';
-        } else {
-            loadMoreBtn.style.display = 'none';
+        // Resetăm butonul după ce vin datele
+        if (loadMoreBtn) {
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.innerHTML = '<i class="fas fa-arrow-down"></i> ÎNCARCĂ MAI MULTE';
+            
+            // Arătăm butonul doar dacă am ajuns la limită
+            if (snapshot.size >= txnLimit) {
+                loadMoreBtn.style.display = 'flex';
+            } else {
+                loadMoreBtn.style.display = 'none';
+            }
         }
 
         applyTxnFilters();
+    }, (error) => {
+        console.error(error);
+        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
     });
 };
 
-// FUNCȚIA PENTRU BUTONUL "MAI MULTE"
+// Funcția loadMore rămâne la fel, dar acum loadTransactions e mai "inteligentă"
 window.loadMoreTransactions = function() {
-    txnLimit += 100; // Mai adăugăm 100 de rânduri la fiecare click
+    txnLimit += 100;
     window.loadTransactions();
 };
 
