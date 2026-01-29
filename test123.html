@@ -3297,56 +3297,80 @@ window.loadBotAnalytics = function() {
     const topUsersTable = document.getElementById('botTopUsersTable');
     const questionsTable = document.getElementById('botCommonQuestionsTable');
     const repliesTable = document.getElementById('botCommonRepliesTable');
+    
     if (!topUsersTable || !questionsTable || !repliesTable) return;
 
-    // 1. TOP UTILIZATORI (Din cachedUsers - asigura-te ca loadAllUsers() a rulat)
-    let botUsers = cachedUsers
-        .filter(u => (u.kevinMessagesToday || 0) > 0)
-        .sort((a, b) => b.kevinMessagesToday - a.kevinMessagesToday);
+    // --- 1. TOP UTILIZATORI (Logică de calcul) ---
+    // Definim o funcție internă pe care o putem apela de mai multe ori
+    const refreshTopUsers = () => {
+        if (cachedUsers.length === 0) {
+            topUsersTable.innerHTML = "<tr><td style='padding:20px; color:#888;'>Se așteaptă datele de la utilizatori...</td></tr>";
+            return;
+        }
 
-    document.getElementById('botActiveUsers').innerText = botUsers.length;
-    let totalMsgs = 0;
-    botUsers.forEach(u => totalMsgs += u.kevinMessagesToday);
-    document.getElementById('botTotalMsgs').innerText = totalMsgs;
+        let botUsers = cachedUsers
+            .filter(u => (u.kevinMessagesToday || 0) > 0)
+            .sort((a, b) => b.kevinMessagesToday - a.kevinMessagesToday);
 
-    topUsersTable.innerHTML = botUsers.slice(0, 10).map(u => `
-        <tr>
-            <td style="text-align:left; padding-left:15px; display:flex; align-items:center; gap:10px;">
-                <img src="${u.pfp}" style="width:25px; height:25px; border-radius:50%; border:1px solid var(--primary);">
-                <span style="font-size:12px;">${u.username}</span>
-            </td>
-            <td style="font-family:'Orbitron'; font-weight:800; color:var(--primary);">${u.kevinMessagesToday}</td>
-        </tr>
-    `).join('') || "<tr><td style='padding:20px; color:#888;'>Nicio interacțiune azi.</td></tr>";
+        document.getElementById('botActiveUsers').innerText = botUsers.length;
+        
+        let totalMsgs = 0;
+        botUsers.forEach(u => totalMsgs += (u.kevinMessagesToday || 0));
+        document.getElementById('botTotalMsgs').innerText = totalMsgs;
 
-    // 2. FRECVENȚĂ ÎNTREBĂRI ȘI RĂSPUNSURI (Realtime din Firebase)
+        topUsersTable.innerHTML = botUsers.slice(0, 10).map(u => `
+            <tr>
+                <td style="text-align:left; padding-left:15px; display:flex; align-items:center; gap:10px;">
+                    <img src="${u.pfp}" style="width:25px; height:25px; border-radius:50%; border:1px solid var(--primary);">
+                    <span style="font-size:12px; color:#fff;">${u.username}</span>
+                </td>
+                <td style="font-family:'Orbitron'; font-weight:800; color:var(--primary);">${u.kevinMessagesToday}</td>
+            </tr>
+        `).join('') || "<tr><td style='padding:20px; color:#888;'>Nicio interacțiune azi.</td></tr>";
+    };
+
+    // Rulăm o dată la început
+    refreshTopUsers();
+
+    // --- 2. CELE MAI FRECVENTE ÎNTREBĂRI ȘI RĂSPUNSURI (Realtime) ---
+    // Adăugăm un console.log aici să vedem dacă Firebase răspunde
     onSnapshot(collection(db, "bot_usage_stats"), (snapshot) => {
+        console.log("📥 Bot Stats received, docs:", snapshot.size);
+        
         let questions = [];
         let replies = [];
 
         snapshot.forEach(doc => {
             const data = doc.data();
-            // IMPORTANT: Citim data.text, nu doc.id
-            if (data.type === "question") questions.push({ text: data.text, count: data.count });
-            if (data.type === "reply") replies.push({ text: data.text, count: data.count });
+            // Folosim data.text (salvat de index.html) sau doc.id ca fallback
+            const label = data.text || doc.id.replace(/^q_|^r_/, "");
+            
+            if (data.type === "question") questions.push({ text: label, count: data.count });
+            if (data.type === "reply") replies.push({ text: label, count: data.count });
         });
 
+        // Sortăm după cele mai folosite
         questions.sort((a, b) => b.count - a.count);
         replies.sort((a, b) => b.count - a.count);
 
         questionsTable.innerHTML = questions.slice(0, 10).map(q => `
             <tr>
                 <td style="text-align:left; padding-left:15px; font-size:11px; color:#ccc;">"${q.text}"</td>
-                <td style="font-family:'Orbitron'; font-weight:800; color:#ffd700; width:50px;">${q.count}</td>
+                <td style="font-family:'Orbitron'; font-weight:800; color:#ffd700; width:50px; text-align:center;">${q.count}</td>
             </tr>
-        `).join('') || "<tr><td style='padding:20px;'>Lipsă date</td></tr>";
+        `).join('') || "<tr><td style='padding:20px; color:#888;'>Lipsă date întrebări</td></tr>";
 
         repliesTable.innerHTML = replies.slice(0, 10).map(r => `
             <tr>
                 <td style="text-align:left; padding-left:25px; font-size:11px; color:#888;">${r.text}</td>
                 <td style="font-family:'Orbitron'; font-weight:800; color:#2ecc71; width:80px; text-align:center;">${r.count}</td>
             </tr>
-        `).join('') || "<tr><td colspan='2' style='padding:20px;'>Lipsă date</td></tr>";
+        `).join('') || "<tr><td colspan='2' style='padding:20px; color:#888;'>Lipsă date răspunsuri</td></tr>";
+        
+        // De fiecare dată când se schimbă ceva la bot, mai verificăm o dată și topul userilor
+        refreshTopUsers();
+    }, (err) => {
+        console.error("❌ Eroare la citirea bot_usage_stats:", err);
     });
 };
 
