@@ -3800,19 +3800,22 @@ window.loadTransactions = function() {
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         rawTxns = [];
-        snapshot.forEach((doc) => {
-            const t = doc.data();
-            rawTxns.push({
-                id: doc.id,
-                username: t.username || "Utilizator",
-                pfp: t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png",
-                timestamp: t.timestamp,
-                description: t.description || "-",
-                source: t.source || "SYSTEM",
-                amount: Number(t.amount || 0),
-                type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
-            });
-        });
+// În interiorul window.loadTransactions, înlocuiește snapshot.forEach cu asta:
+snapshot.forEach((docSnap) => {
+    const t = docSnap.data();
+    rawTxns.push({
+        id: docSnap.id,
+        username: t.username || "Utilizator",
+        pfp: t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png",
+        timestamp: t.timestamp,
+        description: t.description || "-",
+        source: t.source || "SYSTEM",
+        amount: Number(t.amount || 0),
+        // ADAUGĂ ACEASTĂ LINIE (Esențială pentru a ști CUI s-a donat)
+        targetUid: t.targetUid || null, 
+        type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
+    });
+});
 
         if (loadMoreBtn) {
             loadMoreBtn.disabled = false;
@@ -3837,7 +3840,7 @@ window.loadTransactions = function() {
 
 // Funcția loadMore rămâne la fel, dar acum loadTransactions e mai "inteligentă"
 window.loadMoreTransactions = function() {
-    txnLimit += 100;
+    txnLimit += 500;
     window.loadTransactions();
 };
 
@@ -3848,24 +3851,19 @@ window.runDonationAnalytics = function() {
     const searchVal = document.getElementById('donationSearchInput').value.toLowerCase();
     if (!tableBody) return;
 
-    // 1. Filtrăm tranzacțiile să fie doar Donații
-    // Verificăm dacă sursa este "Donatie", "Donation" sau dacă descrierea implică o donație
+    // 1. Filtrăm toate tranzacțiile de tip donație din istoricul complet (rawTxns)
     const donations = rawTxns.filter(t => {
-        const isDonation = t.source.toLowerCase().includes('donat') || 
-                           t.description.toLowerCase().includes('donat');
-        
-        const matchesSearch = t.username.toLowerCase().includes(searchVal) || 
-                             t.description.toLowerCase().includes(searchVal);
-
+        const isDonation = t.source === "Donatie" || t.source === "Donation" || t.description.toLowerCase().includes('donat');
+        const matchesSearch = t.username.toLowerCase().includes(searchVal) || t.description.toLowerCase().includes(searchVal);
         return isDonation && matchesSearch;
     });
 
     if (donations.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio donație găsită.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio donație găsită în istoric.</td></tr>';
         return;
     }
 
-    // 2. Randare Tabel
+    // 2. Randare Tabel cu identificarea receptorului
     tableBody.innerHTML = donations.map(t => {
         let dateStr = "Recent";
         if (t.timestamp && t.timestamp.toDate) {
@@ -3873,25 +3871,41 @@ window.runDonationAnalytics = function() {
             dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
         }
 
-        // Extragem numele receptorului din descriere (Ex: "Donatie catre Lost Soul" -> "Lost Soul")
-        let receptor = t.description.split('catre').pop().split('to').pop().trim();
-        if (receptor === t.description) receptor = "Sistem / Altul";
+        // --- LOGICĂ IDENTIFICARE RECEPTOR ---
+        // Căutăm în cachedUsers persoana care a primit banii
+        // Verificăm dacă tranzacția are targetUid (ID-ul celui care a primit)
+        let receptorObj = cachedUsers.find(u => u.uid === t.targetUid);
+        
+        let recPfp = "https://i.ibb.co/XyqWk9N/def-user.png";
+        let recName = "Utilizator Șters/Sistem";
+
+        if (receptorObj) {
+            recPfp = receptorObj.pfp;
+            recName = receptorObj.username;
+        } else {
+            // Fallback: dacă targetUid lipsește, încercăm să extragem numele din descriere
+            const extracted = t.description.split('catre').pop().split('to').pop().trim();
+            if (extracted !== t.description) recName = extracted;
+        }
 
         return `
             <tr>
                 <td class="sticky-left">
                     <div class="td-user">
-                        <img src="${t.pfp}" class="td-pfp" style="border-color: #00ff88;">
+                        <img src="${t.pfp}" class="td-pfp">
                         <div class="td-name">${t.username}</div>
                     </div>
                 </td>
                 <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
-                <td style="font-weight:700; color:var(--primary); font-family:'Orbitron'; font-size:12px;">
-                    <i class="fas fa-user-tag" style="font-size:10px; opacity:0.5;"></i> ${receptor}
+                <td>
+                    <div class="td-user">
+                        <img src="${recPfp}" class="td-pfp" style="border-color: var(--secondary); width:25px; height:25px;">
+                        <div class="td-name" style="font-size:11px; color:var(--primary);">${recName}</div>
+                    </div>
                 </td>
                 <td>
-                    <div class="currency-simple val-plus" style="color:#00ff88;">
-                        ${t.amount} <img src="https://iili.io/fhc1SKQ.png" width="16" style="margin-left:5px;">
+                    <div class="currency-simple" style="color:#00ff88; font-weight:900;">
+                        ${Math.abs(t.amount)} <img src="https://iili.io/fhc1SKQ.png" width="16" style="margin-left:5px;">
                     </div>
                 </td>
             </tr>
