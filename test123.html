@@ -3722,67 +3722,6 @@ window.toggleFolder = function(element) {
     parent.classList.toggle('open');
 };
 
-window.switchSection = (sectionId, btnElement) => {
-    // 1. Curățăm interfața (Ascundem tot)
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
-
-    // 2. Afișăm secțiunea dorită
-    const target = document.getElementById(sectionId);
-    if(target) target.classList.add('active');
-    if(btnElement) btnElement.classList.add('active');
-
-    // 3. Verificăm dacă avem nevoie de baza de date
-    const needsUsers = [
-        'transactions-view', 
-        'economy-view', 
-        'user-growth-view', 
-        'alt-detector-view', 
-        'referral-network-view',
-        'inventory-stats-view'
-    ];
-
-    if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
-        loadAllUsers();
-    }
-
-    // 4. Pornim logica specifică fiecărei pagini
-    switch (sectionId) {
-        case 'live-visitors-view':
-            if (typeof window.runLiveAnalytics === "function") window.runLiveAnalytics();
-            break;
-        case 'inventory-stats-view':
-            if (typeof window.runInventoryAnalytics === "function") window.runInventoryAnalytics();
-            break;
-        case 'wall-analytics-view':
-            if (typeof window.runWallAnalytics === "function") window.runWallAnalytics();
-            break;
-        case 'bot-analytics-view':
-            if (typeof window.loadBotAnalytics === "function") window.loadBotAnalytics();
-            break;
-        case 'transactions-history-view':
-            if (typeof window.loadTransactions === "function") window.loadTransactions();
-            break;
-        case 'traffic-view':
-            if (typeof window.loadTrafficStats === "function") window.loadTrafficStats();
-            break;
-        case 'economy-view':
-            if (typeof window.updateEconomyStats === "function") window.updateEconomyStats();
-            break;
-        case 'user-growth-view':
-            if (typeof window.runUserGrowthAnalytics === "function") window.runUserGrowthAnalytics();
-            break;
-        case 'alt-detector-view':
-            if (typeof window.runAltAccountDetector === "function") window.runAltAccountDetector();
-            break;
-        case 'referral-network-view':
-            if (typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics();
-            break;
-        case 'sanctions-view':
-            if (typeof window.runSanctionsAnalytics === "function") window.runSanctionsAnalytics();
-            break;
-    }
-};
 
   </script>
  <!-- FIREBASE GLOBAL LOGIC -->
@@ -4744,78 +4683,67 @@ document.addEventListener('click', (e) => {
     }
 });
 window.switchSection = (sectionId, btnElement) => {
-    // 1. Gestionare vizibilitate interfață
+    // 1. Curățăm interfața (Ascundem tot)
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
 
+    // 2. Afișăm secțiunea dorită
     const target = document.getElementById(sectionId);
     if(target) target.classList.add('active');
     if(btnElement) btnElement.classList.add('active');
 
-    // 2. Verificăm dacă secțiunea are nevoie de datele utilizatorilor (cachedUsers)
-    // Am adăugat 'referral-network-view' în listă
-    const needsUsers = ['transactions-view', 'economy-view', 'user-growth-view', 'alt-detector-view', 'referral-network-view'];
-    if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
+    // 3. Verificăm dacă avem nevoie de baza de date
+    const needsUsers = [
+        'transactions-view', 
+        'economy-view', 
+        'user-growth-view', 
+        'alt-detector-view', 
+        'referral-network-view',
+        'inventory-stats-view'
+    ];
+
+    // Important: if we haven't loaded users yet, do it now
+    if (needsUsers.includes(sectionId) && (window.cachedUsers === undefined || window.cachedUsers.length === 0)) {
         loadAllUsers();
     }
 
+    // 4. Pornim logica specifică fiecărei pagini
     switch (sectionId) {
+        case 'inventory-stats-view':
+            // Check if data is already here to avoid staying on loader
+            if (window.cachedUsers && window.cachedUsers.length > 0) {
+                window.runInventoryAnalytics();
+            }
+            break;
         case 'live-visitors-view':
             if (typeof window.runLiveAnalytics === "function") window.runLiveAnalytics();
             break;
-
         case 'wall-analytics-view':
             if (typeof window.runWallAnalytics === "function") window.runWallAnalytics();
             break;
-
         case 'bot-analytics-view':
             if (typeof window.loadBotAnalytics === "function") window.loadBotAnalytics();
             break;
-
         case 'transactions-history-view':
-            window.loadTransactions();
+            if (typeof window.loadTransactions === "function") window.loadTransactions();
             break;
-
         case 'traffic-view':
-            window.loadTrafficStats();
+            if (typeof window.loadTrafficStats === "function") window.loadTrafficStats();
             break;
-
         case 'economy-view':
-            if (rawTxns.length === 0) window.loadTransactions();
-            setTimeout(() => { if(typeof updateEconomyStats === "function") updateEconomyStats(); }, 500);
+            if (typeof window.updateEconomyStats === "function") window.updateEconomyStats();
             break;
-
         case 'user-growth-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => window.runUserGrowthAnalytics(), 1000);
-            } else {
-                window.runUserGrowthAnalytics();
-            }
+            if (typeof window.runUserGrowthAnalytics === "function") window.runUserGrowthAnalytics();
             break;
-
         case 'alt-detector-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => { if(typeof runAltAccountDetector === "function") runAltAccountDetector(); }, 1000);
-            } else {
-                if(typeof runAltAccountDetector === "function") runAltAccountDetector();
-            }
+            if (typeof window.runAltAccountDetector === "function") window.runAltAccountDetector();
             break;
-
-
-case 'sanctions-view':
-    window.runSanctionsAnalytics();
-    break;
-
-        // --- NOU: REȚEA REFERINȚE ---
         case 'referral-network-view':
-            if (cachedUsers.length === 0) {
-                // Așteptăm să se încarce datele din Firebase dacă array-ul e gol
-                setTimeout(() => { 
-                    if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics(); 
-                }, 1000);
-            } else {
-                if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics();
-            }
+            if (typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics();
+            break;
+        case 'sanctions-view':
+            if (typeof window.runSanctionsAnalytics === "function") window.runSanctionsAnalytics();
             break;
     }
 };
@@ -4891,7 +4819,8 @@ function loadAllUsers() {
     const q = query(collection(db, "accounts")); 
     
     onSnapshot(q, (snapshot) => {
-        cachedUsers = []; 
+        // We attach it to window to make sure the inventory function can see it
+        window.cachedUsers = []; 
 
         snapshot.forEach((doc) => {
             const data = doc.data();
@@ -4923,33 +4852,35 @@ function loadAllUsers() {
             let cleanDonation = Number(donationValue);
             if (isNaN(cleanDonation)) cleanDonation = 0;
 
-// ... în interiorul loadAllUsers, înSnapshot ...
-cachedUsers.push({
-    uid: doc.id,
-    username: data.username || "Unknown",
-    email: data.email || "",
-    pfp: data.image || "https://iili.io/fXks1Dv.png",
-    coins: Number(data.coins) || 0,
-    diamonds: Number(data.diamonds) || 0,
-    donated: cleanDonation,
-    streak: Number(data.streak) || 0,
-    referralHistory: data.referralHistory || [],
-    joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
-    joinDateStr: joinDate,
-    statusHtml: statusHtml,
-    isOnlineBool: isOnline,
-    ip: data.ip || "Hidden",
+            // Mapping the full object
+            window.cachedUsers.push({
+                uid: doc.id,
+                username: data.username || "Unknown",
+                email: data.email || "",
+                pfp: data.image || "https://iili.io/fXks1Dv.png",
+                coins: Number(data.coins) || 0,
+                diamonds: Number(data.diamonds) || 0,
+                donated: cleanDonation,
+                streak: Number(data.streak) || 0,
+                referralHistory: data.referralHistory || [],
+                joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
+                joinDateStr: joinDate,
+                statusHtml: statusHtml,
+                isOnlineBool: isOnline,
+                ip: data.ip || "Hidden",
 
-    // ACESTE LINII SUNT OBLIGATORII PENTRU STATISTICI:
-    ownedBadges: data.ownedBadges || [],
-    ownedBanners: data.ownedBanners || [],
-    ownedFrames: data.ownedFrames || [],
-    ownedTexts: data.ownedTexts || []
-});
+                // ACESTE LINII SUNT OBLIGATORII PENTRU STATISTICI:
+                ownedBadges: data.ownedBadges || [],
+                ownedBanners: data.ownedBanners || [],
+                ownedFrames: data.ownedFrames || [],
+                ownedTexts: data.ownedTexts || []
+            });
         });
 
         // 1. Aplicăm sortarea în tabelul principal (Database)
-        applySort(currentSortCriteria);
+        if (typeof applySort === "function") {
+            applySort(currentSortCriteria);
+        }
         
         // 2. ACTUALIZARE REAL-TIME: RAPORT ECONOMIC
         if(typeof updateEconomyStats === "function") {
@@ -4964,6 +4895,11 @@ cachedUsers.push({
         // 4. ACTUALIZARE REAL-TIME: ANALIZĂ UTILIZATORI NOI (24H)
         if(typeof runUserGrowthAnalytics === "function") {
             runUserGrowthAnalytics();
+        }
+
+        // 5. UPDATE INVENTORY STATS (FIXES THE LOADING BUG)
+        if(typeof runInventoryAnalytics === "function") {
+            runInventoryAnalytics();
         }
 
     }, (error) => {
