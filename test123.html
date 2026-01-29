@@ -2266,6 +2266,30 @@
     width: 32px;
     height: 32px;
 }
+
+
+
+.risk-badge {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 800;
+    font-family: 'Orbitron';
+    text-transform: uppercase;
+}
+.risk-low { background: rgba(255, 215, 0, 0.1); color: #ffd700; border: 1px solid #ffd700; }
+.risk-high { background: rgba(255, 71, 87, 0.1); color: #ff4757; border: 1px solid #ff4757; animation: pulseRed 2s infinite; }
+
+.alt-user-pill {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255,255,255,0.05);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin: 2px;
+    font-size: 11px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
   </style>
 </head>
 <body>
@@ -2580,6 +2604,22 @@
     <i class="fas fa-chart-pie" style="color: var(--primary);"></i>
     <span>Raport Economic</span>
 </a>
+
+
+<!-- SIDEBAR LINK: ALT DETECTOR -->
+<a href="#" class="ga-nav-item" onclick="switchSection('alt-detector-view', this)">
+    <i class="fas fa-user-shield" style="color: #ff4757;"></i>
+    <span>Detector Multi-Account</span>
+</a>
+
+<!-- SIDEBAR LINK: NEW USERS -->
+<a href="#" class="ga-nav-item" onclick="switchSection('user-growth-view', this)">
+    <i class="fas fa-user-plus" style="color: #2ecc71;"></i>
+    <span>Analiză Utilizatori Noi</span>
+</a>
+
+
+
     </div>
 </aside>
 
@@ -2840,6 +2880,87 @@
     </div>
 </div>
 
+
+<!-- VIEW 5: ALT ACCOUNT DETECTOR -->
+<div id="alt-detector-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 30px; font-size:24px;">
+        DETECTOR ACTIVITĂȚI SUSPECTE
+    </h2>
+
+    <p style="color: #888; text-align: center; margin-bottom: 20px; font-size: 13px;">
+        SISTEMUL AFIȘEAZĂ DOAR ADRESELE IP ASOCIATE CU MAI MULT DE UN SINGUR CONT.
+    </p>
+
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th>ADRESĂ IP</th>
+                    <th>CONTURI DETECTATE</th>
+                    <th>NR. CONTURI</th>
+                    <th>GRAD RISC</th>
+                </tr>
+            </thead>
+            <tbody id="altDetectorTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">SE ANALIZEAZĂ BAZA DE DATE...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- VIEW 7: NEW USERS ANALYTICS -->
+<div id="user-growth-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 30px; font-size:24px;">
+        MONITORIZARE CREȘTERE (ULTIMELE 24H)
+    </h2>
+
+    <div class="stats-professional-grid" style="margin-bottom: 30px;">
+        <div class="stat-card-pro border-green">
+            <span class="stat-card-label">UTILIZATORI NOI ÎNREGISTRAȚI</span>
+            <span class="stat-card-value text-green" id="countNewUsers24h">0</span>
+            <span class="stat-card-sub">CONTURI CREATE ÎN ULTIMELE 24 DE ORE</span>
+        </div>
+        <div class="stat-card-pro">
+            <span class="stat-card-label">VARF DE ÎNSCRIERI (ORAR)</span>
+            <span class="stat-card-value" id="peakSignupHour">--:--</span>
+            <span class="stat-card-sub">INTERVALUL CU CEA MAI MARE ACTIVITATE</span>
+        </div>
+    </div>
+
+    <!-- GRAFIC EVOLUȚIE ORARĂ -->
+    <div class="stat-card-pro" style="width: 100%; max-width: 1000px; margin: 0 auto 40px; padding: 40px 20px;">
+        <span class="stat-card-label" style="margin-bottom: 25px; display: block; text-align: center;">FLUXUL ÎNREGISTRĂRILOR (TIMELINE 24H)</span>
+        <div class="activity-chart-container" id="signupChart" style="height: 120px;">
+            <!-- Bare generate automat prin JS -->
+        </div>
+        <div class="chart-hours-labels">
+            <span>Acum 24h</span>
+            <span>-18h</span>
+            <span>-12h</span>
+            <span>-6h</span>
+            <span>Prezent</span>
+        </div>
+    </div>
+
+    <!-- LISTĂ UTILIZATORI NOI -->
+    <h3 class="metallic-title-big" style="font-size: 18px; text-align: left; margin-bottom: 15px;">LISTĂ DETALIATĂ UTILIZATORI RECENTI</h3>
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">UTILIZATOR</th>
+                    <th>DATA ÎNSCRIERII</th>
+                    <th>EMAIL</th>
+                    <th>ADRESĂ IP</th>
+                </tr>
+            </thead>
+            <tbody id="newUsersTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se analizează baza de date...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -2979,6 +3100,121 @@ window.loadMoreTransactions = function() {
     window.loadTransactions();
 };
 
+window.runUserGrowthAnalytics = function() {
+    const tableBody = document.getElementById('newUsersTableBody');
+    const chartContainer = document.getElementById('signupChart');
+    if (!tableBody || !chartContainer) return;
+
+    const acum = Date.now();
+    const oZiInMs = 24 * 60 * 60 * 1000;
+    
+    let newUsers = [];
+    let hourlyStats = new Array(24).fill(0); // 24 sloturi pentru ore
+
+    // 1. Filtrăm utilizatorii din ultimele 24 ore
+    cachedUsers.forEach(u => {
+        if (u.joinedAt) {
+            const diff = acum - u.joinedAt;
+            if (diff <= oZiInMs) {
+                newUsers.push(u);
+                
+                // Calculăm în care din cele 24 de ore s-a înscris (0 = prezent, 23 = acum 24h)
+                const hoursAgo = Math.floor(diff / (1000 * 60 * 60));
+                if (hoursAgo < 24) {
+                    hourlyStats[23 - hoursAgo]++; // Inversăm pentru a afișa de la stânga la dreapta
+                }
+            }
+        }
+    });
+
+    // Sortăm lista: cei mai recenți primii
+    newUsers.sort((a, b) => b.joinedAt - a.joinedAt);
+
+    // Update Statistici
+    document.getElementById('countNewUsers24h').innerText = newUsers.length;
+    
+    const maxSignups = Math.max(...hourlyStats);
+    const peakHourIndex = hourlyStats.indexOf(maxSignups);
+    document.getElementById('peakSignupHour').innerText = maxSignups > 0 ? `Acum ${23 - peakHourIndex} ore` : "N/A";
+
+    // 2. Randare Grafic (Bare)
+    chartContainer.innerHTML = hourlyStats.map((count, i) => {
+        const height = maxSignups > 0 ? (count / maxSignups) * 100 : 0;
+        return `<div class="activity-bar" style="height: ${height}%; width: 3.5%;" data-count="${count}"></div>`;
+    }).join('');
+
+    // 3. Randare Tabel Utilizatori
+    if (newUsers.length === 0) {
+        tableBody.innerHTML = "<tr><td colspan='4' style='padding:40px; text-align:center; color:#888;'>NU S-AU ÎNREGISTRAT UTILIZATORI NOI ÎN ULTIMELE 24 DE ORE.</td></tr>";
+        return;
+    }
+
+    tableBody.innerHTML = newUsers.map(u => `
+        <tr>
+            <td class="sticky-left">
+                <div class="td-user">
+                    <img src="${u.pfp}" class="td-pfp">
+                    <div class="td-name">${u.username}</div>
+                </div>
+            </td>
+            <td style="color:#aaa; font-family:'Orbitron'; font-size:11px;">${u.joinDateStr}</td>
+            <td style="font-size:12px;">${u.email}</td>
+            <td style="font-family:monospace; opacity:0.6; font-size:11px;">${u.ip}</td>
+        </tr>
+    `).join('');
+};
+
+window.runAltAccountDetector = function() {
+    const tableBody = document.getElementById('altDetectorTableBody');
+    if (!tableBody) return;
+
+    // 1. Grupare utilizatori după IP
+    let ipGroups = {};
+
+    cachedUsers.forEach(user => {
+        const ip = user.ip || "Unknown";
+        if (ip === "Unknown" || ip === "Hidden") return;
+
+        if (!ipGroups[ip]) {
+            ipGroups[ip] = [];
+        }
+        ipGroups[ip].push(user);
+    });
+
+    // 2. Filtrare: Păstrăm doar IP-urile cu mai mult de 1 cont
+    let suspiciousIps = Object.entries(ipGroups).filter(([ip, users]) => users.length > 1);
+
+    // 3. Sortare: Cele mai multe conturi primele
+    suspiciousIps.sort((a, b) => b[1].length - a[1].length);
+
+    if (suspiciousIps.length === 0) {
+        tableBody.innerHTML = "<tr><td colspan='4' style='padding:40px; text-align:center; color:#2ecc71;'>NU S-AU DETECTAT CONTURI MULTIPLE. TOATE ADRESELE IP SUNT UNICE.</td></tr>";
+        return;
+    }
+
+    // 4. Randare Tabel
+    tableBody.innerHTML = suspiciousIps.map(([ip, users]) => {
+        const count = users.length;
+        const riskClass = count > 3 ? 'risk-high' : 'risk-low';
+        const riskText = count > 3 ? 'CRITIC' : 'SUSPECT';
+
+        const userListHtml = users.map(u => `
+            <div class="alt-user-pill">
+                <img src="${u.pfp}" style="width:16px; height:16px; border-radius:50%; margin-right:5px;">
+                ${u.username}
+            </div>
+        `).join('');
+
+        return `
+            <tr>
+                <td style="font-family:monospace; color:var(--primary); font-weight:bold;">${ip}</td>
+                <td style="text-align:left; max-width: 400px;">${userListHtml}</td>
+                <td style="font-family:'Orbitron'; font-weight:900;">${count}</td>
+                <td><span class="risk-badge ${riskClass}">${riskText}</span></td>
+            </tr>
+        `;
+    }).join('');
+};
 
 
 window.updateEconomyStats = function() {
@@ -3142,9 +3378,38 @@ window.switchSection = (sectionId, btnElement) => {
         if(cachedUsers.length === 0) loadAllUsers();
         if(rawTxns.length === 0) window.loadTransactions();
         
-        // Executăm calculul statisticilor (acum va fi actualizat realtime de listeners)
+        // Executăm calculul statisticilor (actualizat realtime de listeners)
         if(typeof updateEconomyStats === "function") {
             updateEconomyStats();
+        }
+    }
+
+
+// Actualizează switchSection adăugând acest bloc:
+if(sectionId === 'user-growth-view') {
+    if(cachedUsers.length === 0) {
+        loadAllUsers();
+        setTimeout(() => window.runUserGrowthAnalytics(), 1000);
+    } else {
+        window.runUserGrowthAnalytics();
+    }
+}
+
+    // 5. Logica pentru Detectorul Multi-Account
+    if(sectionId === 'alt-detector-view') {
+        // Detectorul funcționează pe baza listei de utilizatori (pentru scanare IP-uri)
+        if(cachedUsers.length === 0) {
+            loadAllUsers();
+            // Buffer pentru descărcarea inițială a datelor înainte de scanare
+            setTimeout(() => {
+                if(typeof runAltAccountDetector === "function") {
+                    runAltAccountDetector();
+                }
+            }, 1000);
+        } else {
+            if(typeof runAltAccountDetector === "function") {
+                runAltAccountDetector();
+            }
         }
     }
 };
@@ -3212,6 +3477,7 @@ let cachedUsers = [];
 let currentFilter = 'all';
 let currentSortCriteria = 'alpha'; // Default sort
 
+// --- REAL-TIME DATA LISTENER (ACTUALIZAT) ---
 function loadAllUsers() {
     const tableBody = document.getElementById('analyticsTableBody');
     if(tableBody) tableBody.innerHTML = '<tr><td colspan="8" style="padding:40px;">Se conectează la server...</td></tr>';
@@ -3224,12 +3490,14 @@ function loadAllUsers() {
         snapshot.forEach((doc) => {
             const data = doc.data();
             
+            // --- LOGICĂ DATĂ ÎNSCRIERE ---
             let joinDate = "N/A";
             if (data.joinedAt && data.joinedAt.toDate) {
                 const d = data.joinedAt.toDate();
                 joinDate = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
             }
 
+            // --- LOGICĂ STATUS ONLINE ---
             let isOnline = false;
             let statusHtml = '<span class="status-dot offline"></span>Offline';
             if (data.isOnline === true && data.lastActive && data.lastActive.toDate) {
@@ -3240,6 +3508,7 @@ function loadAllUsers() {
                 }
             }
 
+            // --- LOGICĂ NORMALIZARE DONAȚII ---
             let donationValue = 0;
             if (data.totalCoinsDonated !== undefined) donationValue = data.totalCoinsDonated;
             else if (data.donatedCoins !== undefined) donationValue = data.donatedCoins;
@@ -3252,10 +3521,14 @@ function loadAllUsers() {
                 username: data.username || "Unknown",
                 email: data.email || "",
                 pfp: data.image || "https://i.ibb.co/XyqWk9N/def-user.png",
+                
+                // Cifre economice
                 coins: Number(data.coins) || 0,
                 diamonds: Number(data.diamonds) || 0,
                 donated: cleanDonation,
                 streak: Number(data.streak) || 0,
+                
+                // Date tehnice
                 joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
                 joinDateStr: joinDate,
                 statusHtml: statusHtml,
@@ -3264,17 +3537,28 @@ function loadAllUsers() {
             });
         });
 
+        // 1. Aplicăm sortarea în tabelul principal (Database)
         applySort(currentSortCriteria);
         
-        // --- REAL-TIME UPDATE PENTRU ECONOMIE ---
-        if(typeof updateEconomyStats === "function") updateEconomyStats();
+        // 2. ACTUALIZARE REAL-TIME: RAPORT ECONOMIC
+        if(typeof updateEconomyStats === "function") {
+            updateEconomyStats();
+        }
+
+        // 3. ACTUALIZARE REAL-TIME: DETECTOR MULTI-ACCOUNT
+        if(typeof runAltAccountDetector === "function") {
+            runAltAccountDetector();
+        }
+
+        // 4. ACTUALIZARE REAL-TIME: ANALIZĂ UTILIZATORI NOI (24H)
+        if(typeof runUserGrowthAnalytics === "function") {
+            runUserGrowthAnalytics();
+        }
 
     }, (error) => {
         console.error("Realtime Error:", error);
     });
 }
-// --- SORTING LOGIC ---
-// We split this into 'sortData' (UI trigger) and 'applySort' (Internal logic)
 window.sortData = (criteria) => {
     currentSortCriteria = criteria; // Save state
     applySort(criteria);
