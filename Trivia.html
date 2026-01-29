@@ -2573,26 +2573,24 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
             alert("Eroare la salvare: " + e.message);
         }
     };
-
-
-// --- TRIVIA SYSTEM LOGIC ---
-
-// Sunete cu link-uri valide și protecție la erori
+// --- TRIVIA AUDIO SYSTEM ---
+// Folosim link-uri directe de tip .mp3/wav mai stabile
 const sfxTimer = new Audio("https://www.soundjay.com/buttons/beep-01a.mp3");
-const sfxCorrect = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
-const sfxWrong = new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg");
+const sfxCorrect = new Audio("https://www.myinstants.com/media/sounds/ding-sound-effect_1.mp3");
+const sfxWrong = new Audio("https://www.myinstants.com/media/sounds/buzzer_x.mp3");
 
 sfxTimer.volume = 0.1;
 sfxCorrect.volume = 0.3;
 sfxWrong.volume = 0.3;
 
-// Funcție pentru a "trezi" sunetul la primul click (cerință browser)
+// Funcție pentru inițializare la primul click
 document.addEventListener('click', () => {
-    sfxTimer.load();
+    sfxTimer.play().then(() => { sfxTimer.pause(); sfxTimer.currentTime = 0; }).catch(() => {});
     sfxCorrect.load();
     sfxWrong.load();
 }, { once: true });
-    
+
+
     // 2. STATE VARIABLES
     let triviaState = {
         active: false,
@@ -4458,16 +4456,28 @@ let counts = { ksda:0, geo:0, history:0, random:0, music:0, sports:0, art:0, gam
 
 
 // EXEMPLE DE ADAUGAT ÎN JOCUL DE TRIVIA (Să salveze în Firebase)
-
-// În handleAnswer (Single Player), când se răspunde:
-// În Trivia.html, verifică funcția updateTriviaStats să arate așa:
 async function updateTriviaStats(isCorrect) {
     if(!auth.currentUser) return;
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     const field = isCorrect ? "triviaStats.correctTotal" : "triviaStats.wrongTotal";
-    await updateDoc(userRef, {
-        [field]: increment(1)
-    });
+    
+    try {
+        await updateDoc(userRef, {
+            [field]: increment(1)
+        });
+    } catch(e) {
+        console.error("Eroare salvare stats user:", e);
+    }
+}
+
+async function trackCategoryUsage(catID) {
+    if(!catID) return;
+    const catRef = doc(db, "game_analytics", "trivia_popularity");
+    try {
+        await setDoc(catRef, { [catID]: increment(1) }, { merge: true });
+    } catch(e) {
+        console.error("Eroare salvare popularitate categorie:", e);
+    }
 }
 
 // În startGame (Single) sau decideCategoryAndStart (Multi):
