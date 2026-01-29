@@ -2561,6 +2561,54 @@
     color: #fff;
     box-shadow: 0 0 15px #ff4757;
 }
+
+
+.pop-item-card {
+    background: rgba(13, 25, 41, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 20px;
+    text-align: center;
+    transition: 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+.pop-item-card:hover {
+    border-color: #ff00ff;
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(255, 0, 255, 0.1);
+}
+.pop-count-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #ff00ff;
+    color: #000;
+    font-family: 'Orbitron';
+    font-weight: 900;
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 10px;
+}
+.pop-preview-box {
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+.pop-item-name {
+    font-family: 'Orbitron';
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+}
+.pop-item-percent {
+    font-size: 10px;
+    color: #555;
+    margin-top: 5px;
+}
   </style>
 </head>
 <body>
@@ -2715,7 +2763,7 @@
 
 <!-- SHARE LINK MODAL -->
 <div id="shareModal-v2" class="account-modal-overlay">
-    <div class="account-card-v2">
+    <div class="account-card-v2"> 
         <button class="close-pop" onclick="document.getElementById('shareModal-v2').classList.remove('active')">✕</button>
         <h2 style="color: #00ff88; font-family:'Orbitron'; font-size: 20px; margin-top: 10px;">INVITĂ UN PRIETEN</h2>
         <p style="color: #fff; margin-bottom: 20px; font-size: 13px; font-family: 'Poppins';">
@@ -2917,6 +2965,11 @@
             <i class="fas fa-comments" style="color: #FF8C1A;"></i>
             <span>Wall Activity </span>
         </a>
+
+<a href="#" class="ga-nav-item" onclick="switchSection('inventory-stats-view', this)">
+    <i class="fas fa-box-open" style="color: #ff00ff;"></i>
+    <span>Popularitate Obiecte</span>
+</a>
 
         <!-- TRAFIC -->
         <a href="#" class="ga-nav-item" onclick="switchSection('traffic-view', this)">
@@ -3512,6 +3565,27 @@
 
     </div>
 </div>
+
+
+
+<!-- VIEW 17: INVENTORY POPULARITY -->
+<div id="inventory-stats-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; color:#ff00ff;">TOP OBIECTE DEȚINUTE</h2>
+
+    <!-- Filtre Categorie -->
+    <div class="filter-row" style="margin-bottom: 30px;">
+        <div class="filter-group">
+            <button class="filter-btn active" onclick="changeInventoryFilter('badges', this)">BADGES</button>
+            <button class="filter-btn" onclick="changeInventoryFilter('frames', this)">FRAMES</button>
+            <button class="filter-btn" onclick="changeInventoryFilter('banners', this)">BANNERS</button>
+            <button class="filter-btn" onclick="changeInventoryFilter('texts', this)">TEXTS</button>
+        </div>
+    </div>
+
+    <div id="inventoryStatsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
+        <!-- Cardurile vor fi generate aici -->
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -3576,17 +3650,66 @@ window.toggleFolder = function(element) {
     parent.classList.toggle('open');
 };
 
-// Update switchSection slightly to make sure the text stays visible 
-// and doesn't conflict with folder clicks.
-const originalSwitchSection = window.switchSection;
 window.switchSection = (sectionId, btnElement) => {
-    // Keep your existing switchSection logic...
-    originalSwitchSection(sectionId, btnElement);
-    
-    // Visual: remove active from all items
+    // 1. Curățăm interfața (Ascundem tot)
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
-    // Add active to current
+
+    // 2. Afișăm secțiunea dorită
+    const target = document.getElementById(sectionId);
+    if(target) target.classList.add('active');
     if(btnElement) btnElement.classList.add('active');
+
+    // 3. Verificăm dacă avem nevoie de baza de date
+    const needsUsers = [
+        'transactions-view', 
+        'economy-view', 
+        'user-growth-view', 
+        'alt-detector-view', 
+        'referral-network-view',
+        'inventory-stats-view'
+    ];
+
+    if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
+        loadAllUsers();
+    }
+
+    // 4. Pornim logica specifică fiecărei pagini
+    switch (sectionId) {
+        case 'live-visitors-view':
+            if (typeof window.runLiveAnalytics === "function") window.runLiveAnalytics();
+            break;
+        case 'inventory-stats-view':
+            if (typeof window.runInventoryAnalytics === "function") window.runInventoryAnalytics();
+            break;
+        case 'wall-analytics-view':
+            if (typeof window.runWallAnalytics === "function") window.runWallAnalytics();
+            break;
+        case 'bot-analytics-view':
+            if (typeof window.loadBotAnalytics === "function") window.loadBotAnalytics();
+            break;
+        case 'transactions-history-view':
+            if (typeof window.loadTransactions === "function") window.loadTransactions();
+            break;
+        case 'traffic-view':
+            if (typeof window.loadTrafficStats === "function") window.loadTrafficStats();
+            break;
+        case 'economy-view':
+            if (typeof window.updateEconomyStats === "function") window.updateEconomyStats();
+            break;
+        case 'user-growth-view':
+            if (typeof window.runUserGrowthAnalytics === "function") window.runUserGrowthAnalytics();
+            break;
+        case 'alt-detector-view':
+            if (typeof window.runAltAccountDetector === "function") window.runAltAccountDetector();
+            break;
+        case 'referral-network-view':
+            if (typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics();
+            break;
+        case 'sanctions-view':
+            if (typeof window.runSanctionsAnalytics === "function") window.runSanctionsAnalytics();
+            break;
+    }
 };
 
   </script>
@@ -3852,6 +3975,87 @@ window.runWallAnalytics = async function() {
     } catch (e) {
         console.error("Eroare Wall Analytics:", e);
     }
+};
+
+let currentInventoryCat = 'badges';
+
+window.changeInventoryFilter = function(cat, btn) {
+    document.querySelectorAll('#inventory-stats-view .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentInventoryCat = cat;
+    window.runInventoryAnalytics();
+};
+
+window.runInventoryAnalytics = function() {
+    const grid = document.getElementById('inventoryStatsGrid');
+    if (!grid) return;
+
+    // 1. Calculăm frecvența fiecărui ID
+    let counts = {};
+    let totalUsers = cachedUsers.length || 1;
+
+    cachedUsers.forEach(u => {
+        let list = [];
+        if (currentInventoryCat === 'badges') list = u.ownedBadges;
+        else if (currentInventoryCat === 'frames') list = u.ownedFrames;
+        else if (currentInventoryCat === 'banners') list = u.ownedBanners;
+        else if (currentInventoryCat === 'texts') list = u.ownedTexts;
+
+        list.forEach(itemId => {
+            counts[itemId] = (counts[itemId] || 0) + 1;
+        });
+    });
+
+    // 2. Mapăm spre bazele de date corespunzătoare
+    let dbToUse = [];
+    if (currentInventoryCat === 'badges') dbToUse = BADGES_DB;
+    else if (currentInventoryCat === 'frames') dbToUse = FRAMES_DB;
+    else if (currentInventoryCat === 'banners') dbToUse = BANNERS_DB;
+    else if (currentInventoryCat === 'texts') dbToUse = TEXTS_DB;
+
+    // 3. Transformăm în array de obiecte pentru sortare
+    let results = Object.entries(counts).map(([id, count]) => {
+        const itemInfo = dbToUse.find(i => i.id === id) || { name: "Obiect Șters", text: "Necunoscut" };
+        return { id, count, ...itemInfo };
+    });
+
+    // Sortăm: Cele mai deținute primele
+    results.sort((a, b) => b.count - a.count);
+
+    if (results.length === 0) {
+        grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; color:#555;">Niciun obiect din această categorie nu este deținut de utilizatori.</div>`;
+        return;
+    }
+
+    // 4. Randare Carduri
+    grid.innerHTML = results.map(item => {
+        const percent = ((item.count / totalUsers) * 100).toFixed(1);
+        let previewHtml = "";
+
+        // Generăm preview în funcție de tip
+        if (currentInventoryCat === 'badges') {
+            previewHtml = `<span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 10px ${item.color}; margin:0;"><i class="fas ${item.icon}"></i> ${item.text}</span>`;
+        } else if (currentInventoryCat === 'frames') {
+            previewHtml = `
+                <div class="frame-preview-box" style="margin:0;">
+                    <img src="https://iili.io/fXks1Dv.png" class="frame-preview-user" style="width:50px; height:50px;">
+                    <img src="${item.img}" class="frame-preview-img" style="width:75px; height:75px;">
+                </div>`;
+        } else if (currentInventoryCat === 'banners') {
+            previewHtml = `<div class="${item.cssClass}" style="width:100%; padding:10px; border-radius:10px; font-size:9px;">BANNER STYLE</div>`;
+        } else if (currentInventoryCat === 'texts') {
+            previewHtml = `<span class="${item.cssClass}" style="font-size:18px; font-weight:900;">TEXT PREVIEW</span>`;
+        }
+
+        return `
+            <div class="pop-item-card">
+                <div class="pop-count-badge">${item.count}</div>
+                <div class="pop-preview-box">${previewHtml}</div>
+                <div class="pop-item-name">${item.name || item.text}</div>
+                <div class="pop-item-percent">${percent}% din utilizatori</div>
+            </div>
+        `;
+    }).join('');
 };
 
 
@@ -4680,7 +4884,13 @@ cachedUsers.push({
     joinDateStr: joinDate,
     statusHtml: statusHtml,
     isOnlineBool: isOnline,
-    ip: data.ip || "Hidden"
+    ip: data.ip || "Hidden",
+
+
+    ownedBadges: data.ownedBadges || [],
+    ownedBanners: data.ownedBanners || [],
+    ownedFrames: data.ownedFrames || [],
+    ownedTexts: data.ownedTexts || [],
 });
         });
 
