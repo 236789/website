@@ -3723,6 +3723,7 @@ import { getFirestore, doc, getDocs, collection, query, orderBy, limit, where, a
     const provider = new GoogleAuthProvider();
 
 let dashboardTxnUnsub = null;
+let isAwardingInProgress = false; // ADAUGĂ ACEASTA LINIE
 
 let rawTxns = []; 
 let currentTxnType = 'ALL';
@@ -3895,10 +3896,13 @@ window.changeShopFilter = function(category, btn) {
 
 window.runShopAnalytics = function() {
     const container = document.getElementById('shopVisualContainer');
-    // Important: Only run if the container is visible/exists to save performance
-    if (!container || !document.getElementById('shop-stats-view').classList.contains('active')) return;
+    if (!container) return;
 
-    console.log("Calculare statistici shop pentru " + cachedUsers.length + " utilizatori...");
+    // Verificăm dacă avem date
+    if (cachedUsers.length === 0) {
+        container.innerHTML = '<div style="color: #888; padding: 20px;">Se așteaptă datele de la server (0 utilizatori detectați)...</div>';
+        return;
+    }
 
     let dbReference = [];
     let userArrayKey = "";
@@ -3910,38 +3914,29 @@ window.runShopAnalytics = function() {
         case 'texts': dbReference = TEXTS_DB; userArrayKey = "ownedTexts"; break;
     }
 
-    // 1. Reset counts
     let stats = {};
     dbReference.forEach(item => stats[item.id] = 0);
 
-    // 2. Tally counts from cached data
     cachedUsers.forEach(user => {
         const owned = user[userArrayKey] || [];
         owned.forEach(itemID => {
-            // We use itemID.id or itemID because some systems store objects, some store strings
             const id = (typeof itemID === 'object') ? itemID.id : itemID;
-            if (stats[id] !== undefined) {
-                stats[id]++;
-            }
+            if (stats[id] !== undefined) stats[id]++;
         });
     });
 
-    // 3. Render Visual Cards
     container.innerHTML = dbReference.map(item => {
         const count = stats[item.id] || 0;
         let visualHtml = "";
 
         if (currentShopCategory === 'badges') {
             visualHtml = `<span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 15px ${item.color}; font-size:12px; padding: 8px 15px;"><i class="fas ${item.icon}"></i> ${item.text}</span>`;
-        } 
-        else if (currentShopCategory === 'frames') {
+        } else if (currentShopCategory === 'frames') {
             const scale = item.scale || 1.45;
             visualHtml = `<div class="anal-frame-preview"><img src="https://i.ibb.co/XyqWk9N/def-user.png" style="width:100%; height:100%; border-radius:50%; opacity:0.3;"><img src="${item.img}" class="anal-frame-img" style="width:${scale * 100}%; height:${scale * 100}%;"></div>`;
-        } 
-        else if (currentShopCategory === 'banners') {
+        } else if (currentShopCategory === 'banners') {
             visualHtml = `<div class="${item.cssClass}" style="width:100%; padding:15px; border-radius:10px; font-size:10px; font-weight:bold; text-align:center;">PREVIEW BANNER</div>`;
-        } 
-        else if (currentShopCategory === 'texts') {
+        } else if (currentShopCategory === 'texts') {
             visualHtml = `<div class="${item.cssClass} anal-text-preview">LOST SOUL</div>`;
         }
 
@@ -3953,8 +3948,7 @@ window.runShopAnalytics = function() {
                 </div>
                 <div class="item-anal-name" style="opacity: ${count > 0 ? '1' : '0.5'}">${item.name || item.text}</div>
                 <div style="font-size:9px; color:#444; margin-top:5px; font-family:monospace;">${item.id}</div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 };
 
@@ -4816,99 +4810,68 @@ let cachedUsers = [];
 let currentFilter = 'all';
 let currentSortCriteria = 'alpha'; // Default sort
 
-// --- REAL-TIME DATA LISTENER (ACTUALIZAT) ---
 function loadAllUsers() {
     const tableBody = document.getElementById('analyticsTableBody');
     if(tableBody) tableBody.innerHTML = '<tr><td colspan="8" style="padding:40px;">Se conectează la server...</td></tr>';
     
+    console.log("📡 Pornire conexiune Real-time cu Firebase (Accounts)...");
     const q = query(collection(db, "accounts")); 
     
     onSnapshot(q, (snapshot) => {
+        if (snapshot.empty) {
+            console.warn("⚠️ Firebase a returnat 0 documente în 'accounts'. Verifică Rules sau baza de date.");
+        }
+
         cachedUsers = []; 
-
-        snapshot.forEach((doc) => {
-            const data = doc.data();
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
             
-            // --- LOGICĂ DATĂ ÎNSCRIERE ---
+            // --- PROTECȚIE DATE ---
             let joinDate = "N/A";
-            if (data.joinedAt && data.joinedAt.toDate) {
-                const d = data.joinedAt.toDate();
+            let joinedAtMillis = 0;
+            if (data.joinedAt) {
+                const d = data.joinedAt.toDate ? data.joinedAt.toDate() : new Date(data.joinedAt);
                 joinDate = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
+                joinedAtMillis = d.getTime();
             }
 
-            // --- LOGICĂ STATUS ONLINE ---
-            let isOnline = false;
-            let statusHtml = '<span class="status-dot offline"></span>Offline';
-            if (data.isOnline === true && data.lastActive && data.lastActive.toDate) {
-                const diff = (new Date() - data.lastActive.toDate()) / 1000 / 60; 
-                if(diff < 5) {
-                    isOnline = true;
-                    statusHtml = '<span class="status-dot online" style="background:#00ff88; box-shadow:0 0 10px #00ff88;"></span>Online';
-                }
-            }
+            let donationValue = Number(data.totalCoinsDonated || data.donatedCoins || data.totalDonated || 0);
 
-            // --- LOGICĂ NORMALIZARE DONAȚII ---
-            let donationValue = 0;
-            if (data.totalCoinsDonated !== undefined) donationValue = data.totalCoinsDonated;
-            else if (data.donatedCoins !== undefined) donationValue = data.donatedCoins;
-            else if (data.totalDonated !== undefined) donationValue = data.totalDonated;
-
-            let cleanDonation = Number(donationValue);
-            if (isNaN(cleanDonation)) cleanDonation = 0;
-
-cachedUsers.push({
-    uid: doc.id,
-    username: data.username || "Unknown",
-    email: data.email || "",
-    pfp: data.image || "https://i.ibb.co/XyqWk9N/def-user.png",
-    
-    // Cifre economice
-    coins: Number(data.coins) || 0,
-    diamonds: Number(data.diamonds) || 0,
-    donated: cleanDonation,
-    streak: Number(data.streak) || 0,
-    
-    // DATA NEEDED FOR SHOP ANALYTICS (This was missing!)
-    ownedBadges: data.ownedBadges || [],
-    ownedBanners: data.ownedBanners || [],
-    ownedFrames: data.ownedFrames || [],
-    ownedTexts: data.ownedTexts || [],
-    
-    // Alte date
-    referralHistory: data.referralHistory || [], 
-    joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
-    joinDateStr: joinDate,
-    statusHtml: statusHtml,
-    isOnlineBool: isOnline,
-    ip: data.ip || "Hidden"
-});
+            // --- PUSH ÎN CACHE ---
+            cachedUsers.push({
+                uid: docSnap.id,
+                username: data.username || "Unknown",
+                email: data.email || "",
+                pfp: data.image || "https://i.ibb.co/XyqWk9N/def-user.png",
+                coins: Number(data.coins) || 0,
+                diamonds: Number(data.diamonds) || 0,
+                donated: donationValue,
+                streak: Number(data.streak) || 0,
+                ownedBadges: data.ownedBadges || [],
+                ownedBanners: data.ownedBanners || [],
+                ownedFrames: data.ownedFrames || [],
+                ownedTexts: data.ownedTexts || [],
+                referralHistory: data.referralHistory || [], 
+                joinedAt: joinedAtMillis,
+                joinDateStr: joinDate,
+                ip: data.ip || "Hidden"
+            });
         });
 
-        // 1. Aplicăm sortarea în tabelul principal (Database)
+        console.log(`✅ Date primite! Avem ${cachedUsers.length} utilizatori încărcați.`);
+
+        // Actualizăm tabelele dacă suntem pe ele
         applySort(currentSortCriteria);
+        if(typeof updateEconomyStats === "function") updateEconomyStats();
+        if(typeof runAltAccountDetector === "function") runAltAccountDetector();
+        if(typeof runUserGrowthAnalytics === "function") runUserGrowthAnalytics();
         
-        // 2. ACTUALIZARE REAL-TIME: RAPORT ECONOMIC
-        if(typeof updateEconomyStats === "function") {
-            updateEconomyStats();
-        }
-
-        // 3. ACTUALIZARE REAL-TIME: DETECTOR MULTI-ACCOUNT
-        if(typeof runAltAccountDetector === "function") {
-            runAltAccountDetector();
-        }
-
-        // 4. ACTUALIZARE REAL-TIME: ANALIZĂ UTILIZATORI NOI (24H)
-        if(typeof runUserGrowthAnalytics === "function") {
-            runUserGrowthAnalytics();
-        }
-
-// 5. ACTUALIZARE REAL-TIME: ANALIZĂ SHOP
-        if(typeof runShopAnalytics === "function") {
-            runShopAnalytics();
-        }
+        // REFRESH PENTRU SHOP
+        if(typeof runShopAnalytics === "function") runShopAnalytics();
 
     }, (error) => {
-        console.error("Realtime Error:", error);
+        console.error("❌ EROARE FIREBASE RULES:", error);
+        alert("Eroare de permisiune! Verifică dacă ești logat ca admin.");
     });
 }
 window.sortData = (criteria) => {
