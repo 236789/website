@@ -3766,6 +3766,36 @@
 <!-- VIEW 20: SPIN WHEEL WINNERS -->
 <div id="wheel-winners-view" class="view-section">
     <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 25px;">📊 TOP PROFIT ROATĂ</h2>
+
+    <!-- FILTER BAR (STRETCHED) -->
+    <div class="filter-row" style="width: 100%; max-width: none; margin: 0 0 20px 0; display: flex; justify-content: space-between; align-items: center; background: rgba(5, 11, 20, 0.9); border: 1px solid rgba(41, 243, 255, 0.2); border-radius: 12px; padding: 10px 20px; box-sizing: border-box;">
+        
+        <!-- Grupul de butoane (Stânga) -->
+        <div class="filter-group">
+            <button class="filter-btn active" onclick="changeWheelWinnerFilter('all', this)">TOȚI</button>
+            <button class="filter-btn" onclick="changeWheelWinnerFilter('today', this)">AZI</button>
+        </div>
+
+        <!-- Dropdown-ul de sortare (Dreapta) -->
+        <div class="custom-dropdown" id="wheelSortDropdown">
+            <div class="dropdown-trigger" onclick="toggleWheelSortMenu()">
+                <span id="currentWheelSortLabel"><i class="fas fa-sort-amount-down"></i> Cele mai mari</span>
+                <i class="fas fa-chevron-down" style="color:var(--primary);"></i>
+            </div>
+            <div class="dropdown-options" id="wheelSortOptions">
+                <div class="dropdown-option" onclick="selectWheelSort('total', this)">
+                    <i class="fas fa-coins"></i> Cele mai mari
+                </div>
+                <div class="dropdown-option" onclick="selectWheelSort('diamonds', this)">
+                    <img src="https://iili.io/fv5bmtj.png" width="14"> Top Diamante
+                </div>
+                <div class="dropdown-option" onclick="selectWheelSort('coins', this)">
+                    <img src="https://iili.io/fhc1SKQ.png" width="14"> Top Monede
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="table-glass-container">
         <table class="neon-table">
             <thead>
@@ -3773,7 +3803,7 @@
                     <th class="sticky-left">JUCĂTOR</th>
                     <th>DIAMANTE TOTALE</th>
                     <th>MONEDE TOTALE</th>
-                    <th>VALOARE ESTIMATĂ</th>
+                    <th>STATUT</th>
                 </tr>
             </thead>
             <tbody id="analWinnersTableBody">
@@ -4295,26 +4325,90 @@ window.runWheelJackpotAnalytics = async function() {
     } catch(e) { console.error(e); }
 };
 
+let currentWheelTimeFilter = 'all'; 
+let currentWheelSortCriteria = 'total';
+
+// 1. Handlers pentru Meniu
+window.changeWheelWinnerFilter = function(type, btn) {
+    document.querySelectorAll('#wheel-winners-view .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentWheelTimeFilter = type;
+    window.runWheelWinnersAnalytics();
+};
+
+window.toggleWheelSortMenu = function() {
+    document.getElementById('wheelSortOptions').classList.toggle('open');
+};
+
+window.selectWheelSort = function(criteria, element) {
+    currentWheelSortCriteria = criteria;
+    document.getElementById('currentWheelSortLabel').innerHTML = element.innerHTML;
+    document.getElementById('wheelSortOptions').classList.remove('open');
+    window.runWheelWinnersAnalytics();
+};
+
+// 2. Funcția de procesare date
 window.runWheelWinnersAnalytics = function() {
     const tableBody = document.getElementById('analWinnersTableBody');
     if (!tableBody) return;
 
-    // Filtrăm userii care au câștigat ceva la roată
-    let players = cachedUsers.filter(u => u.wheelStats && (u.wheelStats.diamonds > 0 || u.wheelStats.coins > 0));
-    
-    // Sortăm: Cele mai multe diamante primele, apoi monede
-    players.sort((a, b) => {
-        const scoreA = (a.wheelStats.diamonds * 1000) + a.wheelStats.coins;
-        const scoreB = (b.wheelStats.diamonds * 1000) + b.wheelStats.coins;
-        return scoreB - scoreA;
+    let displayData = [];
+    const acum = new Date();
+    const aziStart = new Date(acum.getFullYear(), acum.getMonth(), acum.getDate()).getTime();
+
+    if (currentWheelTimeFilter === 'all') {
+        // Luăm datele cumulate din profilul fiecărui utilizator
+        displayData = cachedUsers
+            .filter(u => u.wheelStats && (u.wheelStats.diamonds > 0 || u.wheelStats.coins > 0))
+            .map(u => ({
+                username: u.username,
+                pfp: u.pfp,
+                diamonds: u.wheelStats.diamonds || 0,
+                coins: u.wheelStats.coins || 0
+            }));
+    } else {
+        // Filtru AZI: Calculăm sumele din tranzacțiile de tip "Spin Wheel" de astăzi
+        let dailySettle = {}; // { uid: { diamonds: 0, coins: 0 } }
+
+        rawTxns.forEach(t => {
+            const tTime = t.timestamp ? t.timestamp.toMillis() : 0;
+            if (tTime >= aziStart && t.source === "Spin Wheel") {
+                if (!dailySettle[t.userId]) dailySettle[t.userId] = { diamonds: 0, coins: 0 };
+                
+                if (t.type === "DIAMONDS") dailySettle[t.userId].diamonds += Math.abs(t.amount);
+                else dailySettle[t.userId].coins += Math.abs(t.amount);
+            }
+        });
+
+        displayData = Object.entries(dailySettle).map(([uid, stats]) => {
+            const u = cachedUsers.find(user => user.uid === uid) || { username: "Anonim", pfp: "https://iili.io/fXks1Dv.png" };
+            return {
+                username: u.username,
+                pfp: u.pfp,
+                diamonds: stats.diamonds,
+                coins: stats.coins
+            };
+        });
+    }
+
+    // SORTARE
+    displayData.sort((a, b) => {
+        if (currentWheelSortCriteria === 'total') {
+            return ((b.diamonds * 1000) + b.coins) - ((a.diamonds * 1000) + a.coins);
+        } else if (currentWheelSortCriteria === 'diamonds') {
+            return b.diamonds - a.diamonds;
+        } else {
+            return b.coins - a.coins;
+        }
     });
 
-    if (players.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4" style="padding:20px; color:#888;">Nicio victorie înregistrată.</td></tr>';
+    if (displayData.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Nicio activitate găsită pentru acest interval.</td></tr>';
         return;
     }
 
-    tableBody.innerHTML = players.map(u => `
+    // RENDERING
+    tableBody.innerHTML = displayData.map(u => `
         <tr>
             <td class="sticky-left">
                 <div class="td-user">
@@ -4322,43 +4416,24 @@ window.runWheelWinnersAnalytics = function() {
                     <div class="td-name">${u.username}</div>
                 </div>
             </td>
-            <td class="val-diamonds" style="color:#00ffcc; font-weight:900;">+${u.wheelStats.diamonds}</td>
-            <td class="val-coins" style="color:#ffd700; font-weight:900;">+${formatCurrency(u.wheelStats.coins)}</td>
+            <td style="color:#00ffcc; font-weight:900;">
+                +${u.diamonds} <img src="https://iili.io/fv5bmtj.png" width="16" style="margin-left:5px; vertical-align:middle;">
+            </td>
+            <td style="color:#ffd700; font-weight:900;">
+                +${formatCurrency(u.coins)} <img src="https://iili.io/fhc1SKQ.png" width="16" style="margin-left:5px; vertical-align:middle;">
+            </td>
             <td><span class="source-tag" style="border-color:#2ecc71; color:#2ecc71;">WINNER</span></td>
         </tr>
     `).join('');
 };
 
-window.runWheelLosersAnalytics = function() {
-    const tableBody = document.getElementById('analLosersTableBody');
-    if (!tableBody) return;
-
-    // Filtrăm userii care au nimerit pe XP
-    let losers = cachedUsers.filter(u => u.wheelStats && u.wheelStats.xpLandings > 0);
-    
-    // Sortăm: Cei cu cele mai multe aterizări pe XP primii
-    losers.sort((a, b) => b.wheelStats.xpLandings - a.wheelStats.xpLandings);
-
-    if (losers.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="3" style="padding:20px; color:#888;">Toată lumea e norocoasă azi!</td></tr>';
-        return;
+// Click în afară pentru închidere dropdown
+document.addEventListener('click', (e) => {
+    const drop = document.getElementById('wheelSortDropdown');
+    if (drop && !drop.contains(e.target)) {
+        document.getElementById('wheelSortOptions').classList.remove('open');
     }
-
-    tableBody.innerHTML = losers.map(u => `
-        <tr>
-            <td class="sticky-left">
-                <div class="td-user">
-                    <img src="${u.pfp}" class="td-pfp" style="border-color:#ff4757;">
-                    <div class="td-name">${u.username}</div>
-                </div>
-            </td>
-            <td style="font-family:'Orbitron'; font-weight:900; color:#ff4757; font-size:18px;">
-                ${u.wheelStats.xpLandings} <span style="font-size:10px;">HIT-URI XP</span>
-            </td>
-            <td><span class="risk-badge risk-high">UNLUCKY</span></td>
-        </tr>
-    `).join('');
-};
+});
 
 window.runWheelLosersAnalytics = function() {
     const tableBody = document.getElementById('analLosersTableBody');
