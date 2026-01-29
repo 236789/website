@@ -2670,21 +2670,22 @@ import { getFirestore, doc, getDocs, collection, query, orderBy, limit, where, a
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-
 let dashboardTxnUnsub = null;
 
 window.loadTransactions = function() {
     const tableBody = document.getElementById('txnTableBody');
+    if (!tableBody) return;
+
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
+    // Acum tabelul se va schimba din "Se așteaptă datele" în "Se conectează"
     tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
 
-    // Interogăm colecția "transactions" (asigură-te că numele e identic cu cel din pagina veche)
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(100));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         if (snapshot.empty) {
-            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nu s-au găsit tranzacții vechi sau noi.</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nu s-au găsit tranzacții.</td></tr>";
             return;
         }
 
@@ -2692,27 +2693,19 @@ window.loadTransactions = function() {
         snapshot.forEach((doc) => {
             const t = doc.data();
             
-            // --- COMPATIBILITATE DATE VECHI ---
-            
-            // 1. Imaginea: Pagina veche folosea 'userImage', cea nouă ar putea folosi 'image'
+            // --- FIX DATE VECHI ---
             const pfp = t.userImage || t.image || "https://i.ibb.co/XyqWk9N/def-user.png";
+            const uName = t.username || "Utilizator Anonim";
             
-            // 2. Numele: Fallback dacă lipsește
-            const uName = t.username || "Utilizator KSDA";
-            
-            // 3. Data: Conversie sigură din Firebase Timestamp
             let dateStr = "Recent";
             if (t.timestamp && t.timestamp.toDate) {
                 const d = t.timestamp.toDate();
                 dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
-            // 4. Valuta: Verificăm dacă e Diamond sau Coin
             const amountVal = Number(t.amount || 0);
             const isDiamonds = (t.type === "DIAMONDS" || t.currency === "DIAMONDS");
             const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            
-            // 5. Culori: Verde pentru plus, Roșu pentru minus
             const amountClass = amountVal >= 0 ? "val-plus" : "val-minus";
             const amountSign = amountVal >= 0 ? "+" : "";
 
@@ -2725,8 +2718,8 @@ window.loadTransactions = function() {
                         </div>
                     </td>
                     <td style="color:#888; font-size:11px;">${dateStr}</td>
-                    <td style="font-size:12px; color:#fff;">${t.description || "Tranzacție Sistem"}</td>
-                    <td><span class="source-tag">${t.source || "KSDA"}</span></td>
+                    <td style="font-size:12px; color:#fff;">${t.description || "-"}</td>
+                    <td><span class="source-tag">${t.source || "SYSTEM"}</span></td>
                     <td>
                         <div class="currency-simple ${amountClass}">
                             ${amountSign}${amountVal} <img src="${iconUrl}" width="16" style="margin-left:5px;">
@@ -2738,15 +2731,10 @@ window.loadTransactions = function() {
 
     }, (error) => {
         console.error("Firestore Error:", error);
-        
-        // FOARTE IMPORTANT: Dacă apare eroarea de Index, îți va arăta link-ul direct în tabel
         if (error.message.includes("index")) {
             const url = error.message.match(/https:\/\/[^ ]*/)[0];
             tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">
-                ⚠️ Trebuie să activezi un Index în Firebase pentru a vedea istoricul.<br><br>
-                <a href="${url}" target="_blank" style="color:#29f3ff; font-weight:bold; text-decoration:underline;">
-                   CLICK AICI PENTRU ACTIVARE INDEX
-                </a>
+                ⚠️ Trebuie să activezi Indexul: <br> <a href="${url}" target="_blank" style="color:#fff;">CLICK AICI</a>
             </td></tr>`;
         }
     });
