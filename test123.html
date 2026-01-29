@@ -3073,9 +3073,26 @@
                     <i class="fas fa-skull" style="color: #ff4757;"></i>
                     <span>Top Ghinioniști</span>
                 </a>
+           <!-- NOU: Sub-Folder: Trivia -->
+        <div class="ga-nav-group" style="border-left: 1px dashed rgba(255,255,255,0.1); margin-left: 20px;">
+            <div class="ga-folder-header" onclick="toggleFolder(this)" style="font-size: 12px; padding-left: 10px;">
+                <i class="fas fa-question-circle"></i>
+                <span>Trivia Stats</span>
+                <i class="fas fa-chevron-right arrow"></i>
+            </div>
+            <div class="ga-folder-content">
+                <a href="#" class="ga-nav-item" onclick="switchSection('trivia-categories-view', this)" style="padding-left: 30px;">
+                    <i class="fas fa-tags" style="color: #ff00ff;"></i>
+                    <span>Popularitate Categorii</span>
+                </a>
+                <a href="#" class="ga-nav-item" onclick="switchSection('trivia-performance-view', this)" style="padding-left: 30px;">
+                    <i class="fas fa-user-graduate" style="color: #00ffcc;"></i>
+                    <span>Performanță Useri</span>
+                </a>
             </div>
         </div>
     </div>
+</div>
 </div>
 </aside>
 
@@ -3831,6 +3848,36 @@
         </table>
     </div>
 </div>
+
+
+
+<!-- VIEW 22: TRIVIA CATEGORIES -->
+<div id="trivia-categories-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 25px;">🔥 CELE MAI JUCATE CATEGORII</h2>
+    <div class="shop-analytics-grid" id="triviaCategoryGrid">
+        <!-- JS va injecta box-uri aici -->
+    </div>
+</div>
+
+<!-- VIEW 23: TRIVIA USER PERFORMANCE -->
+<div id="trivia-performance-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 25px;">🧠 RANKING CUNOȘTINȚE</h2>
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">UTILIZATOR</th>
+                    <th>CORECTE</th>
+                    <th>GREȘITE</th>
+                    <th>PRECIZIE (ACCURACY)</th>
+                </tr>
+            </thead>
+            <tbody id="triviaUserTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se analizează scorurile...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -4126,6 +4173,81 @@ window.runDonationAnalytics = function() {
                 <td style="text-align: right; padding-right: 30px;">
                     <div class="currency-simple" style="color:#00ff88; font-weight:900; justify-content: flex-end;">
                         ${formatCurrency(d.amount)} <img src="${iconUrl}" width="16" style="margin-left:8px;">
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+};
+
+
+// --- TRIVIA ANALYTICS ENGINE ---
+
+window.runTriviaCategoryAnalytics = function() {
+    const container = document.getElementById('triviaCategoryGrid');
+    if (!container) return;
+
+    // Ascultăm metadatele globale pentru categorii
+    onSnapshot(doc(db, "game_analytics", "trivia_popularity"), (snap) => {
+        if (!snap.exists()) {
+            container.innerHTML = "<p style='color:#888;'>Nicio dată de popularitate încă.</p>";
+            return;
+        }
+        const data = snap.data();
+        // Transformăm obiectul în array și sortăm
+        const sortedCats = Object.entries(data).sort((a, b) => b[1] - a[1]);
+
+        container.innerHTML = sortedCats.map(([catID, count]) => {
+            // Găsim numele frumos al categoriei din DB-ul tău de întrebări
+            const catName = catID.toUpperCase(); 
+            return `
+                <div class="item-anal-card">
+                    <div class="owner-count-badge">${count}</div>
+                    <i class="fas fa-layer-group" style="font-size:30px; color:var(--primary); margin-bottom:10px;"></i>
+                    <div class="item-anal-name">${catName}</div>
+                    <div style="font-size:9px; color:#555;">JOCURI PORINTE</div>
+                </div>
+            `;
+        }).join('');
+    });
+};
+
+window.runTriviaUserAnalytics = function() {
+    const tableBody = document.getElementById('triviaUserTableBody');
+    if (!tableBody) return;
+
+    // Filtrăm utilizatorii care au jucat trivia (au câmpul triviaStats)
+    let players = cachedUsers.filter(u => u.triviaStats && (u.triviaStats.correctTotal > 0 || u.triviaStats.wrongTotal > 0));
+    
+    // Sortăm după cele mai multe răspunsuri corecte
+    players.sort((a, b) => (b.triviaStats.correctTotal || 0) - (a.triviaStats.correctTotal || 0));
+
+    tableBody.innerHTML = players.map(u => {
+        const correct = u.triviaStats.correctTotal || 0;
+        const wrong = u.triviaStats.wrongTotal || 0;
+        const total = correct + wrong;
+        const accuracy = total > 0 ? ((correct / total) * 100).toFixed(1) : 0;
+        
+        let accColor = "#ff4757"; // Roșu sub 50%
+        if (accuracy > 50) accColor = "#ffd700"; // Galben peste 50%
+        if (accuracy > 80) accColor = "#00ffcc"; // Cyan peste 80%
+
+        return `
+            <tr>
+                <td class="sticky-left">
+                    <div class="td-user">
+                        <img src="${u.pfp}" class="td-pfp">
+                        <div class="td-name">${u.username}</div>
+                    </div>
+                </td>
+                <td style="color:#2ecc71; font-weight:900;">${correct}</td>
+                <td style="color:#ff4757; font-weight:900;">${wrong}</td>
+                <td>
+                    <div style="display:flex; align-items:center; gap:10px; justify-content:center;">
+                        <span style="color:${accColor}; font-weight:900; font-family:'Orbitron';">${accuracy}%</span>
+                        <div style="width:100px; height:4px; background:rgba(255,255,255,0.05); border-radius:10px; overflow:hidden;">
+                            <div style="width:${accuracy}%; height:100%; background:${accColor};"></div>
+                        </div>
                     </div>
                 </td>
             </tr>
@@ -5301,6 +5423,19 @@ window.switchSection = (sectionId, btnElement) => {
             if (typeof window.loadBotAnalytics === "function") window.loadBotAnalytics();
             break;
 
+
+case 'trivia-categories-view':
+    window.runTriviaCategoryAnalytics();
+    break;
+case 'trivia-performance-view':
+    if (cachedUsers.length === 0) {
+        loadAllUsers();
+        setTimeout(() => window.runTriviaUserAnalytics(), 1000);
+    } else {
+        window.runTriviaUserAnalytics();
+    }
+    break;
+
         case 'transactions-history-view':
             window.loadTransactions();
             break;
@@ -5512,6 +5647,8 @@ function loadAllUsers() {
                 statusHtml: statusHtml, // Fix pentru coloana STATUS
                 donationHistory: data.donationHistory || [], // <--- ADAUGĂ ACEASTĂ LINIE
                 wheelStats: data.wheelStats || { diamonds: 0, coins: 0, xpLandings: 0 },
+// În interiorul loadAllUsers -> cachedUsers.push({...}) adaugă:
+triviaStats: data.triviaStats || { correctTotal: 0, wrongTotal: 0 },
                 isOnlineBool: isOnline,
                 ip: data.ip || "Hidden"
             });
