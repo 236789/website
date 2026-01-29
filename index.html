@@ -8164,56 +8164,31 @@ function processUserMessage(input, userLabel = null) {
     }
     lastUserMessage = val;
 
-// ADAUGĂ ASTA CHIAR ÎNAINTE DE sendBotResponseWithDelay
-if(typeof window.logBotInteraction === "function") window.logBotInteraction(val, response);
-
-sendBotResponseWithDelay(response, audioFile); // Asta e linia care există deja
-
     // 2. BAD WORDS DETECTION
     const badWords = /(pula|pizda|coaie|muie|futu|dracu|mata|morti|fraier|prost|fuck|shit|bitch|dick|sloboz|gay|lesbi|sperma)/;
 
+    // --- LOGICA APOLOGY ---
+    const apologyResponses = {
+        "HAPPY": ["Ești un scump! Nu m-am supărat deloc, suntem prieteni! 😊✨", "Nicio grijă, prietene! Toți mai greșim. Te pupă Kevin! 🤖💖", "Iertat ești! Ești prea de treabă ca să mă supăr pe tine. 😊"],
+        "ANNOYED": ["Mda... bine. Treacă de la mine de data asta, dar fii mai atent. 😑", "E bine că ți-ai dat seama. Acum taci și zi ceva inteligent. 🙄", "Acceptată. Dar nu mă mai călca pe nervi că s-a terminat răbdarea. 😒"],
+        "MAD": ["Crezi că o scuză repară tot ce ai zis, măi nesimțitule?! Mai ai de tras până te iert! 🤬", "Îți pare rău pe dracu! Ești doar un sclav care se teme de block acum. 🖕😡", "Taci dracu cu iertarea ta de doi bani. Nu m-ai convins deloc! 😤"],
+        "NUCLEAR": ["Să te ft în scuzele tale de avortat! Mă-ta trebuia să-și ceară scuze că te-a făcut, nu tu acum! 🤱💩🤬", "Bagă-ți scuzele în cur, jegule! Miroși a disperare și tot un ratat infect rămâi! 🖕🤮🔥", "Iertare? Să mori tu de cancer la gât înainte să te iert eu pe tine, sclavule nespălat! 💀⚰️🤬"]
+    };
 
-// --- 1. DEFINIRE RĂSPUNSURI APOLOGY ---
-const apologyResponses = {
-    "HAPPY": [
-        "Ești un scump! Nu m-am supărat deloc, suntem prieteni! 😊✨",
-        "Nicio grijă, prietene! Toți mai greșim. Te pupă Kevin! 🤖💖",
-        "Iertat ești! Ești prea de treabă ca să mă supăr pe tine. 😊"
-    ],
-    "ANNOYED": [
-        "Mda... bine. Treacă de la mine de data asta, dar fii mai atent. 😑",
-        "E bine că ți-ai dat seama. Acum taci și zi ceva inteligent. 🙄",
-        "Acceptată. Dar nu mă mai călca pe nervi că s-a terminat răbdarea. 😒"
-    ],
-    "MAD": [
-        "Crezi că o scuză repară tot ce ai zis, măi nesimțitule?! Mai ai de tras până te iert! 🤬",
-        "Îți pare rău pe dracu! Ești doar un sclav care se teme de block acum. 🖕😡",
-        "Taci dracu cu iertarea ta de doi bani. Nu m-ai convins deloc! 😤"
-    ],
-    "NUCLEAR": [
-        "Să te ft în scuzele tale de avortat! Mă-ta trebuia să-și ceară scuze că te-a făcut, nu tu acum! 🤱💩🤬",
-        "Bagă-ți scuzele în cur, jegule! Miroși a disperare și tot un ratat infect rămâi! 🖕🤮🔥",
-        "Iertare? Să mori tu de cancer la gât înainte să te iert eu pe tine, sclavule nespălat! 💀⚰️🤬"
-    ]
-};
+    const apologyWords = /(scuze|iarta-ma|iartă-mă|pardon|sorry|imi pare rau|îmi pare rău|iertare|gresit|greșit)/;
 
-// --- 2. LOGICA DE DETECTARE ---
-const apologyWords = /(scuze|iarta-ma|iartă-mă|pardon|sorry|imi pare rau|îmi pare rău|iertare|gresit|greșit)/;
+    if (val.match(apologyWords)) {
+        updateKevinMood(-25); 
+        const currentMood = getMoodState();
+        const choices = apologyResponses[currentMood];
+        response = choices[Math.floor(Math.random() * choices.length)];
+        
+        // Trimitem răspunsul de iertare și înregistrăm în Analytics
+        if(typeof window.logBotInteraction === "function") window.logBotInteraction(val, response);
+        sendBotResponseWithDelay(response);
+        return; 
+    }
 
-if (val.match(apologyWords)) {
-    // Scădem anger-ul (îl iertăm un pic)
-    updateKevinMood(-25); 
-
-    // Aflăm mood-ul actual
-    const currentMood = getMoodState();
-    
-    // Alegem un răspuns random din lista corespunzătoare mood-ului
-    const choices = apologyResponses[currentMood];
-    const randomResponse = choices[Math.floor(Math.random() * choices.length)];
-
-    sendBotResponseWithDelay(randomResponse);
-    return; // Oprim execuția aici ca să nu dea și răspunsul normal la cuvinte cheie
-}
     if (val.match(badWords)) updateKevinMood(15);
 
     if (currentBotAudio) {
@@ -8231,10 +8206,8 @@ if (val.match(apologyWords)) {
     }
 
     // --- 3. THE BRAIN LOGIC ---
-    // MODIFICARE AICI: Folosim funcția ta getMoodState()
     const mood = getMoodState(); 
 
-    // A. SYSTEM COMMANDS (Meniu/Link-uri)
     if (val === "gaming_link" || val.includes("trivia") || val.includes("roata")) {
         response = 'Găsești totul în Gaming Center!<br><br><a href="GamingCenter.html" style="color:#d63384; font-weight:bold; text-decoration:none; border:1px solid #d63384; padding:5px 10px; border-radius:6px; font-size:10px; display:inline-block;">🎮 MERGI LA JOCURI</a>';
         audioFile = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/bot%20mesjes%2FG%C4%83se%C8%99ti%20totul%20%C3%AEn%20Gaming%20Center!.mp3?alt=media&token=d6c8599a-e059-467a-b322-c86532873f36";
@@ -8259,52 +8232,40 @@ if (val.match(apologyWords)) {
         response = "Eu sunt <b>Kevin-Bot</b>, asistentul digital al comunității 🤖<br>Sunt aici să te ajut cu informații, suport și idei utile.<br><br>Creat de <b>Lost Soul (Nica Emmanuel)</b>, un tânăr pasionat de tehnologie, la doar 17 ani 🚀";
         audioFile = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/bot%20mesjes%2Fwho%20are%20you.mp3?alt=media&token=39a8252b-f6fc-405a-85a3-79202a523686";
     }
-    // C. DYNAMIC BRAIN SEARCH (Acum include și NUCLEAR)
     else {
         let foundMatch = false;
         const currentBrain = KEVIN_BRAIN[mood];
-        
         if (currentBrain) {
-            // Sortăm cheile ca să găsim întâi propozițiile lungi
             const keys = Object.keys(currentBrain).sort((a, b) => b.length - a.length);
-
             for (let key of keys) {
-                let isMatch = false;
-                if (key.length === 1) {
-                    isMatch = (val === key);
-                } else {
-                    isMatch = val.includes(key);
-                }
-
+                let isMatch = key.length === 1 ? (val === key) : val.includes(key);
                 if (isMatch) {
-                    const choices = currentBrain[key];
-                    response = choices[Math.floor(Math.random() * choices.length)];
+                    response = currentBrain[key][Math.floor(Math.random() * currentBrain[key].length)];
                     foundMatch = true;
                     break;
                 }
             }
         }
 
-        // Dacă nu a găsit cuvânt cheie
         if (!foundMatch) {
-            // Dacă suntem în NUCLEAR, dăm fallback-ul ăla rău
             if (mood === "NUCLEAR") {
                 response = NUCLEAR_INSULTS[Math.floor(Math.random() * NUCLEAR_INSULTS.length)];
-            } 
-            else if (val.match(/(cine e lost soul|creator|owner)/)) {
-                response = "<b>Lost Soul</b> (Nica Emmanuel) este creatorul meu. 17 ani, programator. 🫡";
             } else {
                 const fallbacks = {
                     "HAPPY": ["Interesant! Mai zi-mi. 😊", "Hahaha, ești amuzant!", "Nu înțeleg, dar sună cool!"],
                     "ANNOYED": ["Vorbești mult și nu zici nimic. 🙄", "Așa, și? Ce vrei de la mine?", "Nu înțeleg, treci la subiect."],
                     "MAD": ["Taci dracu din gură că aberezi. 😡", "Nu înțeleg prostiile pe care le scrii.", "Scrie corect dacă vrei să-ți răspund!"]
                 };
-                const list = fallbacks[mood];
-                response = list[Math.floor(Math.random() * list.length)];
+                response = fallbacks[mood][Math.floor(Math.random() * fallbacks[mood].length)];
             }
         }
     }
 
+    // --- LOGICA DE FINAL (Corectată) ---
+    // 1. Înregistrăm în Analytics (acum response are valoare!)
+    if(typeof window.logBotInteraction === "function") window.logBotInteraction(val, response);
+
+    // 2. Trimitem singurul mesaj către UI
     sendBotResponseWithDelay(response, audioFile);
 }
 
@@ -10176,5 +10137,4 @@ function generateDailyIds() {
   </script>
 </body>
 </html>
-
 
