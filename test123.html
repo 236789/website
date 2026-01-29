@@ -3515,43 +3515,64 @@ window.loadMoreTransactions = function() {
     window.loadTransactions();
 };
 
-// --- ANALYTICS PERFORMANCE & LIVE ---
 window.runPerformanceAnalytics = function() {
     const tableBody = document.getElementById('performanceTableBody');
+    if(!tableBody) return;
+
     onSnapshot(collection(db, "page_stats"), (snapshot) => {
         let rows = [];
         let globalPC = 0, globalMob = 0;
 
         snapshot.forEach(doc => {
             const d = doc.data();
-            const visits = d.totalVisits || 1;
-            const avgSec = Math.floor((d.totalSecondsSpent || 0) / visits);
-            const pc = d.devices?.PC || 0;
-            const mob = d.devices?.Mobil || 0;
-            globalPC += pc; globalMob += mob;
+            const visits = d.totalVisits || 0;
+            const totalSec = d.totalSecondsSpent || 0;
+            
+            // Calculăm media (evităm împărțirea la zero sau erori de câmp lipsă)
+            const avgSec = visits > 0 ? Math.floor(totalSec / visits) : 0;
+            
+            const pc = (d.devices && d.devices.PC) ? d.devices.PC : 0;
+            const mob = (d.devices && d.devices.Mobil) ? d.devices.Mobil : 0;
+            const tab = (d.devices && d.devices.Tableta) ? d.devices.Tableta : 0;
+            
+            globalPC += pc; 
+            globalMob += mob + tab;
 
             rows.push({
                 name: doc.id,
                 visits: visits,
                 avg: `${Math.floor(avgSec / 60)}m ${avgSec % 60}s`,
                 avgRaw: avgSec,
-                pcP: Math.round((pc / (pc + mob || 1)) * 100),
-                mobP: Math.round((mob / (pc + mob || 1)) * 100)
+                pcP: Math.round((pc / (pc + mob + tab || 1)) * 100),
+                mobP: Math.round(((mob + tab) / (pc + mob + tab || 1)) * 100)
             });
         });
 
+        if(rows.length === 0) {
+            tableBody.innerHTML = "<tr><td colspan='4' style='padding:20px;'>Nicio dată colectată încă...</td></tr>";
+            return;
+        }
+
         rows.sort((a, b) => b.visits - a.visits);
-        if(rows.length > 0) {
-            document.getElementById('topAddictivePage').innerText = [...rows].sort((a,b)=>b.avgRaw - a.avgRaw)[0].name;
-            document.getElementById('topDeviceName').innerText = globalPC > globalMob ? "PC" : "Mobil";
+
+        // Update Carduri sus
+        const topDev = document.getElementById('topDeviceName');
+        const topPage = document.getElementById('topAddictivePage');
+        if(topDev) topDev.innerText = globalPC >= globalMob ? "PC" : "Mobil";
+        if(topPage) {
+            const sortedByTime = [...rows].sort((a,b) => b.avgRaw - a.avgRaw);
+            topPage.innerText = sortedByTime[0].name;
         }
 
         tableBody.innerHTML = rows.map(r => `
             <tr>
-                <td style="text-align:left; padding-left:25px; font-weight:800;">${r.name}</td>
+                <td style="text-align:left; padding-left:25px; font-weight:800; color:var(--primary);">${r.name}</td>
                 <td>${r.visits}</td>
                 <td><span class="source-tag">${r.avg}</span></td>
-                <td><span style="color:#29f3ff">💻 ${r.pcP}%</span> | <span style="color:#ff4757">📱 ${r.mobP}%</span></td>
+                <td>
+                    <span style="color:#29f3ff">💻 ${r.pcP}%</span> | 
+                    <span style="color:#ff4757">📱 ${r.mobP}%</span>
+                </td>
             </tr>
         `).join('');
     });
@@ -4098,7 +4119,7 @@ document.addEventListener('click', (e) => {
     }
 });
 window.switchSection = (sectionId, btnElement) => {
-    // 1. Gestionare vizibilitate interfață
+    // 1. GESTIONARE VIZIBILITATE (Ascunde tot, arată ținta)
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
 
@@ -4106,71 +4127,62 @@ window.switchSection = (sectionId, btnElement) => {
     if(target) target.classList.add('active');
     if(btnElement) btnElement.classList.add('active');
 
-    // 2. Bază de Date Utilizatori
-    if(sectionId === 'transactions-view') {
-        if(cachedUsers.length === 0) loadAllUsers();
-    } 
+    // 2. LOGICĂ ÎNCĂRCARE DATE (Pe secțiuni)
 
-  
-if(sectionId === 'live-visitors-view') window.runLiveAnalytics();
-if(sectionId === 'performance-view') window.runPerformanceAnalytics();
-
-// În interiorul window.switchSection adaugă:
-if(sectionId === 'wall-analytics-view') {
-    window.runWallAnalytics();
-}
-    
-    // 3. Istoric Tranzacții
-    if(sectionId === 'transactions-history-view') {
-        window.loadTransactions();
+    // --- SECȚIUNI CARE AU NEVOIE DE cachedUsers (Baza de date) ---
+    const needsUsers = ['transactions-view', 'economy-view', 'user-growth-view', 'alt-detector-view'];
+    if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
+        loadAllUsers();
     }
 
-    // 4. Trafic și Popularitate
-    if(sectionId === 'traffic-view') {
-        window.loadTrafficStats();
-    }
+    // --- CASE-URI SPECIFICE ---
+    switch (sectionId) {
+        
+        case 'live-visitors-view':
+            if (typeof window.runLiveAnalytics === "function") window.runLiveAnalytics();
+            break;
 
-    // 5. Analiză Economică
-    if(sectionId === 'economy-view') {
-        if(cachedUsers.length === 0) loadAllUsers();
-        if(rawTxns.length === 0) window.loadTransactions();
-        if(typeof updateEconomyStats === "function") {
-            updateEconomyStats();
-        }
-    }
+        case 'performance-view':
+            if (typeof window.runPerformanceAnalytics === "function") window.runPerformanceAnalytics();
+            break;
 
-    // 6. Analiză Utilizatori Noi (Growth)
-    if(sectionId === 'user-growth-view') {
-        if(cachedUsers.length === 0) {
-            loadAllUsers();
-            setTimeout(() => window.runUserGrowthAnalytics(), 1000);
-        } else {
-            window.runUserGrowthAnalytics();
-        }
-    }
+        case 'wall-analytics-view':
+            if (typeof window.runWallAnalytics === "function") window.runWallAnalytics();
+            break;
 
-    // 7. Detector Multi-Account (Alt Detector)
-    if(sectionId === 'alt-detector-view') {
-        if(cachedUsers.length === 0) {
-            loadAllUsers();
-            setTimeout(() => {
+        case 'bot-analytics-view':
+            if (typeof window.loadBotAnalytics === "function") window.loadBotAnalytics();
+            break;
+
+        case 'transactions-history-view':
+            window.loadTransactions();
+            break;
+
+        case 'traffic-view':
+            window.loadTrafficStats();
+            break;
+
+        case 'economy-view':
+            if (rawTxns.length === 0) window.loadTransactions();
+            setTimeout(() => { if(typeof updateEconomyStats === "function") updateEconomyStats(); }, 500);
+            break;
+
+        case 'user-growth-view':
+            // Așteptăm puțin să se încarce utilizatorii dacă array-ul e gol
+            if (cachedUsers.length === 0) {
+                setTimeout(() => window.runUserGrowthAnalytics(), 1000);
+            } else {
+                window.runUserGrowthAnalytics();
+            }
+            break;
+
+        case 'alt-detector-view':
+            if (cachedUsers.length === 0) {
+                setTimeout(() => { if(typeof runAltAccountDetector === "function") runAltAccountDetector(); }, 1000);
+            } else {
                 if(typeof runAltAccountDetector === "function") runAltAccountDetector();
-            }, 1000);
-        } else {
-            if(typeof runAltAccountDetector === "function") runAltAccountDetector();
-        }
-    }
-
-    // 8. KEVIN BOT ANALYTICS (NOU - ADAUGĂ ASTA)
-    if(sectionId === 'bot-analytics-view') {
-        // Ne asigurăm că datele userilor sunt încărcate (pentru topul mesajelor)
-        if(cachedUsers.length === 0) {
-            loadAllUsers();
-        }
-        // Apelăm funcția care ascultă statisticile bot-ului
-        if(typeof window.loadBotAnalytics === "function") {
-            window.loadBotAnalytics();
-        }
+            }
+            break;
     }
 };
 
