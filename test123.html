@@ -2152,6 +2152,23 @@
     display: flex;
     align-items: center;
 }
+
+
+/* Transaction Specific Colors */
+.val-plus { color: #2ecc71; font-weight: 800; text-shadow: 0 0 10px rgba(46, 204, 113, 0.3); }
+.val-minus { color: #ff4757; font-weight: 800; text-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
+
+/* Source Badge */
+.source-tag {
+    background: rgba(41, 243, 255, 0.1);
+    border: 1px solid var(--primary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 9px;
+    text-transform: uppercase;
+    color: var(--primary);
+    font-weight: 700;
+}
   </style>
 </head>
 <body>
@@ -2453,6 +2470,12 @@
             <i class="fas fa-users" style="color: #ffd700;"></i>
             <span>Baza de Date Utilizatori</span>
         </a>
+
+<!-- SIDEBAR LINK -->
+<a href="#" class="ga-nav-item" onclick="switchSection('transactions-history-view', this)">
+    <i class="fas fa-exchange-alt" style="color: #00ff88;"></i> <!-- Green Icon -->
+    <span>Istoric Tranzacții</span>
+</a>
     </div>
 </aside>
 
@@ -2549,6 +2572,32 @@
     </div>
 </div>
 
+
+<!-- VIEW 3: TRANSACTION HISTORY -->
+<div id="transactions-history-view" class="view-section">
+    
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; font-size:24px;">
+        LIVE TRANSACTIONS
+    </h2>
+
+    <div class="table-glass-container">
+        <table class="neon-table" id="txnTable">
+            <thead>
+                <tr>
+                    <th class="sticky-left">UTILIZATOR</th>
+                    <th>DATA</th>
+                    <th>DESCRIERE</th>
+                    <th>SURSA</th>
+                    <th>SUMA</th>
+                </tr>
+            </thead>
+            <tbody id="txnTableBody">
+                <tr><td colspan="5" style="padding:40px;">Se încarcă tranzacțiile...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -2621,25 +2670,98 @@ navItems.forEach(item => {
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-// --- 1. VIEW SWITCHER LOGIC (Sidebar) ---
+// --- 1. UPDATED SWITCHER ---
 window.switchSection = (sectionId, btnElement) => {
     // Hide all sections
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    // Show target section
+    // Show target
     document.getElementById(sectionId).classList.add('active');
 
-    // Update Sidebar Active Class
+    // Sidebar Active
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
-    btnElement.classList.add('active');
+    if(btnElement) btnElement.classList.add('active');
 
-    // If opening users view, load data if empty
-    if(sectionId === 'transactions-view') {
-        const body = document.getElementById('analyticsTableBody');
-        if(body.innerHTML.includes("Se încarcă")) {
-            loadAllUsers();
-        }
+    // Lazy Load Data
+    if(sectionId === 'transactions-view' && cachedUsers.length === 0) {
+        loadAllUsers();
+    }
+    // NEW: Load Transactions when clicking the tab
+    if(sectionId === 'transactions-history-view') {
+        loadTransactions();
     }
 };
+
+// --- 2. NEW TRANSACTION LOADER ---
+let txnUnsubscribe = null; // To stop listening when not on page
+
+function loadTransactions() {
+    const tableBody = document.getElementById('txnTableBody');
+    
+    // Prevent double listeners
+    if(txnUnsubscribe) return; 
+
+    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px;">Se conectează la server...</td></tr>';
+
+    // Query last 50 transactions
+    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
+
+    txnUnsubscribe = onSnapshot(q, (snapshot) => {
+        if (snapshot.empty) {
+            tableBody.innerHTML = "<tr><td colspan='5'>Nu există tranzacții.</td></tr>";
+            return;
+        }
+
+        let rowsHTML = "";
+
+        snapshot.forEach((doc) => {
+            const t = doc.data();
+
+            // 1. Date Format
+            let dateStr = "Recent";
+            if(t.timestamp && t.timestamp.toDate) {
+                const d = t.timestamp.toDate();
+                // Format: 29 Jan 10:45
+                dateStr = `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+            }
+
+            // 2. Icon & Amount Style
+            const isDiamonds = t.type === "DIAMONDS";
+            const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+            const amountClass = t.amount >= 0 ? "val-plus" : "val-minus";
+            const amountSign = t.amount >= 0 ? "+" : "";
+
+            // 3. User Image (Fallback if missing)
+            const pfp = t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png";
+
+            rowsHTML += `
+                <tr>
+                    <td class="sticky-left">
+                        <div class="td-user">
+                            <img src="${pfp}" class="td-pfp">
+                            <div>
+                                <div class="td-name">${t.username || "Unknown"}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="color:#888; font-size:11px;">${dateStr}</td>
+                    <td style="font-size:12px; color:#fff;">${t.description || "Nicio descriere"}</td>
+                    <td><span class="source-tag">${t.source || "SYSTEM"}</span></td>
+                    <td>
+                        <div class="currency-simple ${amountClass}">
+                            ${amountSign}${t.amount} 
+                            <img src="${iconUrl}" width="16" style="margin-left:5px;">
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableBody.innerHTML = rowsHTML;
+
+    }, (error) => {
+        console.error("Txn Error:", error);
+    });
+}
 
 window.filterData = (type, btn) => {
     // 1. Visual: Update Active Button
