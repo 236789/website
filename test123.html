@@ -3647,33 +3647,61 @@
 
 
 <!-- VIEW 18: DONATION HISTORY ANALYTICS -->
+<!-- VIEW 18: DONATION HISTORY ANALYTICS -->
 <div id="donation-history-view" class="view-section">
     <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; font-size:24px;">
         ISTORIC DONAȚII UTILIZATORI
     </h2>
 
+    <!-- SEARCH BAR -->
     <div class="search-container-center">
         <input type="text" id="donationSearchInput" class="search-input-neon" 
                placeholder="🔍 CAUTĂ DONATOR SAU RECEPTOR..." onkeyup="runDonationAnalytics()">
     </div>
 
-<div class="table-glass-container">
-    <table class="neon-table">
-<thead>
-    <tr>
-        <th class="sticky-left" style="width: 220px; text-align: left;">DONATOR</th>
-        <th style="width: 100px;">DATA</th>
-        <th style="width: 80px;">ORA</th>
-        <th style="text-align: left;">RECEPTOR (DESTINATAR)</th>
-        <th style="width: 100px;">VALUTĂ</th>
-        <th style="text-align: right; padding-right: 30px; width: 140px;">SUMĂ</th>
-    </tr>
-</thead>
-        <tbody id="donationHistoryTableBody">
-            <!-- Data will be injected here -->
-        </tbody>
-    </table>
-</div>
+    <!-- FILTER BAR -->
+    <div class="filter-row" style="max-width: 1000px; margin: 0 auto 20px auto;">
+        <div class="filter-group">
+            <button class="filter-btn active" onclick="changeDonationFilter('all', this)">TOȚI</button>
+            <button class="filter-btn" onclick="changeDonationFilter('today', this)">AZI</button>
+        </div>
+
+        <div class="custom-dropdown" id="donSortDropdown">
+            <div class="dropdown-trigger" onclick="toggleDonationSortMenu()">
+                <span id="currentDonSortLabel"><i class="fas fa-sort-amount-down"></i> Cele mai mari</span>
+                <i class="fas fa-chevron-down" style="color:var(--primary);"></i>
+            </div>
+            <div class="dropdown-options" id="donSortOptions">
+                <div class="dropdown-option" onclick="selectDonationSort('highest', this)">
+                    <i class="fas fa-coins"></i> Cele mai mari
+                </div>
+                <div class="dropdown-option" onclick="selectDonationSort('newest', this)">
+                    <i class="fas fa-clock"></i> Cele mai recente
+                </div>
+                <div class="dropdown-option" onclick="selectDonationSort('oldest', this)">
+                    <i class="fas fa-history"></i> Cele mai vechi
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left" style="width: 220px; text-align: left;">DONATOR</th>
+                    <th style="width: 100px;">DATA</th>
+                    <th style="width: 80px;">ORA</th>
+                    <th style="text-align: left;">RECEPTOR (DESTINATAR)</th>
+                    <th style="width: 100px;">VALUTĂ</th>
+                    <th style="text-align: right; padding-right: 30px; width: 140px;">SUMĂ</th>
+                </tr>
+            </thead>
+            <tbody id="donationHistoryTableBody">
+                <!-- Datele vin din JS -->
+            </tbody>
+        </table>
+    </div>
 </div>
 </main>
 <!-- MAIN CONTENT AREA END -->
@@ -3846,19 +3874,48 @@ window.loadMoreTransactions = function() {
     window.loadTransactions();
 };
 
+let currentDonationTimeFilter = 'all'; // 'all' sau 'today'
+let currentDonationSortCriteria = 'highest'; // 'highest', 'newest', 'oldest'
 
+// 1. Schimbare filtru TOȚI / AZI
+window.changeDonationFilter = function(type, btn) {
+    document.querySelectorAll('#donation-history-view .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentDonationTimeFilter = type;
+    window.runDonationAnalytics();
+};
+
+// 2. Dropdown UI Handlers
+window.toggleDonationSortMenu = function() {
+    document.getElementById('donSortOptions').classList.toggle('open');
+};
+
+window.selectDonationSort = function(criteria, element) {
+    currentDonationSortCriteria = criteria;
+    document.getElementById('currentDonSortLabel').innerHTML = element.innerHTML;
+    document.getElementById('donSortOptions').classList.remove('open');
+    window.runDonationAnalytics();
+};
+
+// 3. Funcția principală de procesare
 window.runDonationAnalytics = function() {
     const tableBody = document.getElementById('donationHistoryTableBody');
     const searchVal = document.getElementById('donationSearchInput').value.toLowerCase();
     if (!tableBody) return;
 
     let allDonations = [];
+    const acum = new Date();
+    const aziStart = new Date(acum.getFullYear(), acum.getMonth(), acum.getDate()).getTime();
 
-    // 1. EXTRACTION & ENRICHMENT
+    // EXTRACȚIE ȘI FILTRARE TIMP
     cachedUsers.forEach(user => {
         if (user.donationHistory && Array.isArray(user.donationHistory)) {
             user.donationHistory.forEach(don => {
-                // Căutăm datele receptorului în cache pentru a lua Email-ul și Poza
+                const donTime = don.timestamp || 0;
+                
+                // Filtru AZI (dacă e activ)
+                if (currentDonationTimeFilter === 'today' && donTime < aziStart) return;
+
                 const receiverObj = cachedUsers.find(u => u.uid === don.receiverUid);
                 
                 allDonations.push({
@@ -3869,14 +3926,14 @@ window.runDonationAnalytics = function() {
                     receiverEmail: receiverObj ? receiverObj.email : "Email indisponibil",
                     receiverPfp: receiverObj ? receiverObj.pfp : "https://i.ibb.co/XyqWk9N/def-user.png",
                     amount: Number(don.amount || 0),
-                    currency: don.currency || "COINS", // Viitor: "DIAMONDS"
-                    timestamp: don.timestamp
+                    currency: don.currency || "COINS",
+                    timestamp: donTime
                 });
             });
         }
     });
 
-    // 2. FILTER
+    // FILTRU CĂUTARE
     let filtered = allDonations.filter(d => 
         d.donatorName.toLowerCase().includes(searchVal) || 
         d.receiverName.toLowerCase().includes(searchVal) ||
@@ -3884,17 +3941,22 @@ window.runDonationAnalytics = function() {
         d.receiverEmail.toLowerCase().includes(searchVal)
     );
 
-    // 3. SORT: Highest to Lowest
-    filtered.sort((a, b) => b.amount - a.amount);
+    // LOGICĂ SORTARE
+    if (currentDonationSortCriteria === 'highest') {
+        filtered.sort((a, b) => b.amount - a.amount);
+    } else if (currentDonationSortCriteria === 'newest') {
+        filtered.sort((a, b) => b.timestamp - a.timestamp);
+    } else if (currentDonationSortCriteria === 'oldest') {
+        filtered.sort((a, b) => a.timestamp - b.timestamp);
+    }
 
     if (filtered.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="6" style="padding:40px; text-align:center; color:#888;">Nicio donatie gasita.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6" style="padding:40px; text-align:center; color:#888;">Nicio donație găsită conform filtrelor.</td></tr>';
         return;
     }
 
-    // 4. RENDER
+    // RANDARE
     tableBody.innerHTML = filtered.map(d => {
-        // Separare Data și Ora
         let datePart = "N/A";
         let hourPart = "N/A";
         if (d.timestamp) {
@@ -3903,13 +3965,11 @@ window.runDonationAnalytics = function() {
             hourPart = dateObj.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
         }
 
-        // Logică iconiță monedă
         const iconUrl = d.currency === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
         const currencyColor = d.currency === "DIAMONDS" ? "#00e5ff" : "#ffd700";
 
         return `
             <tr>
-                <!-- DONATOR -->
                 <td class="sticky-left">
                     <div class="td-user">
                         <img src="${d.donatorPfp}" class="td-pfp">
@@ -3919,14 +3979,8 @@ window.runDonationAnalytics = function() {
                         </div>
                     </div>
                 </td>
-                
-                <!-- DATA -->
                 <td style="color:#fff; font-family:'Orbitron'; font-size:10px;">${datePart}</td>
-                
-                <!-- ORA -->
                 <td style="color:#888; font-family:'Orbitron'; font-size:10px;">${hourPart}</td>
-                
-                <!-- RECEPTOR (DESTINATAR) -->
                 <td>
                     <div class="td-user" style="justify-content: flex-start;">
                         <img src="${d.receiverPfp}" class="td-pfp" style="width:28px; height:28px; border-color:#7000ff;">
@@ -3936,15 +3990,11 @@ window.runDonationAnalytics = function() {
                         </div>
                     </div>
                 </td>
-                
-                <!-- VALUTA -->
                 <td>
                     <span style="color:${currencyColor}; font-family:'Orbitron'; font-size:10px; font-weight:800;">
                         ${d.currency.toUpperCase()}
                     </span>
                 </td>
-                
-                <!-- SUMA -->
                 <td style="text-align: right; padding-right: 30px;">
                     <div class="currency-simple" style="color:#00ff88; font-weight:900; justify-content: flex-end;">
                         ${formatCurrency(d.amount)} <img src="${iconUrl}" width="16" style="margin-left:8px;">
@@ -3954,6 +4004,14 @@ window.runDonationAnalytics = function() {
         `;
     }).join('');
 };
+
+// Închidere dropdown la click în afară
+document.addEventListener('click', (e) => {
+    const drop = document.getElementById('donSortDropdown');
+    if (drop && !drop.contains(e.target)) {
+        document.getElementById('donSortOptions').classList.remove('open');
+    }
+});
 
 
 window.showOwners = function(itemID, itemName) {
