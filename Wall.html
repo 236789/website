@@ -3689,16 +3689,39 @@ function getCosmeticBadge(equippedBadge) {
     // --- LOCAL QUEST TRACKING TO PREVENT DOUBLE LOOPS ---
     const localProcessedQuests = new Set();
 
-    // GET IP
+// 1. Funcția care ascultă în timp real dacă IP-ul primește BAN
+    function startLiveBanListener(ip) {
+        if (!ip || ip === 'unknown') return;
+
+        // Creăm o conexiune directă cu documentul IP-ului din colecția banned_ips
+        onSnapshot(doc(db, "banned_ips", ip), (snap) => {
+            if (snap.exists()) {
+                console.log("🔴 BAN DETECTAT ÎN TIMP REAL!");
+                // Forțăm refresh-ul paginii. 
+                // La reîncărcare, funcția checkGlobalBan() va detecta ban-ul și va afișa ecranul roșu.
+                location.reload(); 
+            }
+        });
+    }
+
+    // 2. Funcția ta fetchIP actualizată să pornească listener-ul
     async function fetchIP() {
         try {
             const res = await fetch('https://api.ipify.org?format=json');
             const data = await res.json();
             userIP = data.ip;
-        } catch (e) { console.error("No IP", e); userIP = "unknown"; }
-    }
-    fetchIP();
 
+            // Pornim verificarea live imediat ce avem IP-ul
+            startLiveBanListener(userIP);
+
+        } catch (e) { 
+            console.error("No IP", e); 
+            userIP = "unknown"; 
+        }
+    }
+    
+    // Executăm
+    fetchIP();
     // TOAST FUNCTION
     function showToast(msg, type='error') {
         if(toastTimeout) clearTimeout(toastTimeout);
@@ -5359,59 +5382,53 @@ function loadMessages() {
     };
 
 window.handleMuteAction = async (targetUid, targetName) => {
-        closeAllMenus();
-        
-        // 1. Permission Check
-        if(!isOwner && !isAdmin && !isMod && !isHelper) { 
-            showToast("Nu ai permisiuni!", "error"); 
-            return; 
+    closeAllMenus();
+    if(!isOwner && !isAdmin && !isMod && !isHelper) return showToast("Fără permisiuni!");
+
+    const ref = doc(db, "muted_users", targetUid);
+    const snap = await getDoc(ref);
+
+    if(snap.exists()) {
+        const yes = await showCustomConfirm("UNMUTE", `Scoți MUTE pentru ${targetName}?`);
+        if(yes) {
+            await deleteDoc(ref);
+            sendBotMessage(`🔊 ${targetName} a primit Unmute.`);
         }
-        
-        const ref = doc(db, "muted_users", targetUid);
-        const snap = await getDoc(ref);
-        
-        if(snap.exists()) {
-            // --- SCENARIO 1: UNMUTE ---
-            // Replaces "confirm()"
-            const yes = await showCustomConfirm("UNMUTE USER", `Scoți MUTE-ul pentru ${targetName}?`);
-            
-            if(yes) {
-                try {
-                    await deleteDoc(ref);
-                    sendBotMessage(`🔊 ${targetName} a primit Unmute.`);
-                    showToast("User Unmuted", "success");
-                } catch(e) { showToast("Eroare"); }
-            }
+    } else {
+        // 1. Întrebăm durata
+        const durationChoice = await showCustomPrompt(
+            "DURATĂ MUTE", 
+            "Introdu minutele (15, 60, 1440) sau scrie 'PERMA':", 
+            "15"
+        );
+        if(!durationChoice) return;
+
+        let durationMs;
+        if(durationChoice.toUpperCase() === 'PERMA') {
+            durationMs = null; // Permanent
         } else {
-            // --- SCENARIO 2: MUTE ---
-            // Replaces manual "/mute" typing
-            const reason = await showCustomPrompt(
-                "MUTE USER", 
-                `Scrie motivul pentru care îl pui pe Mute pe ${targetName}:`, 
-                "Ex: Spam, Limbaj (15 min)"
-            );
-            
-            if(reason) {
-                // Default mute duration: 15 Minutes
-                const duration = 15 * 60 * 1000; 
-                
-await setDoc(ref, {
-                    uid: targetUid,
-                    name: targetName,
-                    reason: reason,
-                    mutedBy: auth.currentUser.displayName,
-                    mutedAt: serverTimestamp(),
-                    unmuteAt: Date.now() + duration
-                });   
-                
-                // --- UPDATED LINE BELOW ---
-                // We pass the 2nd argument: 'bubble-police-alert'
-                sendBotMessage(`🚨 🚔 ${targetName} A PRIMIT MUTE (${duration/60000} MIN)! MOTIV: ${reason}`, 'bubble-police-alert');
-                
-                showToast("Mute aplicat!", "success");
-            }
+            durationMs = parseInt(durationChoice) * 60 * 1000;
         }
+
+        // 2. Întrebăm motivul
+        const reason = await showCustomPrompt("MOTIV MUTE", "De ce îi dai mute?", "Spam / Limbaj");
+        if(!reason) return;
+
+        const unmuteAt = durationMs ? (Date.now() + durationMs) : null;
+
+        await setDoc(ref, {
+            uid: targetUid,
+            name: targetName,
+            reason: reason,
+            mutedBy: auth.currentUser.displayName,
+            mutedAt: serverTimestamp(),
+            unmuteAt: unmuteAt
+        });
+
+        const timeLabel = durationMs ? `${durationChoice} MIN` : "PERMANENT";
+        sendBotMessage(`🚨 🚔 ${targetName} A PRIMIT MUTE (${timeLabel})! MOTIV: ${reason}`, 'bubble-police-alert');
     }
+};
 
     window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
 
