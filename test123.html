@@ -2773,6 +2773,20 @@
 </div>
 <img src="https://iili.io/fv5bmtj.png" id="flyingDiamond">
 
+<!-- MODAL LISTĂ POSESORI OBIECT -->
+<div id="ownerListModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 400px; max-height: 80vh;">
+        <button class="close-pop" onclick="document.getElementById('ownerListModal').classList.remove('active')">✕</button>
+        <h3 id="ownerListTitle" style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px; font-size: 16px;">POSESORI</h3>
+        
+        <!-- Container pentru listă -->
+        <div id="ownerListContent" class="lobby-container" style="max-height: 50vh; overflow-y: auto; padding-right: 5px;">
+            <!-- Utilizatorii vor fi injectați aici -->
+        </div>
+
+        <p id="ownerListCount" style="margin-top: 15px; font-size: 12px; color: #888; font-family: 'Orbitron';"></p>
+    </div>
+</div>
 
 <!-- INVENTORY MODAL (NEW) -->
 <div id="inventoryModal" class="account-modal-overlay">
@@ -3791,6 +3805,56 @@ window.loadMoreTransactions = function() {
     window.loadTransactions();
 };
 
+
+
+window.showOwners = function(itemID, itemName) {
+    const modal = document.getElementById('ownerListModal');
+    const title = document.getElementById('ownerListTitle');
+    const content = document.getElementById('ownerListContent');
+    const countEl = document.getElementById('ownerListCount');
+
+    title.innerText = `POSESORI: ${itemName.toUpperCase()}`;
+    content.innerHTML = '<div style="color:#888; padding:20px;">Se caută posesorii...</div>';
+    modal.classList.add('active');
+
+    // Determinăm ce array de inventory să verificăm
+    let userArrayKey = "";
+    switch(currentShopCategory) {
+        case 'badges': userArrayKey = "ownedBadges"; break;
+        case 'frames': userArrayKey = "ownedFrames"; break;
+        case 'banners': userArrayKey = "ownedBanners"; break;
+        case 'texts': userArrayKey = "ownedTexts"; break;
+    }
+
+    // Filtrăm utilizatorii din cache care dețin acest obiect
+    const owners = cachedUsers.filter(user => {
+        const owned = user[userArrayKey] || [];
+        return owned.some(id => {
+            const cleanID = (typeof id === 'object') ? id.id : id;
+            return cleanID === itemID;
+        });
+    });
+
+    if (owners.length === 0) {
+        content.innerHTML = '<div style="color:#ff4757; padding:20px;">Nimeni nu deține acest obiect încă.</div>';
+        countEl.innerText = "TOTAL: 0 UTILIZATORI";
+        return;
+    }
+
+    // Randăm lista de utilizatori (folosind stilul de lobby/tabel neon)
+    content.innerHTML = owners.map(u => `
+        <div class="lobby-player" style="margin-bottom: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(41, 243, 255, 0.1);">
+            <img src="${u.pfp}" class="lobby-pfp" style="width:30px; height:30px;">
+            <div style="display:flex; flex-direction:column; text-align:left;">
+                <span class="lobby-name" style="font-size:12px;">${u.username}</span>
+                <span style="font-size:9px; color:#555;">${u.email}</span>
+            </div>
+        </div>
+    `).join('');
+
+    countEl.innerText = `TOTAL: ${owners.length} UTILIZATORI`;
+};
+
 window.runPerformanceAnalytics = function() {
     const tableBody = document.getElementById('performanceTableBody');
     if(!tableBody) return;
@@ -3940,8 +4004,9 @@ window.runShopAnalytics = function() {
             visualHtml = `<div class="${item.cssClass} anal-text-preview">LOST SOUL</div>`;
         }
 
+        // AM ADAUGAT CURSOR:POINTER SI ONCLICK AICI:
         return `
-            <div class="item-anal-card">
+            <div class="item-anal-card" style="cursor:pointer;" onclick="window.showOwners('${item.id}', '${item.name || item.text}')">
                 <div class="owner-count-badge" style="${count > 0 ? '' : 'background:#444; box-shadow:none; color:#888;'}">${count}</div>
                 <div style="flex:1; display:flex; align-items:center; justify-content:center; width:100%; opacity: ${count > 0 ? '1' : '0.4'}">
                     ${visualHtml}
