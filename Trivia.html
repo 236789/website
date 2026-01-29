@@ -2577,21 +2577,21 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 // --- TRIVIA SYSTEM LOGIC ---
 
-// REPLACES YOUR OLD AUDIO CONSTANTS
-    // 1. Ticking Sound (Short Beep)
-    // Înlocuiește linia veche cu sfxTimer:
-const sfxTimer = new Audio("https://www.soundjay.com/buttons/beep-01a.mp3"); 
-sfxTimer.volume = 0.2; // Setează un volum mai mic să nu fie deranjant
-    // 2. Correct Answer (Ding)
-    const sfxCorrect = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
-    
-    // 3. Wrong Answer (Buzz)
-    const sfxWrong = new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg");
-    
-    // Set volume so it doesn't blast ears
-    sfxTimer.volume = 0.5;
-    sfxCorrect.volume = 0.5;
-    sfxWrong.volume = 0.5;
+// Sunete cu link-uri valide și protecție la erori
+const sfxTimer = new Audio("https://www.soundjay.com/buttons/beep-01a.mp3");
+const sfxCorrect = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
+const sfxWrong = new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg");
+
+sfxTimer.volume = 0.1;
+sfxCorrect.volume = 0.3;
+sfxWrong.volume = 0.3;
+
+// Funcție pentru a "trezi" sunetul la primul click (cerință browser)
+document.addEventListener('click', () => {
+    sfxTimer.load();
+    sfxCorrect.load();
+    sfxWrong.load();
+}, { once: true });
     
     // 2. STATE VARIABLES
     let triviaState = {
@@ -3920,42 +3920,38 @@ function gameTick() {
         else document.getElementById('timerBar').style.background = '#29f3ff';
     }
 
-    // 5. Handle Answer
 function handleAnswer(selectedIndex, btnElement) {
-        clearInterval(triviaState.timer); 
-        
-        const allBtns = document.querySelectorAll('.option-btn');
-        allBtns.forEach(b => b.style.pointerEvents = 'none');
-
-        const currentQ = triviaState.questions[triviaState.qIndex];
-        
-// Caută handleAnswer în Trivia.html și adaugă apelul către updateTriviaStats
-if(selectedIndex === currentQ.c) {
-    btnElement.classList.add('correct');
-    sfxCorrect.play();
-    triviaState.score += 25; 
-    triviaState.correctCount++;
+    if (!triviaState.active) return; // Siguranță
     
-    // ADAUGĂ ACESTE LINII AICI:
-    updateTriviaStats(true); // Salvează +1 corect în profil
-    trackCategoryUsage(triviaState.category); // Salvează popularitatea categoriei
-    checkTriviaQuest('single');
-} else {
-    btnElement.classList.add('wrong');
-    sfxWrong.play();
-    triviaState.wrongCount++;
-    updateTriviaStats(false); // Salvează +1 greșit în profil
-    allBtns[currentQ.c].classList.add('correct');
-}
-            // --- WRONG ANSWER ---
-            btnElement.classList.add('wrong');
-            sfxWrong.play();
-            triviaState.wrongCount++;
-            allBtns[currentQ.c].classList.add('correct');
-        }
+    clearInterval(triviaState.timer); 
+    
+    const allBtns = document.querySelectorAll('.option-btn');
+    allBtns.forEach(b => b.style.pointerEvents = 'none');
 
-        setTimeout(nextQuestion, 2000);
+    const currentQ = triviaState.questions[triviaState.qIndex];
+    const isCorrect = (selectedIndex === currentQ.c);
+    
+    if(isCorrect) {
+        btnElement.classList.add('correct');
+        if (sfxCorrect.readyState >= 2) sfxCorrect.play().catch(e => {});
+        triviaState.score += 25; 
+        triviaState.correctCount++;
+        checkTriviaQuest('single');
+    } else {
+        btnElement.classList.add('wrong');
+        if (sfxWrong.readyState >= 2) sfxWrong.play().catch(e => {});
+        triviaState.wrongCount++;
+        if(allBtns[currentQ.c]) allBtns[currentQ.c].classList.add('correct');
     }
+
+    // --- LOGICA DE TRACKING (PENTRU ANALYTICS) ---
+    updateTriviaStats(isCorrect); 
+    trackCategoryUsage(triviaState.category); 
+
+    setTimeout(nextQuestion, 2000);
+}
+
+
 
     function highlightCorrect() {
         const currentQ = triviaState.questions[triviaState.qIndex];
