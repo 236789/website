@@ -2106,7 +2106,7 @@
 
 .dropdown-options.open {
     display: block;
-    animation: fadeIn 0.2s ease;
+    animation: fadeIn 0.2s ease; 
 }
 
 .dropdown-option {
@@ -3895,7 +3895,10 @@ window.changeShopFilter = function(category, btn) {
 
 window.runShopAnalytics = function() {
     const container = document.getElementById('shopVisualContainer');
-    if (!container) return;
+    // Important: Only run if the container is visible/exists to save performance
+    if (!container || !document.getElementById('shop-stats-view').classList.contains('active')) return;
+
+    console.log("Calculare statistici shop pentru " + cachedUsers.length + " utilizatori...");
 
     let dbReference = [];
     let userArrayKey = "";
@@ -3907,39 +3910,36 @@ window.runShopAnalytics = function() {
         case 'texts': dbReference = TEXTS_DB; userArrayKey = "ownedTexts"; break;
     }
 
-    // 1. Tally counts
+    // 1. Reset counts
     let stats = {};
     dbReference.forEach(item => stats[item.id] = 0);
 
+    // 2. Tally counts from cached data
     cachedUsers.forEach(user => {
         const owned = user[userArrayKey] || [];
         owned.forEach(itemID => {
-            if (stats[itemID] !== undefined) stats[itemID]++;
+            // We use itemID.id or itemID because some systems store objects, some store strings
+            const id = (typeof itemID === 'object') ? itemID.id : itemID;
+            if (stats[id] !== undefined) {
+                stats[id]++;
+            }
         });
     });
 
-    // 2. Render Visual Cards
+    // 3. Render Visual Cards
     container.innerHTML = dbReference.map(item => {
         const count = stats[item.id] || 0;
         let visualHtml = "";
 
-        // Build the preview based on the type
         if (currentShopCategory === 'badges') {
-            visualHtml = `
-                <span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 15px ${item.color}; font-size:12px; padding: 8px 15px;">
-                    <i class="fas ${item.icon}"></i> ${item.text}
-                </span>`;
+            visualHtml = `<span class="shop-badge-preview" style="background:${item.color}; color:#000; border:none; box-shadow:0 0 15px ${item.color}; font-size:12px; padding: 8px 15px;"><i class="fas ${item.icon}"></i> ${item.text}</span>`;
         } 
         else if (currentShopCategory === 'frames') {
             const scale = item.scale || 1.45;
-            visualHtml = `
-                <div class="anal-frame-preview">
-                    <img src="https://i.ibb.co/XyqWk9N/def-user.png" style="width:100%; height:100%; border-radius:50%; opacity:0.3;">
-                    <img src="${item.img}" class="anal-frame-img" style="width:${scale * 100}%; height:${scale * 100}%;">
-                </div>`;
+            visualHtml = `<div class="anal-frame-preview"><img src="https://i.ibb.co/XyqWk9N/def-user.png" style="width:100%; height:100%; border-radius:50%; opacity:0.3;"><img src="${item.img}" class="anal-frame-img" style="width:${scale * 100}%; height:${scale * 100}%;"></div>`;
         } 
         else if (currentShopCategory === 'banners') {
-            visualHtml = `<div class="${item.cssClass}" style="width:100%; padding:15px; border-radius:10px; font-size:10px; font-weight:bold;">PREVIEW BANNER</div>`;
+            visualHtml = `<div class="${item.cssClass}" style="width:100%; padding:15px; border-radius:10px; font-size:10px; font-weight:bold; text-align:center;">PREVIEW BANNER</div>`;
         } 
         else if (currentShopCategory === 'texts') {
             visualHtml = `<div class="${item.cssClass} anal-text-preview">LOST SOUL</div>`;
@@ -3947,11 +3947,11 @@ window.runShopAnalytics = function() {
 
         return `
             <div class="item-anal-card">
-                <div class="owner-count-badge">${count}</div>
-                <div style="flex:1; display:flex; align-items:center; justify-content:center; width:100%;">
+                <div class="owner-count-badge" style="${count > 0 ? '' : 'background:#444; box-shadow:none; color:#888;'}">${count}</div>
+                <div style="flex:1; display:flex; align-items:center; justify-content:center; width:100%; opacity: ${count > 0 ? '1' : '0.4'}">
                     ${visualHtml}
                 </div>
-                <div class="item-anal-name">${item.name || item.text}</div>
+                <div class="item-anal-name" style="opacity: ${count > 0 ? '1' : '0.5'}">${item.name || item.text}</div>
                 <div style="font-size:9px; color:#444; margin-top:5px; font-family:monospace;">${item.id}</div>
             </div>
         `;
@@ -4856,9 +4856,8 @@ function loadAllUsers() {
             let cleanDonation = Number(donationValue);
             if (isNaN(cleanDonation)) cleanDonation = 0;
 
-// ... în interiorul loadAllUsers, înSnapshot ...
 cachedUsers.push({
-    uid: doc.id, // Adăugăm și UID-ul pentru referință
+    uid: doc.id,
     username: data.username || "Unknown",
     email: data.email || "",
     pfp: data.image || "https://i.ibb.co/XyqWk9N/def-user.png",
@@ -4869,10 +4868,14 @@ cachedUsers.push({
     donated: cleanDonation,
     streak: Number(data.streak) || 0,
     
-    // DATELE PENTRU INVITAȚII (Lipseau!)
-    referralHistory: data.referralHistory || [], 
+    // DATA NEEDED FOR SHOP ANALYTICS (This was missing!)
+    ownedBadges: data.ownedBadges || [],
+    ownedBanners: data.ownedBanners || [],
+    ownedFrames: data.ownedFrames || [],
+    ownedTexts: data.ownedTexts || [],
     
-    // Date tehnice
+    // Alte date
+    referralHistory: data.referralHistory || [], 
     joinedAt: data.joinedAt ? data.joinedAt.toMillis() : 0,
     joinDateStr: joinDate,
     statusHtml: statusHtml,
@@ -4897,6 +4900,11 @@ cachedUsers.push({
         // 4. ACTUALIZARE REAL-TIME: ANALIZĂ UTILIZATORI NOI (24H)
         if(typeof runUserGrowthAnalytics === "function") {
             runUserGrowthAnalytics();
+        }
+
+// 5. ACTUALIZARE REAL-TIME: ANALIZĂ SHOP
+        if(typeof runShopAnalytics === "function") {
+            runShopAnalytics();
         }
 
     }, (error) => {
