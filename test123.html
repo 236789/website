@@ -2678,14 +2678,16 @@ window.loadTransactions = function() {
 
     if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
+    console.log("🔄 Se inițializează ascultătorul pentru tranzacții...");
+    tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
 
-    // IMPORTANT: Asigură-te că ai index creat pentru "timestamp" desc
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(50));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
+        console.log("📥 Snapshot primit! Documente găsite:", snapshot.size);
+        
         if (snapshot.empty) {
-            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nu s-au găsit tranzacții.</td></tr>";
+            tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nu s-au găsit tranzacții în baza de date.</td></tr>";
             return;
         }
 
@@ -2693,24 +2695,20 @@ window.loadTransactions = function() {
         snapshot.forEach((doc) => {
             const t = doc.data();
             
-            // Mapare câmpuri conform paginii vechi (Istoric)
-            // Pagina veche folosește 'userImage', nu 'image'
+            // Mapăm câmpurile exact cum sunt în baza de date (folosim câmpurile din pagina veche care funcționa)
             const pfp = t.userImage || t.image || "https://i.ibb.co/XyqWk9N/def-user.png";
-            const uName = t.username || "Anonim";
+            const uName = t.username || "Utilizator";
             
-            // Formatare Dată
             let dateStr = "Recent";
             if (t.timestamp && t.timestamp.toDate) {
                 const d = t.timestamp.toDate();
                 dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
-            // Calcul Sumă (Unele sunt stringuri în DB, le forțăm în Number)
             const amountVal = Number(t.amount || 0);
-            const isDiamonds = (t.type === "DIAMONDS");
+            const isDiamonds = (t.type === "DIAMONDS" || t.currency === "DIAMONDS");
             const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
             
-            // Culori ca în pagina veche
             const amountClass = amountVal >= 0 ? "val-plus" : "val-minus";
             const amountSign = amountVal >= 0 ? "+" : "";
 
@@ -2722,7 +2720,7 @@ window.loadTransactions = function() {
                             <div><div class="td-name">${uName}</div></div>
                         </div>
                     </td>
-                    <td style="color:#888; font-size:11px; font-family: 'Orbitron';">${dateStr}</td>
+                    <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
                     <td style="font-size:12px; color:#fff;">${t.description || "-"}</td>
                     <td><span class="source-tag">${t.source || "SYSTEM"}</span></td>
                     <td>
@@ -2735,36 +2733,32 @@ window.loadTransactions = function() {
         tableBody.innerHTML = rowsHTML;
 
     }, (error) => {
-        console.error("Firestore Error:", error);
+        console.error("❌ Eroare Firebase Transactions:", error);
         tableBody.innerHTML = `<tr><td colspan="5" style="color:#ff4757; text-align:center; padding:20px;">
             ⚠️ Eroare: ${error.message}
         </td></tr>`;
     });
 };
 
-// --- 1. VIEW SWITCHER LOGIC (Sidebar) ---
+// FUNCȚIA DE SCHIMBARE SECȚIUNE (SINGURA CARE TREBUIE SĂ RĂMÂNĂ)
 window.switchSection = (sectionId, btnElement) => {
-    // Hide all sections
+    // 1. Ascunde tot
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    // Show target section
-    document.getElementById(sectionId).classList.add('active');
-
-    // Update Sidebar Active Class
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
-    btnElement.classList.add('active');
 
-    // If opening users view, load data if empty
+    // 2. Arată secțiunea cerută
+    const target = document.getElementById(sectionId);
+    if(target) target.classList.add('active');
+    if(btnElement) btnElement.classList.add('active');
+
+    // 3. Încarcă datele în funcție de ce am deschis
     if(sectionId === 'transactions-view') {
-        const body = document.getElementById('analyticsTableBody');
-        if(body.innerHTML.includes("Se încarcă")) {
-            loadAllUsers();
-        }
+        if(cachedUsers.length === 0) loadAllUsers();
     }
-
-// Add this INSIDE your existing switchSection function
-if(sectionId === 'transactions-history-view') {
-    loadTransactions();
-}
+    
+    if(sectionId === 'transactions-history-view') {
+        window.loadTransactions(); // Aici pornim încărcarea tranzacțiilor
+    }
 };
 
 window.filterData = (type, btn) => {
