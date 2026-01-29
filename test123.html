@@ -2581,48 +2581,69 @@
         LIVE TRANSACTIONS
     </h2>
 
-    <!-- BARĂ CĂUTARE TRANZACȚII -->
+    <!-- BARĂ CĂUTARE (USERNAME) -->
     <div class="search-container-center">
         <input type="text" id="txnSearchInput" class="search-input-neon" 
-               placeholder="🔍 CAUTĂ DUPĂ NUME UTILIZATOR..." onkeyup="applyTxnFilters()">
+               placeholder="🔍 CAUTĂ DUPĂ NUME (Ex: Lost Soul)..." onkeyup="applyTxnFilters()">
     </div>
 
     <!-- FILTRE TRANZACȚII -->
     <div class="filter-row">
-        <!-- Stânga: Tip Monedă -->
+        <!-- Stânga: Tip Monedă (Pictograme) -->
         <div class="filter-group">
-            <button class="filter-btn active" id="txnFilterAll" onclick="filterTxnType('ALL', this)">
+            <button class="filter-btn active" onclick="filterTxnType('ALL', this)" title="Toate">
                 TOATE
             </button>
-            <button class="filter-btn" onclick="filterTxnType('COINS', this)">
+            <button class="filter-btn" onclick="filterTxnType('COINS', this)" title="Doar Coins">
                 <img src="https://iili.io/fhc1SKQ.png" style="width:18px;">
             </button>
-            <button class="filter-btn" onclick="filterTxnType('DIAMONDS', this)">
+            <button class="filter-btn" onclick="filterTxnType('DIAMONDS', this)" title="Doar Diamante">
                 <img src="https://iili.io/fv5bmtj.png" style="width:18px;">
             </button>
         </div>
 
-        <!-- Dreapta: Dropdown Filtru Sursă -->
+        <!-- Dreapta: Dropdown Filtrare după PAGINĂ/SURSĂ -->
         <div class="custom-dropdown" id="txnSourceDropdown">
             <div class="dropdown-trigger" onclick="toggleTxnSourceMenu()">
-                <span id="currentTxnSourceLabel"><i class="fas fa-filter"></i> Toate Sursele</span>
+                <span id="currentTxnSourceLabel"><i class="fas fa-layer-group"></i> Toate Sursele</span>
                 <i class="fas fa-chevron-down" style="color:var(--primary);"></i>
             </div>
-            <div class="dropdown-options" id="txnSourceOptions">
+            <div class="dropdown-options" id="txnSourceOptions" style="max-height: 300px; overflow-y: auto;">
                 <div class="dropdown-option" onclick="filterTxnSource('ALL', this)">
                     <i class="fas fa-list"></i> Toate Sursele
                 </div>
                 <div class="dropdown-option" onclick="filterTxnSource('Daily Tasks', this)">
                     <i class="fas fa-tasks"></i> Daily Tasks
                 </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Daily Rewards', this)">
+                    <i class="fas fa-gift"></i> Daily Rewards
+                </div>
                 <div class="dropdown-option" onclick="filterTxnSource('Spin Wheel', this)">
                     <i class="fas fa-sync-alt"></i> Spin Wheel
                 </div>
-                <div class="dropdown-option" onclick="filterTxnSource('Community Wall', this)">
-                    <i class="fas fa-comment-alt"></i> Community Wall
+                <div class="dropdown-option" onclick="filterTxnSource('Trivia', this)">
+                    <i class="fas fa-question-circle"></i> Trivia
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Wall', this)">
+                    <i class="fas fa-address-card"></i> Community Wall
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Galerie', this)">
+                    <i class="fas fa-images"></i> Galerie
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Feedback', this)">
+                    <i class="fas fa-comment-dots"></i> Feedback
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Recenzii', this)">
+                    <i class="fas fa-star"></i> Recenzii
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Noutati', this)">
+                    <i class="fas fa-newspaper"></i> Noutăți
+                </div>
+                <div class="dropdown-option" onclick="filterTxnSource('Shop', this)">
+                    <i class="fas fa-shopping-cart"></i> Shop / Cosmetics
                 </div>
                 <div class="dropdown-option" onclick="filterTxnSource('System', this)">
-                    <i class="fas fa-robot"></i> System
+                    <i class="fas fa-robot"></i> System / Admin
                 </div>
             </div>
         </div>
@@ -2719,7 +2740,6 @@ import { getFirestore, doc, getDocs, collection, query, orderBy, limit, where, a
 
 let dashboardTxnUnsub = null;
 
-// Variabile globale pentru filtrarea tranzacțiilor
 let rawTxns = []; 
 let currentTxnType = 'ALL';
 let currentTxnSource = 'ALL';
@@ -2732,7 +2752,7 @@ window.loadTransactions = function() {
 
     tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează...</td></tr>';
 
-    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(100));
+    const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(150));
 
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
         rawTxns = [];
@@ -2746,14 +2766,14 @@ window.loadTransactions = function() {
                 description: t.description || "-",
                 source: t.source || "SYSTEM",
                 amount: Number(t.amount || 0),
-                type: t.type || "COINS"
+                type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
             });
         });
-        applyTxnFilters(); // Randăm tabelul cu filtrele aplicate
+        applyTxnFilters();
     });
 };
 
-// Logica de randare a tabelului cu filtre
+// --- LOGICA DE FILTRARE ---
 window.applyTxnFilters = function() {
     const tableBody = document.getElementById('txnTableBody');
     const searchVal = document.getElementById('txnSearchInput').value.toLowerCase();
@@ -2761,12 +2781,18 @@ window.applyTxnFilters = function() {
     const filtered = rawTxns.filter(t => {
         const matchesSearch = t.username.toLowerCase().includes(searchVal);
         const matchesType = (currentTxnType === 'ALL' || t.type === currentTxnType);
-        const matchesSource = (currentTxnSource === 'ALL' || t.source === currentTxnSource);
+        
+        let matchesSource = true;
+        if(currentTxnSource !== 'ALL') {
+            // Facem verificarea case-insensitive pentru sursă
+            matchesSource = t.source.toLowerCase().includes(currentTxnSource.toLowerCase());
+        }
+
         return matchesSearch && matchesType && matchesSource;
     });
 
     if (filtered.length === 0) {
-        tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nicio tranzacție găsită pentru aceste filtre.</td></tr>";
+        tableBody.innerHTML = "<tr><td colspan='5' style='padding:20px; text-align:center; color:#888;'>Nicio tranzacție găsită.</td></tr>";
         return;
     }
 
@@ -2777,8 +2803,7 @@ window.applyTxnFilters = function() {
             dateStr = `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
         }
 
-        const isDiamonds = (t.type === "DIAMONDS");
-        const iconUrl = isDiamonds ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+        const iconUrl = t.type === "DIAMONDS" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
         const amountClass = t.amount >= 0 ? "val-plus" : "val-minus";
         const amountSign = t.amount >= 0 ? "+" : "";
 
@@ -2790,8 +2815,8 @@ window.applyTxnFilters = function() {
                         <div class="td-name">${t.username}</div>
                     </div>
                 </td>
-                <td style="color:#888; font-size:11px;">${dateStr}</td>
-                <td style="font-size:12px; color:#fff;">${t.description}</td>
+                <td style="color:#888; font-size:11px; font-family:'Orbitron';">${dateStr}</td>
+                <td style="font-size:12px; color:#fff; text-align:left;">${t.description}</td>
                 <td><span class="source-tag">${t.source}</span></td>
                 <td>
                     <div class="currency-simple ${amountClass}">
@@ -2802,7 +2827,7 @@ window.applyTxnFilters = function() {
     }).join('');
 };
 
-// Handlers pentru butoane și dropdown
+// Handlers UI
 window.filterTxnType = function(type, btn) {
     document.querySelectorAll('#transactions-history-view .filter-group .filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -2821,14 +2846,13 @@ window.filterTxnSource = function(source, element) {
     applyTxnFilters();
 };
 
-// Închide dropdown-ul la click în afară
+// Click în afară pentru închidere dropdown
 document.addEventListener('click', (e) => {
-    const dropdown = document.getElementById('txnSourceDropdown');
-    if (dropdown && !dropdown.contains(e.target)) {
+    const drop = document.getElementById('txnSourceDropdown');
+    if (drop && !drop.contains(e.target)) {
         document.getElementById('txnSourceOptions').classList.remove('open');
     }
 });
-
 // THE ONLY SWITCH SECTION FUNCTION YOU NEED
 window.switchSection = (sectionId, btnElement) => {
     // 1. Switch Views
