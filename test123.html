@@ -4046,76 +4046,65 @@ window.loadTransactions = function() {
     const loadMoreBtn = document.getElementById('loadMoreTxnsBtn');
     if (!tableBody) return;
 
-    // Închidem orice ascultător vechi pentru a preveni dublarea datelor sau scurgerile de memorie
-    if (dashboardTxnUnsub) { 
-        dashboardTxnUnsub(); 
-        dashboardTxnUnsub = null; 
-    }
+    if (dashboardTxnUnsub) { dashboardTxnUnsub(); dashboardTxnUnsub = null; }
 
-    // Afișăm starea inițială de încărcare dacă nu avem date deloc
     if (rawTxns.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center;">🔌 Se conectează la baza de date...</td></tr>';
     }
 
-    // Actualizăm starea butonului de încărcare
     if (loadMoreBtn) {
         loadMoreBtn.disabled = true;
         loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SE ÎNCARCĂ...';
     }
 
-    // Creăm interogarea către Firestore (sortată după timp, limitată la txnLimit setat global)
     const q = query(collection(db, "transactions"), orderBy("timestamp", "desc"), limit(txnLimit));
 
-    // Pornim ascultătorul în timp real
     dashboardTxnUnsub = onSnapshot(q, (snapshot) => {
-        // Resetăm array-ul local pentru a reflecta exact ce este în Snapshot-ul curent
         rawTxns = [];
 
         snapshot.forEach((docSnap) => {
             const t = docSnap.data();
             
-            // Procesăm fiecare tranzacție cu noile câmpuri necesare pentru Analytics
+            // --- FIX FOR BROKEN IMAGES/NAMES ---
+            let finalName = t.username;
+            let finalPfp = t.userImage;
+
+            // If transaction doesn't have name/img (like old admin logs), look it up in cachedUsers
+            if (!finalName || finalName === "Utilizator") {
+                const foundUser = cachedUsers.find(u => u.uid === (t.userId || t.uid));
+                if (foundUser) {
+                    finalName = foundUser.username;
+                    finalPfp = foundUser.pfp;
+                }
+            }
+            // -----------------------------------
+
             rawTxns.push({
                 id: docSnap.id,
-                userId: t.userId || t.uid || null, // ID-ul celui care a generat tranzacția
-                username: t.username || "Utilizator",
-                pfp: t.userImage || "https://i.ibb.co/XyqWk9N/def-user.png",
+                userId: t.userId || t.uid || null,
+                username: finalName || "Utilizator",
+                pfp: finalPfp || "https://i.ibb.co/XyqWk9N/def-user.png",
                 timestamp: t.timestamp,
                 description: t.description || "-",
                 source: t.source || "SYSTEM",
                 amount: Number(t.amount || 0),
-                targetUid: t.targetUid || null, // UID-ul destinatarului (pentru donații)
+                targetUid: t.targetUid || null,
                 type: t.type || (t.currency === "DIAMONDS" ? "DIAMONDS" : "COINS")
             });
         });
 
-        // Gestionăm vizibilitatea butonului "Load More"
         if (loadMoreBtn) {
             loadMoreBtn.disabled = false;
             loadMoreBtn.innerHTML = '<i class="fas fa-arrow-down"></i> ÎNCARCĂ MAI MULTE';
-            
-            // Dacă am primit mai puține documente decât limita, înseamnă că nu mai sunt date de încărcat
-            if (snapshot.size >= txnLimit) {
-                loadMoreBtn.style.display = 'flex';
-            } else {
-                loadMoreBtn.style.display = 'none';
-            }
+            loadMoreBtn.style.display = snapshot.size >= txnLimit ? 'flex' : 'none';
         }
 
-        // Re-aplicăm filtrele vizuale pe tabelul HTML
-        if (typeof applyTxnFilters === "function") {
-            applyTxnFilters();
-        }
-        
-        // Actualizăm cifrele economice (Total Coins, Burn, Mint etc.)
-        if (typeof updateEconomyStats === "function") { 
-            updateEconomyStats(); 
-        }
+        if (typeof applyTxnFilters === "function") applyTxnFilters();
+        if (typeof updateEconomyStats === "function") updateEconomyStats();
         
     }, (error) => {
-        console.error("Eroare la încărcarea tranzacțiilor:", error);
-        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
-        tableBody.innerHTML = '<tr><td colspan="5" style="color:red;">Eroare de permisiuni Firestore.</td></tr>';
+        console.error("Txn Error:", error);
+        tableBody.innerHTML = '<tr><td colspan="5" style="color:red;">Eroare conexiune.</td></tr>';
     });
 };
 
@@ -4148,32 +4137,34 @@ window.selectDonationSort = function(criteria, element) {
     window.runDonationAnalytics();
 };
 
-// --- UPDATED ADMIN PANEL LOGIC ---
+// --- FIXED ADMIN PANEL LOGIC ---
 let selectedAdminTargetUid = null;
 let selectedAdminCurrency = 'coins';
 
-// 1. Toggle & Populate the Dropdown
+// 1. Toggle Dropdown & Auto-Populate
 window.toggleAdminUserList = () => {
     const list = document.getElementById('adminUserResults');
     const isHidden = list.style.display === 'none';
     
     if (isHidden) {
         list.style.display = 'block';
-        // If search is empty, show everyone (first 50)
-        if(document.getElementById('adminUserSearch').value === '') {
-            populateAdminUserList(cachedUsers); 
-        }
+        // Always repopulate to ensure we have latest data
+        populateAdminUserList(cachedUsers);
     } else {
         list.style.display = 'none';
     }
 };
 
-// 2. Search Logic (Filters the list instead of clearing it)
+// 2. Search Logic
 window.searchUserForAdmin = () => {
     const input = document.getElementById('adminUserSearch').value.toLowerCase();
     const list = document.getElementById('adminUserResults');
-    
-    list.style.display = 'block'; // Ensure it's open while typing
+    list.style.display = 'block'; 
+
+    if (cachedUsers.length === 0) {
+        list.innerHTML = '<div style="padding:10px; color:#ff4757;">Listă utilizatori goală. Așteaptă...</div>';
+        return;
+    }
 
     const matches = cachedUsers.filter(u => 
         u.username.toLowerCase().includes(input) || 
@@ -4183,7 +4174,7 @@ window.searchUserForAdmin = () => {
     populateAdminUserList(matches);
 };
 
-// 3. Helper to Render the List
+// 3. Render List Helper
 function populateAdminUserList(usersArray) {
     const list = document.getElementById('adminUserResults');
     list.innerHTML = '';
@@ -4193,11 +4184,10 @@ function populateAdminUserList(usersArray) {
         return;
     }
 
-    // Sort: Online users first, then Alphabetical
+    // Sort: Online first
     usersArray.sort((a, b) => (b.isOnlineBool === a.isOnlineBool) ? 0 : b.isOnlineBool ? 1 : -1);
 
-    // Limit to 50 results for performance
-    usersArray.slice(0, 50).forEach(u => { 
+    usersArray.slice(0, 30).forEach(u => { 
         const div = document.createElement('div');
         div.style.padding = "10px";
         div.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
@@ -4205,25 +4195,22 @@ function populateAdminUserList(usersArray) {
         div.style.display = "flex";
         div.style.alignItems = "center";
         div.style.gap = "10px";
-        div.style.transition = "0.2s";
+        div.style.background = "#02050a";
         
-        // Hover effect via JS
         div.onmouseover = () => div.style.background = "rgba(41, 243, 255, 0.1)";
-        div.onmouseout = () => div.style.background = "transparent";
+        div.onmouseout = () => div.style.background = "#02050a";
 
         const statusDot = u.isOnlineBool 
-            ? '<span style="width:8px; height:8px; background:#00ff88; border-radius:50%; display:inline-block; box-shadow:0 0 5px #00ff88;"></span>' 
-            : '<span style="width:8px; height:8px; background:#555; border-radius:50%; display:inline-block;"></span>';
+            ? '<span style="color:#00ff88; font-size:10px;">● Online</span>' 
+            : '<span style="color:#555; font-size:10px;">○ Offline</span>';
 
         div.innerHTML = `
             <img src="${u.pfp}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">
             <div style="flex:1;">
-                <div style="font-size:12px; font-weight:bold; color:#fff; display:flex; align-items:center; gap:5px;">
-                    ${u.username} ${statusDot}
-                </div>
+                <div style="font-size:12px; font-weight:bold; color:#fff;">${u.username}</div>
                 <div style="font-size:10px; color:#888;">${u.email}</div>
             </div>
-            <i class="fas fa-plus" style="color:var(--primary); font-size:10px;"></i>
+            ${statusDot}
         `;
         
         div.onclick = () => selectUserForAdmin(u);
@@ -4231,13 +4218,12 @@ function populateAdminUserList(usersArray) {
     });
 }
 
-// 4. Select User Logic
+// 4. Select User
 window.selectUserForAdmin = (user) => {
     selectedAdminTargetUid = user.uid;
     document.getElementById('adminUserResults').style.display = 'none';
-    document.getElementById('adminUserSearch').value = user.username; // Show selected name in input
+    document.getElementById('adminUserSearch').value = user.username; 
 
-    // Update Display Card
     document.getElementById('selectedUserCard').style.display = 'flex';
     document.getElementById('selUserPfp').src = user.pfp;
     document.getElementById('selUserName').innerText = user.username;
@@ -4245,12 +4231,12 @@ window.selectUserForAdmin = (user) => {
     document.getElementById('selUserCoins').innerText = formatCurrency(user.coins);
     document.getElementById('selUserDiamonds').innerText = formatCurrency(user.diamonds);
 
-    // Unlock Action Panel
-    document.getElementById('adminActionPanel').style.opacity = '1';
-    document.getElementById('adminActionPanel').style.pointerEvents = 'all';
+    const panel = document.getElementById('adminActionPanel');
+    panel.style.opacity = '1';
+    panel.style.pointerEvents = 'all';
 };
 
-// 5. Select Currency Logic 
+// 5. Select Currency
 window.selectAdminCurrency = (type) => {
     selectedAdminCurrency = type;
     const btnC = document.getElementById('btnSelCoin');
@@ -4259,16 +4245,14 @@ window.selectAdminCurrency = (type) => {
     else { btnD.classList.add('active'); btnC.classList.remove('active'); }
 };
 
-// 6. EXECUTE ACTION (CRITICAL FIX FOR LOGS)
+// 6. Execute Action (With correct Log Data)
 window.executeAdminAction = async (action) => {
     if(!selectedAdminTargetUid) return alert("Selectează un utilizator!");
     
-    // A. Get Target User Data (for the log image/name)
+    // Find latest data in cache
     const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
     const targetName = targetUser ? targetUser.username : "Utilizator";
     const targetImg = targetUser ? targetUser.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
-
-    // B. Get Admin Data (You) for the description
     const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
 
     const amountVal = document.getElementById('adminAmount').value;
@@ -4279,51 +4263,42 @@ window.executeAdminAction = async (action) => {
     const amount = parseInt(amountVal);
     const finalAmount = action === 'add' ? amount : -amount;
     
-    // Disable UI
     const panel = document.getElementById('adminActionPanel');
     panel.style.opacity = '0.5';
     panel.style.pointerEvents = 'none';
 
     try {
-        // C. Update User Balance in 'accounts'
         const userRef = doc(db, "accounts", selectedAdminTargetUid);
+        
+        // Update Balance
         await updateDoc(userRef, {
             [selectedAdminCurrency]: increment(finalAmount)
         });
 
-        // D. Log Transaction (FIXED)
-        // We now explicitly save username and userImage so the table renders it correctly.
+        // Add Log with EXPLICIT User Data
         await addDoc(collection(db, "transactions"), {
             userId: selectedAdminTargetUid,
-            username: targetName,   // <--- FIXED: Now saves the user's name
-            userImage: targetImg,   // <--- FIXED: Now saves the user's pfp
-            
+            username: targetName,   // Saved for the "Utilizator" column
+            userImage: targetImg,   // Saved for the "Utilizator" column
             amount: finalAmount,
             type: selectedAdminCurrency === 'coins' ? 'COINS' : 'DIAMONDS',
             source: "System", 
-            
-            // Description shows WHICH admin did it + Reason
-            description: `Admin (${adminName}): ${reasonVal || (action === 'add' ? 'Bonus acordat' : 'Sancțiune')}`,
+            description: `Admin (${adminName}): ${reasonVal || (action === 'add' ? 'Bonus' : 'Sancțiune')}`,
             timestamp: serverTimestamp()
         });
 
-        alert(`Succes! Au fost ${action === 'add' ? 'adăugate' : 'retrase'} ${amount} ${selectedAdminCurrency}.`);
-
-        // Reset inputs
+        alert("Tranzacție reușită!");
         document.getElementById('adminAmount').value = '';
-        document.getElementById('adminReason').value = '';
         
-        // Immediate visual update for the admin panel card
+        // Visual Update
         if(targetUser) {
              if(selectedAdminCurrency === 'coins') targetUser.coins += finalAmount;
              else targetUser.diamonds += finalAmount;
-             
              document.getElementById('selUserCoins').innerText = formatCurrency(targetUser.coins);
              document.getElementById('selUserDiamonds').innerText = formatCurrency(targetUser.diamonds);
         }
 
     } catch(e) {
-        console.error(e);
         alert("Eroare: " + e.message);
     } finally {
         panel.style.opacity = '1';
@@ -4331,9 +4306,9 @@ window.executeAdminAction = async (action) => {
     }
 };
 
-// Close dropdown if clicked outside
+// Close dropdown on outside click
 document.addEventListener('click', (e) => {
-    const wrapper = document.getElementById('adminUserSearch').parentElement;
+    const wrapper = document.getElementById('adminUserSearch')?.parentElement;
     if (wrapper && !wrapper.contains(e.target)) {
         document.getElementById('adminUserResults').style.display = 'none';
     }
@@ -5577,7 +5552,7 @@ document.addEventListener('click', (e) => {
     }
 });
 window.switchSection = (sectionId, btnElement) => {
-    // 1. Gestionare vizibilitate interfață
+    // 1. UI Updates
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.ga-nav-item').forEach(el => el.classList.remove('active'));
 
@@ -5585,8 +5560,7 @@ window.switchSection = (sectionId, btnElement) => {
     if(target) target.classList.add('active');
     if(btnElement) btnElement.classList.add('active');
 
-    // 2. Verificăm dacă secțiunea are nevoie de datele utilizatorilor (cachedUsers)
-    // Am adăugat noile secțiuni 'wheel-winners-view' și 'wheel-losers-view' care depind de profilul userilor
+    // 2. FORCE LOAD USERS for Admin & Analytics
     const needsUsers = [
         'transactions-view', 
         'economy-view', 
@@ -5596,116 +5570,64 @@ window.switchSection = (sectionId, btnElement) => {
         'shop-stats-view', 
         'donation-history-view',
         'wheel-winners-view',
-        'wheel-losers-view'
+        'wheel-losers-view',
+        'admin-manage-view' // <--- CRITICAL: Enables Admin Search
     ];
 
-    if (needsUsers.includes(sectionId) && cachedUsers.length === 0) {
-        loadAllUsers();
+    if (needsUsers.includes(sectionId)) {
+        // If list is empty, load it. If it's old (0 length), reload it.
+        if (cachedUsers.length === 0) {
+            loadAllUsers();
+        }
     }
 
+    // 3. Specific View Logic
     switch (sectionId) {
         case 'live-visitors-view':
             if (typeof window.runLiveAnalytics === "function") window.runLiveAnalytics();
             break;
-
         case 'wall-analytics-view':
             if (typeof window.runWallAnalytics === "function") window.runWallAnalytics();
             break;
-
         case 'bot-analytics-view':
             if (typeof window.loadBotAnalytics === "function") window.loadBotAnalytics();
             break;
-
-
-
         case 'transactions-history-view':
             window.loadTransactions();
             break;
-
         case 'traffic-view':
             window.loadTrafficStats();
             break;
-
         case 'economy-view':
             if (rawTxns.length === 0) window.loadTransactions();
             setTimeout(() => { if(typeof updateEconomyStats === "function") updateEconomyStats(); }, 500);
             break;
-
         case 'user-growth-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => window.runUserGrowthAnalytics(), 1000);
-            } else {
-                window.runUserGrowthAnalytics();
-            }
+            setTimeout(() => window.runUserGrowthAnalytics(), 500);
             break;
-
         case 'alt-detector-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => { if(typeof runAltAccountDetector === "function") runAltAccountDetector(); }, 1000);
-            } else {
-                if(typeof runAltAccountDetector === "function") runAltAccountDetector();
-            }
+            setTimeout(() => { if(typeof runAltAccountDetector === "function") runAltAccountDetector(); }, 500);
             break;
-
         case 'sanctions-view':
             window.runSanctionsAnalytics();
             break;
-
         case 'referral-network-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => { 
-                    if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics(); 
-                }, 1000);
-            } else {
-                if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics();
-            }
+            setTimeout(() => { if(typeof window.runReferralNetworkAnalytics === "function") window.runReferralNetworkAnalytics(); }, 500);
             break;
-
         case 'donation-history-view':
-            if (cachedUsers.length === 0) {
-                loadAllUsers();
-                setTimeout(() => { window.runDonationAnalytics(); }, 1500);
-            } else {
-                window.runDonationAnalytics();
-            }
+            setTimeout(() => { window.runDonationAnalytics(); }, 1000);
             break;
-
         case 'shop-stats-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => { 
-                    if(typeof window.runShopAnalytics === "function") window.runShopAnalytics(); 
-                }, 1000);
-            } else {
-                if(typeof window.runShopAnalytics === "function") window.runShopAnalytics();
-            }
+            setTimeout(() => { if(typeof window.runShopAnalytics === "function") window.runShopAnalytics(); }, 500);
             break;
-
-        // --- NOU: GAMING / SPIN WHEEL ---
         case 'wheel-jackpots-view':
-            // Aceasta citește dintr-o colecție separată, nu are nevoie de cache-ul de useri
             if (typeof window.runWheelJackpotAnalytics === "function") window.runWheelJackpotAnalytics();
             break;
-
         case 'wheel-winners-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => { if(typeof window.runWheelWinnersAnalytics === "function") window.runWheelWinnersAnalytics(); }, 1000);
-            } else {
-                if (typeof window.runWheelWinnersAnalytics === "function") window.runWheelWinnersAnalytics();
-            }
+            setTimeout(() => { if(typeof window.runWheelWinnersAnalytics === "function") window.runWheelWinnersAnalytics(); }, 500);
             break;
-
         case 'wheel-losers-view':
-            if (cachedUsers.length === 0) {
-                setTimeout(() => { if(typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics(); }, 1000);
-            } else {
-                if (typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics();
-            }
-            break;
-
-
-        // --- NOU: ADMIN TOOLS ---
-        case 'admin-manage-view':
-            // Nu este nevoie de o funcție specifică de pornire, doar de datele userilor (gestionate de needsUsers)
+            setTimeout(() => { if(typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics(); }, 500);
             break;
     }
 };
