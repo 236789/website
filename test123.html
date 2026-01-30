@@ -2803,6 +2803,86 @@
 .mod-badge { display: inline-block; background: #ffffff; color: #27ae60; border: 1px solid #27ae60; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 3px; vertical-align: middle; font-family: 'Orbitron'; }
 .helper-badge { display: inline-block; background: #ffffff; color: #f0932b; border: 1px solid #f0932b; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 3px; vertical-align: middle; font-family: 'Orbitron'; }
 
+
+/* --- FIX VIZUAL PENTRU ADMIN RECENZII --- */
+
+/* Containerul de comentarii */
+.comments-section {
+    background: rgba(0, 0, 0, 0.4) !important; /* Mai întunecat, dar transparent */
+    border: 1px solid rgba(41, 243, 255, 0.15) !important; /* Bordură Cyan subtilă */
+    border-radius: 15px !important;
+    padding: 15px !important;
+    margin-top: 15px !important;
+}
+
+/* Header-ul "Istoric Comentarii" */
+.comments-header {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    color: #a5b1c2;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 10px;
+}
+
+/* Input-ul de scriere (Problema cu fundalul alb) */
+.comment-input-area {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    align-items: center;
+}
+
+.com-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05) !important; /* Transparent */
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important; /* Text alb */
+    padding: 10px 15px !important;
+    border-radius: 50px !important;
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    outline: none;
+    transition: 0.3s;
+}
+
+.com-input:focus {
+    border-color: #29f3ff !important; /* Cyan la focus */
+    background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Butonul de trimitere (Săgeata) */
+.com-send-btn {
+    background: #29f3ff !important;
+    color: #000 !important;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.com-send-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 10px #29f3ff;
+}
+
+/* Butoanele Like/Dislike */
+.vote-btn {
+    cursor: pointer !important; /* Să apară mâna */
+    transition: 0.2s;
+}
+.vote-btn:hover {
+    background: rgba(255,255,255,0.1) !important;
+}
+.active-like { color: #29f3ff !important; border-color: #29f3ff !important; }
+.active-dislike { color: #ff4757 !important; border-color: #ff4757 !important; }
   </style>
 </head>
 <body>
@@ -4315,150 +4395,331 @@ window.switchSection = (sectionId, btnElement) => {
 
 
 
-// --- REVIEWS MANAGER LOGIC ---
-    let allAdminReviews = []; // Store reviews locally for filtering
-    let adminReviewsUnsub = null;
+// --- REVIEWS MANAGER LOGIC (UPDATED WITH COMMENTS & ACTIONS) ---
+let allAdminReviews = [];
+let adminReviewsUnsub = null;
 
-    // 1. Funcția principală de încărcare
-    window.loadAdminReviews = () => {
-        const container = document.getElementById('adminReviewsList');
-        if(!container) return;
+// 1. Încărcare Recenzii
+window.loadAdminReviews = () => {
+    const container = document.getElementById('adminReviewsList');
+    if(!container) return;
 
-        if(adminReviewsUnsub) adminReviewsUnsub();
+    if(adminReviewsUnsub) adminReviewsUnsub();
 
-        const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
 
-        adminReviewsUnsub = onSnapshot(q, (snapshot) => {
-            allAdminReviews = [];
-            let stats = { total: 0, sum: 0, counts: {1:0, 2:0, 3:0, 4:0, 5:0} };
+    adminReviewsUnsub = onSnapshot(q, (snapshot) => {
+        allAdminReviews = [];
+        let stats = { total: 0, sum: 0, counts: {1:0, 2:0, 3:0, 4:0, 5:0} };
 
-            snapshot.forEach(docSnap => {
-                const d = docSnap.data();
-                d.id = docSnap.id;
-                allAdminReviews.push(d);
+        snapshot.forEach(docSnap => {
+            const d = docSnap.data();
+            d.id = docSnap.id;
+            allAdminReviews.push(d);
 
-                // Statistici
-                if(d.rating >= 1 && d.rating <= 5) {
-                    stats.total++;
-                    stats.sum += d.rating;
-                    stats.counts[d.rating]++;
-                }
-            });
-
-            // Update Summary UI
-            updateAdminReviewStats(stats);
-            
-            // Render List (Show All initially)
-            renderAdminReviewsList(allAdminReviews);
+            if(d.rating >= 1 && d.rating <= 5) {
+                stats.total++;
+                stats.sum += d.rating;
+                stats.counts[d.rating]++;
+            }
         });
-    };
 
-    // 2. Update Statistici (Barele de sus)
-    function updateAdminReviewStats(stats) {
-        document.getElementById('admTotalCount').innerText = stats.total;
-        
-        let avg = stats.total > 0 ? (stats.sum / stats.total).toFixed(1) : "0.0";
-        document.getElementById('admBigScore').innerText = avg;
-        
-        let fullStars = Math.round(Number(avg));
-        document.getElementById('admBigStars').innerText = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars);
+        updateAdminReviewStats(stats);
+        // Filtrăm implicit pe 'all'
+        renderAdminReviewsList(allAdminReviews);
+    });
+};
 
-        for (let i = 5; i >= 1; i--) {
-            let perc = stats.total > 0 ? ((stats.counts[i] / stats.total) * 100).toFixed(0) : 0;
-            document.getElementById(`admFill${i}`).style.width = perc + "%";
-            document.getElementById(`admPerc${i}`).innerText = perc + "%";
-        }
+// 2. Statistici (Bari)
+function updateAdminReviewStats(stats) {
+    document.getElementById('admTotalCount').innerText = stats.total;
+    let avg = stats.total > 0 ? (stats.sum / stats.total).toFixed(1) : "0.0";
+    document.getElementById('admBigScore').innerText = avg;
+    let fullStars = Math.round(Number(avg));
+    document.getElementById('admBigStars').innerText = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars);
+
+    for (let i = 5; i >= 1; i--) {
+        let perc = stats.total > 0 ? ((stats.counts[i] / stats.total) * 100).toFixed(0) : 0;
+        document.getElementById(`admFill${i}`).style.width = perc + "%";
+        document.getElementById(`admPerc${i}`).innerText = perc + "%";
+    }
+}
+
+// 3. Render Lista (FIX ALINIERE BUTOANE)
+function renderAdminReviewsList(reviewsData) {
+    const container = document.getElementById('adminReviewsList');
+    if(reviewsData.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:#555; padding:20px;">Nu există recenzii.</div>';
+        return;
     }
 
-    // 3. Render List Helper
-    function renderAdminReviewsList(reviewsData) {
-        const container = document.getElementById('adminReviewsList');
-        if(reviewsData.length === 0) {
-            container.innerHTML = '<div style="text-align:center; color:#555; padding:20px;">Nu există recenzii.</div>';
+    container.innerHTML = reviewsData.map(d => {
+        // Badges
+        const email = d.email || "";
+        let badge = "";
+        if (email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge">OWNER</span>`;
+        else if (email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge">ADMIN</span>`;
+        else if (['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) badge = `<span class="mod-badge">MODERATOR</span>`;
+        
+        // Stars
+        const stars = '★'.repeat(d.rating) + '☆'.repeat(5 - d.rating);
+        
+        // Date
+        let dateStr = "Recent";
+        if(d.createdAt) {
+            const dateObj = d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+            dateStr = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
+        // Votes
+        const votes = d.votes || {};
+        let likes = 0, dislikes = 0;
+        Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+        
+        const myVote = auth.currentUser ? votes[auth.currentUser.uid] : 0;
+        const likeClass = myVote === 1 ? 'active-like' : '';
+        const dislikeClass = myVote === -1 ? 'active-dislike' : '';
+
+        return `
+        <div class="review-card" id="adm-card-${d.id}" style="border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.4); border-radius: 15px; padding: 15px; position: relative;">
+            
+            <!-- Header: Avatar + Nume + Stele + Delete -->
+            <div class="review-header" style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+                <img src="${d.photo || 'https://i.ibb.co/XyqWk9N/def-user.png'}" class="rev-pfp" style="width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--primary); object-fit: cover;">
+                <div class="rev-info" style="flex: 1;">
+                    <div class="rev-name" style="font-weight: 700; font-size: 14px; display: flex; align-items: center; color: #fff; gap: 5px;">
+                        ${d.name || 'Utilizator'} ${badge}
+                        <!-- Buton Ștergere (Sus Dreapta) -->
+                        <button onclick="deleteAdminReview('${d.id}')" class="btn-ap-action btn-ap-delete" style="margin-left:auto; width:25px; height:25px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(255, 71, 87, 0.1); border:1px solid #ff4757; color:#ff4757; cursor:pointer;">
+                            <i class="fas fa-trash" style="font-size:10px;"></i>
+                        </button>
+                    </div>
+                    <div class="rev-stars" style="color: #ffcc00; font-size: 12px;">${stars}</div>
+                </div>
+            </div>
+            
+            <!-- Text Recenzie -->
+            <div class="rev-text" style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; font-size: 13px; color: #eee; line-height: 1.5;">
+                ${d.text.replace(/</g, "&lt;")}
+            </div>
+            
+            <!-- Footer: Data + Butoane (ACUM ALINIATE ÎN RÂND) -->
+            <div class="rev-footer" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                <div style="display:flex; flex-direction:column;">
+                    <span style="font-size: 10px; color: #666;">ID: ${d.id} | ${dateStr}</span>
+                </div>
+                
+                <!-- CONTAINER BUTOANE (FORȚAT FLEX ROW) -->
+                <div class="rev-actions" style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important;">
+                    
+                    <!-- Like -->
+                    <button onclick="voteReview('${d.id}', 1, this)" class="vote-btn ${likeClass}" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #a5b1c2; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-thumbs-up"></i> <span class="vote-count">${likes}</span>
+                    </button>
+                    
+                    <!-- Dislike -->
+                    <button onclick="voteReview('${d.id}', -1, this)" class="vote-btn ${dislikeClass}" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #a5b1c2; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-thumbs-down"></i> <span class="vote-count">${dislikes}</span>
+                    </button>
+                    
+                    <!-- Comments -->
+                    <button onclick="toggleAdminComments('${d.id}')" class="vote-btn" style="background: rgba(41, 243, 255, 0.1); border: 1px solid var(--primary); color: var(--primary); padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-comment-dots"></i> Răspunsuri
+                    </button>
+
+                </div>
+            </div>
+
+            <!-- SECȚIUNEA COMENTARII -->
+            <div id="adm-comments-${d.id}" class="comments-section" style="display:none;">
+                <div class="comments-header" style="color:#fff;">
+                    <i class="fas fa-history"></i> ISTORIC COMENTARII
+                </div>
+                <div id="adm-comList-${d.id}" class="comment-list" style="max-height: 300px;"></div>
+                
+                <div class="comment-input-area">
+                    <input id="adm-comInput-${d.id}" class="com-input" placeholder="Răspunde ca Admin...">
+                    <button onclick="postAdminComment('${d.id}')" class="com-send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// 4. Funcția Toggle Comments (Specifică Admin)
+window.toggleAdminComments = async (reviewId) => {
+    const section = document.getElementById(`adm-comments-${reviewId}`);
+    const listDiv = document.getElementById(`adm-comList-${reviewId}`);
+    
+    if (section.style.display === 'block') {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    listDiv.innerHTML = '<div style="font-size:10px; color:#aaa; padding:10px;">Se încarcă discuția...</div>';
+
+    // Fetch Subcollection
+    const q = query(collection(db, `reviews/${reviewId}/comments`), orderBy("createdAt", "asc"));
+    
+    onSnapshot(q, (snapshot) => {
+        if(snapshot.empty) {
+            listDiv.innerHTML = '<div style="font-size:10px; color:#666; padding:10px;">Niciun răspuns. Scrie tu primul!</div>';
             return;
         }
 
-        container.innerHTML = reviewsData.map(d => {
-            // Badges Logic
-            const email = d.email || "";
-            let badge = "";
-            if (email === 'nicaemmanuel433qe@gmail.com') badge = `<span class="owner-badge">OWNER</span>`;
-            else if (email === 'kevin.trinity2020@gmail.com') badge = `<span class="admin-badge">ADMIN</span>`;
-            else if (['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) badge = `<span class="mod-badge">MODERATOR</span>`;
-            else if (['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com'].includes(email)) badge = `<span class="helper-badge">HELPER</span>`;
-
-            // Stars
-            const stars = '★'.repeat(d.rating) + '☆'.repeat(5 - d.rating);
+        listDiv.innerHTML = snapshot.docs.map(docSnap => {
+            const c = docSnap.data();
+            const cid = docSnap.id;
             
-            // Date
-            let dateStr = "Recent";
-            if(d.createdAt) {
-                const dateObj = d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-                dateStr = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            // Formatare Data
+            let dateStr = "N/A";
+            if(c.createdAt) {
+                const d = c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt);
+                dateStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ' ' + d.toLocaleDateString();
             }
 
-            // Votes
-            const votes = d.votes || {};
-            let likes = 0, dislikes = 0;
-            Object.values(votes).forEach(v => { if (v === 1) likes++; if (v === -1) dislikes++; });
+            // Styling special pentru Staff
+            let roleStyle = "";
+            let roleBadge = "";
+            if (c.email === 'nicaemmanuel433qe@gmail.com') { roleStyle = "border-left: 2px solid #29f3ff; background: rgba(41, 243, 255, 0.05);"; roleBadge = '<span class="owner-badge">OWNER</span>'; }
+            else if (c.email === 'kevin.trinity2020@gmail.com') { roleStyle = "border-left: 2px solid #ff4757; background: rgba(255, 71, 87, 0.05);"; roleBadge = '<span class="admin-badge">ADMIN</span>'; }
 
             return `
-            <div class="review-card">
-                <div class="review-header">
-                    <img src="${d.photo || 'https://i.ibb.co/XyqWk9N/def-user.png'}" class="rev-pfp">
-                    <div class="rev-info">
-                        <div class="rev-name">
-                            ${d.name || 'Utilizator'} ${badge}
-                            <button onclick="deleteAdminReview('${d.id}')" class="btn-ap-action btn-ap-delete" style="margin-left:auto;">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                        <div class="rev-stars">${stars}</div>
+            <div class="comment-item" style="${roleStyle} position: relative;">
+                <img src="${c.photo || 'https://i.ibb.co/XyqWk9N/def-user.png'}" class="com-pfp">
+                <div class="com-content">
+                    <div class="com-name">
+                        ${c.name} ${roleBadge}
                     </div>
+                    <div class="com-text">${c.text}</div>
+                    <div style="font-size:8px; opacity:0.5; margin-top:4px;">${dateStr}</div>
                 </div>
-                <div class="rev-text">${d.text.replace(/</g, "&lt;")}</div>
-                
-                <div class="rev-footer">
-                    <div style="display:flex; flex-direction:column;">
-                        <span style="font-size: 10px; color: #666;">Trimis: ${dateStr}</span>
-                    </div>
-                    <div style="display:flex; gap:10px;">
-                        <div class="vote-btn"><i class="fas fa-thumbs-up"></i> <span style="font-weight:700;">${likes}</span></div>
-                        <div class="vote-btn"><i class="fas fa-thumbs-down"></i> <span style="font-weight:700;">${dislikes}</span></div>
-                        <div class="vote-btn"><i class="fas fa-comment-dots"></i> Vezi pe site</div>
-                    </div>
-                </div>
+                <!-- Buton Ștergere Comentariu Individual -->
+                <button onclick="deleteAdminComment('${reviewId}', '${cid}')" style="position: absolute; top: 5px; right: 5px; background: transparent; border: none; color: #555; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>`;
         }).join('');
+    });
+};
+
+// 5. Postare Comentariu ca Admin
+window.postAdminComment = async (reviewId) => {
+    const input = document.getElementById(`adm-comInput-${reviewId}`);
+    const text = input.value.trim();
+    if(!text) return;
+
+    try {
+        const user = auth.currentUser;
+        // Folosim un ID unic bazat pe timestamp ca să permitem adminului mai multe comentarii
+        const commentId = `admin_${Date.now()}`; 
+        
+        await setDoc(doc(db, `reviews/${reviewId}/comments/${commentId}`), {
+            text: text,
+            uid: user.uid,
+            name: user.displayName || "Admin",
+            email: user.email,
+            photo: user.photoURL,
+            createdAt: serverTimestamp(),
+            isAdminReply: true
+        });
+        
+        input.value = '';
+        // Nu e nevoie de alert, se vede în timp real
+    } catch(e) {
+        alert("Eroare: " + e.message);
     }
+};
 
-    // 4. Funcția de Filtrare
-    window.filterAdminReviews = (stars) => {
-        // Reset Visual Active Class
-        for(let i=1; i<=5; i++) document.getElementById(`admFilter${i}`).classList.remove('active-filter');
+// 6. Ștergere Comentariu Individual
+window.deleteAdminComment = async (reviewId, commentId) => {
+    if(!confirm("Ștergi acest comentariu?")) return;
+    try {
+        await deleteDoc(doc(db, `reviews/${reviewId}/comments/${commentId}`));
+    } catch(e) {
+        console.error(e);
+        alert("Eroare la ștergere comentariu.");
+    }
+};
+
+// 7. Filtrare Recenzii Admin
+window.filterAdminReviews = (stars) => {
+    for(let i=1; i<=5; i++) document.getElementById(`admFilter${i}`).classList.remove('active-filter');
+    
+    let filtered = [];
+    if(stars === 'all') {
+        filtered = allAdminReviews;
+    } else {
+        document.getElementById(`admFilter${stars}`).classList.add('active-filter');
+        filtered = allAdminReviews.filter(r => r.rating === stars);
+    }
+    renderAdminReviewsList(filtered);
+};
+
+// 8. Ștergere Recenzie (deja definită, dar asigurată aici)
+window.deleteAdminReview = async (id) => {
+    if(!confirm("⚠️ Ștergi permanent această recenzie și toate comentariile ei?")) return;
+    try {
+        await deleteDoc(doc(db, "reviews", id));
+        alert("Recenzie ștearsă!");
+    } catch(e) {
+        alert("Eroare: " + e.message);
+    }
+};
+
+
+// --- FUNCȚIA DE LIKE / DISLIKE (ADĂUGATĂ GLOBAL PENTRU ADMIN) ---
+    window.voteReview = async (reviewId, type, btnElement) => {
+        if (!auth.currentUser) return alert("Nu ești logat!");
+
+        // 1. Feedback Vizual Instant (UX)
+        const countSpan = btnElement.querySelector('.vote-count');
+        let currentCount = parseInt(countSpan.innerText) || 0;
+        const isLikeBtn = type === 1;
+        const activeClass = isLikeBtn ? 'active-like' : 'active-dislike';
         
-        let filtered = [];
-        if(stars === 'all') {
-            filtered = allAdminReviews;
+        // Verificăm dacă e deja activ
+        const isActive = btnElement.classList.contains(activeClass);
+
+        if (isActive) {
+            // Scoatem votul
+            btnElement.classList.remove(activeClass);
+            countSpan.innerText = Math.max(0, currentCount - 1);
         } else {
-            document.getElementById(`admFilter${stars}`).classList.add('active-filter');
-            filtered = allAdminReviews.filter(r => r.rating === stars);
+            // Adăugăm votul
+            // (Opțional: Ar trebui să scoatem clasa de pe celălalt buton, dar lăsăm simplu momentan)
+            btnElement.classList.add(activeClass);
+            countSpan.innerText = currentCount + 1;
         }
+
+        // 2. Logica Firebase
+        const reviewRef = doc(db, "reviews", reviewId);
         
-        renderAdminReviewsList(filtered);
-    };
-
-    // 5. Funcția de Ștergere (refolosește logica existentă)
-    window.deleteAdminReview = async (id) => {
-        if(!confirm("⚠️ Ștergi permanent această recenzie?")) return;
         try {
-            await deleteDoc(doc(db, "reviews", id));
-            alert("Recenzie ștearsă!");
-        } catch(e) {
-            alert("Eroare: " + e.message);
+            const snap = await getDoc(reviewRef);
+            if (!snap.exists()) return;
+
+            const votes = snap.data().votes || {};
+            const uid = auth.currentUser.uid;
+
+            if (votes[uid] === type) {
+                // Dacă apăs din nou pe același, șterg votul
+                delete votes[uid];
+            } else {
+                // Altfel, setez votul (1 sau -1)
+                votes[uid] = type;
+            }
+
+            await updateDoc(reviewRef, { votes: votes });
+            // Nu e nevoie de alert, feedback-ul vizual e suficient
+        } catch (e) {
+            console.error("Eroare la vot:", e);
+            // Revert vizual în caz de eroare (opțional)
         }
     };
-
   </script>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -4491,6 +4752,9 @@ window.switchSection = (sectionId, btnElement) => {
     window.uploadBytes = uploadBytes;
     window.getDownloadURL = getDownloadURL;
     window.db = db; // Opțional, pentru siguranță
+
+    window.auth = auth;  // <--- ACUM E DISPONIBILĂ GLOBAL
+
 
     // Funcții Firestore necesare global
     window.query = query;
