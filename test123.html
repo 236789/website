@@ -2883,6 +2883,69 @@
 }
 .active-like { color: #29f3ff !important; border-color: #29f3ff !important; }
 .active-dislike { color: #ff4757 !important; border-color: #ff4757 !important; }
+
+/* --- FIX PENTRU COMENTARII RECENZII --- */
+.comment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.comment-item {
+    display: flex;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
+    transition: 0.3s;
+}
+
+.comment-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.com-pfp {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important; /* Makes it round */
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1.5px solid var(--primary);
+}
+
+.com-content {
+    flex: 1;
+    min-width: 0; /* Prevents text from pushing outside container */
+}
+
+.com-name {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 11px;
+    color: #fff;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.com-text {
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    color: #ddd;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.com-date {
+    font-size: 9px;
+    color: #666;
+    margin-top: 5px;
+    display: block;
+}
   </style>
 </head>
 <body>
@@ -4548,7 +4611,6 @@ function renderAdminReviewsList(reviewsData) {
     }).join('');
 }
 
-// 4. Funcția Toggle Comments (Specifică Admin)
 window.toggleAdminComments = async (reviewId) => {
     const section = document.getElementById(`adm-comments-${reviewId}`);
     const listDiv = document.getElementById(`adm-comList-${reviewId}`);
@@ -4561,12 +4623,11 @@ window.toggleAdminComments = async (reviewId) => {
     section.style.display = 'block';
     listDiv.innerHTML = '<div style="font-size:10px; color:#aaa; padding:10px;">Se încarcă discuția...</div>';
 
-    // Fetch Subcollection
-    const q = query(collection(db, `reviews/${reviewId}/comments`), orderBy("createdAt", "asc"));
+    const q = window.query(window.collection(window.db, `reviews/${reviewId}/comments`), window.orderBy("createdAt", "asc"));
     
-    onSnapshot(q, (snapshot) => {
+    window.onSnapshot(q, (snapshot) => {
         if(snapshot.empty) {
-            listDiv.innerHTML = '<div style="font-size:10px; color:#666; padding:10px;">Niciun răspuns. Scrie tu primul!</div>';
+            listDiv.innerHTML = '<div style="font-size:11px; color:#666; padding:15px; text-align:center;">Niciun răspuns încă.</div>';
             return;
         }
 
@@ -4574,38 +4635,34 @@ window.toggleAdminComments = async (reviewId) => {
             const c = docSnap.data();
             const cid = docSnap.id;
             
-            // Formatare Data
-            let dateStr = "N/A";
+            let dateStr = "Recent";
             if(c.createdAt) {
                 const d = c.createdAt.toDate ? c.createdAt.toDate() : new Date(c.createdAt);
                 dateStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ' ' + d.toLocaleDateString();
             }
 
-            // Styling special pentru Staff
-            let roleStyle = "";
+            // Role Badges
             let roleBadge = "";
-            if (c.email === 'nicaemmanuel433qe@gmail.com') { roleStyle = "border-left: 2px solid #29f3ff; background: rgba(41, 243, 255, 0.05);"; roleBadge = '<span class="owner-badge">OWNER</span>'; }
-            else if (c.email === 'kevin.trinity2020@gmail.com') { roleStyle = "border-left: 2px solid #ff4757; background: rgba(255, 71, 87, 0.05);"; roleBadge = '<span class="admin-badge">ADMIN</span>'; }
+            if (c.email === 'nicaemmanuel433qe@gmail.com') roleBadge = '<span class="owner-badge">OWNER</span>';
+            else if (c.email === 'kevin.trinity2020@gmail.com') roleBadge = '<span class="admin-badge">ADMIN</span>';
 
             return `
-            <div class="comment-item" style="${roleStyle} position: relative;">
+            <div class="comment-item">
                 <img src="${c.photo || 'https://i.ibb.co/XyqWk9N/def-user.png'}" class="com-pfp">
                 <div class="com-content">
                     <div class="com-name">
                         ${c.name} ${roleBadge}
                     </div>
                     <div class="com-text">${c.text}</div>
-                    <div style="font-size:8px; opacity:0.5; margin-top:4px;">${dateStr}</div>
+                    <span class="com-date">${dateStr}</span>
                 </div>
-                <!-- Buton Ștergere Comentariu Individual -->
-                <button onclick="deleteAdminComment('${reviewId}', '${cid}')" style="position: absolute; top: 5px; right: 5px; background: transparent; border: none; color: #555; cursor: pointer;">
-                    <i class="fas fa-times"></i>
+                <button onclick="deleteAdminComment('${reviewId}', '${cid}')" style="background:transparent; border:none; color:#ff4757; cursor:pointer; font-size:12px; opacity:0.5; padding:5px;">
+                    <i class="fas fa-trash"></i>
                 </button>
             </div>`;
         }).join('');
     });
 };
-
 // 5. Postare Comentariu ca Admin
 window.postAdminComment = async (reviewId) => {
     const input = document.getElementById(`adm-comInput-${reviewId}`);
@@ -4671,55 +4728,33 @@ window.deleteAdminReview = async (id) => {
 };
 
 
-// --- FUNCȚIA DE LIKE / DISLIKE (ADĂUGATĂ GLOBAL PENTRU ADMIN) ---
-    window.voteReview = async (reviewId, type, btnElement) => {
-        if (!auth.currentUser) return alert("Nu ești logat!");
+window.voteReview = async (reviewId, type, btnElement) => {
+    if (!window.auth.currentUser) return alert("Trebuie să fii logat pentru a vota!");
 
-        // 1. Feedback Vizual Instant (UX)
-        const countSpan = btnElement.querySelector('.vote-count');
-        let currentCount = parseInt(countSpan.innerText) || 0;
-        const isLikeBtn = type === 1;
-        const activeClass = isLikeBtn ? 'active-like' : 'active-dislike';
-        
-        // Verificăm dacă e deja activ
-        const isActive = btnElement.classList.contains(activeClass);
+    const reviewRef = window.doc(window.db, "reviews", reviewId);
+    
+    try {
+        const snap = await window.getDoc(reviewRef);
+        if (!snap.exists()) return;
 
-        if (isActive) {
-            // Scoatem votul
-            btnElement.classList.remove(activeClass);
-            countSpan.innerText = Math.max(0, currentCount - 1);
+        let votes = snap.data().votes || {};
+        const uid = window.auth.currentUser.uid;
+
+        // If user clicks the same button again, remove the vote (toggle)
+        if (votes[uid] === type) {
+            delete votes[uid];
         } else {
-            // Adăugăm votul
-            // (Opțional: Ar trebui să scoatem clasa de pe celălalt buton, dar lăsăm simplu momentan)
-            btnElement.classList.add(activeClass);
-            countSpan.innerText = currentCount + 1;
+            // Set vote to 1 (like) or -1 (dislike)
+            votes[uid] = type;
         }
 
-        // 2. Logica Firebase
-        const reviewRef = doc(db, "reviews", reviewId);
-        
-        try {
-            const snap = await getDoc(reviewRef);
-            if (!snap.exists()) return;
-
-            const votes = snap.data().votes || {};
-            const uid = auth.currentUser.uid;
-
-            if (votes[uid] === type) {
-                // Dacă apăs din nou pe același, șterg votul
-                delete votes[uid];
-            } else {
-                // Altfel, setez votul (1 sau -1)
-                votes[uid] = type;
-            }
-
-            await updateDoc(reviewRef, { votes: votes });
-            // Nu e nevoie de alert, feedback-ul vizual e suficient
-        } catch (e) {
-            console.error("Eroare la vot:", e);
-            // Revert vizual în caz de eroare (opțional)
-        }
-    };
+        await window.updateDoc(reviewRef, { votes: votes });
+        // The onSnapshot in loadAdminReviews will automatically update the UI
+    } catch (e) {
+        console.error("Eroare la vot:", e);
+        alert("Eroare la procesarea votului.");
+    }
+};
   </script>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -4766,6 +4801,13 @@ window.deleteAdminReview = async (id) => {
     window.getDoc = getDoc;
     window.deleteDoc = deleteDoc;
     window.onSnapshot = onSnapshot;
+
+// Add these to the existing list of window exports inside your <script type="module">
+window.updateDoc = updateDoc;
+window.setDoc = setDoc;
+window.serverTimestamp = serverTimestamp;
+window.increment = increment;
+window.addDoc = addDoc;
 
 let dashboardTxnUnsub = null;
 let isAwardingInProgress = false; // ADAUGĂ ACEASTA LINIE
