@@ -3858,13 +3858,13 @@
                placeholder="🔍 Caută sau selectează..." 
                style="width: 100%; text-align: left;"
                onkeyup="searchUserForAdmin()"
-               onclick="toggleAdminUserList()"> <!-- Open list on click -->
+               onclick="toggleAdminUserList()"> <!-- Opens list on click -->
         
         <button onclick="toggleAdminUserList()" class="filter-btn" style="padding: 0 15px;">
             <i class="fas fa-chevron-down"></i>
         </button>
 
-        <!-- DROPDOWN LIST -->
+        <!-- DROPDOWN LIST CONTAINER -->
         <div id="adminUserResults" style="
             position: absolute;
             top: 110%; left: 0; right: 0;
@@ -3876,11 +3876,11 @@
             display: none;
             z-index: 500;
             box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
-            <!-- Users will be injected here -->
+            <!-- Users will be injected here via JS -->
         </div>
     </div>
 
-    <!-- SELECTED USER DISPLAY -->
+    <!-- SELECTED USER DISPLAY CARD -->
     <div id="selectedUserCard" style="display: none; margin-top: 20px; background: rgba(41, 243, 255, 0.05); padding: 15px; border-radius: 12px; border: 1px solid var(--primary); align-items: center; gap: 15px; animation: fadeIn 0.3s;">
         <img id="selUserPfp" src="" style="width: 50px; height: 50px; border-radius: 50%; border: 2px solid #fff; object-fit: cover;">
         <div>
@@ -4159,7 +4159,7 @@ window.toggleAdminUserList = () => {
     
     if (isHidden) {
         list.style.display = 'block';
-        // If empty or just opened, populate with all users
+        // If search is empty, show everyone (first 50)
         if(document.getElementById('adminUserSearch').value === '') {
             populateAdminUserList(cachedUsers); 
         }
@@ -4193,10 +4193,11 @@ function populateAdminUserList(usersArray) {
         return;
     }
 
-    // Sort: Online first, then Alphabetical
+    // Sort: Online users first, then Alphabetical
     usersArray.sort((a, b) => (b.isOnlineBool === a.isOnlineBool) ? 0 : b.isOnlineBool ? 1 : -1);
 
-    usersArray.slice(0, 50).forEach(u => { // Limit render to 50 to prevent lag
+    // Limit to 50 results for performance
+    usersArray.slice(0, 50).forEach(u => { 
         const div = document.createElement('div');
         div.style.padding = "10px";
         div.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
@@ -4206,7 +4207,7 @@ function populateAdminUserList(usersArray) {
         div.style.gap = "10px";
         div.style.transition = "0.2s";
         
-        // Hover effect via JS since inline styles are tricky
+        // Hover effect via JS
         div.onmouseover = () => div.style.background = "rgba(41, 243, 255, 0.1)";
         div.onmouseout = () => div.style.background = "transparent";
 
@@ -4234,7 +4235,7 @@ function populateAdminUserList(usersArray) {
 window.selectUserForAdmin = (user) => {
     selectedAdminTargetUid = user.uid;
     document.getElementById('adminUserResults').style.display = 'none';
-    document.getElementById('adminUserSearch').value = user.username; // Show selected name
+    document.getElementById('adminUserSearch').value = user.username; // Show selected name in input
 
     // Update Display Card
     document.getElementById('selectedUserCard').style.display = 'flex';
@@ -4249,7 +4250,7 @@ window.selectUserForAdmin = (user) => {
     document.getElementById('adminActionPanel').style.pointerEvents = 'all';
 };
 
-// 5. Select Currency Logic (No changes needed, but keeping for completeness)
+// 5. Select Currency Logic 
 window.selectAdminCurrency = (type) => {
     selectedAdminCurrency = type;
     const btnC = document.getElementById('btnSelCoin');
@@ -4258,16 +4259,16 @@ window.selectAdminCurrency = (type) => {
     else { btnD.classList.add('active'); btnC.classList.remove('active'); }
 };
 
-// 6. EXECUTE ACTION (UPDATED TO FIX LOGS)
+// 6. EXECUTE ACTION (CRITICAL FIX FOR LOGS)
 window.executeAdminAction = async (action) => {
     if(!selectedAdminTargetUid) return alert("Selectează un utilizator!");
     
-    // Get Target User Data (for the log image/name)
+    // A. Get Target User Data (for the log image/name)
     const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
     const targetName = targetUser ? targetUser.username : "Utilizator";
     const targetImg = targetUser ? targetUser.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
 
-    // Get Admin Data (for the log description)
+    // B. Get Admin Data (You) for the description
     const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
 
     const amountVal = document.getElementById('adminAmount').value;
@@ -4284,24 +4285,24 @@ window.executeAdminAction = async (action) => {
     panel.style.pointerEvents = 'none';
 
     try {
-        // A. Update User Balance in 'accounts'
+        // C. Update User Balance in 'accounts'
         const userRef = doc(db, "accounts", selectedAdminTargetUid);
         await updateDoc(userRef, {
             [selectedAdminCurrency]: increment(finalAmount)
         });
 
-        // B. Log Transaction (FIXED)
-        // We include 'username' and 'userImage' so the table row has data to display.
+        // D. Log Transaction (FIXED)
+        // We now explicitly save username and userImage so the table renders it correctly.
         await addDoc(collection(db, "transactions"), {
             userId: selectedAdminTargetUid,
-            username: targetName,   // <--- FIX: Show Target Name in Log
-            userImage: targetImg,   // <--- FIX: Show Target PFP in Log
+            username: targetName,   // <--- FIXED: Now saves the user's name
+            userImage: targetImg,   // <--- FIXED: Now saves the user's pfp
             
             amount: finalAmount,
             type: selectedAdminCurrency === 'coins' ? 'COINS' : 'DIAMONDS',
             source: "System", 
             
-            // Description shows WHICH admin did it
+            // Description shows WHICH admin did it + Reason
             description: `Admin (${adminName}): ${reasonVal || (action === 'add' ? 'Bonus acordat' : 'Sancțiune')}`,
             timestamp: serverTimestamp()
         });
@@ -4312,7 +4313,7 @@ window.executeAdminAction = async (action) => {
         document.getElementById('adminAmount').value = '';
         document.getElementById('adminReason').value = '';
         
-        // Immediate visual update
+        // Immediate visual update for the admin panel card
         if(targetUser) {
              if(selectedAdminCurrency === 'coins') targetUser.coins += finalAmount;
              else targetUser.diamonds += finalAmount;
@@ -4333,7 +4334,7 @@ window.executeAdminAction = async (action) => {
 // Close dropdown if clicked outside
 document.addEventListener('click', (e) => {
     const wrapper = document.getElementById('adminUserSearch').parentElement;
-    if (!wrapper.contains(e.target)) {
+    if (wrapper && !wrapper.contains(e.target)) {
         document.getElementById('adminUserResults').style.display = 'none';
     }
 });
