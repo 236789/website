@@ -1645,9 +1645,8 @@ input:checked + .slider:before { transform: translateX(16px); }
 
 
 
-/* --- RESTORED SPECIAL BANNERS & BADGES --- */
 
-/* 1. QUANTUM VOID BANNER */
+
 .bubble-jackpot {
     position: relative !important;
     background: #050b14 !important;
@@ -1714,6 +1713,31 @@ input:checked + .slider:before { transform: translateX(16px); }
 @keyframes quantumTextFlow {
     to { background-position: 200% center; }
 }
+
+
+/* --- FEEDBACK IMAGES STYLES --- */
+#imagePreviewArea { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.preview-img-box { position: relative; width: 60px; height: 60px; border-radius: 8px; border: 1px solid var(--primary); }
+.preview-img-box img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.remove-img-btn { position: absolute; top: -5px; right: -5px; background: #ff4757; color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+
+.feedback-gallery { margin-top: 12px; display: flex; align-items: center; }
+.feedback-img-main { position: relative; width: 120px; height: 120px; border-radius: 12px; border: 2px solid var(--glass-border); cursor: pointer; overflow: hidden; transition: 0.3s; }
+.feedback-img-main img { width: 100%; height: 100%; object-fit: cover; }
+.feedback-img-main:hover { border-color: var(--primary); transform: scale(1.02); }
+
+.more-imgs-overlay { 
+    position: absolute; inset: 0; background: rgba(0,0,0,0.7); 
+    display: flex; flex-direction: column; align-items: center; justify-content: center; 
+    color: var(--primary); font-family: 'Orbitron'; font-weight: 800; font-size: 18px;
+}
+.more-imgs-overlay span { font-size: 10px; color: #fff; }
+
+/* Lightbox Modal */
+#lightboxModal { z-index: 40000; }
+.lightbox-content { display: flex; flex-direction: column; gap: 15px; max-width: 90%; max-height: 80vh; overflow-y: auto; padding: 10px; }
+.lightbox-img { width: 100%; border-radius: 15px; border: 2px solid var(--primary); }
+
   </style>
 </head>
 <body>
@@ -1958,6 +1982,15 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
+<!-- LIGHTBOX MODAL TO VIEW ALL IMAGES -->
+<div id="lightboxModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 500px;">
+        <button class="close-pop" onclick="document.getElementById('lightboxModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px;">SCREENSHOTS</h3>
+        <div id="lightboxList" class="lightbox-content"></div>
+    </div>
+</div>
+
 <!-- 2. QUEST SUCCESS MODAL (FIRE) -->
 <div id="streakRewardModal" class="reward-modal">
     <div class="modern-pop-card pop-fire">
@@ -2085,16 +2118,23 @@ input:checked + .slider:before { transform: translateX(16px); }
                     <div>Trebuie să aștepți înainte de a trimite un nou feedback.</div>
                     <span id="cooldownTimer" class="cooldown-timer">00:00</span>
                 </div>
+<div id="reviewForm">
+    <!-- Image Previews show here -->
+    <div id="imagePreviewArea"></div>
 
-                <!-- INPUT FORM -->
-                <div id="reviewForm">
-                    <div class="input-row">
-                        <textarea id="revInput" class="chat-input" placeholder="Descrie bug-ul sau ideea ta (min. 50 caractere)..." maxlength="1500"></textarea>
-                        <!-- Button is always enabled now to trigger the check -->
-                        <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
-                    </div>
-                    <div class="char-limit"><span id="charCount">0</span> / 1500</div>
-                </div>
+    <div class="input-row">
+        <textarea id="revInput" class="chat-input" placeholder="Descrie bug-ul sau ideea ta (min. 50 caractere)..." maxlength="1500"></textarea>
+        <button id="sendBtn" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+        <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
+        <button id="addImgBtn" class="vote-btn" style="border-color: #ffd700; color: #ffd700;">
+            <i class="fas fa-camera"></i> ADĂUGĂ POZE (MAX 5)
+        </button>
+        <div class="char-limit"><span id="charCount">0</span> / 1500</div>
+    </div>
+</div>
             </div>
         </div>
     </div>
@@ -2167,6 +2207,10 @@ input:checked + .slider:before { transform: translateX(16px); }
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc, getDoc, setDoc, updateDoc, getDocs, limit, startAfter, increment, arrayUnion, getCountFromServer, deleteDoc, onSnapshot,where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
       authDomain: "ksda-7546f.firebaseapp.com", 
@@ -2180,6 +2224,8 @@ import { getFirestore, collection, addDoc, query, orderBy, serverTimestamp, doc,
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+    const storage = getStorage(app);
+
 
 // Pune asta pe fiecare pagină (ex: pe pagina Shop pui: trackVisit("Shop"))
 async function trackVisit(pageName) {
@@ -3442,7 +3488,31 @@ function appendReviewCard(data, prepend = false) {
         cardClass += ' approved-post';
     }
 
+
+    // --- GALLERY LOGIC (NEW) ---
+    let galleryHtml = '';
+    if (data.images && data.images.length > 0) {
+        const firstImg = data.images[0];
+        const extraCount = data.images.length - 1;
+        
+        // Use a separator like | to pass all URLs to the lightbox function
+        const allImagesString = data.images.join('|');
+        
+        galleryHtml = `
+            <div class="feedback-gallery">
+                <div class="feedback-img-main" onclick="openLightbox('${allImagesString}')">
+                    <img src="${firstImg}" alt="Feedback Screenshot">
+                    ${extraCount > 0 ? `
+                        <div class="more-imgs-overlay">
+                            +${extraCount}
+                        </div>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
     const displayName = isOwner ? "Lost Soul" : data.name;
+
 
     // --- ACTION BUTTONS (UPDATED LOGIC) ---
     let actionButtons = '';
@@ -3689,87 +3759,71 @@ window.toggleApproveFeedback = async (id, currentStatus, text, name, photo, emai
     }
 };
 
-    // 1. Send Feedback (UPDATED WITH QUEST LOGIC & EMAIL & PIN FIELD)
-// 1. Send Feedback (FULL CORRECTED FUNCTION)
 sendBtn.onclick = async () => {
-        if(!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-        const text = revInput.value.trim();
+    if(!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    const text = revInput.value.trim();
 
-        if (text.length < 50) {
-            showErrorToast();
-            return;
+    if (text.length < 50) {
+        showErrorToast();
+        return;
+    }
+
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    try {
+        // 1. Upload Images to Storage
+        let uploadedUrls = [];
+        for (const file of selectedFiles) {
+            const fileRef = ref(storage, `feedback_screenshots/${Date.now()}_${file.name}`);
+            const uploadSnap = await uploadBytes(fileRef, file);
+            const url = await getDownloadURL(uploadSnap.ref);
+            uploadedUrls.push(url);
         }
+
+        // 2. Get User Data
+        const userSnapshot = await getDoc(doc(db, "accounts", uid));
+        const userData = userSnapshot.data();
         
-        try {
-            // Get latest user data (for name/cosmetics/quests)
-            const userSnapshot = await getDoc(doc(db, "accounts", uid));
-            const userData = userSnapshot.data();
-            const displayName = userData.username || auth.currentUser.displayName;
-            
-            // Cosmetics
-            const equippedBadge = userData.equippedBadge || null;
-            const equippedBanner = userData.equippedBanner || null;
-            const equippedFrame = userData.equippedFrame || null;
-            const equippedText = userData.equippedText || null; // <--- ADD THIS
+        const feedbackData = { 
+            text: text, 
+            name: userData.username || auth.currentUser.displayName,
+            photo: auth.currentUser.photoURL, 
+            email: auth.currentUser.email, 
+            uid: uid, 
+            createdAt: serverTimestamp(), 
+            votes: {},
+            isPinned: false,
+            images: uploadedUrls, // ADDED IMAGES ARRAY
+            equippedBadge: userData.equippedBadge || null,
+            equippedBanner: userData.equippedBanner || null,
+            equippedFrame: userData.equippedFrame || null,
+            equippedText: userData.equippedText || null
+        };
 
-            const feedbackData = { 
-                text: text, 
-                name: displayName,
-                photo: auth.currentUser.photoURL, 
-                email: auth.currentUser.email, 
-                uid: uid, 
-                ip: userIP || "unknown", 
-                createdAt: serverTimestamp(), 
-                votes: {},
-                isPinned: false,
-                equippedBadge: equippedBadge,
-                equippedBanner: equippedBanner,
-                equippedFrame: equippedFrame,
-                equippedText: equippedText // <--- SAVE IT
-            };
+        const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
+        appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
+        
+        // Reset Form
+        revInput.value = '';
+        selectedFiles = [];
+        document.getElementById('imagePreviewArea').innerHTML = '';
+        localStorage.setItem('last_feedback_time', Date.now());
+        updateCooldownUI();
 
-            // 1. DEFINE docRef HERE
-            const docRef = await addDoc(collection(db, "feedbacks"), feedbackData);
-            
-            // 2. Update UI locally using docRef.id
-            appendReviewCard({ id: docRef.id, ...feedbackData, createdAt: new Date() }, true);
-            
-            // 3. BASE REWARD: Always give 25 coins & increment counter
-            await updateDoc(doc(db, "accounts", uid), { 
-                coins: increment(25),
-                feedbackGivenToday: increment(1) 
-            });
+        // Standard Rewards
+        await updateDoc(doc(db, "accounts", uid), { coins: increment(25), feedbackGivenToday: increment(1) });
+        if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
 
-            localStorage.setItem('last_feedback_time', Date.now());
-            updateCooldownUI();
-
-            // 4. QUEST LOGIC
-            const activeQuests = userData.activeDailyQuests || [];
-            const completed = userData.completedQuests || [];
-
-if (activeQuests.includes('give_feedback') && !completed.includes('give_feedback')) {
-                
-                // --- 1. LOG TRANSACTION ---
-                await logTransaction(250, "COINS", "QUEST COMPLETE: give_feedback");
-
-                await updateDoc(doc(db, "accounts", uid), {
-                    coins: increment(250),  
-                    completedQuests: arrayUnion('give_feedback')
-                });
-                questRewardModal.classList.add('active');
-            } else {
-                if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
-            }
-
-            revInput.value = ''; 
-            document.getElementById('charCount').innerText = '0'; 
-
-        } catch(e) { 
-            console.error(e);
-            alert("Eroare: " + e.message); 
-        }
-    };
+    } catch(e) {
+        console.error(e);
+        alert("Eroare: " + e.message);
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+    }
+};
 
     // 2. Vote (Optimistic)
     window.voteFeedback = async (id, type, btnElement) => {
@@ -3962,7 +4016,40 @@ window.postComment = async (id) => {
 
 
 
+let selectedFiles = [];
 
+document.getElementById('addImgBtn').onclick = () => document.getElementById('fileInput').click();
+
+document.getElementById('fileInput').onchange = (e) => {
+    const files = Array.from(e.target.files);
+    if (selectedFiles.length + files.length > 5) {
+        alert("Poți adăuga maxim 5 imagini!");
+        return;
+    }
+    selectedFiles = [...selectedFiles, ...files];
+    renderImagePreviews();
+};
+
+function renderImagePreviews() {
+    const area = document.getElementById('imagePreviewArea');
+    area.innerHTML = '';
+    selectedFiles.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            area.innerHTML += `
+                <div class="preview-img-box">
+                    <img src="${e.target.result}">
+                    <button class="remove-img-btn" onclick="removeSelectedFile(${index})">✕</button>
+                </div>`;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+window.removeSelectedFile = (index) => {
+    selectedFiles.splice(index, 1);
+    renderImagePreviews();
+};
 
   </script>
 </body>
