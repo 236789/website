@@ -3067,6 +3067,22 @@
             <span>Top Ghinioniști</span>
         </a>
     </div>
+
+
+<!-- Group: ADMIN TOOLS -->
+<div class="ga-nav-group">
+    <div class="ga-folder-header" onclick="toggleFolder(this)">
+        <i class="fas fa-user-cog" style="color: #a2cfff;"></i>
+        <span>Admin Panel</span>
+        <i class="fas fa-chevron-right arrow"></i>
+    </div>
+    <div class="ga-folder-content">
+        <a href="#" class="ga-nav-item" onclick="switchSection('admin-manage-view', this)">
+            <i class="fas fa-coins" style="color: #ffd700;"></i>
+            <span>Gestionează Balanță</span>
+        </a>
+    </div>
+</div>
 </div>
 </div>
 </aside>
@@ -3824,7 +3840,90 @@
     </div>
 </div>
 
+<!-- VIEW: ADMIN MANAGE BALANCE -->
+<div id="admin-manage-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 30px; font-size:24px; color: #ff4757; text-shadow: 0 0 15px rgba(255, 71, 87, 0.4);">
+        <i class="fas fa-toolbox"></i> ADMIN CURRENCY TOOLS
+    </h2>
 
+    <div class="stats-professional-grid" style="grid-template-columns: 1fr; max-width: 600px;">
+        
+        <!-- STEP 1: SELECT USER -->
+        <div class="stat-card-pro" style="overflow: visible;">
+            <span class="stat-card-label" style="color: var(--primary);">PASUL 1: CAUTĂ UTILIZATOR</span>
+            
+            <input type="text" id="adminUserSearch" class="search-input-neon" 
+                   placeholder="Scrie nume sau email..." 
+                   style="margin-top: 10px; width: 100%; text-align: left;"
+                   onkeyup="searchUserForAdmin()">
+            
+            <!-- Dropdown results -->
+            <div id="adminUserResults" style="
+                max-height: 200px; 
+                overflow-y: auto; 
+                background: #000; 
+                border: 1px solid #333; 
+                border-radius: 10px; 
+                margin-top: 5px; 
+                display: none;
+                position: absolute;
+                width: 90%;
+                z-index: 100;">
+            </div>
+
+            <!-- Selected User Display -->
+            <div id="selectedUserCard" style="display: none; margin-top: 20px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; border: 1px solid var(--primary); align-items: center; gap: 15px;">
+                <img id="selUserPfp" src="" style="width: 50px; height: 50px; border-radius: 50%; border: 2px solid #fff;">
+                <div>
+                    <div id="selUserName" style="font-family: 'Orbitron'; font-weight: bold; color: #fff;">User</div>
+                    <div id="selUserEmail" style="font-size: 11px; color: #aaa;">email@test.com</div>
+                    <div style="font-size: 10px; margin-top: 5px;">
+                        Coins: <span id="selUserCoins" style="color: #ffd700;">0</span> | 
+                        Diamonds: <span id="selUserDiamonds" style="color: #00ffcc;">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: ACTION -->
+        <div class="stat-card-pro" id="adminActionPanel" style="opacity: 0.5; pointer-events: none;">
+            <span class="stat-card-label" style="color: var(--primary);">PASUL 2: ACȚIUNE</span>
+
+            <!-- Currency Selection -->
+            <div style="display: flex; gap: 10px; margin: 15px 0;">
+                <button class="filter-btn active" id="btnSelCoin" onclick="selectAdminCurrency('coins')" style="flex: 1; justify-content: center;">
+                    <img src="https://iili.io/fhc1SKQ.png" width="20"> COINS
+                </button>
+                <button class="filter-btn" id="btnSelDiamond" onclick="selectAdminCurrency('diamonds')" style="flex: 1; justify-content: center;">
+                    <img src="https://iili.io/fv5bmtj.png" width="20"> DIAMONDS
+                </button>
+            </div>
+
+            <!-- Amount & Reason -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label style="font-size: 10px; color: #888;">SUMĂ</label>
+                    <input type="number" id="adminAmount" class="edit-input" placeholder="Ex: 500">
+                </div>
+                <div>
+                    <label style="font-size: 10px; color: #888;">MOTIV (Log)</label>
+                    <input type="text" id="adminReason" class="edit-input" placeholder="Ex: Event Winner">
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button onclick="executeAdminAction('add')" class="super-btn" style="flex: 1; background: #2ecc71; font-size: 12px; padding: 12px;">
+                    <i class="fas fa-plus-circle"></i> ADAUGĂ
+                </button>
+                <button onclick="executeAdminAction('remove')" class="super-btn" style="flex: 1; background: #ff4757; font-size: 12px; padding: 12px; box-shadow: 0 0 15px rgba(255, 71, 87, 0.4);">
+                    <i class="fas fa-minus-circle"></i> SCADE
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
 
 </main>
 <!-- MAIN CONTENT AREA END -->
@@ -4039,6 +4138,154 @@ window.selectDonationSort = function(criteria, element) {
     document.getElementById('donSortOptions').classList.remove('open');
     window.runDonationAnalytics();
 };
+
+
+// --- ADMIN PANEL LOGIC ---
+    let selectedAdminTargetUid = null;
+    let selectedAdminCurrency = 'coins';
+
+    // 1. Search Logic
+    window.searchUserForAdmin = () => {
+        const input = document.getElementById('adminUserSearch').value.toLowerCase();
+        const resultsBox = document.getElementById('adminUserResults');
+        resultsBox.innerHTML = '';
+
+        if(input.length < 2) {
+            resultsBox.style.display = 'none';
+            return;
+        }
+
+        // Filter cachedUsers
+        const matches = cachedUsers.filter(u => 
+            u.username.toLowerCase().includes(input) || 
+            u.email.toLowerCase().includes(input)
+        ).slice(0, 5); // Limit to 5 results
+
+        if(matches.length > 0) {
+            resultsBox.style.display = 'block';
+            matches.forEach(u => {
+                const div = document.createElement('div');
+                div.style.padding = "10px";
+                div.style.borderBottom = "1px solid #333";
+                div.style.cursor = "pointer";
+                div.style.display = "flex";
+                div.style.alignItems = "center";
+                div.style.gap = "10px";
+                div.style.color = "#fff";
+                
+                div.innerHTML = `
+                    <img src="${u.pfp}" style="width:30px; height:30px; border-radius:50%;">
+                    <div>
+                        <div style="font-size:12px; font-weight:bold;">${u.username}</div>
+                        <div style="font-size:10px; color:#888;">${u.email}</div>
+                    </div>
+                `;
+                
+                div.onclick = () => selectUserForAdmin(u);
+                resultsBox.appendChild(div);
+            });
+        } else {
+            resultsBox.style.display = 'none';
+        }
+    };
+
+    // 2. Select User Logic
+    window.selectUserForAdmin = (user) => {
+        selectedAdminTargetUid = user.uid;
+        document.getElementById('adminUserResults').style.display = 'none';
+        document.getElementById('adminUserSearch').value = '';
+
+        // Update Display Card
+        document.getElementById('selectedUserCard').style.display = 'flex';
+        document.getElementById('selUserPfp').src = user.pfp;
+        document.getElementById('selUserName').innerText = user.username;
+        document.getElementById('selUserEmail').innerText = user.email;
+        document.getElementById('selUserCoins').innerText = formatCurrency(user.coins);
+        document.getElementById('selUserDiamonds').innerText = formatCurrency(user.diamonds);
+
+        // Unlock Action Panel
+        document.getElementById('adminActionPanel').style.opacity = '1';
+        document.getElementById('adminActionPanel').style.pointerEvents = 'all';
+    };
+
+    // 3. Select Currency Logic
+    window.selectAdminCurrency = (type) => {
+        selectedAdminCurrency = type;
+        
+        // Toggle Buttons Visuals
+        const btnC = document.getElementById('btnSelCoin');
+        const btnD = document.getElementById('btnSelDiamond');
+        
+        if(type === 'coins') {
+            btnC.classList.add('active');
+            btnD.classList.remove('active');
+        } else {
+            btnD.classList.add('active');
+            btnC.classList.remove('active');
+        }
+    };
+
+    // 4. EXECUTE ACTION (Add/Remove)
+    window.executeAdminAction = async (action) => {
+        if(!selectedAdminTargetUid) return alert("Selectează un utilizator!");
+        
+        const amountVal = document.getElementById('adminAmount').value;
+        const reasonVal = document.getElementById('adminReason').value;
+
+        if(!amountVal || amountVal <= 0) return alert("Introdu o sumă validă!");
+
+        const amount = parseInt(amountVal);
+        const finalAmount = action === 'add' ? amount : -amount;
+        
+        // Disable buttons to prevent double click
+        document.getElementById('adminActionPanel').style.opacity = '0.5';
+        document.getElementById('adminActionPanel').style.pointerEvents = 'none';
+
+        try {
+            // A. Update User Account
+            const userRef = doc(db, "accounts", selectedAdminTargetUid);
+            await updateDoc(userRef, {
+                [selectedAdminCurrency]: increment(finalAmount)
+            });
+
+            // B. Log Transaction (Source: "System")
+            // This keyword "System" ensures it shows up in your Admin filter
+            await addDoc(collection(db, "transactions"), {
+                userId: selectedAdminTargetUid,
+                amount: finalAmount,
+                type: selectedAdminCurrency === 'coins' ? 'COINS' : 'DIAMONDS',
+                source: "System", 
+                description: `Admin: ${reasonVal || (action === 'add' ? 'Bonus acordat' : 'Sancțiune')}`,
+                timestamp: serverTimestamp()
+            });
+
+            // C. Success Message
+            alert(`Succes! Au fost ${action === 'add' ? 'adăugate' : 'retrase'} ${amount} ${selectedAdminCurrency}.`);
+
+            // Reset Inputs
+            document.getElementById('adminAmount').value = '';
+            document.getElementById('adminReason').value = '';
+            
+            // Reload user data visually (optional, real-time listener will handle it mostly)
+            const updatedUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
+            if(updatedUser) {
+                 // Force update local display numbers immediately for better UX
+                 if(selectedAdminCurrency === 'coins') updatedUser.coins += finalAmount;
+                 else updatedUser.diamonds += finalAmount;
+                 
+                 document.getElementById('selUserCoins').innerText = formatCurrency(updatedUser.coins);
+                 document.getElementById('selUserDiamonds').innerText = formatCurrency(updatedUser.diamonds);
+            }
+
+        } catch(e) {
+            console.error(e);
+            alert("Eroare la actualizare: " + e.message);
+        } finally {
+            // Re-enable panel
+            document.getElementById('adminActionPanel').style.opacity = '1';
+            document.getElementById('adminActionPanel').style.pointerEvents = 'all';
+        }
+    };
 
 // 3. Funcția principală de procesare
 window.runDonationAnalytics = function() {
@@ -5402,6 +5649,12 @@ window.switchSection = (sectionId, btnElement) => {
             } else {
                 if (typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics();
             }
+            break;
+
+
+        // --- NOU: ADMIN TOOLS ---
+        case 'admin-manage-view':
+            // Nu este nevoie de o funcție specifică de pornire, doar de datele userilor (gestionate de needsUsers)
             break;
     }
 };
