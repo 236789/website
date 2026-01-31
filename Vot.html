@@ -1466,6 +1466,29 @@
 .voter-info { display: flex; flex-direction: column; }
 .voter-name { font-size: 13px; font-weight: 700; color: #fff; }
 .voter-pick { font-size: 10px; color: var(--primary); font-family: 'Orbitron'; }
+
+
+
+/* --- PREMIUM CARDS (MATCHING NOUTATI) --- */
+.vote-card { padding: 25px; border-radius: 20px; color: #fff; margin-bottom: 30px; position: relative; display: flex; flex-direction: column; gap: 15px; border: 2px solid #fff; }
+
+.owner-card { background: linear-gradient(135deg, #0044ff 0%, #29f3ff 100%) !important; box-shadow: 0 0 25px rgba(41, 243, 255, 0.3); }
+.admin-card { background: linear-gradient(135deg, #b20a2c 0%, #ff4d4d 100%) !important; box-shadow: 0 0 20px rgba(255, 0, 0, 0.4); }
+.mod-card { background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%) !important; }
+
+/* --- CARD HEADER --- */
+.vote-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; }
+.vote-pfp { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #fff; object-fit: cover; }
+.vote-creator-name { font-family: 'Orbitron'; font-weight: 800; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+
+/* --- BARS --- */
+.vote-option-row { margin-bottom: 10px; cursor: pointer; }
+.vote-bar-bg { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); height: 48px; border-radius: 12px; overflow: hidden; position: relative; }
+.vote-bar-fill { height: 100%; background: rgba(255,255,255,0.2); width: 0%; transition: width 0.8s ease; }
+.vote-text { position: absolute; inset: 0; padding: 0 15px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13px; }
+
+/* --- IMAGE PICKER PREVIEW --- */
+.vote-img-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; border: 2px solid var(--primary); display: none; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -1759,28 +1782,32 @@
     <h1 class="metallic-title-big">COMMUNITY VOTES</h1>
     <p style="color: var(--text-muted); margin-bottom: 40px;">Vocea comunității contează. Participă la deciziile viitoare KSDA!</p>
 
-    <!-- Admin Panel (ID-uri corectate pentru JS) -->
-    <div id="adminVoteCreator" style="display: none;">
-        <h3 style="color: var(--primary); margin-top:0;">CREEAZĂ VOT NOU</h3>
-        <input type="text" id="voteQuestion" class="edit-input" style="margin-bottom:10px" placeholder="Întrebarea ta...">
-        <input type="text" id="voteImgLink" class="edit-input" style="margin-bottom:10px" placeholder="Link Imagine (Opțional)">
-        
-        <div id="voteOptionsInputs">
-            <input type="text" class="v-opt edit-input" style="margin-bottom:5px" placeholder="Opțiunea 1">
-            <input type="text" class="v-opt edit-input" style="margin-bottom:5px" placeholder="Opțiunea 2">
-        </div>
-        
-        <button onclick="addNewOptionField()" class="btn-outline" style="width:100%; margin-top:10px; margin-bottom:15px">+ Adaugă Opțiune (Max 5)</button>
-        
-        <label class="edit-label">DURATĂ VOT</label>
-        <div class="duration-row" style="display:flex; gap:10px; margin-bottom:20px;">
-            <button class="dur-btn active" data-ms="3600000">1H</button>
-            <button class="dur-btn" data-ms="18000000">5H</button>
-            <button class="dur-btn" data-ms="43200000">12H</button>
-            <button class="dur-btn" data-ms="86400000">1D</button>
-        </div>
-        <button id="publishVoteBtn" class="btn-save-profile" style="width:100%">LANSEAZĂ VOTUL</button>
+<div id="adminVoteCreator" style="display: none; background: rgba(0,0,0,0.4); padding: 25px; border-radius: 20px; border: 1px dashed var(--primary); margin-bottom: 40px;">
+    <h3 style="color: var(--primary); margin-top:0; font-family: 'Orbitron';">NOU VOT COMUNITATE</h3>
+    
+    <img id="votePreviewImg" class="vote-img-preview">
+    
+    <div style="display:flex; gap:10px; margin-bottom:15px;">
+        <button class="btn-outline" onclick="document.getElementById('voteFileInput').click()" style="margin:0;"><i class="fas fa-image"></i> ALEGE IMAGINE</button>
+        <input type="file" id="voteFileInput" accept="image/*" style="display:none;">
+        <input type="text" id="voteQuestion" class="edit-input" style="flex:1;" placeholder="Întrebarea votului...">
     </div>
+
+    <div id="voteOptionsInputs">
+        <input type="text" class="v-opt edit-input" style="margin-bottom:8px" placeholder="Opțiunea 1">
+        <input type="text" class="v-opt edit-input" style="margin-bottom:8px" placeholder="Opțiunea 2">
+    </div>
+    
+    <button onclick="addNewOptionField()" class="btn-outline" style="width:100%; margin-bottom:15px">+ OPȚIUNE</button>
+
+    <div class="duration-row" style="display:flex; gap:10px; margin-bottom:15px;">
+        <button class="dur-btn active" data-ms="3600000">1H</button>
+        <button class="dur-btn" data-ms="18000000">5H</button>
+        <button class="dur-btn" data-ms="86400000">1D</button>
+    </div>
+    <button id="publishVoteBtn" class="btn-save-profile" style="width:100%">LANSEAZĂ VOTUL</button>
+</div>
+<div id="activeVotesList" style="width:100%"></div>
 
     <!-- Container pentru voturi -->
     <div id="activeVotesList" style="width:100%"></div>
@@ -1846,7 +1873,18 @@ window.addNewOptionField = () => {
     }
 };
 
-// --- 1. PUBLISH VOTE (Saves Creator Email for Role Colors) ---
+let selectedVoteFile = null;
+
+// --- IMAGE PICKER LOGIC ---
+document.getElementById('voteFileInput').onchange = (e) => {
+    selectedVoteFile = e.target.files[0];
+    if(selectedVoteFile) {
+        const preview = document.getElementById('votePreviewImg');
+        preview.src = URL.createObjectURL(selectedVoteFile);
+        preview.style.display = 'block';
+    }
+};
+
 document.getElementById('publishVoteBtn').onclick = async () => {
     const q = document.getElementById('voteQuestion').value.trim();
     const optInputs = document.querySelectorAll('.v-opt');
@@ -1855,18 +1893,36 @@ document.getElementById('publishVoteBtn').onclick = async () => {
 
     if(!q || options.length < 2) return alert("Scrie o întrebare și minim 2 opțiuni!");
 
-    await addDoc(collection(db, "community_votes"), {
-        question: q,
-        options: options,
-        votes: {}, 
-        creatorEmail: auth.currentUser.email, // <--- CRITICAL FOR COLORS
-        expiresAt: Date.now() + selectedVoteDuration,
-        createdAt: serverTimestamp()
-    });
-    alert("Vot lansat!");
+    try {
+        // Fetch current user details for the header
+        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const userData = userSnap.data();
+
+        let imageUrl = "";
+        if(selectedVoteFile) {
+            const fileRef = ref(storage, `votes/${Date.now()}_${selectedVoteFile.name}`);
+            const uploadSnap = await uploadBytes(fileRef, selectedVoteFile);
+            imageUrl = await getDownloadURL(uploadSnap.ref);
+        }
+
+        await addDoc(collection(db, "community_votes"), {
+            question: q,
+            image: imageUrl,
+            options: options,
+            votes: {},
+            creatorName: userData.username || auth.currentUser.displayName,
+            creatorPhoto: userData.image || auth.currentUser.photoURL,
+            creatorEmail: auth.currentUser.email,
+            expiresAt: Date.now() + selectedVoteDuration,
+            createdAt: serverTimestamp()
+        });
+
+        alert("Vot lansat!");
+        location.reload();
+    } catch(e) { console.error(e); }
 };
 
-// --- 2. LISTEN FOR VOTES (Role Based Styling) ---
+// --- LISTEN FOR VOTES (The Sexy Layout) ---
 function listenForVotes() {
     const q = query(collection(db, "community_votes"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snap) => {
@@ -1877,32 +1933,46 @@ function listenForVotes() {
             const id = doc.id;
             const email = data.creatorEmail || "";
             
-            // Determine Color Class
-            let roleClass = "mod-card"; 
-            if(email === 'nicaemmanuel433qe@gmail.com') roleClass = "owner-card";
-            else if(email === 'kevin.trinity2020@gmail.com') roleClass = "admin-card";
+// Determine Role Colors (EXACTLY LIKE NOUTATI)
+            let roleClass = "mod-card";
+            let badge = `<span class="mod-badge">MODERATOR</span>`;
+            
+            if(email === 'nicaemmanuel433qe@gmail.com') {
+                roleClass = "owner-card"; // Blue Gradient
+                badge = `<span class="owner-badge">OWNER</span>`;
+            } else if(email === 'kevin.trinity2020@gmail.com') {
+                roleClass = "admin-card"; // Red Gradient
+                badge = `<span class="admin-badge">ADMIN</span>`;
+            }
 
-            const totalVotes = Object.keys(data.votes || {}).length;
-            let optionsHtml = "";
-            data.options.forEach((opt, idx) => {
-                const count = Object.values(data.votes || {}).filter(v => v === idx).length;
-                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                optionsHtml += `
-                    <div class="vote-option-row" onclick="castVote('${id}', ${idx})">
-                        <div class="vote-bar-bg">
-                            <div class="vote-bar-fill" style="width: ${percent}%"></div>
-                            <div class="vote-text"><span>${opt}</span><span>${percent}% (${count})</span></div>
-                        </div>
-                    </div>`;
+            list.innerHTML += `
+                <div class="vote-card ${roleClass}">
+                    <div class="vote-header">
+                        <img src="${data.creatorPhoto}" class="vote-pfp">
+                        <div class="vote-creator-name">${data.creatorName} ${badge}</div>
+                    </div>
+                    ${data.image ? `<img src="${data.image}" style="width:100%; border-radius:15px; margin-bottom:15px; border:1px solid rgba(255,255,255,0.2);">` : ''}
+                    <div class="vote-q">${data.question}</div>
+                    ${optionsHtml}
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                        <span style="font-size:10px; font-weight:800;">${totalVotes} VOTURI TOTAL</span>
+                        <button class="voter-list-btn" onclick="openVoterModal('${id}')" style="background:#fff; color:#000; border:none; padding:5px 15px; border-radius:20px; font-weight:900; cursor:pointer;">VEZI VOTANȚI</button>
+                    </div>
+                </div>`;
             });
 
             list.innerHTML += `
                 <div class="vote-card ${roleClass}">
+                    <div class="vote-header">
+                        <img src="${data.creatorPhoto}" class="vote-pfp">
+                        <div class="vote-creator-name">${data.creatorName} ${badge}</div>
+                    </div>
+                    ${data.image ? `<img src="${data.image}" style="width:100%; border-radius:15px; max-height:300px; object-fit:cover; border:1px solid rgba(255,255,255,0.2);">` : ''}
                     <div class="vote-q">${data.question}</div>
                     ${optionsHtml}
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:10px; opacity:0.8;">${totalVotes} VOTURI TOTAL</span>
-                        <button class="voter-list-btn" onclick="openVoterModal('${id}')">VEZI VOTANȚI</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                        <span style="font-size:10px; font-weight:800; font-family:'Orbitron';">${totalVotes} VOTURI TOTAL</span>
+                        <button class="voter-list-btn" onclick="openVoterModal('${id}')" style="background:#fff; color:#000; border:none; padding:5px 15px; border-radius:20px; font-size:10px; font-weight:900; cursor:pointer;">VEZI VOTANȚI</button>
                     </div>
                 </div>`;
         });
@@ -1974,6 +2044,9 @@ window.showVoters = async (voteId) => {
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc,query , getDoc, setDoc,collection,addDoc,orderBy, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
     // ADAUGĂ ACESTE LINII AICI:
 window.query = query;
 window.orderBy = orderBy;
@@ -2004,7 +2077,13 @@ window.arrayUnion = arrayUnion;
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+    const storage = getStorage(app)
 
+window.storage = storage;
+window.ref = ref;
+window.uploadBytes = uploadBytes;
+window.getDownloadURL = getDownloadURL;
+ 
 window.auth = auth;
 
 window.db = db; 
