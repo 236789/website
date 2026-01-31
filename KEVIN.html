@@ -4058,21 +4058,27 @@ document.getElementById('files').onchange = (e) => {
             // It's an image - use Compressor
             new Compressor(file, {
                 quality: 0.6, maxWidth: 1000,
-                success(result) {
-                    result.name = file.name;
-                    filesToUpload[i] = result;
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        area.innerHTML += `
-                            <div class="preview-card" style="order:${i}">
-                                <img src="${ev.target.result}">
-                                <div class="preview-inputs">
-                                    <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu Imagine..." style="font-size:10px;">
-                                </div>
-                            </div>`;
-                    };
-                    reader.readAsDataURL(result);
-                }
+success(result) {
+                // ✅ FIX: Create a new File object instead of trying to rename the read-only result
+                const compressedFile = new File([result], file.name, {
+                    type: result.type,
+                    lastModified: Date.now()
+                });
+
+                filesToUpload[i] = compressedFile;
+
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    area.innerHTML += `
+                        <div class="preview-card" style="order:${i}">
+                            <img src="${ev.target.result}">
+                            <div class="preview-inputs">
+                                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu Imagine..." style="font-size:10px;">
+                            </div>
+                        </div>`;
+                };
+                reader.readAsDataURL(compressedFile);
+            }
             });
         }
     });
