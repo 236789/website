@@ -1533,8 +1533,32 @@
 
 /* Round Profile Pics */
 .post-pfp { width: 45px !important; height: 45px !important; border-radius: 50% !important; border: 2px solid #fff; object-fit: cover; flex-shrink: 0; }
-.post-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; }
+/* FIXED HEADER FOR MOBILE */
+.post-header { 
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    border-bottom: 1px solid rgba(255,255,255,0.1); 
+    padding-bottom: 10px;
+    flex-wrap: wrap; /* Allows elements to move to second line on tiny screens */
+}
 
+.post-name { 
+    font-weight: 800; 
+    font-size: 14px; 
+    display: flex; 
+    flex-direction: column; /* Moves badge below name on mobile */
+    align-items: flex-start;
+    gap: 4px;
+    flex: 1; 
+}
+
+/* Adjust pill size for mobile */
+.status-pill {
+    white-space: nowrap;
+    font-size: 8px;
+    padding: 3px 8px;
+}
 /* Thumbnail Grid Fix */
 .post-media-grid { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
 .media-box { width: 120px; height: 120px; border: 2px solid #fff; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative; }
@@ -1737,6 +1761,9 @@ select.edit-input option {
 .seen-btn:active {
     transform: scale(0.95);
 }
+
+
+
   </style>
 </head>
 <body>
@@ -2384,33 +2411,44 @@ if (imgs.length > 0) {
 window.viewParticipantsList = async (id) => {
     const modal = document.getElementById('votersModal');
     const listDiv = document.getElementById('votersList');
+    if(!modal || !listDiv) return;
+
     modal.classList.add('active');
-    listDiv.innerHTML = "Se încarcă...";
+    listDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>';
 
-    const snap = await getDoc(doc(db, "community_votes", id));
-    const voterUids = Object.keys(snap.data().voters || {});
+    try {
+        const snap = await getDoc(doc(db, "community_votes", id));
+        const data = snap.data();
+        const votersObj = data.voters || {};
+        const uids = Object.keys(votersObj);
 
-    listDiv.innerHTML = "";
-    if(voterUids.length === 0) listDiv.innerHTML = "Niciun vot încă.";
-
-    for (const uid of voterUids) {
-        const userSnap = await getDoc(doc(db, "accounts", uid));
-        if (userSnap.exists()) {
-            const u = userSnap.data();
-// INSIDE window.viewParticipantsList loop:
-
-listDiv.innerHTML += `
-    <div class="seen-user-item" style="display:flex; align-items:center; gap:15px; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); transition: 0.3s; background: rgba(255,255,255,0.02); border-radius: 10px; margin-bottom: 5px;">
-        <img src="${u.image}" style="width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit: cover;">
-        <div style="flex: 1;">
-            <div style="font-family: 'Orbitron'; font-size:13px; font-weight:700; color:#fff; letter-spacing: 0.5px;">${u.username}</div>
-            <div style="font-family: 'Poppins'; font-size:10px; color:var(--primary); opacity: 0.8; font-weight: 600;">OPȚIUNE: ${choiceText}</div>
-        </div>
-        <div style="font-size: 18px; color: var(--primary); opacity: 0.5;">
-            <i class="fas fa-check-circle"></i>
-        </div>
-    </div>`;
+        listDiv.innerHTML = "";
+        if (uids.length === 0) {
+            listDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Niciun vot înregistrat.</div>';
+            return;
         }
+
+        for (const uid of uids) {
+            const userSnap = await getDoc(doc(db, "accounts", uid));
+            if (userSnap.exists()) {
+                const u = userSnap.data();
+                const choiceIdx = votersObj[uid];
+                // FIX: Ensure choiceText is defined correctly inside the loop
+                const choiceText = data.options[choiceIdx] || "Opțiune necunoscută";
+
+                listDiv.innerHTML += `
+                    <div class="seen-user-item" style="display:flex; align-items:center; gap:15px; padding:12px; margin-bottom:8px; background:rgba(255,255,255,0.03); border-radius:12px;">
+                        <img src="${u.image}" style="width:35px; height:35px; border-radius:50%; border:1.5px solid var(--primary);">
+                        <div style="flex:1;">
+                            <div style="font-family:'Orbitron'; font-size:12px; color:#fff;">${u.username}</div>
+                            <div style="font-size:10px; color:var(--primary); font-weight:600;">VOT: ${choiceText}</div>
+                        </div>
+                    </div>`;
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        listDiv.innerHTML = "Eroare la preluarea listei.";
     }
 };
 
@@ -2443,51 +2481,38 @@ window.changeVoteImg = (step) => {
 };
 
 window.castVote = async (voteId, optionIndex, isExpired) => {
-    // 1. Verificăm starea votului transmisă din interfață
     if (isExpired) {
-        if (window.showToast) window.showToast("Sesiunea de votare pentru acest chestionar s-a încheiat.");
+        if (window.showToast) window.showToast("Sesiunea de votare s-a încheiat.");
         return;
     }
     
-    // 2. Verificăm starea autentificării
     if (!auth.currentUser) {
-        if (window.showToast) window.showToast("Acces restricționat. Vă rugăm să vă autentificați pentru a vota.");
+        if (window.showToast) window.showToast("Vă rugăm să vă autentificați.");
         return;
     }
 
     try {
         const voteRef = doc(db, "community_votes", voteId);
         const snap = await getDoc(voteRef);
-        
-        if (!snap.exists()) {
-            if (window.showToast) window.showToast("Eroare: Documentul selectat nu mai este disponibil.");
-            return;
-        }
-
         const data = snap.data();
 
-        // 3. Verificare de siguranță pentru data de expirare direct din server
-        let expirationDate = null;
-        if (data.expiresAt) {
-            expirationDate = typeof data.expiresAt.toDate === 'function' ? data.expiresAt.toDate() : new Date(data.expiresAt);
-        }
-
-        if (expirationDate && new Date() > expirationDate) {
-            if (window.showToast) window.showToast("Sesiunea de vot a expirat în timpul procesării.");
+        // --- BLOCK VOTE SWITCHING ---
+        if (data.voters && data.voters[auth.currentUser.uid] !== undefined) {
+            if (window.showToast) window.showToast("Ați votat deja. Opțiunea selectată este finală.");
             return;
         }
 
-        // 4. Actualizăm votul utilizatorului
         await updateDoc(voteRef, {
             [`voters.${auth.currentUser.uid}`]: optionIndex
         });
 
-        // 5. Confirmare succes prin Toast
-        if (window.showToast) window.showToast("Votul dumneavoastră a fost înregistrat cu succes.");
+        if (window.showToast) window.showToast("Vot înregistrat cu succes.");
 
     } catch (e) {
-        console.error("Eroare procedură vot:", e);
-        if (window.showToast) window.showToast("Eroare tehnică la procesarea opțiunii selectate.");
+        // If this fails, it's likely the "Missing Permissions" error. 
+        // Ensure you deployed the Firebase Rules I gave you in the last turn!
+        console.error(e);
+        if (window.showToast) window.showToast("Eroare de permisiune sau sesiune expirată.");
     }
 };
 // 1. Open Modal and Generate Link
