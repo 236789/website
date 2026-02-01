@@ -1903,6 +1903,23 @@
 
 .level-card h4 { margin: 0; font-size: 12px; font-family: 'Orbitron'; color: inherit; }
 .level-card p { margin: 3px 0 0 0; font-size: 9px; opacity: 0.7; color: inherit; }
+
+
+
+
+#editor-ui { position: absolute; inset: 0; pointer-events: none; z-index: 5000; font-family: 'Orbitron'; }
+#editor-sidebar { 
+    position: absolute; left: 0; top: 0; bottom: 0; width: 220px; 
+    background: rgba(5, 11, 20, 0.95); border-right: 2px solid var(--primary); 
+    pointer-events: auto; padding: 20px; display: flex; flex-direction: column;
+}
+.editor-title { color: var(--primary); font-size: 12px; letter-spacing: 1px; border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 10px; }
+.asset-item { 
+    padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 8px; 
+    cursor: pointer; transition: 0.2s; font-size: 11px; color: #ccc; display: flex; align-items: center; gap: 10px;
+}
+.asset-item:hover { background: var(--primary); color: #000; }
+.asset-item.active { border: 1px solid var(--primary); background: rgba(41, 243, 255, 0.2); }
   </style>
 </head>
 <body>
@@ -2212,18 +2229,29 @@
         </div>
     </div>
 
-    <!-- 4. CREATOR HUD (Only visible when creating) -->
-    <div id="creator-hud" style="display: none; position: absolute; top: 10px; left: 10px; z-index: 2000; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #ffd700; border-radius: 10px;">
-        <p style="font-family:'Orbitron'; color:#ffd700; margin:0 0 10px 0; font-size:12px;">CREATOR MODE</p>
-        <input type="text" id="level-name-input" placeholder="Nume Nivel" style="background:#111; border:1px solid #555; color:#fff; padding:5px; margin-bottom:10px; width:100%;">
-        <div style="display: flex; flex-direction: column; gap: 5px;">
-            <button onclick="addPlatformHere()" class="btn-tasks" style="padding: 10px; font-size: 10px;">+ PLATFORMĂ AICI</button>
-            <button onclick="setGoalHere()" class="btn-tasks" style="padding: 10px; font-size: 10px; border-color: #ffd700; color: #ffd700;">+ SETEAZĂ FINAL (KEY)</button>
-            <button onclick="saveLevelToFirebase()" class="super-btn" style="font-size: 12px; padding: 10px;">SALVEAZĂ NIVEL</button>
-            <button onclick="showScreen('menu')" style="background:transparent; border:none; color:red; cursor:pointer; font-size:10px;">ANULEAZĂ</button>
+<!-- EDITOR UI TOOLBAR -->
+<div id="editor-ui" style="display: none;">
+    <!-- Asset Library (Stânga) -->
+    <div id="editor-sidebar">
+        <div class="editor-title">ASSETS</div>
+        <div class="asset-item" onclick="setTool('rock')"><i class="fas fa-square"></i> Bloc Solid</div>
+        <div class="asset-item" onclick="setTool('falling')"><i class="fas fa-arrow-down"></i> Falling Block</div>
+        <div class="asset-item" onclick="setTool('acid')"><i class="fas fa-biohazard"></i> Acid Pool</div>
+        <div class="asset-item" onclick="setTool('key')"><i class="fas fa-key"></i> Goal (Key)</div>
+        <div class="asset-item" onclick="setTool('emerald')"><i class="fas fa-gem"></i> Diamond</div>
+        
+        <div class="editor-title" style="margin-top:20px;">PROPERTIES</div>
+        <div id="props-panel">
+            <p style="font-size:10px; color:#666;">Selectează un obiect</p>
+        </div>
+        
+        <div style="margin-top:auto; padding:10px;">
+            <input type="text" id="level-name-input" placeholder="Nume Nivel..." class="edit-input">
+            <button onclick="saveLevelToFirebase()" class="super-btn" style="width:100%; font-size:12px;">PUBLISH</button>
+            <button onclick="showScreen('menu')" class="btn-logout-pop" style="width:100%; margin-top:10px;">EXIT</button>
         </div>
     </div>
-    
+</div>
     <!-- Existing Game Content -->
 <div id="game-inner-wrapper" style="display: none;"></div>
 </div>
@@ -2637,76 +2665,123 @@ function loop() {
 }
 requestAnimationFrame(loop); // Pornim loop-ul
 
-// --- FUNCȚII CREATOR REPARATE ---
+let editorObjects = [];
+let selectedTool = 'rock';
+let draggedObject = null;
+let isEditorMoving = false;
 
+// FIX pentru eroarea toLowerCase()
+window.addEventListener('keydown', (e) => {
+    if (!e.key) return; // Dacă tasta e undefined, ieșim
+    const k = e.key.toLowerCase();
+    if (document.activeElement.tagName === 'INPUT') return; // Nu mișcăm playerul când scriem numele nivelului
+    
+    if (k === 'a' || k === 'arrowleft') inputs.left = true;
+    if (k === 'd' || k === 'arrowright') inputs.right = true;
+    if (k === ' ') handleJump();
+});
+
+// FUNCȚIA PRINCIPALĂ DE PORNIRE EDITOR
 window.startCreatorMode = () => {
     isCreatorMode = true;
-    currentLevelType = 'custom';
+    gameStarted = true;
     window.gameStarted = true;
-    window.tempGoal = null;
+    editorObjects = [{ x: 0, y: 120, w: 400, h: 50, type: 'rock', behavior: 'static' }];
     
-    // Resetăm datele pentru un nivel nou
-    window.customPlatforms = [{x: 0, w: 400, h: 50, b: 120, type: 'static'}];
+    document.getElementById('editor-ui').style.display = 'block';
+    document.getElementById('game-inner-wrapper').style.display = 'block';
     
-    // Curățăm vizual harta
+    renderEditor();
+};
+
+function setTool(tool) {
+    selectedTool = tool;
+    document.querySelectorAll('.asset-item').forEach(el => el.classList.remove('active'));
+    showToast("Tool: " + tool.toUpperCase());
+}
+
+// CLICK PE HARTĂ PENTRU A PUNE OBIECTE
+document.getElementById('game-viewport').addEventListener('mousedown', (e) => {
+    if (!isCreatorMode) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Calculăm poziția relativă la camera de joc
+    const clickX = e.clientX - rect.left - (parseFloat(cameraRig.style.transform.replace('translateX(', '')) || 0);
+    const clickY = 500 - (e.clientY - rect.top); // Inversăm Y pentru coordonatele jocului
+
+    // Verificăm dacă am dat click pe un obiect existent pentru a-l șterge (Right Click)
+    if (e.button === 2) { 
+        editorObjects = editorObjects.filter(obj => !(clickX > obj.x && clickX < obj.x + obj.w && clickY > obj.y && clickY < obj.y + obj.h));
+        renderEditor();
+        return;
+    }
+
+    // Adăugăm obiect nou
+    const newObj = {
+        x: Math.round(clickX / 20) * 20, // Grid snapping
+        y: Math.round(clickY / 20) * 20,
+        w: selectedTool === 'key' ? 60 : 100,
+        h: 40,
+        type: selectedTool,
+        behavior: selectedTool === 'falling' ? 'falling' : 'static'
+    };
+    
+    editorObjects.push(newObj);
+    renderEditor();
+});
+
+// DESENEAZĂ NIVELUL ÎN EDITOR
+function renderEditor() {
     rocksContainer.innerHTML = '';
     rocks = [];
     
-    // Desenăm platforma de start
-    createRock(0, 400, 50, 120, 'static');
-    
-    // Resetăm jucătorul pe platforma de start
-    x = 100; y = 250; vx = 0; vy = 0;
-    
-    window.showToast("MOD CREATOR: Mergi și apasă +PLATFORMĂ");
-};
+    editorObjects.forEach((obj, index) => {
+        const el = document.createElement('div');
+        el.className = 'rock';
+        if (obj.type === 'acid') el.style.background = 'linear-gradient(transparent, #76FF03)';
+        if (obj.type === 'key') el.style.background = 'gold';
+        if (obj.type === 'falling') el.style.borderTop = '4px dashed #ff4757';
+        
+        el.style.left = obj.x + 'px';
+        el.style.width = obj.w + 'px';
+        el.style.height = obj.h + 'px';
+        el.style.bottom = obj.y + 'px';
+        
+        // Adăugăm în motorul de fizică pentru testare live
+        rocksContainer.appendChild(el);
+        rocks.push({
+            element: el, currentLeft: obj.x, width: obj.w, height: obj.h, bottom: obj.y,
+            type: obj.behavior, isGoal: obj.type === 'key'
+        });
+    });
+}
 
-window.addPlatformHere = () => {
-    // Luăm poziția curentă a jucătorului
-    const pX = Math.round(x - 50);
-    const pY = Math.round(y - 45); // Sub picioarele jucătorului
-    
-    const newP = { x: pX, w: 150, h: 40, b: pY, type: 'static' };
-    
-    // IMPORTANT: Salvăm în lista care va fi trimisă la Firebase
-    window.customPlatforms.push(newP);
-    
-    // Desenăm platforma imediat ca să o vezi
-    createRock(newP.x, newP.w, newP.h, newP.b, 'static');
-    window.showToast("Platformă pusă la X: " + pX);
-};
-
-window.setGoalHere = () => {
-    window.tempGoal = { x: Math.round(x), y: Math.round(y - 40) };
-    
-    // Punem un indicator vizual (o platformă mică galbenă) pentru final
-    createRock(window.tempGoal.x, 60, 20, window.tempGoal.y, 'static', true);
-    window.showToast("FINALUL a fost setat aici!");
-};
-
+// SALVARE ÎN FIREBASE
 window.saveLevelToFirebase = async () => {
-    const nameInput = document.getElementById('level-name-input');
-    const name = nameInput ? nameInput.value.trim() : "Nivel Fără Nume";
+    const name = document.getElementById('level-name-input').value.trim();
+    if (!name) return alert("Pune un nume nivelului!");
     
-    if (!window.tempGoal) {
-        alert("EROARE: Nu ai setat FINALUL (butonul galben)!");
-        return;
-    }
+    const goal = editorObjects.find(o => o.type === 'key');
+    if (!goal) return alert("Nivelul are nevoie de o CHEIE (Goal)!");
+
+    // Convertim formatul editorului în formatul de joc
+    const platformsToSave = editorObjects.filter(o => o.type !== 'key').map(o => ({
+        x: o.x, w: o.w, h: o.h, b: o.y, type: o.behavior
+    }));
 
     try {
         await addDoc(collection(db, "acid_runner_levels"), {
             name: name,
-            platforms: window.customPlatforms, // Trimitem lista corectă
-            goalX: window.tempGoal.x,
-            goalY: window.tempGoal.y,
+            platforms: platformsToSave,
+            goalX: goal.x,
+            goalY: goal.y,
             creator: auth.currentUser.email,
             createdAt: serverTimestamp()
         });
-        alert("NIVEL SALVAT! Acum îl poți juca din meniu.");
-        window.showScreen('menu');
-    } catch(e) { 
-        console.error(e); 
-        alert("Eroare la salvare: " + e.message);
+        alert("Nivel Publicat cu succes!");
+        location.reload(); // Refresh pentru a vedea nivelul în listă
+    } catch(e) {
+        alert("Eroare: " + e.message);
     }
 };
 // --- LEVEL SELECTOR ---
