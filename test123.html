@@ -3648,6 +3648,13 @@
     <i class="fas fa-comment-dots" style="color: #29f3ff;"></i>
     <span>Manager Feedback</span>
 </a>
+
+
+<!-- Adaugă asta în ga-folder-content de la Admin Tools -->
+<a href="#" class="ga-nav-item" onclick="switchSection('votes-manager-view', this)">
+    <i class="fas fa-poll" style="color: #FF0000;"></i>
+    <span>Comunity Votes</span>
+</a>
     </div>
 </div>
 </div>
@@ -4652,6 +4659,28 @@
         <div style="text-align: center; color: #888; padding: 20px;">Se încarcă feedback-ul...</div>
     </div>
 </div>
+
+
+
+<!-- VIEW: VOTES MANAGER -->
+<div id="votes-manager-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; font-size:24px; color: #00ff88;">
+        <i class="fas fa-poll"></i> COMMUNITY VOTES MANAGER
+    </h2>
+
+    <!-- Buton Lansare (Folosește modalul existent în pagina ta) -->
+    <div style="display:flex; justify-content:center; margin-bottom:30px;">
+        <button class="btn-cyber" onclick="document.getElementById('createVoteModal').style.display='flex'">
+            <i class="fas fa-plus-circle"></i> LANSEAZĂ VOT NOU
+        </button>
+    </div>
+
+    <div class="wall-card">
+        <div id="adminVoteFeed" class="messages-feed">
+            <div style="text-align: center; color: #888; padding: 20px;">Se încarcă lista de voturi...</div>
+        </div>
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -5186,6 +5215,91 @@ window.selectDonationSort = function(criteria, element) {
     document.getElementById('currentDonSortLabel').innerHTML = element.innerHTML;
     document.getElementById('donSortOptions').classList.remove('open');
     window.runDonationAnalytics();
+};
+
+
+window.loadAdminVotes = () => {
+    const feed = document.getElementById('adminVoteFeed');
+    if (!feed) return;
+
+    const q = query(collection(db, "community_votes"), orderBy("createdAt", "desc"));
+    
+    onSnapshot(q, (snapshot) => {
+        feed.innerHTML = '';
+        if (snapshot.empty) {
+            feed.innerHTML = '<div style="text-align:center; color:#555;">Nu există voturi create.</div>';
+            return;
+        }
+
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const id = docSnap.id;
+            const voters = data.voters || {};
+            const totalVoters = Object.keys(voters).length;
+            
+            const isOwner = data.email === 'nicaemmanuel433qe@gmail.com';
+            
+            let expirationDate = null;
+            if (data.expiresAt) {
+                expirationDate = typeof data.expiresAt.toDate === 'function' ? data.expiresAt.toDate() : new Date(data.expiresAt);
+            }
+            const isExpired = expirationDate ? (new Date() > expirationDate) : false;
+
+            // Media Grid logic
+            let mediaHtml = "";
+            const imgs = data.images || [];
+            if (imgs.length > 0) {
+                const imgsJson = JSON.stringify(imgs).replace(/"/g, '&quot;');
+                mediaHtml += `<div class="post-media-grid">`;
+                mediaHtml += `<div class="media-box" onclick="window.openVoteGallery(${imgsJson}, 0)"><img src="${imgs[0]}"></div>`;
+                if (imgs.length > 1) {
+                    mediaHtml += `
+                        <div class="media-box" onclick="window.openVoteGallery(${imgsJson}, 1)">
+                            <img src="${imgs[1]}" style="opacity:0.4;">
+                            <div class="media-count-overlay"><span class="count-txt">+${imgs.length - 1}</span></div>
+                        </div>`;
+                }
+                mediaHtml += `</div>`;
+            }
+
+            // Opțiuni randează rezultatele (fără să poată vota adminul aici, doar vede)
+            let optionsHtml = data.options.map((opt, index) => {
+                const count = Object.values(voters).filter(v => v === index).length;
+                const percent = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0;
+                return `
+                    <div class="vote-option-container" style="cursor:default;">
+                        <div class="vote-option-bar" style="width: ${percent}%; opacity: 0.15;"></div>
+                        <div class="vote-option-text">
+                            <span style="font-family:'Poppins';">${opt}</span>
+                            <span style="font-family:'Orbitron'; font-size:10px;">${percent}% (${count})</span>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            feed.innerHTML += `
+                <div class="vote-card ${isOwner ? 'owner-post' : 'admin-post'}" style="padding:25px; border-radius:24px; margin-bottom:20px;">
+                    <div class="post-header">
+                        <img src="${data.photo}" class="post-pfp" style="width:35px; height:35px;">
+                        <div class="post-name">
+                            ${data.name} 
+                            <span class="owner-badge">${isOwner ? '<i class="fas fa-crown"></i> OWNER' : '<i class="fas fa-shield-alt"></i> ADMIN'}</span>
+                        </div>
+                        <button class="btn-delete-vote" onclick="window.deleteVote('${id}')" style="margin-left: 10px;"><i class="fas fa-trash"></i></button>
+                        <div style="margin-left:auto;">
+                             <span class="status-pill ${isExpired ? 'status-ended' : 'status-active'}">${isExpired ? 'ÎNCHEIAT' : 'ACTIV'}</span>
+                        </div>
+                    </div>
+                    <div style="font-weight:700; font-size:16px; margin:15px 0; font-family:'Poppins';">${data.question}</div>
+                    ${mediaHtml}
+                    <div style="margin-top:15px;">${optionsHtml}</div>
+                    <div class="post-footer" style="margin-top:15px;">
+                         <button class="seen-btn" onclick="window.viewParticipantsList('${id}')">
+                            <i class="fas fa-eye"></i> VEZI CINE A VOTAT (${totalVoters})
+                         </button>
+                    </div>
+                </div>`;
+        });
+    });
 };
 
 // --- FIXED ADMIN PANEL LOGIC ---
@@ -6710,6 +6824,12 @@ window.switchSection = (sectionId, btnElement) => {
 
 case 'feedback-manager-view':
     window.loadAdminFeedback();
+    break;
+
+
+// În interiorul switch (sectionId) din funcția switchSection, adaugă:
+case 'votes-manager-view':
+    window.loadAdminVotes(); // O versiune a loadVotes care țintește containerul de admin
     break;
 
 
