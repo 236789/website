@@ -2259,6 +2259,67 @@ const storage = getStorage(app);
 
 
 
+        // ==========================================
+// --- ULTIMATE 3-IN-1 TRACKER (KSDA) ---
+// ==========================================
+const PAGINA_ACTUALA = "Comunity Votes"; // <--- SCHIMBĂ ASTA: "Home", "Wall", "Trivia" etc.
+
+// A. Detecție Dispozitiv
+const detectDevice = () => {
+    const ua = navigator.userAgent;
+    if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) return "Tableta";
+    if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) return "Mobil";
+    return "PC";
+};
+
+// B. Identificator Sesiune (pentru vizitatori fără cont)
+if (!sessionStorage.getItem('ksda_session_id')) {
+    sessionStorage.setItem('ksda_session_id', 'anon_' + Math.random().toString(36).substr(2, 9));
+}
+const sesiuneId = sessionStorage.getItem('ksda_session_id');
+
+async function runKSDAAnalytics() {
+    const deviceType = detectDevice();
+    const statsRef = doc(db, "page_stats", PAGINA_ACTUALA);
+    const liveRef = doc(db, "active_sessions", sesiuneId);
+
+    // 1. Logăm Vizita + Tip Dispozitiv
+    try {
+        await setDoc(statsRef, {
+            totalVisits: increment(1),
+            [`devices.${deviceType}`]: increment(1),
+            lastVisit: serverTimestamp()
+        }, { merge: true });
+
+        // 2. Logăm Sesiunea Live (pentru Live Counter)
+        await setDoc(liveRef, {
+            lastActive: serverTimestamp(),
+            page: PAGINA_ACTUALA,
+            device: deviceType,
+            isLoggedIn: !!auth.currentUser // true dacă e logat, false dacă nu
+        });
+    } catch(e) { console.log("Analytics Error:", e); }
+}
+
+runKSDAAnalytics();
+
+// 3. Heartbeat (Timp pe pagină + Refresh sesiune live)
+setInterval(async () => {
+    if (document.visibilityState === 'visible') {
+        try {
+            // Update timp total pe pagină
+            const statsRef = doc(db, "page_stats", PAGINA_ACTUALA);
+            await updateDoc(statsRef, { totalSecondsSpent: increment(10) });
+
+            // Update sesiune live (ca să știm că încă e pe site)
+            const liveRef = doc(db, "active_sessions", sesiuneId);
+            await updateDoc(liveRef, { lastActive: serverTimestamp() });
+        } catch(e) { }
+    }
+}, 10000);
+// ==========================================
+
+
 document.getElementById('addMoreOpt').onclick = () => {
     const wrapper = document.getElementById('optionsWrapper');
     if (wrapper.children.length < 5) {
