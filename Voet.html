@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-  <!-- Google tag (gtag.js) -->
+
+
+
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -1452,6 +1454,70 @@
     font-size: 14px;
     font-weight: 600;
 }
+
+
+
+ /* Stilul pentru Box-ul principal (identic cu Noutăți) */
+.wall-card {
+    width: 100%;
+    background: rgba(13, 25, 41, 0.85);
+    border: 1px solid var(--primary);
+    border-radius: 24px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(41, 243, 255, 0.15);
+    backdrop-filter: blur(10px);
+    min-height: 500px;
+}
+
+.messages-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+/* Stilul pentru opțiunile de vot */
+.vote-option-container {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    margin-top: 10px;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    transition: 0.3s;
+}
+
+.vote-option-container:hover { border-color: #fff; }
+
+.vote-option-bar {
+    position: absolute;
+    top: 0; left: 0; height: 100%;
+    background: rgba(41, 243, 255, 0.2); /* Albastru transparent */
+    transition: width 0.8s cubic-bezier(0.1, 0, 0, 1);
+    z-index: 1;
+}
+
+.vote-option-text {
+    position: relative;
+    z-index: 2;
+    padding: 12px 15px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.voted-active {
+    border: 2px solid var(--primary) !important;
+    background: rgba(41, 243, 255, 0.1);
+}
+
   </style>
 </head>
 <body>
@@ -1844,7 +1910,10 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore,query,addDoc, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -1859,6 +1928,11 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+ 
+
+
+// Initializează Storage sub restul
+const storage = getStorage(app);
 
 // --- INVITE SYSTEM LOGIC ---
 
@@ -1873,6 +1947,147 @@ document.getElementById('addMoreOpt').onclick = () => {
         input.style.marginBottom = "5px";
         wrapper.appendChild(input);
     }
+};
+
+
+document.getElementById('confirmPublishVote').onclick = async () => {
+    const question = document.getElementById('voteQuestion').value.trim();
+    const optionInputs = document.querySelectorAll('.vote-opt');
+    const timer = parseFloat(document.getElementById('voteTimer').value);
+    const files = document.getElementById('voteFiles').files;
+    const btn = document.getElementById('confirmPublishVote');
+
+    if (!question) return alert("Scrie o întrebare!");
+    
+    // Adunăm opțiunile care nu sunt goale
+    const options = Array.from(optionInputs).map(i => i.value.trim()).filter(v => v !== "");
+    if (options.length < 2) return alert("Pune minim 2 opțiuni!");
+
+    btn.disabled = true;
+    btn.innerText = "Se publică...";
+
+    try {
+        // 1. Upload Imagini (max 5)
+        let imageUrls = [];
+        for (let i = 0; i < Math.min(files.length, 5); i++) {
+            const fileRef = ref(storage, `votes/${Date.now()}_${i}`);
+            await uploadBytes(fileRef, files[i]);
+            imageUrls.push(await getDownloadURL(fileRef));
+        }
+
+        // 2. Calculăm data expirării
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + timer);
+
+        // 3. Salvăm în Firebase
+        await addDoc(collection(db, "community_votes"), {
+            question: question,
+            options: options,
+            images: imageUrls,
+            createdAt: serverTimestamp(),
+            expiresAt: expiresAt,
+            uid: auth.currentUser.uid,
+            name: auth.currentUser.displayName,
+            photo: auth.currentUser.photoURL,
+            email: auth.currentUser.email,
+            voters: {}, // Obiect gol: { "uid_utilizator": index_optiune }
+            likes: [],
+            dislikes: []
+        });
+
+        document.getElementById('createVoteModal').style.display = 'none';
+        alert("Vot lansat cu succes!");
+        location.reload();
+    } catch (e) {
+        console.error(e);
+        alert("Eroare la publicare.");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "PUBLICĂ VOTUL";
+    }
+};
+
+
+
+window.loadVotes = () => {
+    const q = query(collection(db, "community_votes"), orderBy("createdAt", "desc"));
+    onSnapshot(q, (snapshot) => {
+        const feed = document.getElementById('voteFeed');
+        if (!feed) return;
+        feed.innerHTML = '';
+
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const id = docSnap.id;
+            const voters = data.voters || {};
+            const totalVoters = Object.keys(voters).length;
+            const isOwner = data.email === 'nicaemmanuel433qe@gmail.com';
+            
+            // Verificăm dacă votul a expirat
+            const isExpired = data.expiresAt && new Date() > data.expiresAt.toDate();
+
+            let mediaHtml = "";
+            if (data.images && data.images.length > 0) {
+                mediaHtml = `<div class="post-media-grid">` + 
+                    data.images.map(img => `<div class="media-box"><img src="${img}"></div>`).join('') + 
+                    `</div>`;
+            }
+
+            // Construim opțiunile de vot
+            let optionsHtml = data.options.map((opt, index) => {
+                const count = Object.values(voters).filter(v => v === index).length;
+                const percent = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0;
+                const hasVotedThis = voters[auth.currentUser?.uid] === index;
+
+                return `
+                    <div class="vote-option-container ${hasVotedThis ? 'voted-active' : ''}" 
+                         onclick="window.castVote('${id}', ${index}, ${isExpired})">
+                        <div class="vote-option-bar" style="width: ${percent}%"></div>
+                        <div class="vote-option-text">
+                            <span>${opt}</span>
+                            <span>${percent}% (${count})</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            feed.innerHTML += `
+                <div class="vote-card ${isOwner ? 'owner-post' : 'admin-post'}" style="padding:20px; border-radius:18px; margin-bottom:20px;">
+                    <div class="post-header">
+                        <img src="${data.photo}" class="post-pfp">
+                        <div class="post-name">
+                            ${data.name} 
+                            <span class="${isOwner ? 'owner-badge' : 'admin-badge'}">
+                                ${isOwner ? 'WEBSITE OWNER' : 'ADMIN'}
+                            </span>
+                        </div>
+                        <div style="margin-left:auto; font-size:10px; opacity:0.6;">
+                            ${isExpired ? '🔴 ÎNCHEIAT' : '🟢 ACTIV'}
+                        </div>
+                    </div>
+                    <div style="font-weight:700; font-size:18px; margin:15px 0;">${data.question}</div>
+                    ${mediaHtml}
+                    <div style="margin-top:20px;">${optionsHtml}</div>
+                    <div class="post-footer" style="margin-top:15px; display:flex; justify-content:space-between;">
+                         <button class="seen-btn" onclick="alert('Participanți: ${totalVoters}')">
+                            <i class="fas fa-eye"></i> ${totalVoters}
+                         </button>
+                    </div>
+                </div>
+            `;
+        });
+    });
+};
+
+// Funcția de votare propriu-zisă
+window.castVote = async (voteId, index, isExpired) => {
+    if (isExpired) return alert("Acest vot s-a încheiat!");
+    if (!auth.currentUser) return alert("Trebuie să fii logat!");
+
+    const voteRef = doc(db, "community_votes", voteId);
+    await updateDoc(voteRef, {
+        [`voters.${auth.currentUser.uid}`]: index
+    });
 };
 
 // 1. Open Modal and Generate Link
