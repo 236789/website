@@ -2679,42 +2679,80 @@ window.setTool = (tool, el) => {
     document.querySelectorAll('.asset-item').forEach(item => item.classList.remove('active'));
     if(el) el.classList.add('active');
 };
-
+// --- UPDATED PLACEMENT LOGIC ---
 const viewport = document.getElementById('game-viewport');
 viewport.addEventListener('mousedown', (e) => {
-    if (!window.isCreatorMode || e.target.closest('#editor-sidebar')) return;
+    // 1. Check if we are actually in creator mode
+    if (!window.isCreatorMode) return;
+    
+    // 2. Prevent placing blocks when clicking the sidebar
+    if (e.target.closest('#editor-sidebar')) return;
 
     const rect = viewport.getBoundingClientRect();
     const cameraRig = document.getElementById('camera-rig');
+    
+    // Calculate Camera Offset correctly
     const matrix = new WebKitCSSMatrix(window.getComputedStyle(cameraRig).transform);
     const camX = matrix.m41;
 
-    const worldX = Math.round((e.clientX - rect.left - camX) / 20) * 20;
-    const worldY = Math.round((500 - (e.clientY - rect.top)) / 20) * 20;
+    // Calculate Grid snapped coordinates (20px grid)
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const worldX = Math.round((mouseX - camX) / 20) * 20;
+    const worldY = Math.round((500 - mouseY) / 20) * 20;
 
-    if (e.button === 0) { // Place
+    if (e.button === 0) { // LEFT CLICK: PLACE
         let w = 120, h = 40;
-        if (window.selectedTool === 'key') { 
+        let type = window.selectedTool;
+        let behavior = 'static';
+
+        if (type === 'key') { 
             w = 40; h = 60; 
-            window.editorObjects = window.editorObjects.filter(o => o.type !== 'key'); // One key only
+            // Only allow one key: delete any existing key first
+            window.editorObjects = window.editorObjects.filter(o => o.type !== 'key');
         }
-        window.editorObjects.push({ x: worldX, y: worldY, w, h, type: window.selectedTool, behavior: window.selectedTool === 'falling' ? 'falling' : 'static'});
-    } else if (e.button === 2) { // Delete
-        window.editorObjects = window.editorObjects.filter(obj => !(worldX >= obj.x && worldX <= obj.x + obj.w && worldY >= obj.y && worldY <= obj.y + obj.h));
+        if (type === 'falling') behavior = 'falling';
+        if (type === 'acid') behavior = 'static'; // Visually static, but deadly
+
+        window.editorObjects.push({ 
+            x: worldX, y: worldY, w: w, h: h, 
+            type: type, 
+            behavior: behavior
+        });
+        
+    } else if (e.button === 2) { // RIGHT CLICK: DELETE
+        window.editorObjects = window.editorObjects.filter(obj => 
+            !(worldX >= obj.x && worldX <= obj.x + obj.w && 
+              worldY >= obj.y && worldY <= obj.y + obj.h)
+        );
     }
-    renderEditor();
+    
+    renderEditor(); // Redraw the world
 });
+
+// Disable the right-click menu so we can use it to delete
 viewport.oncontextmenu = (e) => e.preventDefault();
 
 function renderEditor() {
     const rocksContainer = document.getElementById('rocks-container');
+    if (!rocksContainer) return;
+    
     rocksContainer.innerHTML = '';
-    rocks = [];
+    // IMPORTANT: 'rocks' must be your global engine array
+    rocks = []; 
+
     window.editorObjects.forEach(obj => {
-        createRock(obj.x, obj.w, obj.h, obj.y, obj.behavior, obj.type === 'key');
+        const isGoal = (obj.type === 'key');
+        // createRock is your engine function that adds it to the screen and the 'rocks' array
+        createRock(obj.x, obj.w, obj.h, obj.y, obj.behavior, isGoal);
+        
+        // Custom visual for Acid blocks so you can see them in the editor
+        if (obj.type === 'acid') {
+            const lastRock = rocksContainer.lastElementChild;
+            if (lastRock) lastRock.style.background = "linear-gradient(to bottom, #76FF03, #006400)";
+        }
     });
 }
-// --- SKIN CONSTANTS ---
 // This is your default skin (from your CSS)
 const SKIN_NORMAL = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Platformer%20skins%2F2f6dea4f-11ab-4b2c-a850-0bd66768cc90.png?alt=media&token=46c9b32a-e21c-4caf-9114-976fe71834cc";
 // This is the new damage skin
@@ -2825,27 +2863,23 @@ function handleJump() {
 }
 
 
-
-
+// --- UNIFIED SAFE KEYBOARD INPUT ---
 window.addEventListener('keydown', (e) => {
-    if(!gameStarted) return; // Don't move if game hasn't started
-
-    const k = e.key.toLowerCase();
+    // Safety check: ignore if key is missing or we are typing in an input
+    if (!e.key || document.activeElement.tagName === 'INPUT') return;
     
-    // PREVENT SCROLL: stops page from moving when pressing Space or Arrows
-    if([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {
-        e.preventDefault();
-    }
-
+    const k = e.key.toLowerCase();
     if (k === 'a' || k === 'arrowleft') inputs.left = true;
     if (k === 'd' || k === 'arrowright') inputs.right = true;
-    if (e.key === ' ') handleJump();
+    if (k === ' ') handleJump();
 });
-        window.addEventListener('keyup', (e) => {
-            const k = e.key.toLowerCase();
-            if (k === 'a' || k === 'arrowleft') inputs.left = false;
-            if (k === 'd' || k === 'arrowright') inputs.right = false;
-        });
+
+window.addEventListener('keyup', (e) => {
+    if (!e.key) return;
+    const k = e.key.toLowerCase();
+    if (k === 'a' || k === 'arrowleft') inputs.left = false;
+    if (k === 'd' || k === 'arrowright') inputs.right = false;
+});
 
 function bind(id, v, a) {
     const z = document.getElementById(id);
@@ -3037,24 +3071,43 @@ window.addPlatformAtPlayer = () => {
     showToast("Platformă adăugată!");
 };
 
-// 3. Save Level (Funcție globală pentru a fi văzută de HTML)
 window.saveLevelToFirebase = async () => {
-    const name = document.getElementById('level-name-input').value.trim();
-    if (!name || !tempGoal) return alert("Nume nivel lipsă sau finalul nu e setat!");
+    const nameInput = document.getElementById('level-name-input');
+    const name = nameInput ? nameInput.value.trim() : "";
+    
+    if (!name) return alert("Scrie un nume pentru nivel!");
+    
+    // Find the key object inside our editor list
+    const goal = window.editorObjects.find(o => o.type === 'key');
+    
+    if (!goal) {
+        return alert("Nivelul tău nu are o CHEIE! Pune una folosind butonul 'CHEIE (FINAL)'.");
+    }
+
+    // Filter out special items for the platform list
+    const platformsToSave = window.editorObjects
+        .filter(o => o.type !== 'key')
+        .map(o => ({
+            x: o.x, w: o.w, h: o.h, b: o.y, 
+            type: o.behavior
+        }));
 
     try {
+        const { addDoc, collection, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+        
         await addDoc(collection(db, "acid_runner_levels"), {
             name: name,
-            platforms: customPlatforms,
-            goalX: tempGoal.x,
-            goalY: tempGoal.y,
+            platforms: platformsToSave,
+            goalX: goal.x,
+            goalY: goal.y,
             creator: auth.currentUser.email,
             createdAt: serverTimestamp()
         });
-        alert("Nivel Publicat!");
-        showScreen('menu');
-    } catch(e) { 
-        console.error(e); 
+        
+        alert("Nivel publicat cu succes!");
+        window.showScreen('menu');
+    } catch(e) {
+        console.error(e);
         alert("Eroare la salvare: " + e.message);
     }
 };
