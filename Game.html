@@ -2747,15 +2747,60 @@ window.showScreen = (screen) => {
     }
 };
 
-// 2. LOGICA DE EDITOR VIZUAL
+// --- EDITOR STATE ---
+window.editorObjects = [];
+window.selectedTool = 'rock';
+window.isCreatorMode = false;
+
 window.startCreatorMode = () => {
-    isCreatorMode = true;
+    window.isCreatorMode = true;
     window.gameStarted = true;
-    // Resetăm nivelul cu o platformă de start
-    editorObjects = [{ x: 0, y: 120, w: 400, h: 50, type: 'rock', behavior: 'static' }];
+    // Clear and add starting platform
+    window.editorObjects = [{ x: 0, y: 120, w: 400, h: 50, type: 'rock', behavior: 'static' }];
     renderEditor();
-    window.showToast("EDITOR PORNIT: Click pe hartă pentru a plasa!");
+    window.showToast("EDITOR PORNIT: Click stânga pt. Plasare / Dreapta pt. Ștergere");
 };
+
+window.setTool = (tool, el) => {
+    window.selectedTool = tool;
+    document.querySelectorAll('.asset-item').forEach(item => item.classList.remove('active'));
+    if(el) el.classList.add('active');
+};
+
+// Handle Placing Blocks
+const viewport = document.getElementById('game-viewport');
+viewport.addEventListener('mousedown', (e) => {
+    if (!window.isCreatorMode || e.target.closest('#editor-sidebar')) return;
+
+    const rect = viewport.getBoundingClientRect();
+    const cameraRig = document.getElementById('camera-rig');
+    
+    // Calculate camera offset
+    const camTransform = window.getComputedStyle(cameraRig).transform;
+    let camX = 0;
+    if (camTransform !== 'none') camX = parseFloat(camTransform.split(',')[4]);
+
+    // Grid snapping (20px)
+    const worldX = Math.round((e.clientX - rect.left - camX) / 20) * 20;
+    const worldY = Math.round((500 - (e.clientY - rect.top)) / 20) * 20;
+
+    if (e.button === 0) { // Left Click Add
+        let w = 120, h = 40;
+        if (window.selectedTool === 'key') { w = 40; h = 60; }
+        
+        window.editorObjects.push({
+            x: worldX, y: worldY, w: w, h: h,
+            type: window.selectedTool,
+            behavior: (window.selectedTool === 'falling' ? 'falling' : 'static')
+        });
+    } 
+    else if (e.button === 2) { // Right Click Remove
+        window.editorObjects = window.editorObjects.filter(obj => 
+            !(worldX >= obj.x && worldX <= obj.x + obj.w && worldY >= obj.y && worldY <= obj.y + obj.h)
+        );
+    }
+    renderEditor();
+});
 
 // Funcția de selectat tool-ul (curățată)
 window.setTool = (tool, el) => {
@@ -2815,21 +2860,14 @@ document.getElementById('game-viewport').addEventListener('mousedown', (e) => {
 document.getElementById('game-viewport').oncontextmenu = (e) => e.preventDefault();
 
 function renderEditor() {
-    rocksContainer.innerHTML = '';
-    rocks = [];
-    keyObj = null;
-
-    editorObjects.forEach(obj => {
-        const isGoal = (obj.type === 'key');
-        
-        // Desenăm obiectul folosind funcția de bază a jocului
-        createRock(obj.x, obj.w, obj.h, obj.y, obj.behavior, isGoal);
-        
-        // Dacă e cheie, o marcăm pentru salvare
-        if (isGoal) window.tempGoal = { x: obj.x, y: obj.y };
+    const container = document.getElementById('rocks-container');
+    container.innerHTML = '';
+    rocks = []; // Global rocks array for the engine
+    
+    window.editorObjects.forEach(obj => {
+        createRock(obj.x, obj.w, obj.h, obj.y, obj.behavior, (obj.type === 'key'));
     });
 }
-
 // 3. SALVAREA REPARATĂ
 window.saveLevelToFirebase = async () => {
     const nameInput = document.getElementById('level-name-input');
@@ -4122,24 +4160,39 @@ window.showToast = (msg) => {
 };
 
 window.showScreen = (screen) => {
-    // Ascundem toate ecranele
-    document.getElementById('game-login-wall').style.display = 'none';
-    document.getElementById('game-menu-overlay').style.display = 'none';
-    document.getElementById('level-selector-overlay').style.display = 'none';
-    document.getElementById('game-inner-wrapper').style.display = 'none';
-    document.getElementById('creator-hud').style.display = 'none';
+    // These IDs must match exactly what is in your HTML
+    const screens = [
+        'game-login-wall', 
+        'game-menu-overlay', 
+        'level-selector-overlay', 
+        'game-inner-wrapper', 
+        'editor-ui'
+    ];
+
+    screens.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.display = 'none';
+        }
+    });
+
+    window.isCreatorMode = false;
 
     if (screen === 'menu') {
         document.getElementById('game-menu-overlay').style.display = 'flex';
-    } else if (screen === 'selector') {
+    } 
+    else if (screen === 'selector') {
         document.getElementById('level-selector-overlay').style.display = 'flex';
-        fetchLevelsFromFirebase(); // Aceasta va funcționa acum
-    } else if (screen === 'game') {
+        if(window.fetchLevelsFromFirebase) window.fetchLevelsFromFirebase();
+    } 
+    else if (screen === 'game') {
         document.getElementById('game-inner-wrapper').style.display = 'block';
+        initLevel(); // Starts a random level
         window.gameStarted = true;
-    } else if (screen === 'creator') {
+    } 
+    else if (screen === 'creator') {
         document.getElementById('game-inner-wrapper').style.display = 'block';
-        document.getElementById('creator-hud').style.display = 'block';
+        document.getElementById('editor-ui').style.display = 'block';
         window.startCreatorMode();
     }
 };
