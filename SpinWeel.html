@@ -2346,20 +2346,21 @@ input:checked + .slider:before { transform: translateX(24px); }
     </div>
 </div>
 
-<!-- QUEST REWARD MODAL (FOR KEVIN BOT 15 MESSAGES) -->
-<!-- QUEST REWARD MODAL (Reused for all quests) -->
+<!-- QUEST REWARD MODAL (FIXED) -->
 <div id="questRewardModal" class="reward-modal">
     <div class="reward-card">
-        <!-- The JS changes this text dynamically -->
-        <h2><span style="font-size: 24px;">🎯</span> QUEST COMPLET!</h2>
-        <p>Felicitări! Ai completat un task.</p>
+        <h2 id="questRewardTitle"><span style="font-size: 24px;">🎉</span> FELICITĂRI!</h2>
+        <p id="questRewardMsg">Ai câștigat la roată:</p>
         
-        <div class="reward-coins-box">
-            <img src="https://iili.io/fhc1SKQ.png" alt="Coin" style="width: 50px;">
-            <span>0</span> <!-- The JS updates this number -->
+        <div class="reward-coins-box" style="display: flex; align-items: center; justify-content: center; gap: 15px; margin: 20px 0;">
+            <!-- Iconița care se va schimba din JS -->
+            <img id="modalIconImg" src="https://iili.io/fhc1SKQ.png" alt="Reward" style="width: 60px; height: 60px; object-fit: contain;">
+            <!-- Suma care se va schimba din JS -->
+            <span id="modalRewardVal" style="font-size: 45px; font-weight: 900; color: #ffd700; font-family: 'Orbitron';">0</span>
         </div>
         
-        <p style="color: #ffd700; font-weight: 800; font-family: 'Orbitron'; font-size: 12px; letter-spacing: 2px;">KSDA COINS</p>
+        <!-- Eticheta (ex: KSDA COINS / GEMS) -->
+        <p id="modalRewardTypeLabel" style="color: #ffd700; font-weight: 800; font-family: 'Orbitron'; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;">KSDA COINS</p>
         
         <button class="super-btn" onclick="document.getElementById('questRewardModal').classList.remove('active')">SUPER!</button>
     </div>
@@ -2784,6 +2785,8 @@ input:checked + .slider:before { transform: translateX(24px); }
             <option value="1">Viteză x1</option>
             <option value="2">Viteză x2</option>
             <option value="4">Viteză x4</option>
+    <option value="10"> Viteză x10 </option> <!-- Adaugă această linie -->
+
         </select>
     </div>
     
@@ -3077,33 +3080,34 @@ async function runNextAutoSpin() {
     document.getElementById('spinsLeftCount').innerText = spinsRemaining;
     spinsRemaining--;
 
-    // --- LOGICA DE SINCRONIZARE MULTI-SPIN ---
+    // Declanșăm spin-ul
     if (isEventModeActive && isAdmin) {
-        // Broadcast către toți: Trimitem index, timestamp și viteză
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
             spinAction: {
                 index: pickRewardIndex(),
                 timestamp: Date.now(),
                 adminId: auth.currentUser.uid,
-                speed: speed // Trimitem viteza ca toți să se învârtă la fel de repede
+                speed: speed 
             }
         });
     } else {
-        // Spin privat (Normal)
         await startSpin(); 
     }
 
-    // Calculăm timpul de așteptare în funcție de viteză
-    const waitTime = (5000 / speed) + 1200; 
+    // --- AJUSTARE TIMP AȘTEPTARE ---
+    // La x10, roata se oprește în 500ms. Adăugăm un buffer mic pentru procesare.
+    const animationDuration = 5000 / speed;
+    const processingDelay = speed >= 10 ? 800 : 1200; // Mai rapid la viteze mari
+    const waitTime = animationDuration + processingDelay; 
 
     setTimeout(() => {
-        // Închidem modalele pentru a pregăti următorul spin
+        // Închidem modalele rapid
         document.getElementById('questRewardModal').classList.remove('active');
         document.getElementById('adminSpinResultModal').classList.remove('active');
 
         setTimeout(() => {
             runNextAutoSpin();
-        }, 300 / speed); 
+        }, 200 / speed); // Micșorat de la 300 la 200 pentru un flow mai bun
     }, waitTime); 
 }
  
@@ -3695,8 +3699,6 @@ function pickRewardIndex() {
     return 0; // Fallback to first item
 }
 
-// --- PRO PHYSICS ENGINE ---
-
 async function finalizeSpin(idx) {
     if (!isSpinning) return; 
     isSpinning = false; 
@@ -3722,7 +3724,7 @@ async function finalizeSpin(idx) {
     if (reward.type === "banner" && (targetData.ownedBanners || []).includes(reward.val)) isDuplicate = true;
 
     if (isDuplicate) {
-        reward.label = "10 DIAMANTE (Owned)";
+        reward.label = "10 DIAMANTE";
         reward.val = 10;
         reward.type = "diamonds";
         reward.jackpot = true; 
@@ -3731,21 +3733,60 @@ async function finalizeSpin(idx) {
     // --- 2. POP-UP LOGIC (Pentru câștigător) ---
     if (auth.currentUser.uid === targetUid) {
         const modal = document.getElementById('questRewardModal');
+        const coinsBox = modal.querySelector('.reward-coins-box');
+        
+        // Resetăm conținutul cutiei de premiu (Iconiță + Sumă)
+        let iconUrl = "https://iili.io/fhc1SKQ.png"; // Default Coins
+        let displayVal = reward.val;
+        let textColor = "#ffd700"; // Default Gold
+
+        if (reward.type === "diamonds") {
+            iconUrl = "https://iili.io/fv5bmtj.png";
+            textColor = "#00ffcc"; // Diamant Cyan/Verde
+        } else if (reward.type === "xp") {
+            iconUrl = "https://cdn-icons-png.flaticon.com/512/9167/9167151.png"; // Iconiță Scut/XP
+            displayVal = "+15%";
+            textColor = "#29f3ff";
+        } else if (reward.type === "badge" || reward.type === "banner") {
+            iconUrl = "https://iili.io/fXvBEiB.png"; // Iconiță Trophy
+            displayVal = "NEW!";
+            textColor = "#ffffff";
+        }
+
+        // Injectăm HTML-ul corect în box-ul de reward
+        coinsBox.innerHTML = `
+            <img src="${iconUrl}" alt="Reward" style="width: 50px; height: 50px; object-fit: contain;">
+            <span style="font-size: 45px; font-weight: 900; color: ${textColor}; font-family: 'Orbitron';">${displayVal}</span>
+        `;
+
+        // Actualizăm restul textelor
         modal.querySelector('h2').innerText = reward.type === "xp" ? "🛡️ LOSS PROTECTION" : "🎉 FELICITĂRI!";
-        modal.querySelector('.reward-card p').innerText = isDuplicate ? "Dețineai deja premiul, compensație:" : "Ai câștigat:";
-        modal.querySelector('p:nth-of-type(2)').innerText = reward.label;
-        if (reward.type !== "xp") launchConfetti();
+        modal.querySelector('.reward-card p').innerText = isDuplicate ? "Dețineai deja premiul, compensație:" : "Ai câștigat la roată:";
+        
+        const labelEl = modal.querySelector('p:nth-of-type(2)');
+        labelEl.innerText = reward.type === "xp" ? "EXPERIENȚĂ ADUNATĂ" : (reward.type === "diamonds" ? "GEMS / DIAMANTE" : "KSDA COINS");
+        labelEl.style.color = textColor;
+
+        if (reward.type !== "xp") {
+            launchConfetti();
+            if(!isMuted) audioReward.play().catch(()=>{});
+        } else {
+            if(!isMuted) audioFail.play().catch(()=>{});
+        }
+
         modal.classList.add('active');
     }
 
-    // --- 3. DATABASE UPDATES (Doar cel care a pornit roata scrie) ---
+    // --- 3. DATABASE UPDATES (Neschimbat, rămâne logica ta funcțională) ---
     if (iAmTheSpinner) {
         if (reward.type === "xp" && !isEventModeActive) {
             let nextXP = (targetData.wheelXP || 0) + 15;
+            await updateDoc(targetRef, { "wheelStats.xpLandings": increment(1) });
             if (nextXP >= 100) {
-                await updateDoc(targetRef, { wheelXP: 0, diamonds: increment(5), "wheelStats.xpLandings": increment(1) });
+                await updateDoc(targetRef, { wheelXP: 0, diamonds: increment(5) });
+                // Logica pentru modal special de 100% XP poate fi adăugată aici
             } else {
-                await updateDoc(targetRef, { wheelXP: nextXP, "wheelStats.xpLandings": increment(1) });
+                await updateDoc(targetRef, { wheelXP: nextXP });
             }
         } 
         else if (reward.type !== "xp") {
@@ -3761,16 +3802,14 @@ async function finalizeSpin(idx) {
             const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.jackpot;
             
             if (isJackpot) {
-                // Bara zburătoare TikTok
                 await addDoc(collection(db, "wheel_jackpot_history"), {
                     username: targetName, userPhoto: targetPhoto,
                     rewardLabel: reward.label, rewardType: reward.type, timestamp: serverTimestamp()
                 });
 
-                // TRIMITE PE WALL (Community Wall)
                 await addDoc(collection(db, "wall_messages"), {
                     text: `🏆 @${targetName} a câștigat un JACKPOT la Roată: ${reward.label}! ${isDuplicate ? '(Compensație Duplicate)' : '🔥'}`,
-                    uid: "system-alert", // Folosim un ID special pentru a-l detecta pe Wall
+                    uid: "system-alert", 
                     name: "KSDA JACKPOT",
                     photo: "https://iili.io/fXvBEiB.png",
                     isBot: true,
