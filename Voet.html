@@ -1645,6 +1645,62 @@ select.edit-input option {
     margin-left: 10px;
 }
 .btn-delete-vote:hover { background: #ff4757; color: #fff; }
+
+
+
+/* LIGHTBOX NAVIGATION BUTTONS */
+.lb-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(13, 25, 41, 0.5);
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.3s;
+    z-index: 20005;
+    backdrop-filter: blur(5px);
+}
+
+.lb-nav-btn:hover {
+    background: var(--primary);
+    color: #000;
+    box-shadow: 0 0 20px var(--primary);
+}
+
+.lb-prev-btn { left: 30px; }
+.lb-next-btn { right: 30px; }
+
+/* Ensure Lightbox image doesn't block buttons */
+.lightbox-img {
+    max-width: 85%;
+    max-height: 85vh;
+    object-fit: contain;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 50px rgba(0,0,0,0.8);
+    pointer-events: none;
+}
+
+/* Close button for Lightbox */
+.lb-close-btn {
+    position: absolute;
+    top: 30px;
+    right: 30px;
+    font-size: 30px;
+    color: #fff;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: 0.3s;
+    z-index: 20006;
+}
+.lb-close-btn:hover { opacity: 1; transform: scale(1.2); color: var(--primary); }
   </style>
 </head>
 <body>
@@ -1670,9 +1726,19 @@ select.edit-input option {
 </div>
 
 
-<!-- Lightbox -->
-<div id="voteLightbox" class="lightbox-overlay" onclick="this.style.display='none'">
+<!-- Professional Gallery Lightbox -->
+<div id="voteLightbox" class="lightbox-overlay" onclick="if(event.target === this) this.style.display='none'">
+    <span class="lb-close-btn" onclick="document.getElementById('voteLightbox').style.display='none'">✕</span>
+    
+    <button class="lb-nav-btn lb-prev-btn" onclick="window.changeVoteImg(-1)">
+        <i class="fas fa-chevron-left"></i>
+    </button> 
+    
     <img id="lbMainImg" src="" class="lightbox-img">
+    
+    <button class="lb-nav-btn lb-next-btn" onclick="window.changeVoteImg(1)">
+        <i class="fas fa-chevron-right"></i>
+    </button>
 </div>
 
 <!-- Seen/Voters Modal -->
@@ -2208,20 +2274,32 @@ window.loadVotes = () => {
             const deleteBtnHtml = amIAdmin ? 
                 `<button class="btn-delete-vote" onclick="window.deleteVote('${id}')"><i class="fas fa-trash-alt"></i></button>` : '';
 
-            let mediaHtml = "";
-            const imgs = data.images || [];
-            if (imgs.length > 0) {
-                mediaHtml += `<div class="post-media-grid">`;
-                mediaHtml += `<div class="media-box" onclick="window.openVoteImage('${imgs[0]}')"><img src="${imgs[0]}"></div>`;
-                if (imgs.length > 1) {
-                    mediaHtml += `
-                        <div class="media-box" onclick="window.openVoteImage('${imgs[1]}')">
-                            <img src="${imgs[1]}" style="opacity:0.4;">
-                            <div class="media-count-overlay"><span class="count-txt">+${imgs.length - 1}</span></div>
-                        </div>`;
-                }
-                mediaHtml += `</div>`;
-            }
+// INSIDE loadVotes loop:
+let mediaHtml = "";
+const imgs = data.images || [];
+if (imgs.length > 0) {
+    mediaHtml += `<div class="post-media-grid">`;
+    
+    // First Thumbnail
+    // Stringify the array so it can be passed safely to the function
+    const imgsJson = JSON.stringify(imgs).replace(/"/g, '&quot;');
+    
+    mediaHtml += `
+        <div class="media-box" onclick="window.openVoteGallery(${imgsJson}, 0)">
+            <img src="${imgs[0]}">
+        </div>`;
+        
+    if (imgs.length > 1) {
+        mediaHtml += `
+            <div class="media-box" onclick="window.openVoteGallery(${imgsJson}, 1)">
+                <img src="${imgs[1]}" style="opacity:0.4;">
+                <div class="media-count-overlay">
+                    <span class="count-txt">+${imgs.length - 1}</span>
+                </div>
+            </div>`;
+    }
+    mediaHtml += `</div>`;
+}
 
             let optionsHtml = data.options.map((opt, index) => {
                 const count = Object.values(voters).filter(v => v === index).length;
@@ -2294,9 +2372,32 @@ window.viewParticipantsList = async (id) => {
     }
 };
 
-window.openVoteImage = (url) => {
-    document.getElementById('lbMainImg').src = url;
-    document.getElementById('voteLightbox').style.display = 'flex';
+let currentVoteGallery = [];
+let currentVoteIdx = 0;
+
+window.openVoteGallery = (images, startIndex) => {
+    currentVoteGallery = images;
+    currentVoteIdx = startIndex;
+    
+    const lb = document.getElementById('voteLightbox');
+    const img = document.getElementById('lbMainImg');
+    
+    if(lb && img) {
+        img.src = currentVoteGallery[currentVoteIdx];
+        lb.style.display = 'flex';
+    }
+};
+
+window.changeVoteImg = (step) => {
+    if (currentVoteGallery.length === 0) return;
+    
+    currentVoteIdx += step;
+    
+    // Loop logic (if at end, go to start and vice versa)
+    if (currentVoteIdx >= currentVoteGallery.length) currentVoteIdx = 0;
+    if (currentVoteIdx < 0) currentVoteIdx = currentVoteGallery.length - 1;
+    
+    document.getElementById('lbMainImg').src = currentVoteGallery[currentVoteIdx];
 };
 
 window.castVote = async (voteId, optionIndex, isExpired) => {
