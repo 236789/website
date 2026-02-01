@@ -1563,6 +1563,88 @@
 .seen-user-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .seen-user-img { width: 35px; height: 35px; border-radius: 50%; border: 1px solid var(--primary); }
 
+
+
+/* PROFESSIONAL STATUS BADGES */
+.status-pill {
+    padding: 4px 12px;
+    border-radius: 50px;
+    font-size: 9px;
+    font-weight: 800;
+    font-family: 'Orbitron';
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1px solid transparent;
+}
+.status-active {
+    color: var(--primary);
+    background: rgba(41, 243, 255, 0.1);
+    border-color: var(--primary);
+}
+.status-ended {
+    color: #ff4757;
+    background: rgba(255, 71, 87, 0.1);
+    border-color: #ff4757;
+}
+
+/* CUSTOM SELECT & FILE INPUT (FIXED WHITE ON WHITE) */
+select.edit-input {
+    background-color: #08101b !important;
+    color: #fff !important;
+    border: 1px solid var(--primary);
+    cursor: pointer;
+    appearance: none; /* Removes default arrow */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='cyan' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 15px;
+}
+
+/* Forces dropdown options to stay dark */
+select.edit-input option {
+    background-color: #08101b;
+    color: #fff;
+}
+
+/* Style for Alege Fisier */
+.file-input-wrapper {
+    position: relative;
+    width: 100%;
+    height: 40px;
+    background: rgba(255,255,255,0.05);
+    border: 1px dashed var(--primary);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.file-input-wrapper:hover { background: rgba(41, 243, 255, 0.1); }
+.file-input-wrapper span { font-size: 11px; color: var(--primary); font-family: 'Orbitron'; }
+#voteFiles {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* DELETE BUTTON */
+.btn-delete-vote {
+    background: rgba(255, 71, 87, 0.1);
+    border: 1px solid #ff4757;
+    color: #ff4757;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.3s;
+    margin-left: 10px;
+}
+.btn-delete-vote:hover { background: #ff4757; color: #fff; }
   </style>
 </head>
 <body>
@@ -1779,10 +1861,15 @@
                 </select>
             </div>
             <div style="flex:1">
-                <label class="edit-label">Media</label>
-                <input type="file" id="voteFiles" multiple accept="image/*" class="edit-input">
-            </div>
-        </div>
+<label class="edit-label">Media (Optional)</label>
+<div class="file-input-wrapper">
+    <span><i class="fas fa-upload"></i> ALEGE IMAGINI</span>
+    <input type="file" id="voteFiles" multiple accept="image/*" onchange="this.previousElementSibling.innerText = this.files.length + ' Fișiere Selectate'">
+</div>
+</div>
+</div>
+
+
 
         <button id="confirmPublishVote" class="btn-save-profile" style="width:100%; margin-top:20px;">PUBLICĂ VOTUL</button>
     </div>
@@ -1972,7 +2059,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore,query,addDoc, doc, getDoc,orderBy , setDoc,collection , onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore,query,deleteDoc ,addDoc, doc, getDoc,orderBy , setDoc,collection , onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
@@ -2067,7 +2154,27 @@ document.getElementById('confirmPublishVote').onclick = async () => {
     }
 };
 
+// --- HELPER FOR TOASTS (Replace your alerts with this) ---
+window.showToast = (msg) => {
+    const box = document.getElementById('toastBox-v2');
+    if (!box) return;
+    const t = document.createElement('div');
+    t.className = 'custom-toast-v2';
+    t.innerHTML = msg;
+    box.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+};
 
+
+window.deleteVote = async (id) => {
+    if (!confirm("Sigur vrei să ștergi acest vot?")) return;
+    try {
+        await deleteDoc(doc(db, "community_votes", id));
+        window.showToast("Vot șters cu succes!");
+    } catch (e) {
+        window.showToast("Eroare la ștergere!");
+    }
+};
 
 window.loadVotes = () => {
     const q = query(collection(db, "community_votes"), orderBy("createdAt", "desc"));
@@ -2082,29 +2189,30 @@ window.loadVotes = () => {
             const voters = data.voters || {};
             const totalVoters = Object.keys(voters).length;
             
-            // LOGICĂ BADGE ROL (Exact ca pe Noutăți)
-            let badgeHtml = "";
             const isOwner = data.email === 'nicaemmanuel433qe@gmail.com';
             const isAdmin = data.email === 'kevin.trinity2020@gmail.com';
+            const amIAdmin = auth.currentUser?.email === 'nicaemmanuel433qe@gmail.com' || auth.currentUser?.email === 'kevin.trinity2020@gmail.com';
 
-            if (isOwner) badgeHtml = '<span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>';
-            else if (isAdmin) badgeHtml = '<span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>';
-
-            // LOGICĂ TIMP / EXPIRARE
             let expirationDate = null;
             if (data.expiresAt) {
                 expirationDate = typeof data.expiresAt.toDate === 'function' ? data.expiresAt.toDate() : new Date(data.expiresAt);
             }
             const isExpired = expirationDate ? (new Date() > expirationDate) : false;
 
-            // GRID IMAGINI (Mici + Overlay +N)
+            // Professionally styled status pill
+            const statusHtml = isExpired ? 
+                `<span class="status-pill status-ended">STATUS: ÎNCHEIAT</span>` : 
+                `<span class="status-pill status-active">STATUS: ACTIV</span>`;
+
+            // Delete button for Admin/Owner
+            const deleteBtnHtml = amIAdmin ? 
+                `<button class="btn-delete-vote" onclick="window.deleteVote('${id}')"><i class="fas fa-trash-alt"></i></button>` : '';
+
             let mediaHtml = "";
             const imgs = data.images || [];
             if (imgs.length > 0) {
                 mediaHtml += `<div class="post-media-grid">`;
-                // Prima imagine (Thumbnail mic)
                 mediaHtml += `<div class="media-box" onclick="window.openVoteImage('${imgs[0]}')"><img src="${imgs[0]}"></div>`;
-                // Dacă sunt mai multe, arătăm a doua cu overlay +N
                 if (imgs.length > 1) {
                     mediaHtml += `
                         <div class="media-box" onclick="window.openVoteImage('${imgs[1]}')">
@@ -2115,7 +2223,6 @@ window.loadVotes = () => {
                 mediaHtml += `</div>`;
             }
 
-            // OPȚIUNI VOT
             let optionsHtml = data.options.map((opt, index) => {
                 const count = Object.values(voters).filter(v => v === index).length;
                 const percent = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0;
@@ -2129,31 +2236,31 @@ window.loadVotes = () => {
                             <span>${opt}</span>
                             <span>${percent}% (${count})</span>
                         </div>
-                    </div>
-                `;
+                    </div>`;
             }).join('');
 
             feed.innerHTML += `
-                <div class="vote-card ${isOwner ? 'owner-post' : 'admin-post'}" style="padding:20px; border-radius:18px; margin-bottom:20px;">
+                <div class="vote-card ${isOwner ? 'owner-post' : 'admin-post'}" style="padding:25px; border-radius:24px; margin-bottom:25px;">
                     <div class="post-header">
-                        <img src="${data.photo}" class="post-pfp" style="width:45px; height:45px; border-radius:50%; border:2px solid #fff; object-fit:cover;">
+                        <img src="${data.photo}" class="post-pfp">
                         <div class="post-name">
-                            ${data.name} ${badgeHtml}
+                            ${data.name} 
+                            <span class="${isOwner ? 'owner-badge' : 'admin-badge'}">
+                                ${isOwner ? 'WEBSITE OWNER' : 'ADMIN'}
+                            </span>
                         </div>
-                        <div style="margin-left:auto; font-size:10px; font-weight:900;">
-                            ${isExpired ? '<span style="color:#ff4757;">🔴 ÎNCHEIAT</span>' : '<span style="color:#29f3ff;">🟢 ACTIV</span>'}
-                        </div>
+                        ${deleteBtnHtml}
+                        <div style="margin-left:auto;">${statusHtml}</div>
                     </div>
-                    <div style="font-weight:700; font-size:18px; margin:15px 0; color:#fff;">${data.question}</div>
+                    <div style="font-weight:800; font-size:18px; margin:20px 0; color:#fff; font-family:'Poppins';">${data.question}</div>
                     ${mediaHtml}
                     <div style="margin-top:20px;">${optionsHtml}</div>
-                    <div class="post-footer" style="margin-top:15px; display:flex; justify-content:space-between;">
-                         <button class="seen-btn" onclick="window.viewParticipantsList('${id}')" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:6px 12px; border-radius:10px; cursor:pointer;">
-                            <i class="fas fa-eye"></i> Vezi cine a votat (${totalVoters})
+                    <div class="post-footer" style="margin-top:20px;">
+                         <button class="seen-btn" onclick="window.viewParticipantsList('${id}')">
+                            <i class="fas fa-eye"></i> VEZI REZULTATE DETALIATE (${totalVoters})
                          </button>
                     </div>
-                </div>
-            `;
+                </div>`;
         });
     });
 };
@@ -2193,33 +2300,51 @@ window.openVoteImage = (url) => {
 };
 
 window.castVote = async (voteId, optionIndex, isExpired) => {
-    // 1. Verificăm argumentul isExpired primit din HTML
-    if (isExpired) return alert("Acest vot s-a încheiat!");
+    // 1. Verificăm starea votului transmisă din interfață
+    if (isExpired) {
+        if (window.showToast) window.showToast("Sesiunea de votare pentru acest chestionar s-a încheiat.");
+        return;
+    }
     
-    if (!auth.currentUser) return alert("Trebuie să fii logat!");
+    // 2. Verificăm starea autentificării
+    if (!auth.currentUser) {
+        if (window.showToast) window.showToast("Acces restricționat. Vă rugăm să vă autentificați pentru a vota.");
+        return;
+    }
 
     try {
         const voteRef = doc(db, "community_votes", voteId);
         const snap = await getDoc(voteRef);
+        
+        if (!snap.exists()) {
+            if (window.showToast) window.showToast("Eroare: Documentul selectat nu mai este disponibil.");
+            return;
+        }
+
         const data = snap.data();
 
-        // 2. Verificare dublă de siguranță pentru data de expirare din DB
+        // 3. Verificare de siguranță pentru data de expirare direct din server
         let expirationDate = null;
         if (data.expiresAt) {
             expirationDate = typeof data.expiresAt.toDate === 'function' ? data.expiresAt.toDate() : new Date(data.expiresAt);
         }
 
         if (expirationDate && new Date() > expirationDate) {
-            alert("Votul s-a încheiat între timp!");
+            if (window.showToast) window.showToast("Sesiunea de vot a expirat în timpul procesării.");
             return;
         }
 
-        // 3. Salvăm votul
+        // 4. Actualizăm votul utilizatorului
         await updateDoc(voteRef, {
             [`voters.${auth.currentUser.uid}`]: optionIndex
         });
+
+        // 5. Confirmare succes prin Toast
+        if (window.showToast) window.showToast("Votul dumneavoastră a fost înregistrat cu succes.");
+
     } catch (e) {
-        console.error("Eroare la votare:", e);
+        console.error("Eroare procedură vot:", e);
+        if (window.showToast) window.showToast("Eroare tehnică la procesarea opțiunii selectate.");
     }
 };
 // 1. Open Modal and Generate Link
