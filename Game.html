@@ -2225,7 +2225,7 @@
     </div>
     
     <!-- Existing Game Content -->
-    <div id="game-inner-wrapper" style="display: none;"> ... </div>
+<div id="game-inner-wrapper" style="display: none;"></div>
 </div>
 
         <!-- Your existing game elements moved INSIDE the viewport -->
@@ -2541,11 +2541,86 @@ function generateAhead() {
     // ... rest of your random logic ...
 }
 
-// Update loop to respect gameStarted
 function loop() {
-    if (!gameStarted) { requestAnimationFrame(loop); return; }
-    // ... rest of your existing loop code ...
+    if (!gameStarted || isDead || hasWon) {
+        requestAnimationFrame(loop);
+        return;
+    }
+
+    // 1. Aplică Gravitația
+    vy += gravity;
+    y -= vy; // Scădem pentru că în coordonatele noastre 'bottom' crește în sus
+
+    // 2. Mișcare Orizontală
+    if (inputs.left) vx -= speed;
+    if (inputs.right) vx += speed;
+
+    // Fricțiune
+    vx *= (onGround ? frictionGround : frictionAir);
+
+    // Limitare viteză
+    if (Math.abs(vx) > maxSpeed) vx = Math.sign(vx) * maxSpeed;
+    x += vx;
+
+    // 3. Verificare Coliziuni cu Platformele
+    let wasOnGround = onGround;
+    onGround = false;
+    let foundPlatform = false;
+
+    rocks.forEach(rock => {
+        // Logica de mișcare pentru platforme mobile (dacă există)
+        if (rock.type === 'auto') {
+            rock.phase += rock.autoSpeed;
+            rock.currentLeft = rock.startX + Math.sin(rock.phase) * rock.autoRange;
+            rock.element.style.left = rock.currentLeft + 'px';
+        }
+
+        // Detectare coliziune (AABB)
+        if (x + 35 > rock.currentLeft && x + 5 < rock.currentLeft + rock.width) {
+            // Dacă jucătorul cade spre platformă
+            if (vy > 0 && (y + vy) <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
+                y = rock.bottom + rock.height;
+                vy = 0;
+                onGround = true;
+                foundPlatform = true;
+                jumpsLeft = 2; // Resetăm săriturile
+                
+                // Dacă e platforma de final
+                if (rock.isGoal) win();
+            }
+        }
+    });
+
+    // 4. Verificare Acid (Moarte)
+    if (y < acidHeight) {
+        takeDamage();
+        if (currentHearts > 0) {
+            // Respawn pe ultima platformă sau început
+            y = 300; vx = 0; vy = 0;
+        }
+    }
+
+    // 5. Actualizare Cameră (Urmărire jucător)
+    // Centrăm camera pe jucător
+    let cameraX = -x + (vp.offsetWidth / 2) - 20;
+    cameraRig.style.transform = `translateX(${cameraX}px)`;
+
+    // 6. Actualizare Vizuală Jucător
+    player.style.left = x + 'px';
+    player.style.bottom = y + 'px';
+
+    // 7. Actualizare Progres
+    let progress = Math.min(100, (x / goalDistance) * 100);
+    if (currentLevelType === 'custom' && keyObj) {
+        progress = Math.min(100, (x / keyObj.x) * 100);
+    }
+    progressFill.style.width = progress + "%";
+
+    requestAnimationFrame(loop);
 }
+
+// Pornește loop-ul o singură dată
+requestAnimationFrame(loop);
 
 // --- CREATOR FUNCTIONS ---
 function startBuildingMode() {
