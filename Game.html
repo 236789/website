@@ -1920,6 +1920,12 @@
 }
 .asset-item:hover { background: var(--primary); color: #000; }
 .asset-item.active { border: 1px solid var(--primary); background: rgba(41, 243, 255, 0.2); }
+
+.asset-item { 
+    padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid #333; 
+    margin-bottom: 5px; cursor: pointer; color: #fff; font-size: 10px; transition: 0.2s;
+}
+.asset-item:hover { background: #29f3ff; color: #000; }
   </style>
 </head>
 <body>
@@ -2495,30 +2501,37 @@ let customPlatforms = []; // Temp storage for building
 let currentLevelType = 'random'; // 'random' or 'custom'
 let gameStarted = false;
 
-// --- SCREEN NAVIGATION ---
 window.showScreen = (screen) => {
-    document.getElementById('game-menu-overlay').style.display = 'none';
-    document.getElementById('level-selector-overlay').style.display = 'none';
-    document.getElementById('game-inner-wrapper').style.display = 'none';
-    document.getElementById('creator-hud').style.display = 'none';
-    
+    // Listă cu toate ecranele posibile
+    const screens = [
+        'game-login-wall', 
+        'game-menu-overlay', 
+        'level-selector-overlay', 
+        'game-inner-wrapper', 
+        'editor-ui'
+    ];
+
+    // Ascundem totul
+    screens.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
     isCreatorMode = false;
 
+    // Afișăm ecranul dorit
     if (screen === 'menu') {
         document.getElementById('game-menu-overlay').style.display = 'flex';
     } else if (screen === 'selector') {
         document.getElementById('level-selector-overlay').style.display = 'flex';
-        loadLevelList();
+        fetchLevelsFromFirebase();
     } else if (screen === 'game') {
         document.getElementById('game-inner-wrapper').style.display = 'block';
-        gameStarted = true;
+        window.gameStarted = true;
     } else if (screen === 'creator') {
-        isCreatorMode = true;
-        currentLevelType = 'custom';
-        customPlatforms = [];
         document.getElementById('game-inner-wrapper').style.display = 'block';
-        document.getElementById('creator-hud').style.display = 'block';
-        startBuildingMode();
+        document.getElementById('editor-ui').style.display = 'block';
+        window.startCreatorMode();
     }
 };
 
@@ -2665,8 +2678,6 @@ function loop() {
 }
 requestAnimationFrame(loop); // Pornim loop-ul
 
-let editorObjects = [];
-let selectedTool = 'rock';
 let draggedObject = null;
 let isEditorMoving = false;
 
@@ -2681,25 +2692,73 @@ window.addEventListener('keydown', (e) => {
     if (k === ' ') handleJump();
 });
 
-// FUNCȚIA PRINCIPALĂ DE PORNIRE EDITOR
+let editorObjects = [];
+let selectedTool = 'rock';
+
 window.startCreatorMode = () => {
     isCreatorMode = true;
-    gameStarted = true;
     window.gameStarted = true;
-    editorObjects = [{ x: 0, y: 120, w: 400, h: 50, type: 'rock', behavior: 'static' }];
-    
-    document.getElementById('editor-ui').style.display = 'block';
-    document.getElementById('game-inner-wrapper').style.display = 'block';
-    
+    // Platforma de start default
+    editorObjects = [{ x: 0, y: 120, w: 400, h: 50, type: 'rock' }];
     renderEditor();
+    window.showToast("EDITOR ACTIVAT: Click pe ecran pentru a construi!");
 };
 
+window.setTool = (tool) => {
+    selectedTool = tool;
+    window.showToast("Tool selectat: " + tool);
+};
+
+// Plasare obiecte cu mouse-ul
+document.getElementById('game-viewport').addEventListener('mousedown', (e) => {
+    if (!isCreatorMode) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const currentCamX = parseFloat(cameraRig.style.transform.replace('translateX(', '').replace('px)', '')) || 0;
+    
+    // Calculăm unde am dat click în lumea jocului
+    const worldX = e.clientX - rect.left - currentCamX;
+    const worldY = 500 - (e.clientY - rect.top);
+
+    if (e.button === 0) { // Click Stânga = ADD
+        const newObj = {
+            x: Math.round(worldX / 20) * 20, // Grid snap 20px
+            y: Math.round(worldY / 20) * 20,
+            w: selectedTool === 'key' ? 40 : 100,
+            h: 40,
+            type: selectedTool
+        };
+        editorObjects.push(newObj);
+    } else if (e.button === 2) { // Click Dreapta = DELETE
+        editorObjects = editorObjects.filter(obj => 
+            !(worldX > obj.x && worldX < obj.x + obj.w && worldY > obj.y && worldY < obj.y + obj.h)
+        );
+    }
+    
+    renderEditor();
+});
+
+// Dezactivăm meniul de click dreapta ca să putem șterge obiecte ușor
+document.getElementById('game-viewport').oncontextmenu = (e) => e.preventDefault();
+
+function renderEditor() {
+    rocksContainer.innerHTML = '';
+    rocks = [];
+    
+    editorObjects.forEach(obj => {
+        const isGoal = obj.type === 'key';
+        createRock(obj.x, obj.w, obj.h, obj.y, 'static', isGoal);
+        
+        // Dacă e cheie, setăm tempGoal pentru salvare
+        if (isGoal) window.tempGoal = { x: obj.x, y: obj.y };
+    });
+}
 function setTool(tool) {
     selectedTool = tool;
     document.querySelectorAll('.asset-item').forEach(el => el.classList.remove('active'));
     showToast("Tool: " + tool.toUpperCase());
 }
-
+ 
 // CLICK PE HARTĂ PENTRU A PUNE OBIECTE
 document.getElementById('game-viewport').addEventListener('mousedown', (e) => {
     if (!isCreatorMode) return;
@@ -2730,31 +2789,7 @@ document.getElementById('game-viewport').addEventListener('mousedown', (e) => {
     renderEditor();
 });
 
-// DESENEAZĂ NIVELUL ÎN EDITOR
-function renderEditor() {
-    rocksContainer.innerHTML = '';
-    rocks = [];
-    
-    editorObjects.forEach((obj, index) => {
-        const el = document.createElement('div');
-        el.className = 'rock';
-        if (obj.type === 'acid') el.style.background = 'linear-gradient(transparent, #76FF03)';
-        if (obj.type === 'key') el.style.background = 'gold';
-        if (obj.type === 'falling') el.style.borderTop = '4px dashed #ff4757';
-        
-        el.style.left = obj.x + 'px';
-        el.style.width = obj.w + 'px';
-        el.style.height = obj.h + 'px';
-        el.style.bottom = obj.y + 'px';
-        
-        // Adăugăm în motorul de fizică pentru testare live
-        rocksContainer.appendChild(el);
-        rocks.push({
-            element: el, currentLeft: obj.x, width: obj.w, height: obj.h, bottom: obj.y,
-            type: obj.behavior, isGoal: obj.type === 'key'
-        });
-    });
-}
+
 
 // SALVARE ÎN FIREBASE
 window.saveLevelToFirebase = async () => {
