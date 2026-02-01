@@ -2591,41 +2591,7 @@ window.changeVoteImg = (step) => {
     document.getElementById('lbMainImg').src = currentVoteGallery[currentVoteIdx];
 };
 
-window.castVote = async (voteId, optionIndex, isExpired) => {
-    if (isExpired) {
-        if (window.showToast) window.showToast("Sesiunea de votare s-a încheiat.");
-        return;
-    }
-    
-    if (!auth.currentUser) {
-        if (window.showToast) window.showToast("Vă rugăm să vă autentificați.");
-        return;
-    }
 
-    try {
-        const voteRef = doc(db, "community_votes", voteId);
-        const snap = await getDoc(voteRef);
-        const data = snap.data();
-
-        // --- BLOCK VOTE SWITCHING ---
-        if (data.voters && data.voters[auth.currentUser.uid] !== undefined) {
-            if (window.showToast) window.showToast("Ați votat deja. Opțiunea selectată este finală.");
-            return;
-        }
-
-        await updateDoc(voteRef, {
-            [`voters.${auth.currentUser.uid}`]: optionIndex
-        });
-
-        if (window.showToast) window.showToast("Vot înregistrat cu succes.");
-
-    } catch (e) {
-        // If this fails, it's likely the "Missing Permissions" error. 
-        // Ensure you deployed the Firebase Rules I gave you in the last turn!
-        console.error(e);
-        if (window.showToast) window.showToast("Eroare de permisiune sau sesiune expirată.");
-    }
-};
 // 1. Open Modal and Generate Link
 const inviteBtn = document.getElementById('inviteFriendBtn');
 if (inviteBtn) {
@@ -3518,21 +3484,42 @@ onAuthStateChanged(auth, user => {
 });
 
 
-window.castVote = async (voteId, optionIndex) => {
-    const voteRef = doc(db, "community_votes", voteId);
-    const snap = await getDoc(voteRef);
-    const data = snap.data();
-
-    // Check if expired
-    if (new Date() > data.expiresAt.toDate()) {
-        alert("Votul s-a încheiat!");
+window.castVote = async (voteId, optionIndex, isExpired) => {
+    // 1. Check if voting is still open
+    if (isExpired) {
+        if (window.showToast) window.showToast("Sesiunea de votare s-a încheiat.");
+        return;
+    }
+    
+    // 2. Check if user is logged in
+    if (!auth.currentUser) {
+        if (window.showToast) window.showToast("Vă rugăm să vă autentificați.");
         return;
     }
 
-    // Save choice: userUid -> optionIndex
-    await updateDoc(voteRef, {
-        [`voters.${auth.currentUser.uid}`]: optionIndex
-    });
+    try {
+        const voteRef = doc(db, "community_votes", voteId);
+        const snap = await getDoc(voteRef);
+        const data = snap.data();
+
+        // 3. THE FIX: Block Vote Switching
+        // If the user's UID is already in the voters object, stop them
+        if (data.voters && data.voters[auth.currentUser.uid] !== undefined) {
+            if (window.showToast) window.showToast("Ai votat deja! Alegerea este finală.");
+            return;
+        }
+
+        // 4. Record the vote
+        await updateDoc(voteRef, {
+            [`voters.${auth.currentUser.uid}`]: optionIndex
+        });
+
+        if (window.showToast) window.showToast("Vot înregistrat cu succes!");
+
+    } catch (e) {
+        console.error(e);
+        if (window.showToast) window.showToast("Eroare la procesarea votului.");
+    }
 };
 
 
