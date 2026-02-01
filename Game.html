@@ -2617,35 +2617,54 @@ function initLevel(levelData = null) {
 }
 
 function gameLoop() {
-    if (!window.gameStarted || isDead || hasWon) { 
+    if (!window.gameStarted || (isDead && !window.isCreatorMode) || hasWon) { 
         requestAnimationFrame(gameLoop); 
         return; 
     }
 
-    // 1. Physics
-    vy += gravity;
-    y -= vy; 
-    if (inputs.left) vx -= speed;
-    if (inputs.right) vx += speed;
-    vx *= (onGround ? frictionGround : frictionAir);
-    x += vx;
+    // --- LOGIC SPLIT: CREATOR MODE VS NORMAL GAME ---
+    if (window.isCreatorMode) {
+        // --- CREATOR MODE: FLYING PHYSICS ---
+        vx = 0; 
+        vy = 0;
+        
+        // Move Camera/Player fast in editor (Speed 10)
+        if (inputs.left) x -= 10;
+        if (inputs.right) x += 10;
+        if (inputs.jump) y += 10; // Fly Up
+        if (inputs.down) y -= 10; // Fly Down
 
-    // 2. Collisions
-    onGround = false;
-    rocks.forEach(rock => {
-        if (x + 30 > rock.currentLeft && x < rock.currentLeft + rock.width) {
-            if (vy > 0 && y <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
-                y = rock.bottom + rock.height;
-                vy = 0;
-                onGround = true;
-                jumpsLeft = 2;
+        // Keep player strictly within bounds if you want, or let them fly anywhere
+        if (y < 0) y = 0; 
+
+    } else {
+        // --- NORMAL GAME PHYSICS ---
+        vy += gravity;
+        y -= vy; 
+        if (inputs.left) vx -= speed;
+        if (inputs.right) vx += speed;
+        vx *= (onGround ? frictionGround : frictionAir);
+        x += vx;
+
+        // Collisions (Only in normal game)
+        onGround = false;
+        rocks.forEach(rock => {
+            if (x + 30 > rock.currentLeft && x < rock.currentLeft + rock.width) {
+                if (vy > 0 && y <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
+                    y = rock.bottom + rock.height;
+                    vy = 0;
+                    onGround = true;
+                    jumpsLeft = 2;
+                }
             }
-        }
-    });
+        });
+    }
 
-    // 3. Camera (Follow Player)
+    // 3. Camera (Follow Player/Cursor)
     const vpWidth = document.getElementById('game-viewport').offsetWidth;
     const cameraRig = document.getElementById('camera-rig');
+    
+    // Center the camera on the player object
     let cameraX = -x + (vpWidth / 2) - 20;
     cameraRig.style.transform = `translateX(${cameraX}px)`;
 
@@ -2654,15 +2673,15 @@ function gameLoop() {
     playerEl.style.left = x + 'px';
     playerEl.style.bottom = y + 'px';
 
-    // 5. Death Check
-    if (y < acidHeight) {
-        if (!window.isCreatorMode) takeDamage();
-        else { y = 300; vy = 0; vx = 0; }
+    // 5. Death Check (Only in Normal Mode)
+    if (!window.isCreatorMode) {
+        if (y < acidHeight) {
+            takeDamage();
+        }
     }
 
     requestAnimationFrame(gameLoop);
 }
-requestAnimationFrame(gameLoop);
 
 // ==========================================
 // 3. EDITOR SYSTEM
@@ -2691,14 +2710,18 @@ viewport.addEventListener('mousedown', (e) => {
     const rect = viewport.getBoundingClientRect();
     const cameraRig = document.getElementById('camera-rig');
     
-    // Calculate Camera Offset correctly
-    const matrix = new WebKitCSSMatrix(window.getComputedStyle(cameraRig).transform);
-    const camX = matrix.m41;
+    // --- BETTER CAMERA CALCULATION ---
+    // We calculate X based on the player position variable 'x' directly
+    // because getting it from CSS transform can be laggy or return "none"
+    const vpWidth = viewport.offsetWidth;
+    const currentCamX = -x + (vpWidth / 2) - 20; 
 
-    // Calculate Grid snapped coordinates (20px grid)
+    // Calculate Mouse in World Space
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    const worldX = Math.round((mouseX - camX) / 20) * 20;
+    
+    // Undo Camera Offset to get World Coordinate
+    const worldX = Math.round((mouseX - currentCamX) / 20) * 20;
     const worldY = Math.round((500 - mouseY) / 20) * 20;
 
     if (e.button === 0) { // LEFT CLICK: PLACE
@@ -2712,8 +2735,9 @@ viewport.addEventListener('mousedown', (e) => {
             window.editorObjects = window.editorObjects.filter(o => o.type !== 'key');
         }
         if (type === 'falling') behavior = 'falling';
-        if (type === 'acid') behavior = 'static'; // Visually static, but deadly
+        if (type === 'acid') behavior = 'static'; 
 
+        // Fix: Ensure we don't have w/h/type issues
         window.editorObjects.push({ 
             x: worldX, y: worldY, w: w, h: h, 
             type: type, 
@@ -2727,7 +2751,7 @@ viewport.addEventListener('mousedown', (e) => {
         );
     }
     
-    renderEditor(); // Redraw the world
+    renderEditor(); 
 });
 
 // Disable the right-click menu so we can use it to delete
@@ -2862,24 +2886,37 @@ function handleJump() {
     }
 }
 
-
-// --- UNIFIED SAFE KEYBOARD INPUT ---
+// --- UPDATED INPUT LISTENER (Tracks Up/Down for Editor) ---
 window.addEventListener('keydown', (e) => {
-    // Safety check: ignore if key is missing or we are typing in an input
     if (!e.key || document.activeElement.tagName === 'INPUT') return;
     
     const k = e.key.toLowerCase();
+    
+    // Left / Right
     if (k === 'a' || k === 'arrowleft') inputs.left = true;
     if (k === 'd' || k === 'arrowright') inputs.right = true;
-    if (k === ' ') handleJump();
+    
+    // Up / Jump / Fly Up
+    if (k === ' ' || k === 'w' || k === 'arrowup') inputs.jump = true;
+    
+    // Down (Only used in Creator Mode to fly down)
+    if (k === 's' || k === 'arrowdown') inputs.down = true; 
 });
 
 window.addEventListener('keyup', (e) => {
     if (!e.key) return;
     const k = e.key.toLowerCase();
+    
     if (k === 'a' || k === 'arrowleft') inputs.left = false;
     if (k === 'd' || k === 'arrowright') inputs.right = false;
+    if (k === ' ' || k === 'w' || k === 'arrowup') inputs.jump = false;
+    if (k === 's' || k === 'arrowdown') inputs.down = false;
 });
+
+// Add 'down' to your inputs object initialization (near line 1258)
+// Change: let inputs = { left: false, right: false, jump: false };
+// To:
+ let inputs = { left: false, right: false, jump: false, down: false };
 
 function bind(id, v, a) {
     const z = document.getElementById(id);
