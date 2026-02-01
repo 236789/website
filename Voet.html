@@ -2,7 +2,21 @@
 <html lang="ro">
 <head>
 
-
+<!-- OneSignal SDK -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(function(OneSignal) {
+    OneSignal.init({
+      appId: "66b82a40-8d9f-40d6-b2d4-725b2c32cd4a",
+      safari_web_id: "web.onesignal.auto.62a04992-e924-4258-8064-560c4d6dc347",
+      notifyButton: {
+        enable: true,
+      },
+      allowLocalhostAsSecureOrigin: true, 
+    }); 
+  });
+</script>
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
   <script>
@@ -2328,7 +2342,7 @@ window.deleteVote = async (id) => {
     if (!confirm("Sigur vrei să ștergi acest vot?")) return;
     try {
         await deleteDoc(doc(db, "community_votes", id));
-        window.showToast("Vot șters cu succes!");
+        window.showToast("Vot Șters cu succes!");
     } catch (e) {
         window.showToast("Eroare la ștergere!");
     }
@@ -2596,8 +2610,10 @@ async function logTransaction(amount, type, description, source, customUserId = 
             amount: amount,
             type: type,
             description: description,
+    resultsNotified: false, // 👈 ADAUGĂ ACEASTĂ LINIE!
             source: source,
             timestamp: serverTimestamp()
+
         });
     } catch (e) { console.error("Log Error:", e); }
 }
@@ -3262,24 +3278,30 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     };
 
 
-
 onAuthStateChanged(auth, user => {
     if (user) {
+
+
         const userRef = doc(db, "accounts", user.uid);
 
+        // --- 🟢 ONESIGNAL LOGIN ---
+        if (window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(function(OneSignal) {
+                OneSignal.login(user.uid);
+            });
+        }
 
-        // --- ADAUGĂ ASTA PENTRU VOTURI (START) ---
+        // --- 🗳️ LOGICĂ VOTURI (ACCES PERMIS) ---
         if(document.getElementById('loggedOutWall')) document.getElementById('loggedOutWall').style.display = 'none';
         if(document.getElementById('voteFeed')) document.getElementById('voteFeed').style.display = 'flex';
         
-        // Verifică dacă ești Owner sau Admin
+        // Verifică dacă ești Owner sau Admin pentru butoane
         if (user.email === 'nicaemmanuel433qe@gmail.com' || user.email === 'kevin.trinity2020@gmail.com') {
             if(document.getElementById('adminControls')) document.getElementById('adminControls').style.display = 'block';
         }
         
-        // Încarcă voturile (Funcția pe care o vom defini mai jos)
         if (typeof loadVotes === "function") loadVotes(); 
-        // --- ADAUGĂ ASTA PENTRU VOTURI (END) ---
+
 
         // 1. UI Updates for Logged In User
         headerLoginText.innerText = "ACCOUNT";
