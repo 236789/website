@@ -2820,49 +2820,66 @@ Object.entries(mBtns).forEach(([id, action]) => {
 
 let currentLevelData = []; // Array of platform objects
 
-// 1. Fetch Levels
+// 1. Fetch Levels (Colecția corectă: acid_runner_levels)
 async function fetchLevelsFromFirebase() {
     const container = document.getElementById('levels-list-container');
-    container.innerHTML = 'Încărcare...';
+    if (!container) return;
+    
+    container.innerHTML = '<p style="color:#aaa; grid-column: 1 / span 2;">Se încarcă...</p>';
     
     try {
-        const querySnapshot = await getDocs(collection(db, "levels"));
+        // Schimbat de la "levels" la "acid_runner_levels"
+        const querySnapshot = await getDocs(collection(db, "acid_runner_levels"));
         container.innerHTML = '';
         
-        // Add "Random Mode" (your current generator)
+        // Buton pentru modul RANDOM (cel vechi)
         const randomCard = document.createElement('div');
         randomCard.className = 'level-card';
-        randomCard.innerHTML = `<h4>RANDOM RUN</h4><p>Nivel generat procedural</p>`;
+        randomCard.innerHTML = `<h4>RANDOM RUN</h4><p>Generat procedural</p>`;
         randomCard.onclick = () => { initLevel(); showScreen('game'); };
         container.appendChild(randomCard);
 
+        // Afișăm nivelele create de tine
         querySnapshot.forEach((doc) => {
             const level = doc.data();
             const card = document.createElement('div');
             card.className = 'level-card';
-            card.innerHTML = `<h4>${level.name}</h4><p>Creat de: ${level.creatorName}</p>`;
-            card.onclick = () => { loadSpecificLevel(level); showScreen('game'); };
+            // Preluăm numele creatorului din email sau fallback
+            const creator = level.creator ? level.creator.split('@')[0] : "Lost Soul";
+            card.innerHTML = `<h4>${level.name}</h4><p>Creat de: ${creator}</p>`;
+            card.onclick = () => { initLevel(level); showScreen('game'); };
             container.appendChild(card);
         });
+
+        if (querySnapshot.empty) {
+            container.innerHTML += '<p style="color:#555; grid-column: 1 / span 2;">Niciun nivel creat încă.</p>';
+        }
     } catch (e) {
-        container.innerHTML = 'Eroare la încărcare.';
+        console.error("Eroare Firebase Selector:", e);
+        container.innerHTML = '<p style="color:#ff4757; grid-column: 1 / span 2;">Eroare la încărcare. Verifică consola.</p>';
     }
 }
+// O facem globală pentru a putea fi apelată de showScreen
+window.fetchLevelsFromFirebase = fetchLevelsFromFirebase;
 
-// 2. Creator Mode logic
 function startCreatorMode() {
-    // Clear the map and put player in a safe spot
+    // Curățăm harta pentru un nivel nou
     rocksContainer.innerHTML = '';
     rocks = [];
-    currentLevelData = [];
+    customPlatforms = [];
     x = 100; y = 200; vx = 0; vy = 0;
     isDead = false;
     hasWon = false;
+    gameStarted = true;
     
-    // Disable gravity for easier building? 
-    // Or keep it on so you can "test" while you build.
-    createRock(0, 400, 50, 100, 'static'); // Start platform
+    // Adăugăm platforma de start
+    const startP = {x: 0, w: 400, h: 50, b: 120, type: 'static'};
+    customPlatforms.push(startP);
+    createRock(startP.x, startP.w, startP.h, startP.b, startP.type);
+    
+    window.showToast("Building Mode activat!");
 }
+window.startCreatorMode = startCreatorMode;
 
 window.addPlatformAtPlayer = () => {
     const pX = Math.round(x);
