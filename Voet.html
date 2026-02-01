@@ -2024,8 +2024,17 @@ window.loadVotes = () => {
             const isOwner = data.email === 'nicaemmanuel433qe@gmail.com';
             
             // Verificăm dacă votul a expirat
-            const isExpired = data.expiresAt && new Date() > data.expiresAt.toDate();
+// Verificăm dacă expiresAt există și dacă este un Timestamp valid
+let expirationDate = null;
+if (data.expiresAt) {
+    if (typeof data.expiresAt.toDate === 'function') {
+        expirationDate = data.expiresAt.toDate();
+    } else {
+        expirationDate = new Date(data.expiresAt); // Fallback dacă e salvat ca string/date
+    }
+}
 
+const isExpired = expirationDate ? (new Date() > expirationDate) : false;
             let mediaHtml = "";
             if (data.images && data.images.length > 0) {
                 mediaHtml = `<div class="post-media-grid">` + 
@@ -2079,17 +2088,36 @@ window.loadVotes = () => {
     });
 };
 
-// Funcția de votare propriu-zisă
-window.castVote = async (voteId, index, isExpired) => {
+window.castVote = async (voteId, optionIndex, isExpired) => {
+    // 1. Verificăm argumentul isExpired primit din HTML
     if (isExpired) return alert("Acest vot s-a încheiat!");
+    
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
 
-    const voteRef = doc(db, "community_votes", voteId);
-    await updateDoc(voteRef, {
-        [`voters.${auth.currentUser.uid}`]: index
-    });
-};
+    try {
+        const voteRef = doc(db, "community_votes", voteId);
+        const snap = await getDoc(voteRef);
+        const data = snap.data();
 
+        // 2. Verificare dublă de siguranță pentru data de expirare din DB
+        let expirationDate = null;
+        if (data.expiresAt) {
+            expirationDate = typeof data.expiresAt.toDate === 'function' ? data.expiresAt.toDate() : new Date(data.expiresAt);
+        }
+
+        if (expirationDate && new Date() > expirationDate) {
+            alert("Votul s-a încheiat între timp!");
+            return;
+        }
+
+        // 3. Salvăm votul
+        await updateDoc(voteRef, {
+            [`voters.${auth.currentUser.uid}`]: optionIndex
+        });
+    } catch (e) {
+        console.error("Eroare la votare:", e);
+    }
+};
 // 1. Open Modal and Generate Link
 const inviteBtn = document.getElementById('inviteFriendBtn');
 if (inviteBtn) {
