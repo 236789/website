@@ -2545,220 +2545,133 @@ window.showScreen = (screen) => {
     }
 };
 
-// --- CORE GAME OVERRIDES ---
-
-// Updated initLevel
-function initLevel(levelData = null) {
-    rocksContainer.innerHTML = '';
-    effectsLayer.innerHTML = '';
-    rocks = []; splashes = []; emeraldsArray = [];
-    generatedX = 0; lastRockType = 'static'; finalSpawned = false;
-    keyObj = null; isDead = false; hasWon = false;
-    
-    currentHearts = 4;
-    for(let i=1; i<=4; i++) {
-        let h = document.getElementById('h'+i);
-        h.src = HEART_FULL;
-    }
-
-    emeralds = 0;
-    x = 100; y = 250; vx = 0; vy = 0; currentStandingRock = null;
-    emeraldUI.innerText = "💎 0";
-    progressFill.style.width = "0%";
-    gameOverScreen.style.display = 'none';
-    winScreen.style.display = 'none';
-
-    if (!levelData) {
-        // PROCEDURAL MODE
-        currentLevelType = 'random';
-        createRock(0, 400, 50, 120, 'static');
-        generatedX = 400;
-        generateAhead();
-    } else {
-        // HAND-CRAFTED MODE
-        currentLevelType = 'custom';
-        levelData.platforms.forEach(p => {
-            createRock(p.x, p.w, p.h, p.b, p.type || 'static');
-        });
-        // Set goal manually from saved data
-        createRock(levelData.goalX, 200, 50, levelData.goalY, 'static', true);
-        finalSpawned = true; // Prevent random spawning
-    }
-}
-
-// Update generateAhead to respect the mode
-function generateAhead() {
-    if (finalSpawned || currentLevelType === 'custom') return;
-    // ... rest of your random logic ...
-}
-
-function loop() {
-    if (!gameStarted) { requestAnimationFrame(loop); return; }
-    if (isDead || hasWon) { requestAnimationFrame(loop); return; }
-
-    // Gravitație
-    vy += gravity;
-    y -= vy; 
-
-    // Mișcare stânga/dreapta
-    if (inputs.left) vx -= speed;
-    if (inputs.right) vx += speed;
-    vx *= (onGround ? frictionGround : frictionAir);
-    x += vx;
-
-    // Coliziuni simple pentru Creator Mode
-    onGround = false;
-    rocks.forEach(rock => {
-        if (x + 30 > rock.currentLeft && x < rock.currentLeft + rock.width) {
-            if (vy > 0 && y <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
-                y = rock.bottom + rock.height;
-                vy = 0;
-                onGround = true;
-                jumpsLeft = 2;
-            }
-        }
-    });
-
-    // URMARIRE CAMERA (Rezolvă ecranul negru)
-    let cameraX = -x + (vp.offsetWidth / 2) - 20;
-    cameraRig.style.transform = `translateX(${cameraX}px)`;
-
-    // Actualizare vizuală
-    player.style.left = x + 'px';
-    player.style.bottom = y + 'px';
-
-    // Verificare moarte în acid
-    if (y < acidHeight) {
-        if (!isCreatorMode) takeDamage();
-        else { y = 300; vy = 0; } // În creator mode doar te teleportezi sus
-    }
-
-    requestAnimationFrame(loop);
-}
-
-requestAnimationFrame(loop);
-// --- VARIABILE GLOBALE DE STARE ---
-window.customPlatforms = [];
-window.tempGoal = null;
+// ==========================================
+// 1. GLOBAL STATE & NAVIGATION
+// ==========================================
 window.gameStarted = false;
+window.isCreatorMode = false;
+window.selectedTool = 'rock';
+window.editorObjects = [];
+window.currentLevelType = 'random';
 
-// --- MOTORUL DE JOC (LOOP) ---
-// Această funcție face ca jucătorul să cadă, să meargă și camera să îl urmărească
-function loop() {
-    if (!window.gameStarted) { requestAnimationFrame(loop); return; }
-    if (isDead || hasWon) { requestAnimationFrame(loop); return; }
-
-    // 1. Fizică simplă
-    vy += gravity;
-    y -= vy; 
-    if (inputs.left) vx -= speed;
-    if (inputs.right) vx += speed;
-    vx *= (onGround ? frictionGround : frictionAir);
-    x += vx;
-
-    // 2. Coliziuni cu platformele (cele create de tine)
-    onGround = false;
-    rocks.forEach(rock => {
-        if (x + 30 > rock.currentLeft && x < rock.currentLeft + rock.width) {
-            if (vy > 0 && y <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
-                y = rock.bottom + rock.height;
-                vy = 0;
-                onGround = true;
-                jumpsLeft = 2;
-            }
-        }
-    });
-
-    // 3. CAMERA FOLLOW (REZOLVĂ ECRANUL NEGRU)
-    // Forțăm camera să stea pe jucător
-    let cameraX = -x + (document.getElementById('game-viewport').offsetWidth / 2) - 20;
-    document.getElementById('camera-rig').style.transform = `translateX(${cameraX}px)`;
-
-    // 4. Actualizare vizuală jucător
-    player.style.left = x + 'px';
-    player.style.bottom = y + 'px';
-
-    // 5. Acid / Moarte
-    if (y < acidHeight) {
-        if (!isCreatorMode) takeDamage();
-        else { y = 300; vy = 0; vx = 0; } // În creator te teleportezi sus dacă cazi
-    }
-
-    requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop); // Pornim loop-ul
-
-let draggedObject = null;
-let isEditorMoving = false;
-
-// FIX pentru eroarea toLowerCase()
-window.addEventListener('keydown', (e) => {
-    if (!e.key) return; // Dacă tasta e undefined, ieșim
-    const k = e.key.toLowerCase();
-    if (document.activeElement.tagName === 'INPUT') return; // Nu mișcăm playerul când scriem numele nivelului
-    
-    if (k === 'a' || k === 'arrowleft') inputs.left = true;
-    if (k === 'd' || k === 'arrowright') inputs.right = true;
-    if (k === ' ') handleJump();
-});
-// --- VARIABILE GLOBALE EDITOR ---
-let editorObjects = [];
-let selectedTool = 'rock';
-window.gameStarted = false;
-
-// 1. REPARARE SHOWSCREEN (Siguranță împotriva erorilor null)
 window.showScreen = (screen) => {
-    // Listăm toate ID-urile pe care vrem să le controlăm
-    const screens = [
-        'game-login-wall', 
-        'game-menu-overlay', 
-        'level-selector-overlay', 
-        'game-inner-wrapper', 
-        'editor-ui'
-    ];
-
+    const screens = ['game-login-wall', 'game-menu-overlay', 'level-selector-overlay', 'game-inner-wrapper', 'editor-ui'];
     screens.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = 'none'; // Verificăm dacă elementul există înainte să-i punem .style
+        if (el) el.style.display = 'none';
     });
 
-    isCreatorMode = false;
+    window.isCreatorMode = false;
 
     if (screen === 'menu') {
-        const menu = document.getElementById('game-menu-overlay');
-        if(menu) menu.style.display = 'flex';
-    } 
-    else if (screen === 'selector') {
-        const sel = document.getElementById('level-selector-overlay');
-        if(sel) sel.style.display = 'flex';
-        fetchLevelsFromFirebase();
-    } 
-    else if (screen === 'game') {
-        const wrapper = document.getElementById('game-inner-wrapper');
-        if(wrapper) wrapper.style.display = 'block';
+        document.getElementById('game-menu-overlay').style.display = 'flex';
+    } else if (screen === 'selector') {
+        document.getElementById('level-selector-overlay').style.display = 'flex';
+        if(window.fetchLevelsFromFirebase) window.fetchLevelsFromFirebase();
+    } else if (screen === 'game') {
+        document.getElementById('game-inner-wrapper').style.display = 'block';
+        initLevel(); 
         window.gameStarted = true;
-    } 
-    else if (screen === 'creator') {
-        const wrapper = document.getElementById('game-inner-wrapper');
-        const editor = document.getElementById('editor-ui');
-        if(wrapper) wrapper.style.display = 'block';
-        if(editor) editor.style.display = 'block';
+    } else if (screen === 'creator') {
+        document.getElementById('game-inner-wrapper').style.display = 'block';
+        document.getElementById('editor-ui').style.display = 'block';
         window.startCreatorMode();
     }
 };
 
-// --- EDITOR STATE ---
-window.editorObjects = [];
-window.selectedTool = 'rock';
-window.isCreatorMode = false;
+// ==========================================
+// 2. CORE GAME ENGINE (INIT & LOOP)
+// ==========================================
+function initLevel(levelData = null) {
+    // Reset Game Container
+    const rocksContainer = document.getElementById('rocks-container');
+    const effectsLayer = document.getElementById('effects-layer');
+    rocksContainer.innerHTML = '';
+    effectsLayer.innerHTML = '';
+    
+    // Reset Logic Variables
+    rocks = []; splashes = []; emeraldsArray = [];
+    generatedX = 0; finalSpawned = false;
+    isDead = false; hasWon = false;
+    currentHearts = 4;
+    
+    // Reset UI
+    for(let i=1; i<=4; i++) document.getElementById('h'+i).src = HEART_FULL;
+    x = 100; y = 250; vx = 0; vy = 0;
+    document.getElementById('emerald-ui').innerText = "💎 0";
+    document.getElementById('progress-fill').style.width = "0%";
+    document.getElementById('game-over').style.display = 'none';
+    document.getElementById('game-win').style.display = 'none';
 
+    if (!levelData) {
+        window.currentLevelType = 'random';
+        createRock(0, 400, 50, 120, 'static');
+        generatedX = 400;
+        if(window.generateAhead) window.generateAhead();
+    } else {
+        window.currentLevelType = 'custom';
+        levelData.platforms.forEach(p => createRock(p.x, p.w, p.h, p.b, p.type || 'static'));
+        createRock(levelData.goalX, 200, 50, levelData.goalY, 'static', true);
+        finalSpawned = true; 
+    }
+}
+
+function gameLoop() {
+    if (!window.gameStarted || isDead || hasWon) { 
+        requestAnimationFrame(gameLoop); 
+        return; 
+    }
+
+    // 1. Physics
+    vy += gravity;
+    y -= vy; 
+    if (inputs.left) vx -= speed;
+    if (inputs.right) vx += speed;
+    vx *= (onGround ? frictionGround : frictionAir);
+    x += vx;
+
+    // 2. Collisions
+    onGround = false;
+    rocks.forEach(rock => {
+        if (x + 30 > rock.currentLeft && x < rock.currentLeft + rock.width) {
+            if (vy > 0 && y <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
+                y = rock.bottom + rock.height;
+                vy = 0;
+                onGround = true;
+                jumpsLeft = 2;
+            }
+        }
+    });
+
+    // 3. Camera (Follow Player)
+    const vpWidth = document.getElementById('game-viewport').offsetWidth;
+    const cameraRig = document.getElementById('camera-rig');
+    let cameraX = -x + (vpWidth / 2) - 20;
+    cameraRig.style.transform = `translateX(${cameraX}px)`;
+
+    // 4. Update Visuals
+    const playerEl = document.getElementById('player');
+    playerEl.style.left = x + 'px';
+    playerEl.style.bottom = y + 'px';
+
+    // 5. Death Check
+    if (y < acidHeight) {
+        if (!window.isCreatorMode) takeDamage();
+        else { y = 300; vy = 0; vx = 0; }
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+
+// ==========================================
+// 3. EDITOR SYSTEM
+// ==========================================
 window.startCreatorMode = () => {
     window.isCreatorMode = true;
     window.gameStarted = true;
-    // Clear and add starting platform
     window.editorObjects = [{ x: 0, y: 120, w: 400, h: 50, type: 'rock', behavior: 'static' }];
     renderEditor();
-    window.showToast("EDITOR PORNIT: Click stânga pt. Plasare / Dreapta pt. Ștergere");
 };
 
 window.setTool = (tool, el) => {
@@ -2767,139 +2680,40 @@ window.setTool = (tool, el) => {
     if(el) el.classList.add('active');
 };
 
-// Handle Placing Blocks
 const viewport = document.getElementById('game-viewport');
 viewport.addEventListener('mousedown', (e) => {
     if (!window.isCreatorMode || e.target.closest('#editor-sidebar')) return;
 
     const rect = viewport.getBoundingClientRect();
     const cameraRig = document.getElementById('camera-rig');
-    
-    // Calculate camera offset
-    const camTransform = window.getComputedStyle(cameraRig).transform;
-    let camX = 0;
-    if (camTransform !== 'none') camX = parseFloat(camTransform.split(',')[4]);
+    const matrix = new WebKitCSSMatrix(window.getComputedStyle(cameraRig).transform);
+    const camX = matrix.m41;
 
-    // Grid snapping (20px)
     const worldX = Math.round((e.clientX - rect.left - camX) / 20) * 20;
     const worldY = Math.round((500 - (e.clientY - rect.top)) / 20) * 20;
 
-    if (e.button === 0) { // Left Click Add
+    if (e.button === 0) { // Place
         let w = 120, h = 40;
-        if (window.selectedTool === 'key') { w = 40; h = 60; }
-        
-        window.editorObjects.push({
-            x: worldX, y: worldY, w: w, h: h,
-            type: window.selectedTool,
-            behavior: (window.selectedTool === 'falling' ? 'falling' : 'static')
-        });
-    } 
-    else if (e.button === 2) { // Right Click Remove
-        window.editorObjects = window.editorObjects.filter(obj => 
-            !(worldX >= obj.x && worldX <= obj.x + obj.w && worldY >= obj.y && worldY <= obj.y + obj.h)
-        );
+        if (window.selectedTool === 'key') { 
+            w = 40; h = 60; 
+            window.editorObjects = window.editorObjects.filter(o => o.type !== 'key'); // One key only
+        }
+        window.editorObjects.push({ x: worldX, y: worldY, w, h, type: window.selectedTool, behavior: window.selectedTool === 'falling' ? 'falling' : 'static'});
+    } else if (e.button === 2) { // Delete
+        window.editorObjects = window.editorObjects.filter(obj => !(worldX >= obj.x && worldX <= obj.x + obj.w && worldY >= obj.y && worldY <= obj.y + obj.h));
     }
     renderEditor();
 });
-
-// Funcția de selectat tool-ul (curățată)
-window.setTool = (tool, el) => {
-    selectedTool = tool;
-    // Update vizual butoane
-    document.querySelectorAll('.asset-item').forEach(item => item.classList.remove('active'));
-    if(el) el.classList.add('active');
-    window.showToast("Ai ales: " + tool.toUpperCase());
-};
-
-// UN SINGUR EVENT LISTENER PENTRU PLASARE (Fix Click-Through)
-document.getElementById('game-viewport').addEventListener('mousedown', (e) => {
-    if (!isCreatorMode) return;
-
-    // VERIFICARE: Dacă am dat click pe sidebar (meniu), NU pune obiect în spate
-    if (e.target.closest('#editor-sidebar')) return;
-
-    const rect = document.getElementById('game-viewport').getBoundingClientRect();
-    // Luăm poziția camerei (cameraRig) pentru a plasa obiectul exact unde vedem mouse-ul
-    const camTransform = window.getComputedStyle(cameraRig).transform;
-    let camX = 0;
-    if (camTransform !== 'none') {
-        camX = parseFloat(camTransform.split(',')[4]);
-    }
-
-    // Calculăm X și Y în coordonatele lumii jocului (Grid de 20px)
-    const worldX = Math.round((e.clientX - rect.left - camX) / 20) * 20;
-    const worldY = Math.round((500 - (e.clientY - rect.top)) / 20) * 20;
-
-    if (e.button === 0) { // Click Stânga = ADAUGĂ
-        let width = 120, height = 40;
-        let behavior = 'static';
-
-        if (selectedTool === 'key') { width = 40; height = 60; }
-        if (selectedTool === 'emerald') { width = 30; height = 30; }
-        if (selectedTool === 'falling') { behavior = 'falling'; }
-
-        editorObjects.push({
-            x: worldX,
-            y: worldY,
-            w: width,
-            h: height,
-            type: selectedTool,
-            behavior: behavior
-        });
-    } 
-    else if (e.button === 2) { // Click Dreapta = ȘTERGE
-        editorObjects = editorObjects.filter(obj => 
-            !(worldX >= obj.x && worldX <= obj.x + obj.w && worldY >= obj.y && worldY <= obj.y + obj.h)
-        );
-    }
-    
-    renderEditor();
-});
-
-// Dezactivăm meniul de context (Click dreapta) ca să putem șterge liniștiți
-document.getElementById('game-viewport').oncontextmenu = (e) => e.preventDefault();
+viewport.oncontextmenu = (e) => e.preventDefault();
 
 function renderEditor() {
-    const container = document.getElementById('rocks-container');
-    container.innerHTML = '';
-    rocks = []; // Global rocks array for the engine
-    
+    const rocksContainer = document.getElementById('rocks-container');
+    rocksContainer.innerHTML = '';
+    rocks = [];
     window.editorObjects.forEach(obj => {
-        createRock(obj.x, obj.w, obj.h, obj.y, obj.behavior, (obj.type === 'key'));
+        createRock(obj.x, obj.w, obj.h, obj.y, obj.behavior, obj.type === 'key');
     });
 }
-// 3. SALVAREA REPARATĂ
-window.saveLevelToFirebase = async () => {
-    const nameInput = document.getElementById('level-name-input');
-    const name = nameInput ? nameInput.value.trim() : "";
-    
-    if (!name) return alert("Scrie un nume pentru nivel!");
-    
-    const goal = editorObjects.find(o => o.type === 'key');
-    if (!goal) return alert("Nivelul tău nu are o CHEIE! Pune una din meniu.");
-
-    // Filtrăm platformele (fără cheie, deoarece cheia are câmpurile ei separate în DB)
-    const platformsToSave = editorObjects.filter(o => o.type !== 'key' && o.type !== 'emerald').map(o => ({
-        x: o.x, w: o.w, h: o.h, b: o.y, type: o.behavior
-    }));
-
-    try {
-        await addDoc(collection(db, "acid_runner_levels"), {
-            name: name,
-            platforms: platformsToSave,
-            goalX: goal.x,
-            goalY: goal.y,
-            creator: auth.currentUser.email,
-            createdAt: serverTimestamp()
-        });
-        alert("Nivel publicat cu succes!");
-        window.showScreen('menu');
-    } catch(e) {
-        console.error(e);
-        alert("Eroare la salvare: " + e.message);
-    }
-};
-
 // --- SKIN CONSTANTS ---
 // This is your default skin (from your CSS)
 const SKIN_NORMAL = "https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Platformer%20skins%2F2f6dea4f-11ab-4b2c-a850-0bd66768cc90.png?alt=media&token=46c9b32a-e21c-4caf-9114-976fe71834cc";
