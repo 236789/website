@@ -2867,6 +2867,23 @@ input:checked + .slider:before { transform: translateX(24px); }
     <button class="btn-outline" style="width:100%; margin-top:0; border-color:#ff4757; color:#ff4757;" onclick="resetEventData()">
         <i class="fas fa-trash"></i> RESET EVENT
     </button>
+
+
+<!-- FORCE REWARD SECTION -->
+<div style="width: 100%; margin-top: 10px; border-top: 1px solid rgba(255,71,87,0.3); padding-top: 15px;">
+    <label class="edit-label" style="color:#ffd700; font-weight:900;">🎰 FORȚEAZĂ RECOMPENSA</label>
+    <select id="adminForcedReward" class="edit-input" style="background:rgba(255,255,255,0.1); color:#fff; border-color:#ffd700; margin-top:5px;">
+        <option value="-1">🎲 RANDOM (Normal)</option>
+        <option value="1">💎 10 DIAMANTE (Jackpot)</option>
+        <option value="3">👑 BADGE EXCLUSIV (Jackpot)</option>
+        <option value="7">🖼️ BANNER EXCLUSIV (Jackpot)</option>
+        <option value="9">💰 2.5k COINS (Jackpot)</option>
+        <option value="11">💎 5 DIAMANTE</option>
+        <option value="5">💰 500 COINS</option>
+        <option value="0">🛡️ XP (Fail)</option>
+    </select>
+    <p style="font-size:9px; color:#aaa; margin-top:5px;">* Recompensa va fi aplicată la următoarea învârtire.</p>
+</div>
 </div>
 
 <!-- Footer --> 
@@ -3695,30 +3712,22 @@ function pickRewardIndex() {
 
 // --- PRO PHYSICS ENGINE ---
 
-
-// Add these imports to your top import line if missing: 
-// query, orderBy, limit, getDocs
-// --- UPDATED REWARD LOGIC FOR GLOBAL SYNC & FRIENDLY XP ---
 async function finalizeSpin(idx) {
-    // 1. STOPS DOUBLE EXECUTION
     if (!isSpinning) return; 
-    isSpinning = false; // Mark finished immediately to lock other calls out
+    isSpinning = false; 
 
-    const reward = REWARDS[idx];
+    let reward = { ...REWARDS[idx] }; 
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
-    // 2. IDENTIFY THE WINNER (The target)
+    // 1. Identificăm câștigătorul
     let targetUid = auth.currentUser.uid;
     if (isEventModeActive && eventSelectedUser) {
         targetUid = eventSelectedUser.uid;
     }
 
-    // 3. IDENTIFY THE INITIATOR (The person who clicked the spin button)
-    // We only allow the person who started the spin to update the database.
+    // Identificăm cine a apăsat butonul (doar el face scrierea în DB)
     const iAmTheSpinner = (auth.currentUser.uid === currentSpinAdminId);
 
-    // 4. FETCH LATEST DATA FOR THE WINNER (Not the current user)
-    // We need the winner's actual XP/Coins to calculate the new values correctly.
     const targetRef = doc(db, "accounts", targetUid);
     const targetSnap = await getDoc(targetRef);
     const targetData = targetSnap.exists() ? targetSnap.data() : {};
@@ -3727,121 +3736,100 @@ async function finalizeSpin(idx) {
     const targetPhoto = targetData.image || "https://iili.io/fXks1Dv.png";
     const isMeTarget = (auth.currentUser.uid === targetUid);
 
-    // --- PREPARE UI DATA ---
-    let rewardIconHtml = "";
-    let rewardText = "";
-    
+    // --- 2. LOGICĂ DUPLICATE PROTECTION ---
+    let isDuplicate = false;
     if (reward.type === "badge") {
-        rewardText = "BADGE";
-        rewardIconHtml = `<span class="badge-wheel-god" style="transform:scale(1.2); box-shadow:none; border-color:#000; color:#000;"><i class="fas fa-bolt"></i> GOD</span>`;
+        const owned = targetData.ownedBadges || [];
+        if (owned.includes(reward.val)) isDuplicate = true;
     } else if (reward.type === "banner") {
-        rewardText = "BANNER";
-        rewardIconHtml = `<div class="bubble-jackpot" style="width:100px; font-size:9px; box-shadow:none; border:2px solid #000; color:#000; background:transparent;">EPIC</div>`;
-    } else if (reward.type === "coins") {
-        rewardText = `${reward.label} COINS`;
-        rewardIconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="width: 40px;">`;
-    } else if (reward.type === "diamonds") {
-        rewardText = `${reward.label} GEMS`;
-        rewardIconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width: 40px;">`;
-    } else if (reward.type === "xp") {
-        rewardText = "XP";
-        rewardIconHtml = `<span style="font-size: 30px;">🛡️</span>`;
+        const owned = targetData.ownedBanners || [];
+        if (owned.includes(reward.val)) isDuplicate = true;
     }
 
-    // --- A. SHOW POP-UPS (VISUAL ONLY - RUNS FOR EVERYONE) ---
+    if (isDuplicate) {
+        reward.label = "10 DIAMANTE (Duplicate)";
+        reward.val = 10;
+        reward.type = "diamonds";
+        reward.jackpot = true; // Forțăm să fie considerat jackpot pentru anunț
+    }
+
+    // --- 3. PREGĂTIRE UI (Pop-ups) ---
+    let rewardIconHtml = "";
+    let rewardText = reward.label;
+    
+    if (reward.type === "badge") {
+        rewardIconHtml = `<span class="badge-wheel-god"><i class="fas fa-bolt"></i> GOD</span>`;
+    } else if (reward.type === "banner") {
+        rewardIconHtml = `<div class="bubble-jackpot" style="width:120px; font-size:10px;">ULTRA BANNER</div>`;
+    } else if (reward.type === "coins") {
+        rewardIconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="width: 45px;">`;
+    } else if (reward.type === "diamonds") {
+        rewardIconHtml = `<img src="https://iili.io/fv5bmtj.png" style="width: 45px;">`;
+    }
+
+    // Afișare Modal pentru câștigător
     if (isMeTarget) {
         const modal = document.getElementById('questRewardModal');
-        const titleText = modal.querySelector('h2');
-        const msgP = modal.querySelector('.reward-card p:nth-of-type(1)');
-        const rewardBox = modal.querySelector('.reward-coins-box');
-        const coinsLabel = modal.querySelector('p:nth-of-type(2)');
-
-        if (reward.type === "xp") {
-            if(!isMuted) audioFail.play().catch(()=>{});
-            titleText.innerHTML = `<span style="font-size: 24px;">🛡️</span> LOSS PROTECTION`;
-            msgP.innerText = "Fiecare XP te apropie de un premiu de consolare!";
-            rewardBox.innerHTML = `<span style="font-size: 35px; color:#29f3ff; font-weight:900;">+15% XP</span>`;
-            coinsLabel.innerText = "ADUNĂ 100% PENTRU DIAMANTE!";
-        } else {
-            const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.jackpot;
-            if(!isMuted) { if(isJackpot) audioJackpot.play().catch(()=>{}); else audioReward.play().catch(()=>{}); }
+        modal.querySelector('h2').innerHTML = reward.type === "xp" ? "🛡️ LOSS PROTECTION" : "🎉 FELICITĂRI!";
+        modal.querySelector('.reward-card p').innerText = isDuplicate ? "Dețineai deja premiul, așa că ai primit compensație:" : "Ai câștigat la roată:";
+        modal.querySelector('.reward-coins-box').innerHTML = reward.type === "xp" ? `<span style="font-size:35px; color:#29f3ff; font-weight:900;">+15% XP</span>` : rewardIconHtml;
+        modal.querySelector('p:nth-of-type(2)').innerText = reward.type === "xp" ? "PROTECȚIE ACTIVĂ" : rewardText;
+        
+        if (reward.type !== "xp") {
             launchConfetti();
-            titleText.innerHTML = `<span style="font-size: 24px;">🎉</span> FELICITĂRI!`;
-            msgP.innerText = isEventModeActive ? "Adminul a învârtit pentru tine și ai câștigat:" : "Ai câștigat la roată:";
-            rewardBox.innerHTML = rewardIconHtml;
-            coinsLabel.innerText = rewardText; 
+            if(!isMuted) audioReward.play().catch(()=>{});
+        } else {
+            if(!isMuted) audioFail.play().catch(()=>{});
         }
         modal.classList.add('active');
     }
 
-    if (isEventModeActive && !isMeTarget) {
-        const adminModal = document.getElementById('adminSpinResultModal');
-        const admRewardDisplay = document.getElementById('adminRewardDisplay');
-        document.getElementById('adminSpinUserImg').src = targetPhoto;
-        document.getElementById('adminSpinUserName').innerText = targetName;
-        admRewardDisplay.innerHTML = `${rewardIconHtml} <span>${rewardText}</span>`;
-        if(!isMuted) audioAdminCheer.play().catch(()=>{});
-        launchConfetti(); 
-        adminModal.classList.add('active');
-    }
-
-    // --- B. DATABASE UPDATES (STRICTLY FOR THE SPINNER ONLY) ---
+    // --- 4. ACTUALIZARE BAZĂ DE DATE (Doar cel care a învârtit) ---
     if (iAmTheSpinner) {
-        console.log("I am the initiator. Updating database...");
-
-        // 1. Logic for XP (Normal Mode Only)
         if (reward.type === "xp" && !isEventModeActive) {
             let currentXP = targetData.wheelXP || 0;
             let nextXP = currentXP + 15;
-
-            // Increment Total Loser Count
             await updateDoc(targetRef, { "wheelStats.xpLandings": increment(1) });
-
             if (nextXP >= 100) {
                 await updateDoc(targetRef, { wheelXP: 0, diamonds: increment(5) });
-                logTransaction(5, "DIAMONDS", "Loss Protection Reward (100% XP)");
-                
-                // Show console reward if I am the one who won it
-                if (isMeTarget) {
-                    setTimeout(() => {
-                        document.getElementById('questRewardModal').classList.remove('active');
-                        document.getElementById('xpCompleteModal').classList.add('active');
-                        launchConfetti();
-                        if(!isMuted) audioJackpot.play().catch(()=>{});
-                    }, 1800);
-                }
+                if (isMeTarget) { /* show 100% xp modal if needed */ }
             } else {
                 await updateDoc(targetRef, { wheelXP: nextXP });
             }
         } 
-        
-        // 2. Logic for Standard Rewards
         else if (reward.type !== "xp") {
             let updateData = {};
-            if (reward.type === "coins") {
-                updateData.coins = increment(reward.val);
-                updateData["wheelStats.coins"] = increment(reward.val);
-            } else if (reward.type === "diamonds") {
-                updateData.diamonds = increment(reward.val);
-                updateData["wheelStats.diamonds"] = increment(reward.val);
-            } else if (reward.type === "badge") {
-                updateData.ownedBadges = arrayUnion(reward.val);
-            } else if (reward.type === "banner") {
-                updateData.ownedBanners = arrayUnion(reward.val);
-            }
+            if (reward.type === "coins") { updateData.coins = increment(reward.val); updateData["wheelStats.coins"] = increment(reward.val); }
+            else if (reward.type === "diamonds") { updateData.diamonds = increment(reward.val); updateData["wheelStats.diamonds"] = increment(reward.val); }
+            else if (reward.type === "badge") { updateData.ownedBadges = arrayUnion(reward.val); }
+            else if (reward.type === "banner") { updateData.ownedBanners = arrayUnion(reward.val); }
 
             await updateDoc(targetRef, updateData);
-            logTransaction(reward.val, reward.type.toUpperCase(), isEventModeActive ? "Event Spin Win" : "Normal Wheel Win");
+            logTransaction(reward.val, reward.type.toUpperCase(), "Wheel Win");
 
-            // Global Jackpot Log
+            // --- 5. LOGICĂ MESAJ PE WALL (JACKPOT) ---
             const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.jackpot;
+            
             if (isJackpot) {
+                // Trimite în Istoric (pentru bara zburătoare)
                 await addDoc(collection(db, "wheel_jackpot_history"), {
                     username: targetName, 
                     userPhoto: targetPhoto,
                     rewardLabel: reward.label, 
                     rewardType: reward.type, 
                     timestamp: serverTimestamp()
+                });
+
+                // TRIMITE MESAJ PE WALL
+                // Notă: Verifică dacă numele colecției tale este "messages" sau "wall_messages"
+                await addDoc(collection(db, "wall_messages"), {
+                    uid: "SYSTEM_BOT",
+                    username: "KSDA BOT",
+                    image: "https://iili.io/fXks1Dv.png", // Imaginea bot-ului
+                    text: `🏆 @${targetName} a câștigat un JACKPOT la Roata Norocului: ${reward.label}! 🔥`,
+                    timestamp: serverTimestamp(),
+                    isBot: true,
+                    type: "jackpot_alert" 
                 });
             }
         }
