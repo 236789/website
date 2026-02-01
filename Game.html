@@ -3640,12 +3640,16 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
     };
 
 
-
 onAuthStateChanged(auth, user => {
+    // Referințe elemente joc
+    const loginWall = document.getElementById('game-login-wall');
+    const menuOverlay = document.getElementById('game-menu-overlay');
+    const adminBtn = document.getElementById('admin-creator-btn');
+
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
 
-        // 1. UI Updates for Logged In User
+        // 1. UI Updates for Logged In User (Site Header)
         headerLoginText.innerText = "ACCOUNT";
         headerUserImg.src = user.photoURL;
         headerUserImg.style.display = "block";
@@ -3654,7 +3658,15 @@ onAuthStateChanged(auth, user => {
             mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
         }
 
+        // --- LOGICA JOC: ACCES ---
+        // Ascundem peretele de login și afișăm meniul principal
+        if (loginWall) loginWall.style.display = 'none';
+        if (menuOverlay) menuOverlay.style.display = 'flex';
 
+        // Verificăm dacă ești ADMIN pentru a arăta butonul galben
+        if (user.email === 'nicaemmanuel433qe@gmail.com') {
+            if (adminBtn) adminBtn.style.display = 'block';
+        }
 
         // 2. Listen for Global Metadata (Notifications)
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
@@ -3675,30 +3687,23 @@ onAuthStateChanged(auth, user => {
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // Check if all 6 quests are done and not already awarded for this block
                 if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
-                        if (!isAwardingInProgress) {
-                            isAwardingInProgress = true;
-
+                        if (!window.isAwardingInProgress) {
+                            window.isAwardingInProgress = true;
                             const oldStr = data.streak || 0;
-                            
-                            // Update Firebase: Give +1 Streak and +1 Diamond
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
-
-                            // Show the FIRE Modal
                             const rewardModal = document.getElementById('streakRewardModal');
                             if (rewardModal) {
                                 document.getElementById('streakOld').innerText = oldStr;
                                 document.getElementById('streakNew').innerText = oldStr + 1;
                                 rewardModal.classList.add('active');
                             }
-                            
-                            setTimeout(() => { isAwardingInProgress = false; }, 3000);
+                            setTimeout(() => { window.isAwardingInProgress = false; }, 3000);
                         }
                     }
                 }
@@ -3735,11 +3740,8 @@ onAuthStateChanged(auth, user => {
                 if(popBadgeBox) {
                     let staffHtml = "";
                     const email = data.email || "";
-                    
                     if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
                     else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
                     
                     let cosmeticHtml = "";
                     if(data.equippedBadge) {
@@ -3750,8 +3752,6 @@ onAuthStateChanged(auth, user => {
 
                 // --- F. DUAL CURRENCY & STREAK UI ---
                 document.getElementById('popUserEmail').innerText = data.email;
-                
-                // Use formatCurrency (e.g., 1000 -> 1k)
                 document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                 const diamondEl = document.getElementById('popUserDiamonds');
                 if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
@@ -3762,25 +3762,21 @@ onAuthStateChanged(auth, user => {
                 // --- G. NOTIFICATION BADGE LOGIC ---
                 const userVazute = data.lastSeenNewsCount || 0;
                 const noutatiNoi = totalGlobal - userVazute;
-                const heroBadge = document.getElementById('heroNotifBadge');
                 const headerBadge = document.getElementById('headerNotifBadge');
-
-                [heroBadge, headerBadge].forEach(badge => {
-                    if (badge) {
-                        if (noutatiNoi > 0) {
-                            badge.innerText = `+${noutatiNoi}`;
-                            badge.style.display = 'flex';
-                        } else {
-                            badge.style.display = 'none';
-                        }
+                if (headerBadge) {
+                    if (noutatiNoi > 0) {
+                        headerBadge.innerText = `+${noutatiNoi}`;
+                        headerBadge.style.display = 'flex';
+                    } else {
+                        headerBadge.style.display = 'none';
                     }
-                });
+                }
             });
         });
 
-        updateOnlineStatus(); // Start tracking online presence
+        updateOnlineStatus(); 
     } else {
-        // LOGGED OUT STATE
+        // --- LOGGED OUT STATE ---
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
         
@@ -3788,9 +3784,48 @@ onAuthStateChanged(auth, user => {
             mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
 
-
+        // Arătăm peretele de login și ascundem restul în joc
+        if (loginWall) loginWall.style.display = 'flex';
+        if (menuOverlay) menuOverlay.style.display = 'none';
+        if (adminBtn) adminBtn.style.display = 'none';
+        
+        // Oprim orice instanță de joc activă
+        gameStarted = false;
     } 
 });
+
+
+window.showScreen = (screen) => {
+    // Lista cu toate ecranele posibile
+    const screens = [
+        'game-login-wall', 
+        'game-menu-overlay', 
+        'level-selector-overlay', 
+        'game-inner-wrapper',
+        'creator-hud'
+    ];
+
+    // Ascundem tot
+    screens.forEach(s => {
+        const el = document.getElementById(s);
+        if(el) el.style.display = 'none';
+    });
+
+    // Afișăm doar ce avem nevoie
+    if (screen === 'menu') {
+        document.getElementById('game-menu-overlay').style.display = 'flex';
+    } else if (screen === 'selector') {
+        document.getElementById('level-selector-overlay').style.display = 'flex';
+        fetchLevelsFromFirebase(); // Încarcă nivelele din baza de date
+    } else if (screen === 'game') {
+        document.getElementById('game-inner-wrapper').style.display = 'block';
+        gameStarted = true;
+    } else if (screen === 'creator') {
+        document.getElementById('game-inner-wrapper').style.display = 'block';
+        document.getElementById('creator-hud').style.display = 'block';
+        startCreatorMode();
+    }
+};
 
 
 function formatCurrency(num) {
