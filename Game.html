@@ -2616,28 +2616,27 @@ function initLevel(levelData = null) {
 }
 
 function gameLoop() {
-    // If not playing, stop
     if (!window.gameStarted) { 
         requestAnimationFrame(gameLoop); 
         return; 
     }
 
-    // --- EDITOR MODE (FLYING) ---
+    // --- CREATOR MODE (FLYING) ---
     if (window.isCreatorMode) {
         vx = 0; 
         vy = 0;
         
-        // Speed = 10 for fast movement
+        // Flight Controls (Speed 10)
         if (inputs.left) x -= 10;
         if (inputs.right) x += 10;
-        if (inputs.jump) y += 10; // Up (W / Space)
-        if (inputs.down) y -= 10; // Down (S / Down Arrow)
+        if (inputs.jump) y += 10; // W / Up Arrow
+        if (inputs.down) y -= 10; // S / Down Arrow
 
-        // Prevent going into the void
+        // Prevent flying into the void
         if (y < 0) y = 0; 
 
     } else {
-        // --- NORMAL GAME (GRAVITY) ---
+        // --- NORMAL GAME MODE (GRAVITY) ---
         if (!isDead && !hasWon) {
             vy += gravity;
             y -= vy; 
@@ -2645,7 +2644,9 @@ function gameLoop() {
             if (inputs.right) vx += speed;
             vx *= (onGround ? frictionGround : frictionAir);
             x += vx;
-            // ... (keep your existing collision logic here) ...
+
+            // Collision Code...
+            onGround = false;
             rocks.forEach(rock => {
                 if (x + 30 > rock.currentLeft && x < rock.currentLeft + rock.width) {
                     if (vy > 0 && y <= rock.bottom + rock.height && y >= rock.bottom + rock.height - 10) {
@@ -2659,22 +2660,23 @@ function gameLoop() {
         }
     }
 
-    // Camera Follows Player
-    const rig = document.getElementById('camera-rig');
-    if (rig) {
-        // Center camera
-        let camX = -x + 400; 
-        rig.style.transform = `translateX(${camX}px)`;
+    // Camera Follow Logic
+    const cameraRig = document.getElementById('camera-rig');
+    const vp = document.getElementById('game-viewport');
+    
+    if (cameraRig && vp) {
+        let cameraX = -x + (vp.offsetWidth / 2) - 20;
+        cameraRig.style.transform = `translateX(${cameraX}px)`;
     }
 
-    // Update Player Div
-    const p = document.getElementById('player');
-    if (p) {
-        p.style.left = x + 'px';
-        p.style.bottom = y + 'px';
+    // Update Player Position
+    const playerEl = document.getElementById('player');
+    if (playerEl) {
+        playerEl.style.left = x + 'px';
+        playerEl.style.bottom = y + 'px';
     }
 
-    // Death Check (Only if NOT in editor)
+    // Only die from acid if NOT in creator mode
     if (!window.isCreatorMode && y < acidHeight && !isDead) {
         takeDamage();
     }
@@ -2724,61 +2726,63 @@ window.setTool = (tool, el) => {
     }
 };
 // --- UPDATED PLACEMENT LOGIC ---
+// --- IMPROVED BLOCK PLACEMENT LOGIC ---
 const viewport = document.getElementById('game-viewport');
+
 viewport.addEventListener('mousedown', (e) => {
-    // 1. Check if we are actually in creator mode
+    // 1. Only run in Creator Mode
     if (!window.isCreatorMode) return;
     
-    // 2. Prevent placing blocks when clicking the sidebar
+    // 2. Ignore clicks on the sidebar menu
     if (e.target.closest('#editor-sidebar')) return;
 
     const rect = viewport.getBoundingClientRect();
-    const cameraRig = document.getElementById('camera-rig');
     
-    // --- BETTER CAMERA CALCULATION ---
-    // We calculate X based on the player position variable 'x' directly
-    // because getting it from CSS transform can be laggy or return "none"
+    // 3. Calculate Camera Position using Math (Not CSS)
+    // This matches the calculation inside gameLoop
     const vpWidth = viewport.offsetWidth;
     const currentCamX = -x + (vpWidth / 2) - 20; 
 
-    // Calculate Mouse in World Space
+    // 4. Calculate Mouse in World Space
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     
-    // Undo Camera Offset to get World Coordinate
+    // 5. Convert to Game Grid (Snap to 20px)
     const worldX = Math.round((mouseX - currentCamX) / 20) * 20;
     const worldY = Math.round((500 - mouseY) / 20) * 20;
 
-    if (e.button === 0) { // LEFT CLICK: PLACE
+    // Left Click: Place Block
+    if (e.button === 0) { 
         let w = 120, h = 40;
-        let type = window.selectedTool;
+        let type = window.selectedTool || 'rock'; // Default to rock if tool is missing
         let behavior = 'static';
 
         if (type === 'key') { 
             w = 40; h = 60; 
-            // Only allow one key: delete any existing key first
+            // Remove old keys so we only have one
             window.editorObjects = window.editorObjects.filter(o => o.type !== 'key');
         }
         if (type === 'falling') behavior = 'falling';
         if (type === 'acid') behavior = 'static'; 
 
-        // Fix: Ensure we don't have w/h/type issues
+        // Add the new object
         window.editorObjects.push({ 
             x: worldX, y: worldY, w: w, h: h, 
             type: type, 
             behavior: behavior
         });
         
-    } else if (e.button === 2) { // RIGHT CLICK: DELETE
+    } 
+    // Right Click: Delete Block
+    else if (e.button === 2) { 
         window.editorObjects = window.editorObjects.filter(obj => 
             !(worldX >= obj.x && worldX <= obj.x + obj.w && 
               worldY >= obj.y && worldY <= obj.y + obj.h)
         );
     }
     
-    renderEditor(); 
+    renderEditor(); // Update the screen
 });
-
 // Disable the right-click menu so we can use it to delete
 viewport.oncontextmenu = (e) => e.preventDefault();
 
