@@ -1405,6 +1405,79 @@
     transition: 0.3s;
 }
 .copy-btn-v2:hover { transform: scale(1.05); box-shadow: 0 0 30px #00ff88; }
+
+
+/* --- BUFF UI STYLES --- */
+#buffContainer {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: auto; /* Allow hovering */
+}
+
+.buff-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideInLeft 0.3s ease;
+}
+
+.buff-icon-wrapper {
+    width: 40px;
+    height: 40px;
+    background: rgba(0,0,0,0.6);
+    border: 2px solid #fff;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: help;
+    position: relative;
+}
+
+.buff-img { width: 30px; height: 30px; object-fit: contain; }
+
+.buff-timer-bar {
+    width: 100px;
+    height: 6px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.buff-timer-fill {
+    height: 100%;
+    background: #00ff88;
+    width: 100%;
+    transition: width 0.1s linear;
+}
+
+/* Tooltip Description */
+.buff-desc-box {
+    position: absolute;
+    left: 50px;
+    top: 0;
+    background: rgba(13, 25, 41, 0.95);
+    border: 1px solid var(--primary);
+    padding: 10px;
+    border-radius: 8px;
+    width: 200px;
+    display: none; /* Hidden by default */
+    color: #fff;
+    font-size: 11px;
+    font-family: 'Poppins';
+    z-index: 100;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+}
+
+.buff-icon-wrapper:hover .buff-desc-box { display: block; }
+
+@keyframes slideInLeft { from { opacity:0; transform: translateX(-20px); } to { opacity:1; transform: translateX(0); } }
   </style>
 </head>
 <body>
@@ -1705,6 +1778,9 @@
 
     <!-- 2. GAME CONTAINER (Hidden by default) -->
     <div id="gameContainer" style="display: none; position: relative; width: 100%; max-width: 400px; margin: 0 auto; border-radius: 20px; overflow: hidden; border: 2px solid var(--primary); box-shadow: 0 0 30px rgba(41, 243, 255, 0.2);">
+
+<!-- Put this INSIDE #gameContainer, above the canvas -->
+<div id="buffContainer"></div>
         
         <!-- Mobile HUD Arrows -->
         <div id="mobileHUD" style="position: absolute; bottom: 30px; width: 100%; display: none; justify-content: space-between; padding: 0 30px; z-index: 20; pointer-events: none;">
@@ -2743,6 +2819,13 @@ const mobileHUD = document.getElementById('mobileHUD');
 // --- ASSETS ---
 const assets = {
 
+
+   // NEW BUFFS
+    buff_hp: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FHP%20BUFF.png?alt=media&token=04a00456-3e52-4343-84f3-d0087cb89eac',
+    buff_magnet: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FMagnet%20Buff%20.png?alt=media&token=bd764b55-f191-4970-8496-309e5ac799f2',
+    buff_shield: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FShield%20buff.png?alt=media&token=c1da2bd5-4e24-43b1-b52a-896faf7843ae',
+    buff_damage: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FX2%20DAMAGE%20BUFF.png?alt=media&token=5ac0902b-254c-4fe0-882a-f1c284c8302c',
+
     coin: 'https://iili.io/fhc1SKQ.png',
 
     diamond: 'https://iili.io/fv5bmtj.png',
@@ -2810,14 +2893,95 @@ class Player {
     constructor() {
         this.hp = 5.0;
         this.invincibility = 0;
+        this.activeBuffs = []; // Array to store { type, timer, maxTimer }
         this.reset();
     }
+
     reset() {
         this.x = canvas.width / 2 - PLAYER_SIZE / 2;
         this.y = canvas.height - 150;
         this.vx = 0; this.vy = 0;
+        this.activeBuffs = [];
+        this.updateBuffUI();
     }
-update() {
+
+    // Apply a buff
+    activateBuff(type) {
+        if (type === 'BUFF_HP') {
+            this.hp = Math.min(5, this.hp + 3); // Instant Heal +3
+            window.showToast("HP Recovered! (+3)");
+            return;
+        }
+
+        let duration = 0;
+        let desc = "";
+        
+        if (type === 'BUFF_MAGNET') { duration = 1200; desc = "Attracts items"; } // 20s * 60fps
+        else if (type === 'BUFF_SHIELD') { duration = 1800; desc = "Invincible"; } // 30s
+        else if (type === 'BUFF_DAMAGE') { duration = 1800; desc = "x2 Damage"; } // 30s
+
+        // Check if already active, if so, refresh timer
+        const existing = this.activeBuffs.find(b => b.type === type);
+        if (existing) {
+            existing.timer = duration;
+        } else {
+            this.activeBuffs.push({ type: type, timer: duration, maxTimer: duration, desc: desc });
+        }
+        this.updateBuffUI();
+    }
+
+    hasBuff(type) {
+        return this.activeBuffs.some(b => b.type === type);
+    }
+
+    update() {
+        // --- BUFF TIMERS ---
+        if (this.activeBuffs.length > 0) {
+            this.activeBuffs.forEach(b => b.timer--);
+            this.activeBuffs = this.activeBuffs.filter(b => b.timer > 0);
+            this.updateBuffUI(); // Update UI bars
+        }
+
+        // --- MAGNET LOGIC ---
+        if (this.hasBuff('BUFF_MAGNET')) {
+            platforms.forEach(p => {
+                if (p.item) {
+                    const centerPx = this.x + PLAYER_SIZE/2;
+                    const centerPy = this.y + PLAYER_SIZE/2;
+                    const itemX = p.x + p.width/2;
+                    const itemY = p.y - 30; // approx item height
+                    
+                    const dist = Math.hypot(centerPx - itemX, centerPy - itemY);
+                    
+                    if (dist < 250) { // Range
+                        // Move item towards player
+                        const angle = Math.atan2(centerPy - itemY, centerPx - itemX);
+                        const speed = 15; // Fast pull
+                        
+                        // We need to visually move the item relative to the platform
+                        // This is tricky because items are usually static relative to platform
+                        // For simplicity: We auto-collect if range < 250
+                        // A true physics pull requires separating items from platforms array, 
+                        // but let's do "Instant Magnet" for smoother gameplay or a simpler pull
+                        
+                        // Simple Magnet: If within range, treat as collected
+                         if (dist < 50) {
+                            collectItem(p.item);
+                            p.item = null;
+                         } else {
+                            // Visual Pull Hack: Adjust platform item offset? 
+                            // Easier: Just Auto-Collect instantly from a distance for this game style
+                            // Or imply "Magnetic field"
+                            
+                            // Let's implement the "Pull" by modifying the collecting logic in gameLoop 
+                            // For now, let's just extend the collection range in the collision logic below
+                        }
+                    }
+                }
+            });
+        }
+
+        // ... Standard Physics ...
         if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8;
         if (keys['ArrowRight'] || keys['d']) this.vx += 0.8;
         this.vx *= 0.85; this.x += this.vx;
@@ -2833,6 +2997,7 @@ update() {
         // Collision logic
         if (this.vy > 0) {
             platforms.forEach((p, i) => {
+                // ... Platform Hit Logic ...
                 if (this.x + PLAYER_SIZE * 0.7 > p.x && 
                     this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
                     this.y + PLAYER_SIZE > p.y && 
@@ -2842,10 +3007,11 @@ update() {
                     let jumpPower = JUMP_FORCE;
                     if (p.type === 'BOOST') jumpPower *= 1.8;
                     
-                    // ITEM COLLECTION
+                    // ITEM COLLECTION (Standard)
                     if (p.item) {
-                        collectItem(p.item);
-                        p.item = null; // Remove item after collection
+                        if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
+                        else collectItem(p.item);
+                        p.item = null;
                     }
 
                     if (p.type === 'HEAL' && !p.used) {
@@ -2862,8 +3028,9 @@ update() {
                         }
                     }
 
+                    // SPIKE DAMAGE (Check Shield)
                     if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
-                        this.takeDamage();
+                        if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
                     }
 
                     this.vy = jumpPower;
@@ -2871,27 +3038,36 @@ update() {
             });
         }
 
-        // Enemy Collision (Updated for HP)
+        // Enemy Collision
         platforms.forEach(p => {
             if(p.enemy && !p.enemy.dead) {
                 const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
+                
+                // MAGNET LOGIC (Applied here for items on platforms near player)
+                if (this.hasBuff('BUFF_MAGNET') && p.item) {
+                     const dist = Math.hypot(this.x - p.x, this.y - p.y);
+                     if (dist < 200) { // Magnet Range
+                        if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
+                        else collectItem(p.item);
+                        p.item = null; // Sucked in!
+                     }
+                }
+
                 if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
                     
-                    // Hit Enemy from top
                     if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
-                        p.enemy.hp--; // Reduce HP
-                        this.vy = JUMP_FORCE; // Bounce
+                        // DAMAGE LOGIC
+                        let dmg = 1;
+                        if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; // X2 Damage
+
+                        p.enemy.hp -= dmg; 
+                        this.vy = JUMP_FORCE; 
                         
-                        if (p.enemy.hp <= 0) {
-                            p.enemy.dead = true;
-                        } else {
-                            // Optional: Visual feedback for hit
-                            score += 50; 
-                        }
+                        if (p.enemy.hp <= 0) p.enemy.dead = true;
                     } 
-                    // Hit Enemy from side/bottom
                     else if(this.invincibility <= 0) { 
-                        this.takeDamage(); 
+                        // SHIELD LOGIC
+                        if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage(); 
                     }
                 }
             }
@@ -2901,23 +3077,22 @@ update() {
         fireballs.forEach((f, i) => {
             const dist = Math.hypot((this.x + PLAYER_SIZE/2) - f.x, (this.y + PLAYER_SIZE/2) - f.y);
             if(dist < 20 && this.invincibility <= 0) {
-                this.takeDamage();
+                if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
                 fireballs.splice(i, 1);
             }
         });
 
-        // Camera Logic
-        if (this.y < canvas.height / 2.5) {
+        // ... Camera & Fallback logic (Keep existing) ...
+         if (this.y < canvas.height / 2.5) {
             let d = canvas.height / 2.5 - this.y;
             this.y = canvas.height / 2.5;
             score += Math.floor(d);
             platforms.forEach(p => { p.y += d; if(p.startY) p.startY += d; });
             fireballs.forEach(f => f.y += d);
         }
-
-        // FALL BACK LOGIC
         if (this.y > canvas.height) {
-            if (score > 0) {
+            // ... fallback logic ...
+             if (score > 0) {
                 isFallingBack = true;
                 let fallSpeed = 15;
                 score -= fallSpeed;
@@ -2930,17 +3105,59 @@ update() {
         }
     }
 
-    takeDamage() {
-        // Damage-ul creste cu inaltimea
-        const diffMult = Math.min(3, 1 + score / 8000);
-        this.hp -= (0.5 * diffMult);
-        this.invincibility = 60;
-        if(this.hp <= 0) { this.hp = 0; gameOver(); }
-    }
-
     draw() {
+        // --- SHIELD VISUAL ---
+        if (this.hasBuff('BUFF_SHIELD')) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(this.x + PLAYER_SIZE/2, this.y + PLAYER_SIZE/2, 35, 0, Math.PI * 2);
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00ffff';
+            ctx.stroke();
+            
+            // Subtle fill
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
+            ctx.fill();
+            ctx.restore();
+        }
+
         if (this.invincibility % 6 < 3) ctx.drawImage(imgs.player, this.x, this.y, PLAYER_SIZE, PLAYER_SIZE);
         this.drawHP();
+    }
+    
+    // UI Update Function
+    updateBuffUI() {
+        const container = document.getElementById('buffContainer');
+        container.innerHTML = ''; // Clear current
+
+        this.activeBuffs.forEach(buff => {
+            let imgUrl = '';
+            let label = '';
+            if (buff.type === 'BUFF_MAGNET') { imgUrl = assets.buff_magnet; label = "Magnet: Attract items (20s)"; }
+            if (buff.type === 'BUFF_SHIELD') { imgUrl = assets.buff_shield; label = "Shield: Invincibility (30s)"; }
+            if (buff.type === 'BUFF_DAMAGE') { imgUrl = assets.buff_damage; label = "X2 Damage: Double Hit (30s)"; }
+
+            // Calculate width %
+            const pct = (buff.timer / buff.maxTimer) * 100;
+
+            const div = document.createElement('div');
+            div.className = 'buff-item';
+            div.innerHTML = `
+                <div class="buff-icon-wrapper">
+                    <img src="${imgUrl}" class="buff-img">
+                    <div class="buff-desc-box">
+                        <strong>${label.split(':')[0]}</strong><br>
+                        ${label.split(':')[1]}
+                    </div>
+                </div>
+                <div class="buff-timer-bar">
+                    <div class="buff-timer-fill" style="width: ${pct}%"></div>
+                </div>
+            `;
+            container.appendChild(div);
+        });
     }
 
     drawHP() {
@@ -2953,6 +3170,14 @@ update() {
                 ctx.drawImage(imgs.hp, hx, hy, heartSize, heartSize); ctx.restore();
             }
         }
+    }
+    
+    // Helper needed for original code
+    takeDamage() {
+         const diffMult = Math.min(3, 1 + score / 8000);
+         this.hp -= (0.5 * diffMult);
+         this.invincibility = 60;
+         if(this.hp <= 0) { this.hp = 0; gameOver(); }
     }
 }
 
@@ -3029,18 +3254,25 @@ function createPlatform(y, forceNormal = false) {
         };
     }
 
-    // --- ITEM LOGIC (Coins/Diamonds) ---
-    // Only spawn items if there is NO enemy and it's not a Spike platform
+    // --- ITEM LOGIC (Buffs + Coins + Diamonds) ---
+    // Only spawn items if there is NO enemy and it's not a Spike/Boost platform
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST' && score > 200) {
         let rItem = Math.random();
         
-        // 1. DIAMOND (Very Rare: 1%)
-        if (rItem < 0.01) { 
+        // 1. BUFFS (2% Chance total - 0.5% per buff)
+        if (rItem < 0.02) {
+            const buffRoll = Math.random();
+            if (buffRoll < 0.25) item = 'BUFF_HP';
+            else if (buffRoll < 0.50) item = 'BUFF_MAGNET';
+            else if (buffRoll < 0.75) item = 'BUFF_SHIELD';
+            else item = 'BUFF_DAMAGE';
+        }
+        // 2. DIAMOND (1% Chance - Range 0.02 to 0.03)
+        else if (rItem < 0.03) { 
             item = 'DIAMOND'; 
         } 
-        // 2. COIN (Chance depends on difficulty)
-        // e.g., if coinChance is 0.20, range is 0.01 to 0.21
-        else if (rItem < (0.01 + coinChance)) { 
+        // 3. COIN (Chance depends on difficulty - Range 0.03 to 0.03+coinChance)
+        else if (rItem < (0.03 + coinChance)) { 
             item = 'COIN'; 
         }
     }
@@ -3171,11 +3403,37 @@ function gameLoop() {
         ctx.drawImage(asset, p.x, p.y, p.width, PLATFORM_HEIGHT);
 
         // --- DRAW ITEM (COIN/DIAMOND) ---
+// Inside gameLoop(), update the ITEM DRAW section:
+
+        // --- DRAW ITEM (COIN/DIAMOND/BUFF) ---
         if (p.item) {
-            let itemImg = p.item === 'COIN' ? imgs.coin : imgs.diamond;
-            // Float animation for item
+            let itemImg;
+            let size = 24;
+            
+            if (p.item === 'COIN') itemImg = imgs.coin;
+            else if (p.item === 'DIAMOND') itemImg = imgs.diamond;
+            else if (p.item === 'BUFF_HP') { itemImg = imgs.buff_hp; size = 30; }
+            else if (p.item === 'BUFF_MAGNET') { itemImg = imgs.buff_magnet; size = 30; }
+            else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 30; }
+            else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 30; }
+
+            // Float animation
             let floatY = Math.sin(Date.now() / 200) * 3;
-            ctx.drawImage(itemImg, p.x + p.width/2 - 12, p.y - 30 + floatY, 24, 24);
+            
+            // Check if Magnet is active for visual pull effect (Simulated)
+            let drawX = p.x + p.width/2 - size/2;
+            let drawY = p.y - 35 + floatY;
+            
+            if (player && player.hasBuff && player.hasBuff('BUFF_MAGNET')) {
+                // If close, make it look like it's moving to player
+                const dist = Math.hypot(player.x - drawX, player.y - drawY);
+                if (dist < 200) {
+                     drawX += (player.x - drawX) * 0.1;
+                     drawY += (player.y - drawY) * 0.1;
+                }
+            }
+            
+            ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
 
         // --- DRAW ENEMY & HP BAR ---
