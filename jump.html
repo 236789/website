@@ -3051,6 +3051,7 @@ const assets = {
     buff_shield: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FShield%20buff.png?alt=media&token=c1da2bd5-4e24-43b1-b52a-896faf7843ae',
     buff_damage: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FX2%20DAMAGE%20BUFF.png?alt=media&token=5ac0902b-254c-4fe0-882a-f1c284c8302c',
     buff_fire: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2Ffire%20Enemyes%20brun.png?alt=media&token=45164897-c14e-4919-a958-805fe5925c7e',
+    buff_armor: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2Fcrystal%20arrmor%2050%25%20less%20dmamge.png?alt=media&token=675dffe7-19a1-42ca-b45a-75b7df67ad8b',
 
     coin: 'https://iili.io/fhc1SKQ.png',
 
@@ -3189,6 +3190,13 @@ class Player {
             label = "X2 Damage: Double Hit"; 
             imgUrl = assets.buff_damage;
         }
+
+// Add this inside the if/else chain in activateBuff(type)
+else if (type === 'BUFF_ARMOR') {
+    duration = 1800; // 30 seconds (60fps * 30)
+    label = "Crystal Armor: -65% Damage taken";
+    imgUrl = assets.buff_armor;
+}
 
 // Add this inside the if/else chain in activateBuff(type)
 else if (type === 'BUFF_FIRE') {
@@ -3469,12 +3477,22 @@ div.innerHTML = `
         }
     }
     
-    takeDamage() {
-    screenShakeTimer = 15; // <--- ADD THIS LINE
-         const diffMult = Math.min(3, 1 + score / 8000);
-         this.hp -= (0.5 * diffMult);
-         this.invincibility = 60;
-         if(this.hp <= 0) { this.hp = 0; gameOver(); }
+takeDamage() {
+        screenShakeTimer = 15;
+        const diffMult = Math.min(3, 1 + score / 8000);
+        
+        // --- UPDATED DAMAGE LOGIC ---
+        let baseDmg = 0.5 * diffMult;
+        
+        if (this.hasBuff('BUFF_ARMOR')) {
+            baseDmg *= 0.35; // Reduce by 65% (take only 35% damage)
+        }
+        
+        this.hp -= baseDmg;
+        // ----------------------------
+
+        this.invincibility = 60;
+        if(this.hp <= 0) { this.hp = 0; gameOver(); }
     }
 }
 
@@ -3614,15 +3632,15 @@ function createPlatform(y, forceNormal = false) {
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random();
         
-        // 1. BUFF SPAWNING (Starts at 3000m)
-        // I increased this to 0.15 (15% chance) so it's not impossible to find
+// 1. BUFF SPAWNING (Inside createPlatform)
         if (score > 3000 && rItem < 0.15) { 
             const buffRoll = Math.random();
-            if (buffRoll < 0.20) item = 'BUFF_HP';
-            else if (buffRoll < 0.40) item = 'BUFF_MAGNET';
-            else if (buffRoll < 0.60) item = 'BUFF_SHIELD';
-            else if (buffRoll < 0.80) item = 'BUFF_DAMAGE';
-            else item = 'BUFF_FIRE'; 
+            if (buffRoll < 0.30) item = 'BUFF_FIRE'; 
+            else if (buffRoll < 0.45) item = 'BUFF_ARMOR'; // 15% of all buffs will be Armor
+            else if (buffRoll < 0.60) item = 'BUFF_HP';
+            else if (buffRoll < 0.75) item = 'BUFF_MAGNET';
+            else if (buffRoll < 0.90) item = 'BUFF_SHIELD';
+            else item = 'BUFF_DAMAGE';
         }
         // 2. DIAMOND (Starts at 1000m)
         else if (score > 1000 && rItem < 0.20) { 
@@ -3656,14 +3674,14 @@ async function collectItem(type) {
     if (type === 'COIN') {
 
         playSFX(sfx.coin); // <--- ADD THIS
-        const amount = Math.floor(Math.random() * (850 - 100 + 1)) + 100;      
+        const amount = Math.floor(Math.random() * (275 - 25 + 1)) + 25;      
   flyRewardAnim('coin');
         await updateDoc(userRef, { coins: increment(amount) });
         window.showToast(`+${amount} KSDA Coins!`); // Assuming you have a toast function, else alert/console
     } 
     else if (type === 'DIAMOND') {
         playSFX(sfx.diamond); // <--- ADD THIS
-        const amount = Math.floor(Math.random() * (5 - 1 + 1)) + 1;
+        const amount = Math.floor(Math.random() * (3 - 1 + 1)) + 1;
         flyRewardAnim('diamond');
         await updateDoc(userRef, { diamonds: increment(amount) });
         window.showToast(`+${amount} Diamonds!`);
@@ -3835,6 +3853,7 @@ if (p.item) {
             else if (p.item === 'DIAMOND') itemImg = imgs.diamond;
             else if (p.item === 'BUFF_HP') { itemImg = imgs.buff_hp; size = 32; }
             else if (p.item === 'BUFF_MAGNET') { itemImg = imgs.buff_magnet; size = 32; }
+            else if (p.item === 'BUFF_ARMOR') { itemImg = imgs.buff_armor; size = 32; } // ADD THIS LINE
             else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 32; }
             else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 32; }
             else if (p.item === 'BUFF_FIRE') { itemImg = imgs.buff_fire; size = 32; } // IMPORTANT LINE
