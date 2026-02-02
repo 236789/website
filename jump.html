@@ -1685,28 +1685,45 @@
 
 <!-- MAIN CONTENT AREA START -->
 <main class="blank-main-container">
-    <div class="trivia-wrapper">
-        <h1 class="trivia-title">KSDA JUMPER</h1>
-        <p class="trivia-desc">Urcă printre nori și ajungi în spațiu!</p>
-        
-        <div id="gameContainer" style="position: relative; width: 100%; max-width: 400px; margin: 0 auto; border-radius: 20px; overflow: hidden; border: 2px solid var(--primary); box-shadow: 0 0 30px rgba(41, 243, 255, 0.2);">
-            
-            <!-- Mobile HUD Arrows -->
-            <div id="mobileHUD" style="position: absolute; bottom: 30px; width: 100%; display: none; justify-content: space-between; padding: 0 30px; z-index: 20; pointer-events: none;">
-                <button id="leftBtn" style="pointer-events: auto; width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid var(--primary); color: var(--primary); font-size: 25px;"><i class="fas fa-chevron-left"></i></button>
-                <button id="rightBtn" style="pointer-events: auto; width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid var(--primary); color: var(--primary); font-size: 25px;"><i class="fas fa-chevron-right"></i></button>
-            </div>
+<!-- ADD THIS NEAR THE EXISTING flyingDiamond IMG -->
+<img src="https://iili.io/fhc1SKQ.png" id="flyingCoin" style="position: fixed; width: 55px; z-index: 40000; pointer-events: none; display: none;">
 
-            <!-- Overlay -->
-            <div id="gameOverlay" style="position: absolute; inset: 0; background: rgba(5,11,20,0.9); z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
-                <h2 id="overlayTitle" style="font-family: 'Orbitron'; color: #fff;">START MISIUNE</h2>
-                <p id="overlayScore" style="color: var(--primary); font-family: 'Orbitron'; font-weight: bold; margin: 15px 0;"></p>
-                <button id="startBtn" class="super-btn">JOACĂ</button>
-            </div>
+<!-- REPLACE THE EXISTING gameContainer DIV WITH THIS STRUCTURE -->
+<div class="trivia-wrapper" style="user-select: none;">
+    <h1 class="trivia-title">KSDA JUMPER</h1>
 
-            <canvas id="gameCanvas" width="400" height="600" style="display: block; width: 100%; height: auto; background: #000;"></canvas>
-        </div>
+    <!-- 1. LOGIN WALL (Hidden by default, shown via JS if not logged in) -->
+    <div id="gameLoginWall" class="login-wall-card" style="display: flex;">
+        <i class="fas fa-lock lock-icon"></i>
+        <h2 class="login-wall-title">ACCES RESTRICTIV</h2>
+        <p class="login-wall-desc">Trebuie să fii autentificat pentru a juca KSDA Jumper și a câștiga premii.</p>
+        <button class="google-btn-wall" onclick="document.getElementById('headerLoginBtn').click()">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18">
+            LOGIN CU GOOGLE
+        </button>
     </div>
+
+    <!-- 2. GAME CONTAINER (Hidden by default) -->
+    <div id="gameContainer" style="display: none; position: relative; width: 100%; max-width: 400px; margin: 0 auto; border-radius: 20px; overflow: hidden; border: 2px solid var(--primary); box-shadow: 0 0 30px rgba(41, 243, 255, 0.2);">
+        
+        <!-- Mobile HUD Arrows -->
+        <div id="mobileHUD" style="position: absolute; bottom: 30px; width: 100%; display: none; justify-content: space-between; padding: 0 30px; z-index: 20; pointer-events: none;">
+            <button id="leftBtn" style="pointer-events: auto; width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid var(--primary); color: var(--primary); font-size: 25px;"><i class="fas fa-chevron-left"></i></button>
+            <button id="rightBtn" style="pointer-events: auto; width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid var(--primary); color: var(--primary); font-size: 25px;"><i class="fas fa-chevron-right"></i></button>
+        </div>
+
+        <!-- Start / Game Over Overlay -->
+        <div id="gameOverlay" style="position: absolute; inset: 0; background: rgba(5,11,20,0.9); z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+            <h2 id="overlayTitle" style="font-family: 'Orbitron'; color: #fff;">START MISIUNE</h2>
+            <p id="overlayScore" style="color: var(--primary); font-family: 'Orbitron'; font-weight: bold; margin: 15px 0;"></p>
+            <button id="startBtn" class="super-btn">JOACĂ</button>
+        </div>
+
+        <canvas id="gameCanvas" width="400" height="600" style="display: block; width: 100%; height: auto; background: #000;"></canvas>
+    </div>
+</div>
+
+
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -2494,6 +2511,12 @@ onAuthStateChanged(auth, user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
 
+
+
+        // ADD THIS: UNLOCK GAME
+        document.getElementById('gameLoginWall').style.display = 'none';
+        document.getElementById('gameContainer').style.display = 'block';
+
         // 1. UI Updates for Logged In User
         headerLoginText.innerText = "ACCOUNT";
         headerUserImg.src = user.photoURL;
@@ -2636,7 +2659,11 @@ onAuthStateChanged(auth, user => {
         if(mobileLoginBtn) {
             mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
-
+        document.getElementById('gameLoginWall').style.display = 'flex';
+        document.getElementById('gameContainer').style.display = 'none';
+        
+        // Ensure game stops if logged out mid-game
+        gameRunning = false;
 
     } 
 });
@@ -2707,61 +2734,93 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const overlay = document.getElementById('gameOverlay');
 const startBtn = document.getElementById('startBtn');
 const mobileHUD = document.getElementById('mobileHUD');
 
-// Background Images
-const bgCity = new Image(); bgCity.src = 'https://i.postimg.cc/8zX8K9vP/city.jpg'; 
-const bgSky = new Image(); bgSky.src = 'https://i.postimg.cc/9FmKzYv5/sky.jpg';
-const bgSpace = new Image(); bgSpace.src = 'https://i.postimg.cc/J0v6mNfH/space.jpg';
-const playerImg = new Image(); playerImg.src = 'https://iili.io/fXks1Dv.png';
+// --- ASSETS ---
+const assets = {
 
-// Constants
-const GRAVITY = 0.22;
-const JUMP_FORCE = -8.5;
-const PLATFORM_WIDTH = 65;
-const PLAYER_SIZE = 40;
+    coin: 'https://iili.io/fhc1SKQ.png',
 
-let player, platforms, score, gameRunning;
-let keys = {};
+    diamond: 'https://iili.io/fv5bmtj.png',
 
-// Mobile Detection
-if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-    mobileHUD.style.display = 'flex';
-}
+    background: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fb079d58b-ce47-44eb-8ae7-d4a14dfff40f.png?alt=media&token=64af94e3-b556-451e-b2e1-90dce68d7ad2',
+    player: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/2f6dea4f-11ab-4b2c-a850-0bd66768cc90.png?alt=media&token=78734c83-2bc7-41b5-ab92-a5144e06395b',
+    hp: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Platformer%20skins%2Fassets%2FHP.png?alt=media&token=1ebdc1ef-2b43-4e11-b477-71810c06a3ee',
+    boost: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fblue%20platform2%20.png?alt=media&token=24d095f4-f329-4051-bdbe-fcdeba78b1ed',
+    fragile1: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2FFragile%20platform%201.png?alt=media&token=e7bb91a5-52e5-4026-b5b8-c4115381492f',
+    fragile2: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2FFragile%20platform%202.png?alt=media&token=e2d000cc-76b2-4648-b1c0-7a0c17506702',
+    normal1: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fblue%20platform%20.png?alt=media&token=f3e0e51f-d666-4072-bec5-3bd8924fdd31',
+    normal2: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatform%203.png?alt=media&token=594d7c59-2701-4b46-8e25-a0c7379dc15c',
+    spikesPurple: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fpurple%20spikes.png?alt=media&token=5e97ac1f-48ad-4806-b5b0-d4c7ff7b58d6',
+    spikesBlue: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fblue%20spikes.png?alt=media&token=79f58e73-79b5-4ec2-8035-25176cb81b72',
+    elevator: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2FELEVATOR.png?alt=media&token=12ad2d23-5fc5-4c79-8c57-4eca81a6ddb1',
+    healPlat: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2F5f6e69fc-88ea-4565-8445-6ec62ac753f2.png?alt=media&token=2fed9e6d-0f5d-4854-b30c-ae8d6c7a1640',
+    enemy1: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2FEnemy%201.png?alt=media&token=cf86a978-9d19-456a-8231-c5c6e4992b3a',
+    enemy2: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fenemy%202.png?alt=media&token=c69462e6-8417-48fd-a33d-ed9df52f7f2d',
+    enemy3: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fenemy%203.png?alt=media&token=8452be57-e7cb-48c2-8264-849a00df704d',
+    fb1: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2FFireball%201.png?alt=media&token=a7172ed7-3f02-46dd-94cf-51dbc0c7dc1e',
+    fb2: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Ffireball%202.png?alt=media&token=d5502f35-34d0-49fc-80eb-3ac02bb7d10c',
+    fb3: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fireball%203.png?alt=media&token=f7fc03e3-2628-4522-a29a-dc177f2098cb',
+    fb4: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2F480d0de8-6da7-4323-aa7a-99433763c476.png?alt=media&token=2cba4aa8-63f1-4ce8-b9d9-066a5845adee'
+};
 
-// Key Handling & Page Scroll Prevention
-window.addEventListener('keydown', e => {
-    if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) e.preventDefault();
-    keys[e.key] = true;
-});
+const imgs = {};
+Object.keys(assets).forEach(key => { imgs[key] = new Image(); imgs[key].src = assets[key]; });
+
+// --- PHYSICS & VARS ---
+const GRAVITY = 0.20;
+const JUMP_FORCE = -9.0;
+const PLATFORM_WIDTH = 68;
+const PLATFORM_HEIGHT = 16;
+const PLAYER_SIZE = 42;
+const MIN_GAP = 55;
+const MAX_GAP = 110; 
+
+let player, platforms, fireballs, score, gameRunning, keys = {};
+let isFallingBack = false;
+
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) mobileHUD.style.display = 'flex';
+window.addEventListener('keydown', e => { if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) e.preventDefault(); keys[e.key] = true; });
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-// Touch Controls
-const setupTouch = (id, key) => {
-    const el = document.getElementById(id);
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
-    el.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
-};
-setupTouch('leftBtn', 'ArrowLeft');
-setupTouch('rightBtn', 'ArrowRight');
+class Fireball {
+    constructor(x, y, targetX, targetY, speedBoost) {
+        this.x = x; this.y = y; this.size = 22;
+        this.angle = Math.atan2(targetY - y, targetX - x);
+        this.vx = Math.cos(this.angle) * (3.5 + speedBoost);
+        this.vy = Math.sin(this.angle) * (3.5 + speedBoost);
+        this.frame = 0; this.frameTimer = 0;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.frameTimer++; if(this.frameTimer % 8 === 0) this.frame = (this.frame + 1) % 4;
+    }
+    draw() {
+        const frameImg = imgs[`fb${this.frame + 1}`];
+        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
+        ctx.drawImage(frameImg, -this.size/2, -this.size/2, this.size, this.size); ctx.restore();
+    }
+}
 
 class Player {
     constructor() {
+        this.hp = 5.0;
+        this.invincibility = 0;
+        this.reset();
+    }
+    reset() {
         this.x = canvas.width / 2 - PLAYER_SIZE / 2;
         this.y = canvas.height - 150;
-        this.vx = 0;
-        this.vy = 0;
+        this.vx = 0; this.vy = 0;
     }
-    update() {
-        if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.7;
-        if (keys['ArrowRight'] || keys['d']) this.vx += 0.7;
-        this.vx *= 0.85;
-        this.x += this.vx;
+update() {
+        if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8;
+        if (keys['ArrowRight'] || keys['d']) this.vx += 0.8;
+        this.vx *= 0.85; this.x += this.vx;
 
         if (this.x + PLAYER_SIZE < 0) this.x = canvas.width;
         if (this.x > canvas.width) this.x = -PLAYER_SIZE;
@@ -2769,108 +2828,353 @@ class Player {
         this.vy += GRAVITY;
         this.y += this.vy;
 
+        if(this.invincibility > 0) this.invincibility--;
+
+        // Collision logic
         if (this.vy > 0) {
             platforms.forEach((p, i) => {
-                if (this.x + PLAYER_SIZE > p.x && this.x < p.x + p.width && this.y + PLAYER_SIZE > p.y && this.y + PLAYER_SIZE < p.y + 12 + this.vy) {
-                    this.vy = (p.type === 'BOOST') ? JUMP_FORCE * 1.8 : JUMP_FORCE;
-                    if(p.type === 'FRAGILE') platforms.splice(i, 1);
+                if (this.x + PLAYER_SIZE * 0.7 > p.x && 
+                    this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
+                    this.y + PLAYER_SIZE > p.y && 
+                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + this.vy) {
+                    
+                    isFallingBack = false;
+                    let jumpPower = JUMP_FORCE;
+                    if (p.type === 'BOOST') jumpPower *= 1.8;
+                    
+                    // ITEM COLLECTION
+                    if (p.item) {
+                        collectItem(p.item);
+                        p.item = null; // Remove item after collection
+                    }
+
+                    if (p.type === 'HEAL' && !p.used) {
+                        this.hp = Math.min(5, this.hp + 2);
+                        p.used = true;
+                    }
+
+                    if (p.type === 'FRAGILE') {
+                        p.cracks++;
+                        if (p.cracks >= 3) {
+                            this.vy = jumpPower;
+                            platforms.splice(i, 1);
+                            return;
+                        }
+                    }
+
+                    if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
+                        this.takeDamage();
+                    }
+
+                    this.vy = jumpPower;
                 }
             });
         }
+
+        // Enemy Collision (Updated for HP)
+        platforms.forEach(p => {
+            if(p.enemy && !p.enemy.dead) {
+                const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
+                if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
+                    
+                    // Hit Enemy from top
+                    if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
+                        p.enemy.hp--; // Reduce HP
+                        this.vy = JUMP_FORCE; // Bounce
+                        
+                        if (p.enemy.hp <= 0) {
+                            p.enemy.dead = true;
+                        } else {
+                            // Optional: Visual feedback for hit
+                            score += 50; 
+                        }
+                    } 
+                    // Hit Enemy from side/bottom
+                    else if(this.invincibility <= 0) { 
+                        this.takeDamage(); 
+                    }
+                }
+            }
+        });
+
+        // Fireball Collision
+        fireballs.forEach((f, i) => {
+            const dist = Math.hypot((this.x + PLAYER_SIZE/2) - f.x, (this.y + PLAYER_SIZE/2) - f.y);
+            if(dist < 20 && this.invincibility <= 0) {
+                this.takeDamage();
+                fireballs.splice(i, 1);
+            }
+        });
+
+        // Camera Logic
         if (this.y < canvas.height / 2.5) {
             let d = canvas.height / 2.5 - this.y;
             this.y = canvas.height / 2.5;
             score += Math.floor(d);
-            platforms.forEach(p => p.y += d);
+            platforms.forEach(p => { p.y += d; if(p.startY) p.startY += d; });
+            fireballs.forEach(f => f.y += d);
         }
-        if (this.y > canvas.height) gameOver();
+
+        // FALL BACK LOGIC
+        if (this.y > canvas.height) {
+            if (score > 0) {
+                isFallingBack = true;
+                let fallSpeed = 15;
+                score -= fallSpeed;
+                platforms.forEach(p => { p.y -= fallSpeed; if(p.startY) p.startY -= fallSpeed; });
+                fireballs.forEach(f => f.y -= fallSpeed);
+                this.y = canvas.height - 30;
+            } else {
+                this.hp = 0; gameOver();
+            }
+        }
     }
+
+    takeDamage() {
+        // Damage-ul creste cu inaltimea
+        const diffMult = Math.min(3, 1 + score / 8000);
+        this.hp -= (0.5 * diffMult);
+        this.invincibility = 60;
+        if(this.hp <= 0) { this.hp = 0; gameOver(); }
+    }
+
     draw() {
-        ctx.drawImage(playerImg, this.x, this.y, PLAYER_SIZE, PLAYER_SIZE);
+        if (this.invincibility % 6 < 3) ctx.drawImage(imgs.player, this.x, this.y, PLAYER_SIZE, PLAYER_SIZE);
+        this.drawHP();
+    }
+
+    drawHP() {
+        const heartSize = 25;
+        for (let i = 0; i < 5; i++) {
+            const hx = 20 + (i * 32); const hy = 20;
+            if (this.hp > i) {
+                ctx.save();
+                if (this.hp < i + 1) { ctx.beginPath(); ctx.rect(hx, hy, heartSize / 2, heartSize); ctx.clip(); }
+                ctx.drawImage(imgs.hp, hx, hy, heartSize, heartSize); ctx.restore();
+            }
+        }
     }
 }
 
-function createPlatform(y) {
+function createPlatform(y, forceNormal = false) {
     let type = 'NORMAL';
-    let r = Math.random();
-    if(score > 3000) {
-        if(r > 0.9) type = 'BOOST';
-        else if(r > 0.72) type = 'MOVING';
-        else if(r > 0.55) type = 'FRAGILE';
+    let cracks = 0; let enemy = null; let item = null;
+    const r = Math.random();
+    
+    // Difficulty logic
+    const diffFactor = Math.min(0.15, score / 100000);
+    
+    if (!forceNormal && score > 500) {
+        if (r > 0.95 + diffFactor) type = 'BOOST';
+        else if (r > 0.91) type = 'HEAL';
+        else if (r > 0.85 + diffFactor) type = 'ELEVATOR';
+        else if (r > 0.78) type = 'SPIKES_PURPLE';
+        else if (r > 0.72) type = 'SPIKES_BLUE';
+        else if (r > 0.55) type = 'FRAGILE';
     }
-    return { x: Math.random() * (canvas.width - PLATFORM_WIDTH), y: y, width: PLATFORM_WIDTH, type: type, dir: Math.random() > 0.5 ? 1 : -1, speed: Math.random() * 2 + 1 };
+
+    // Enemy Logic (HP Scales with Height)
+    if (type === 'NORMAL' && Math.random() > (0.90 - score/20000) && score > 1500) {
+        // Calculate max HP based on score (1 HP base + 1 per 2000 score, max 5)
+        let hpCalc = 1 + Math.floor(score / 2000);
+        if (hpCalc > 5) hpCalc = 5;
+
+        enemy = { 
+            type: Math.floor(Math.random() * 3) + 1, 
+            dead: false, 
+            shootTimer: Math.random() * 60,
+            hp: hpCalc,
+            maxHp: hpCalc 
+        };
+    }
+
+    // Item Logic (Coins/Diamonds) - Only on safe platforms without enemies
+    if (!enemy && type !== 'FRAGILE' && type !== 'SPIKES_PURPLE' && type !== 'SPIKES_BLUE' && score > 100) {
+        let rItem = Math.random();
+        if (rItem < 0.05) item = 'DIAMOND'; // 5% chance
+        else if (rItem < 0.20) item = 'COIN';    // 15% chance
+    }
+
+    if (type === 'FRAGILE' && Math.random() > 0.6) cracks = Math.random() > 0.5 ? 1 : 2;
+
+    return { 
+        x: Math.random() * (canvas.width - PLATFORM_WIDTH), 
+        y: y, startY: y, width: PLATFORM_WIDTH, 
+        type: type, cracks: cracks, enemy: enemy, item: item, used: false,
+        variant: Math.random() > 0.5 ? 1 : 2, offset: Math.random() * Math.PI * 2
+    };
 }
 
-function drawBackground() {
-    let img = bgCity;
-    if (score > 15000) img = bgSpace;
-    else if (score > 5000) img = bgSky;
 
-    // Drawing image slightly zoomed to prevent gaps
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+// --- REWARD LOGIC ---
+async function collectItem(type) {
+    if (!auth.currentUser) return;
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+
+    if (type === 'COIN') {
+        const amount = Math.floor(Math.random() * (850 - 100 + 1)) + 100;
+        flyRewardAnim('coin');
+        await updateDoc(userRef, { coins: increment(amount) });
+        window.showToast(`+${amount} KSDA Coins!`); // Assuming you have a toast function, else alert/console
+    } 
+    else if (type === 'DIAMOND') {
+        const amount = Math.floor(Math.random() * (5 - 1 + 1)) + 1;
+        flyRewardAnim('diamond');
+        await updateDoc(userRef, { diamonds: increment(amount) });
+        window.showToast(`+${amount} Diamonds!`);
+    }
+}
+
+function flyRewardAnim(type) {
+    const flyer = type === 'coin' ? document.getElementById('flyingCoin') : document.getElementById('flyingDiamond');
+    // Start from center of canvas approximately
+    const canvasRect = canvas.getBoundingClientRect();
+    const startTop = canvasRect.top + canvasRect.height / 2;
+    const startLeft = canvasRect.left + canvasRect.width / 2;
     
-    // Gradient overlay for better visibility
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, 'rgba(0,0,0,0.3)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.6)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0,0,canvas.width, canvas.height);
+    // Target user icon in header
+    const target = document.getElementById('headerLoginBtn') || document.getElementById('menuBtn');
+    const tRect = target.getBoundingClientRect();
+
+    flyer.style.display = 'block'; 
+    flyer.style.top = startTop + 'px'; 
+    flyer.style.left = startLeft + 'px'; 
+    flyer.style.opacity = '1';
+    flyer.style.transform = 'scale(1)';
+
+    setTimeout(() => {
+        flyer.style.transition = 'all 1s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        flyer.style.top = (tRect.top + 5) + 'px'; 
+        flyer.style.left = (tRect.left + 5) + 'px';
+        flyer.style.transform = 'scale(0.5) rotate(720deg)'; 
+        flyer.style.opacity = '0';
+    }, 50);
+
+    setTimeout(() => { 
+        flyer.style.display = 'none'; 
+        flyer.style.transition = 'none'; // reset
+    }, 1100);
 }
 
 function initGame() {
-    player = new Player();
-    platforms = [];
-    score = 0;
-    gameRunning = true;
-    overlay.style.display = 'none';
-    for (let i = 0; i < 8; i++) platforms.push(createPlatform(i * (canvas.height / 8)));
-    platforms.push({ x: 150, y: canvas.height - 50, width: 100, type: 'NORMAL' });
+    player = new Player(); score = 0; platforms = []; fireballs = [];
+    gameRunning = true; overlay.style.display = 'none'; isFallingBack = false;
+
+    let currentY = canvas.height - 50;
+    platforms.push({ x: canvas.width/2 - 50, y: currentY, width: 100, type: 'NORMAL', variant: 1 });
+
+    while (currentY > 0) {
+        currentY -= (Math.random() * (MAX_GAP - MIN_GAP) + MIN_GAP);
+        platforms.push(createPlatform(currentY, currentY > canvas.height - 200));
+    }
     gameLoop();
 }
 
 function gameOver() {
     gameRunning = false;
     overlay.style.display = 'flex';
-    document.getElementById('overlayTitle').innerText = "MISIUNE TERMINATĂ";
-    document.getElementById('overlayScore').innerText = `Altitudine: ${score}m`;
-    
-    const reward = Math.floor(score / 500);
-    if(reward > 0) {
-        document.getElementById('overlayScore').innerHTML += `<br><span style="color:#ffd700;">+${reward} KSDA COINS</span>`;
-        // Sync with existing Firebase logic
-        if(typeof auth !== 'undefined' && auth.currentUser) {
-            import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js').then(fs => {
-               const db = fs.getFirestore();
-               fs.updateDoc(fs.doc(db, "accounts", auth.currentUser.uid), { coins: fs.increment(reward) });
-               if(window.logTransaction) window.logTransaction(reward, "earn", "Jumper Altitude", "game");
-            });
-        }
-    }
+    document.getElementById('overlayTitle').innerText = "MISIUNE EȘUATĂ";
+    document.getElementById('overlayScore').innerText = `Altitudine Finală: ${Math.max(0, score)}m`;
 }
 
 function gameLoop() {
     if (!gameRunning) return;
-    drawBackground();
+    
+    ctx.drawImage(imgs.background, 0, 0, canvas.width, canvas.height);
+
     player.update();
     player.draw();
-    platforms.forEach((p, i) => {
-        if (p.type === 'MOVING') {
-            p.x += p.speed * p.dir;
-            if (p.x <= 0 || p.x + PLATFORM_WIDTH >= canvas.width) p.dir *= -1;
-        }
-        ctx.fillStyle = (p.type === 'BOOST') ? '#00ff88' : (p.type === 'FRAGILE' ? '#ffd700' : '#29f3ff');
-        ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle;
-        ctx.beginPath(); ctx.roundRect(p.x, p.y, p.width, 12, 5); ctx.fill();
-        ctx.shadowBlur = 0;
-        if (p.y > canvas.height) platforms[i] = createPlatform(-20);
+
+    let highestY = canvas.height;
+    let lowestY = -1000;
+    platforms.forEach(p => {
+        let checkY = (p.type === 'ELEVATOR') ? p.startY : p.y;
+        if(checkY < highestY) highestY = checkY;
+        if(checkY > lowestY) lowestY = checkY;
     });
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 20px Orbitron";
-    ctx.fillText(`${score}m`, 20, 40);
+
+    // SPAWN LOGIC
+    if (highestY > -100) {
+        let newY = highestY - (Math.random() * (MAX_GAP - MIN_GAP) + MIN_GAP);
+        platforms.push(createPlatform(newY));
+    }
+    
+    if (isFallingBack && lowestY < canvas.height) {
+        platforms.push(createPlatform(canvas.height + 50, true));
+    }
+
+    platforms.forEach((p, i) => {
+        if (p.type === 'ELEVATOR') {
+            p.y = p.startY + Math.sin(Date.now() / 650 + p.offset) * 65;
+        }
+
+        let asset = imgs.normal1;
+        if (p.type === 'NORMAL') asset = p.variant === 1 ? imgs.normal1 : imgs.normal2;
+        else if (p.type === 'BOOST') asset = imgs.boost;
+        else if (p.type === 'HEAL') asset = imgs.healPlat;
+        else if (p.type === 'FRAGILE') asset = p.cracks === 0 ? imgs.normal1 : (p.cracks === 1 ? imgs.fragile1 : imgs.fragile2);
+        else if (p.type === 'SPIKES_PURPLE') asset = imgs.spikesPurple;
+        else if (p.type === 'SPIKES_BLUE') asset = imgs.spikesBlue;
+        else if (p.type === 'ELEVATOR') asset = imgs.elevator;
+
+        ctx.drawImage(asset, p.x, p.y, p.width, PLATFORM_HEIGHT);
+
+        // --- DRAW ITEM (COIN/DIAMOND) ---
+        if (p.item) {
+            let itemImg = p.item === 'COIN' ? imgs.coin : imgs.diamond;
+            // Float animation for item
+            let floatY = Math.sin(Date.now() / 200) * 3;
+            ctx.drawImage(itemImg, p.x + p.width/2 - 12, p.y - 30 + floatY, 24, 24);
+        }
+
+        // --- DRAW ENEMY & HP BAR ---
+        if(p.enemy && !p.enemy.dead) {
+            const enemyImg = imgs[`enemy${p.enemy.type}`];
+            const ex = p.x + p.width/2 - 20;
+            const ey = p.y - 40;
+            ctx.drawImage(enemyImg, ex, ey, 40, 40);
+
+            // HP BAR DRAWING
+            const barW = 40;
+            const barH = 5;
+            const hpPct = p.enemy.hp / p.enemy.maxHp;
+            
+            // Background (Red)
+            ctx.fillStyle = '#ff4757'; 
+            ctx.fillRect(ex, ey - 10, barW, barH);
+            
+            // Foreground (Green)
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(ex, ey - 10, barW * hpPct, barH);
+            
+            // Dificultatea inamicului
+            const shootDelay = Math.max(40, 90 - score/500);
+            p.enemy.shootTimer++;
+            if(p.enemy.shootTimer >= shootDelay) {
+                const dist = Math.hypot(player.x - (p.x + p.width/2), player.y - p.y);
+                if(dist < 300) {
+                    const sBoost = Math.min(4, score/10000);
+                    fireballs.push(new Fireball(p.x + p.width/2, p.y - 20, player.x + PLAYER_SIZE/2, player.y + PLAYER_SIZE/2, sBoost));
+                }
+                p.enemy.shootTimer = 0;
+            }
+        }
+        
+        if (p.y > canvas.height + 800 || p.y < -2000) platforms.splice(i, 1);
+    });
+
+    fireballs.forEach((f, i) => {
+        f.update(); f.draw();
+        if(f.y > canvas.height + 100 || f.y < -1000) fireballs.splice(i, 1);
+    });
+
+    ctx.fillStyle = "#fff"; ctx.font = "bold 22px Orbitron";
+    ctx.fillText(`${Math.max(0, score)}m`, 20, 75); 
     requestAnimationFrame(gameLoop);
 }
 
 startBtn.onclick = initGame;
+
 
   </script>
 </body>
