@@ -1410,13 +1410,13 @@
 /* --- BUFF UI STYLES --- */
 #buffContainer {
     position: absolute;
-    top: 20px;
+    bottom: 20px; /* Changed from top to bottom */
     left: 20px;
     z-index: 30;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse; /* Stacks upwards from bottom */
     gap: 10px;
-    pointer-events: auto; /* Allow hovering */
+    pointer-events: auto;
 }
 
 .buff-item {
@@ -2912,7 +2912,7 @@ class Player {
     constructor() {
         this.hp = 5.0;
         this.invincibility = 0;
-        this.activeBuffs = []; // Array to store { type, timer, maxTimer }
+        this.activeBuffs = []; 
         this.reset();
     }
 
@@ -2921,36 +2921,53 @@ class Player {
         this.y = canvas.height - 150;
         this.vx = 0; this.vy = 0;
         this.activeBuffs = [];
-        this.updateBuffUI();
+        this.renderBuffs(); // Clear UI
     }
 
     // Apply a buff
     activateBuff(type) {
         if (type === 'BUFF_HP') {
-            this.hp = Math.min(5, this.hp + 3); // Instant Heal +3
+            this.hp = Math.min(5, this.hp + 3); 
             window.showToast("HP Recovered! (+3)");
             return;
         }
 
         let duration = 0;
         let label = "";
+        let imgUrl = "";
         
-        // 60 frames = 1 second
-        if (type === 'BUFF_MAGNET') { duration = 1200; label = "Magnet: Attract items"; } // 20s
-        else if (type === 'BUFF_SHIELD') { duration = 1800; label = "Shield: Invincible"; } // 30s
-        else if (type === 'BUFF_DAMAGE') { duration = 1800; label = "X2 Damage: Double Hit"; } // 30s
+        if (type === 'BUFF_MAGNET') { 
+            duration = 1200; 
+            label = "Magnet: Attract items"; 
+            imgUrl = assets.buff_magnet;
+        } 
+        else if (type === 'BUFF_SHIELD') { 
+            duration = 1800; 
+            label = "Shield: Invincible"; 
+            imgUrl = assets.buff_shield;
+        } 
+        else if (type === 'BUFF_DAMAGE') { 
+            duration = 1800; 
+            label = "X2 Damage: Double Hit"; 
+            imgUrl = assets.buff_damage;
+        }
 
-        // Check if already active, if so, refresh timer
         const existing = this.activeBuffs.find(b => b.type === type);
         if (existing) {
             existing.timer = duration;
-            existing.maxTimer = duration; // Reset max for bar
+            existing.maxTimer = duration; 
             window.showToast(label.split(':')[0] + " Extended!");
         } else {
-            this.activeBuffs.push({ type: type, timer: duration, maxTimer: duration, label: label });
+            this.activeBuffs.push({ 
+                type: type, 
+                timer: duration, 
+                maxTimer: duration, 
+                label: label, 
+                imgUrl: imgUrl 
+            });
             window.showToast(label.split(':')[0] + " Activated!");
+            this.renderBuffs(); // Only rebuild DOM when new buff is added
         }
-        this.updateBuffUI();
     }
 
     hasBuff(type) {
@@ -2960,14 +2977,23 @@ class Player {
     update() {
         // --- BUFF TIMERS ---
         if (this.activeBuffs.length > 0) {
-            this.activeBuffs.forEach(b => b.timer--);
-            // Remove expired buffs
-            const prevLength = this.activeBuffs.length;
+            this.activeBuffs.forEach(b => {
+                b.timer--;
+                // Update the width of the existing DOM element directly (No Flicker)
+                const bar = document.getElementById(`bar-${b.type}`);
+                if (bar) {
+                    const pct = (b.timer / b.maxTimer) * 100;
+                    bar.style.width = `${pct}%`;
+                }
+            });
+
+            // Check for expired buffs
+            const activeCount = this.activeBuffs.length;
             this.activeBuffs = this.activeBuffs.filter(b => b.timer > 0);
             
-            // Only update UI if timer changed significantly or buff expired (optimization)
-            if (this.activeBuffs.length !== prevLength || Math.random() < 0.1) {
-                this.updateBuffUI();
+            // If a buff expired, rebuild the list
+            if (this.activeBuffs.length !== activeCount) {
+                this.renderBuffs();
             }
         }
 
@@ -2978,13 +3004,12 @@ class Player {
                     const centerPx = this.x + PLAYER_SIZE/2;
                     const centerPy = this.y + PLAYER_SIZE/2;
                     const itemX = p.x + p.width/2;
-                    const itemY = p.y - 30; // approx item height
+                    const itemY = p.y - 30; 
                     
                     const dist = Math.hypot(centerPx - itemX, centerPy - itemY);
                     
-                    if (dist < 250) { // Magnet Range
+                    if (dist < 250) { 
                          if (dist < 50) {
-                            // Instant collect if close enough
                             if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
                             else collectItem(p.item);
                             p.item = null;
@@ -3010,7 +3035,6 @@ class Player {
         // Collision logic
         if (this.vy > 0) {
             platforms.forEach((p, i) => {
-                // Platform Hit Logic
                 if (this.x + PLAYER_SIZE * 0.7 > p.x && 
                     this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
                     this.y + PLAYER_SIZE > p.y && 
@@ -3020,7 +3044,6 @@ class Player {
                     let jumpPower = JUMP_FORCE;
                     if (p.type === 'BOOST') jumpPower *= 1.8;
                     
-                    // ITEM COLLECTION (Standard)
                     if (p.item) {
                         if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
                         else collectItem(p.item);
@@ -3041,7 +3064,6 @@ class Player {
                         }
                     }
 
-                    // SPIKE DAMAGE (Check Shield)
                     if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
                         if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
                     }
@@ -3056,7 +3078,7 @@ class Player {
             if(p.enemy && !p.enemy.dead) {
                 const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
                 
-                // MAGNET LOGIC (Applied here for items on platforms near player)
+                // MAGNET LOGIC
                 if (this.hasBuff('BUFF_MAGNET') && p.item) {
                      const dist = Math.hypot(this.x - p.x, this.y - p.y);
                      if (dist < 200) { 
@@ -3067,26 +3089,20 @@ class Player {
                 }
 
                 if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
-                    
                     if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
-                        // DAMAGE LOGIC
                         let dmg = 1;
-                        if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; // X2 Damage
-
+                        if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; 
                         p.enemy.hp -= dmg; 
                         this.vy = JUMP_FORCE; 
-                        
                         if (p.enemy.hp <= 0) p.enemy.dead = true;
                     } 
                     else if(this.invincibility <= 0) { 
-                        // SHIELD LOGIC
                         if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage(); 
                     }
                 }
             }
         });
 
-        // Fireball Collision
         fireballs.forEach((f, i) => {
             const dist = Math.hypot((this.x + PLAYER_SIZE/2) - f.x, (this.y + PLAYER_SIZE/2) - f.y);
             if(dist < 20 && this.invincibility <= 0) {
@@ -3118,7 +3134,6 @@ class Player {
     }
 
     draw() {
-        // --- SHIELD VISUAL ---
         if (this.hasBuff('BUFF_SHIELD')) {
             ctx.save();
             ctx.beginPath();
@@ -3137,19 +3152,14 @@ class Player {
         this.drawHP();
     }
     
-    // UI Update Function
-    updateBuffUI() {
+    // RENDER BUFF ICONS (Only called when buffs are added/removed)
+    renderBuffs() {
         const container = document.getElementById('buffContainer');
         if(!container) return;
         
-        container.innerHTML = ''; // Clear current
+        container.innerHTML = ''; 
 
         this.activeBuffs.forEach(buff => {
-            let imgUrl = '';
-            if (buff.type === 'BUFF_MAGNET') imgUrl = assets.buff_magnet;
-            else if (buff.type === 'BUFF_SHIELD') imgUrl = assets.buff_shield;
-            else if (buff.type === 'BUFF_DAMAGE') imgUrl = assets.buff_damage;
-
             // Calculate width %
             const pct = (buff.timer / buff.maxTimer) * 100;
 
@@ -3157,14 +3167,14 @@ class Player {
             div.className = 'buff-item';
             div.innerHTML = `
                 <div class="buff-icon-wrapper">
-                    <img src="${imgUrl}" class="buff-img">
+                    <img src="${buff.imgUrl}" class="buff-img">
                     <div class="buff-desc-box">
                         <strong>${buff.label.split(':')[0]}</strong><br>
                         ${buff.label.split(':')[1]}
                     </div>
                 </div>
                 <div class="buff-timer-bar">
-                    <div class="buff-timer-fill" style="width: ${pct}%"></div>
+                    <div id="bar-${buff.type}" class="buff-timer-fill" style="width: ${pct}%"></div>
                 </div>
             `;
             container.appendChild(div);
