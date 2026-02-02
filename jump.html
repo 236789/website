@@ -3053,6 +3053,8 @@ const assets = {
     buff_fire: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2Ffire%20Enemyes%20brun.png?alt=media&token=45164897-c14e-4919-a958-805fe5925c7e',
     buff_armor: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2Fcrystal%20arrmor%2050%25%20less%20dmamge.png?alt=media&token=675dffe7-19a1-42ca-b45a-75b7df67ad8b',
 
+buff_timestop: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2FTIME%20STOP.png?alt=media&token=76809e1a-d077-4a58-8d92-9292b2b1ea95',
+
     coin: 'https://iili.io/fhc1SKQ.png',
 
     diamond: 'https://iili.io/fv5bmtj.png',
@@ -3133,9 +3135,173 @@ class Fireball {
         this.vy = Math.sin(this.angle) * (3.5 + speedBoost);
         this.frame = 0; this.frameTimer = 0;
     }
-    update() {
-        this.x += this.vx; this.y += this.vy;
-        this.frameTimer++; if(this.frameTimer % 8 === 0) this.frame = (this.frame + 1) % 4;
+update() {
+        // --- 1. DEFINE SLOW MOTION FACTOR ---
+        // If Time Stop is active, everything moves at 35% speed
+        let timeSlow = this.hasBuff('BUFF_TIMESTOP') ? 0.35 : 1.0;
+
+        // --- BUFF TIMERS ---
+        if (this.activeBuffs.length > 0) {
+            this.activeBuffs.forEach(b => {
+                b.timer--;
+
+                // MUSIC RESET: If Time Stop just ended this frame, set music back to 1.0
+                if (b.type === 'BUFF_TIMESTOP' && b.timer <= 0) {
+                    if (currentBgm) currentBgm.playbackRate = 1.0;
+                }
+
+                const bar = document.getElementById(`bar-${b.type}`);
+                if (bar) {
+                    const pct = (b.timer / b.maxTimer) * 100;
+                    bar.style.width = `${pct}%`;
+                }
+            });
+
+            const activeCount = this.activeBuffs.length;
+            this.activeBuffs = this.activeBuffs.filter(b => b.timer > 0);
+            
+            if (this.activeBuffs.length !== activeCount) {
+                this.renderBuffs();
+            }
+        }
+
+        // --- MAGNET LOGIC (Scaled by timeSlow) ---
+        if (this.hasBuff('BUFF_MAGNET')) {
+            platforms.forEach(p => {
+                if (p.item) {
+                    const itemRealX = p.x + p.width/2 + p.itemOffsetX;
+                    const itemRealY = p.y - 30 + p.itemOffsetY;
+                    const centerPx = this.x + PLAYER_SIZE/2;
+                    const centerPy = this.y + PLAYER_SIZE/2;
+                    const dx = centerPx - itemRealX;
+                    const dy = centerPy - itemRealY;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    if (dist < 300) { 
+                        // Attraction is slower during Time Stop
+                        p.itemOffsetX += dx * 0.10 * timeSlow;
+                        p.itemOffsetY += dy * 0.10 * timeSlow;
+
+                        if (dist < 50) {
+                            if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
+                            else collectItem(p.item);
+                            p.item = null;
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- STANDARD PHYSICS (Scaled by timeSlow) ---
+        if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8 * timeSlow;
+        if (keys['ArrowRight'] || keys['d']) this.vx += 0.8 * timeSlow;
+        this.vx *= 0.85; 
+        this.x += this.vx;
+
+        if (this.x + PLAYER_SIZE < 0) this.x = canvas.width;
+        if (this.x > canvas.width) this.x = -PLAYER_SIZE;
+
+        this.vy += GRAVITY * timeSlow;
+        this.y += this.vy * timeSlow; // Movement per frame is reduced
+
+        if(this.invincibility > 0) this.invincibility--;
+
+        // Collision logic
+        if (this.vy > 0) {
+            platforms.forEach((p, i) => {
+                if (this.x + PLAYER_SIZE * 0.7 > p.x && 
+                    this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
+                    this.y + PLAYER_SIZE > p.y && 
+                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
+                    
+                    isFallingBack = false;
+                    let jumpPower = JUMP_FORCE;
+
+                    if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
+                        jumpPower *= 1.8;
+                        playSFX(sfx.elevator);
+                    } else {
+                        playSFX(sfx.jump);
+                    }
+
+                    this.vy = jumpPower;
+                    
+                    if (p.item) {
+                        if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
+                        else collectItem(p.item);
+                        p.item = null;
+                    }
+
+                    if (p.type === 'HEAL' && !p.used) {
+                        this.hp = Math.min(5, this.hp + 2);
+                        p.used = true;
+                    }
+
+                    if (p.type === 'FRAGILE') {
+                        p.cracks++;
+                        if (p.cracks >= 3) {
+                            playSFX(sfx.crack);
+                            this.vy = jumpPower;
+                            platforms.splice(i, 1);
+                            return;
+                        }
+                    }
+
+                    if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
+                        if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
+                    }
+                }
+            });
+        }
+
+        // Enemy Collision
+        platforms.forEach(p => {
+            if(p.enemy && !p.enemy.dead) {
+                const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
+                if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
+                    if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
+                        let dmg = 1;
+                        if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; 
+                        p.enemy.hp -= dmg; 
+                        this.vy = JUMP_FORCE; 
+                        if (p.enemy.hp <= 0) p.enemy.dead = true;
+                        playSFX(sfx.kill);
+                    } 
+                    else if(this.invincibility <= 0) { 
+                        if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage(); 
+                    }
+                }
+            }
+        });
+
+        fireballs.forEach((f, i) => {
+            const dist = Math.hypot((this.x + PLAYER_SIZE/2) - f.x, (this.y + PLAYER_SIZE/2) - f.y);
+            if(dist < 20 && this.invincibility <= 0) {
+                if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
+                fireballs.splice(i, 1);
+            }
+        });
+
+        // Camera Logic (Scaled by timeSlow to match physics)
+        if (this.y < canvas.height / 2.5) {
+            let d = (canvas.height / 2.5 - this.y);
+            this.y = canvas.height / 2.5;
+            score += Math.floor(d);
+            platforms.forEach(p => { p.y += d; if(p.startY) p.startY += d; });
+            fireballs.forEach(f => f.y += d);
+        }
+        if (this.y > canvas.height) {
+             if (score > 0) {
+                isFallingBack = true;
+                let fallSpeed = 15 * timeSlow;
+                score -= Math.floor(fallSpeed);
+                platforms.forEach(p => { p.y -= fallSpeed; if(p.startY) p.startY -= fallSpeed; });
+                fireballs.forEach(f => f.y -= fallSpeed);
+                this.y = canvas.height - 30;
+            } else {
+                this.hp = 0; gameOver();
+            }
+        }
     }
     draw() {
         const frameImg = imgs[`fb${this.frame + 1}`];
@@ -3190,6 +3356,18 @@ class Player {
             label = "X2 Damage: Double Hit"; 
             imgUrl = assets.buff_damage;
         }
+
+// Add this inside the if/else chain in activateBuff(type)
+else if (type === 'BUFF_TIMESTOP') {
+    duration = 2100; // 35 seconds (60fps * 35)
+    label = "Time Stop: Slow motion active";
+    imgUrl = assets.buff_timestop;
+    
+    // SICK MUSIC EFFECT: Slow down the pitch and speed
+    if (currentBgm) {
+        currentBgm.playbackRate = 0.6; // Deep, slow sound
+    }
+}
 
 // Add this inside the if/else chain in activateBuff(type)
 else if (type === 'BUFF_ARMOR') {
@@ -3636,6 +3814,7 @@ function createPlatform(y, forceNormal = false) {
         if (score > 3000 && rItem < 0.15) { 
             const buffRoll = Math.random();
             if (buffRoll < 0.30) item = 'BUFF_FIRE'; 
+            else if (buffRoll < 0.40) item = 'BUFF_TIMESTOP'; // 15% of all buffs
             else if (buffRoll < 0.45) item = 'BUFF_ARMOR'; // 15% of all buffs will be Armor
             else if (buffRoll < 0.60) item = 'BUFF_HP';
             else if (buffRoll < 0.75) item = 'BUFF_MAGNET';
@@ -3856,6 +4035,7 @@ if (p.item) {
             else if (p.item === 'BUFF_ARMOR') { itemImg = imgs.buff_armor; size = 32; } // ADD THIS LINE
             else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 32; }
             else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 32; }
+            else if (p.item === 'BUFF_TIMESTOP') { itemImg = imgs.buff_timestop; size = 32; } // ADD THIS
             else if (p.item === 'BUFF_FIRE') { itemImg = imgs.buff_fire; size = 32; } // IMPORTANT LINE
 
             let floatY = Math.sin(Date.now() / 200) * 5;
@@ -3912,8 +4092,18 @@ if(p.enemy && !p.enemy.dead) {
             
             // Shooting Logic
             const shootDelay = Math.max(40, 90 - score/500);
+
+
+
             p.enemy.shootTimer++;
             if(p.enemy.shootTimer >= shootDelay) {
+
+
+            
+            // --- TIME STOP ATTACK LOGIC ---
+            let attackSpeed = player.hasBuff('BUFF_TIMESTOP') ? 0.2 : 1.0;
+            p.enemy.shootTimer += attackSpeed; // Enemies attack 5x slower
+            // ------------------------------
                 const dist = Math.hypot(player.x - (p.x + p.width/2), player.y - p.y);
                 if(dist < 300) {
                     playSFX(sfx.shoot); 
@@ -3925,7 +4115,12 @@ if(p.enemy && !p.enemy.dead) {
         }
         
         if (p.y > canvas.height + 800 || p.y < -2000) platforms.splice(i, 1);
+
+
+
     });
+
+
 
     // --- 5. DRAW FIREBALLS ---
     fireballs.forEach((f, i) => {
