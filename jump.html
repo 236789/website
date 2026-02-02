@@ -1539,12 +1539,10 @@
     40%, 60% { transform: translate3d(4px, 0, 0); }
 }
 
-
-/* REVAMPED GAME OVERLAY */
+/* UPDATED GAME OVERLAY */
 #gameOverlay {
     position: absolute; 
     inset: 0; 
-    /* Your custom background image */
     background-image: url('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Clicker%2Fbd701a1c-2858-475f-b2e2-147e5210751c.png?alt=media&token=cf741992-15cb-481d-a301-aad49f4f00e8');
     background-size: cover;
     background-position: center;
@@ -1552,8 +1550,9 @@
     display: flex; 
     flex-direction: column; 
     align-items: center; 
-    justify-content: flex-end; /* Push buttons to the bottom half */
-    padding-bottom: 50px;
+    justify-content: flex-end; 
+    /* Increased padding to move buttons UP onto the character platform */
+    padding-bottom: 110px; 
     text-align: center;
 }
 
@@ -1562,7 +1561,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    /* Tighter gap to make the buttons look like a single menu unit */
+    gap: 5px; 
 }
 
 /* The actual image buttons */
@@ -1576,31 +1576,27 @@
 }
 
 .img-btn:hover {
-    transform: scale(1.1);
-    filter: brightness(1.2);
+    transform: scale(1.08);
+    filter: brightness(1.3) drop-shadow(0 0 15px rgba(41, 243, 255, 0.4));
 }
 
 .img-btn:active {
     transform: scale(0.95);
 }
 
-/* Play button is the biggest */
-.play-img { width: 180px; }
-/* Others are smaller */
-.side-img { width: 140px; }
-
-/* Keep score visible for Game Over, but style it to fit the new look */
-#overlayScore {
-    color: #fff;
-    font-family: 'Orbitron';
-    font-weight: 900;
-    font-size: 18px;
-    text-shadow: 0 0 10px #29f3ff;
-    margin-bottom: 20px;
-    background: rgba(0,0,0,0.6);
-    padding: 5px 15px;
-    border-radius: 50px;
+/* BIGGER Play button */
+.play-img { 
+    width: 250px; 
+    filter: drop-shadow(0 0 10px rgba(41, 243, 255, 0.3));
 }
+
+/* BIGGER Side buttons */
+.side-img { 
+    width: 190px; 
+}
+
+/* Styled Score for Game Over */
+
   </style>
 </head>
 <body>
@@ -1914,7 +1910,6 @@
 <!-- Start / Game Over Overlay -->
 <div id="gameOverlay">
     <!-- Score only shows after first game -->
-    <p id="overlayScore" style="display: none;"></p>
 
     <div class="menu-btns-container">
         <!-- Main Play Button -->
@@ -3373,6 +3368,7 @@ div.innerHTML = `
     }
     
     takeDamage() {
+    screenShakeTimer = 15; // <--- ADD THIS LINE
          const diffMult = Math.min(3, 1 + score / 8000);
          this.hp -= (0.5 * diffMult);
          this.invincibility = 60;
@@ -3391,6 +3387,11 @@ function createPlatform(y, forceNormal = false) {
     let coinChance = 0.10; // Default (Easy)
     let enemyChance = 0.05; 
     let maxEnemyHp = 1;
+
+let currentBgImg = null;
+let nextBgImg = null;
+let bgFadeAlpha = 0;
+let screenShakeTimer = 0;
 
     // 1. EASY (0 - 5000m)
     if (score < 5000) {
@@ -3560,31 +3561,65 @@ function initGame() {
 function gameOver() {
     gameRunning = false;
     overlay.style.display = 'flex';
-    const scoreEl = document.getElementById('overlayScore');
-    scoreEl.style.display = 'block'; // Make sure score shows up
-    scoreEl.innerText = `SCORE: ${Math.max(0, score)}m`;
+    
+    // We just stop the game and show the menu. 
+    // The score is still kept in the 'score' variable for highscores, 
+    // but it won't show up as a "thingy" on the screen.
 }
 
 function gameLoop() {
     if (!gameRunning) return;
-    
-    // --- 1. DRAW BACKGROUND (Must be first!) ---
-    // Select background based on height
-    let bgImg = imgs.bg0;
-    if (score >= 13000) bgImg = imgs.bg5;
-    else if (score >= 9000) bgImg = imgs.bg4;
-    else if (score >= 7000) bgImg = imgs.bg3;
-    else if (score >= 5000) bgImg = imgs.bg2;
-    else if (score >= 2000) bgImg = imgs.bg1;
 
-    // Draw it
-    ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+    // --- 1. SCREEN SHAKE (Start) ---
+    if (screenShakeTimer > 0) {
+        ctx.save();
+        let dx = (Math.random() - 0.5) * 10; 
+        let dy = (Math.random() - 0.5) * 10;
+        ctx.translate(dx, dy);
+        screenShakeTimer--;
+    }
 
-    // --- 2. UPDATE & DRAW PLAYER ---
+    // --- 2. DYNAMIC BACKGROUND WITH CROSSFADE ---
+    let targetBg;
+    if (score >= 13000) targetBg = imgs.bg5;
+    else if (score >= 9000) targetBg = imgs.bg4;
+    else if (score >= 7000) targetBg = imgs.bg3;
+    else if (score >= 5000) targetBg = imgs.bg2;
+    else if (score >= 2000) targetBg = imgs.bg1;
+    else targetBg = imgs.bg0;
+
+    // Initialize background on first run
+    if (!currentBgImg) currentBgImg = targetBg;
+
+    // Start transition if background changes
+    if (currentBgImg !== targetBg && !nextBgImg) {
+        nextBgImg = targetBg;
+        bgFadeAlpha = 0;
+    }
+
+    // Draw base background
+    ctx.drawImage(currentBgImg, 0, 0, canvas.width, canvas.height);
+
+    // Draw fading background over it
+    if (nextBgImg) {
+        ctx.save();
+        bgFadeAlpha += 0.005; // Adjust this number to make transition slower or faster
+        ctx.globalAlpha = bgFadeAlpha;
+        ctx.drawImage(nextBgImg, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        if (bgFadeAlpha >= 1) {
+            currentBgImg = nextBgImg;
+            nextBgImg = null;
+            bgFadeAlpha = 0;
+        }
+    }
+
+    // --- 3. UPDATE & DRAW PLAYER ---
     player.update();
     player.draw();
 
-    // --- 3. PLATFORM LOGIC ---
+    // --- 4. PLATFORM LOGIC ---
     let highestY = canvas.height;
     let lowestY = -1000;
     platforms.forEach(p => {
@@ -3593,13 +3628,11 @@ function gameLoop() {
         if(checkY > lowestY) lowestY = checkY;
     });
 
-    // Spawn new platforms moving up
     if (highestY > -100) {
         let newY = highestY - (Math.random() * (MAX_GAP - MIN_GAP) + MIN_GAP);
         platforms.push(createPlatform(newY));
     }
     
-    // Safety net for falling
     if (isFallingBack && lowestY < canvas.height) {
         platforms.push(createPlatform(canvas.height + 50, true));
     }
@@ -3620,11 +3653,9 @@ function gameLoop() {
 
         ctx.drawImage(asset, p.x, p.y, p.width, PLATFORM_HEIGHT);
 
-        // --- DRAW ITEM (COIN/DIAMOND/BUFF) ---
         if (p.item) {
             let itemImg;
             let size = 24;
-            
             if (p.item === 'COIN') itemImg = imgs.coin;
             else if (p.item === 'DIAMOND') itemImg = imgs.diamond;
             else if (p.item === 'BUFF_HP') { itemImg = imgs.buff_hp; size = 30; }
@@ -3632,37 +3663,26 @@ function gameLoop() {
             else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 30; }
             else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 30; }
 
-            // Float animation (Visual only)
             let floatY = Math.sin(Date.now() / 200) * 3;
-            
-            // Calculate actual drawing position using the saved offsets
             let drawX = p.x + p.width/2 - size/2 + p.itemOffsetX;
             let drawY = p.y - 35 + floatY + p.itemOffsetY;
-            
             ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
 
-        // --- DRAW ENEMY & HP BAR ---
         if(p.enemy && !p.enemy.dead) {
             const enemyImg = imgs[`enemy${p.enemy.type}`];
             const ex = p.x + p.width/2 - 20;
             const ey = p.y - 40;
             ctx.drawImage(enemyImg, ex, ey, 40, 40);
 
-            // HP BAR DRAWING
             const barW = 40;
             const barH = 5;
             const hpPct = p.enemy.hp / p.enemy.maxHp;
-            
-            // Background (Red)
             ctx.fillStyle = '#ff4757'; 
             ctx.fillRect(ex, ey - 10, barW, barH);
-            
-            // Foreground (Green)
             ctx.fillStyle = '#2ecc71';
             ctx.fillRect(ex, ey - 10, barW * hpPct, barH);
             
-            // Enemy Shooting Logic
             const shootDelay = Math.max(40, 90 - score/500);
             p.enemy.shootTimer++;
             if(p.enemy.shootTimer >= shootDelay) {
@@ -3678,15 +3698,20 @@ function gameLoop() {
         if (p.y > canvas.height + 800 || p.y < -2000) platforms.splice(i, 1);
     });
 
-    // --- DRAW FIREBALLS ---
+    // --- 5. DRAW FIREBALLS ---
     fireballs.forEach((f, i) => {
         f.update(); f.draw();
         if(f.y > canvas.height + 100 || f.y < -1000) fireballs.splice(i, 1);
     });
 
-    // --- DRAW SCORE ---
+    // --- 6. DRAW HUD SCORE ---
     ctx.fillStyle = "#fff"; ctx.font = "bold 22px Orbitron";
     ctx.fillText(`${Math.max(0, score)}m`, 20, 75); 
+
+    // --- 7. SCREEN SHAKE (End) ---
+    if (screenShakeTimer > 0) {
+        ctx.restore();
+    }
     
     requestAnimationFrame(gameLoop);
 }
