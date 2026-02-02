@@ -3166,15 +3166,7 @@ class Player {
             ctx.restore();
         }
 
-// REPLACED BACKGROUND LOGIC
-    let bgImg = imgs.bg0;
-    if (score >= 13000) bgImg = imgs.bg5;
-    else if (score >= 9000) bgImg = imgs.bg4;
-    else if (score >= 7000) bgImg = imgs.bg3;
-    else if (score >= 5000) bgImg = imgs.bg2;
-    else if (score >= 2000) bgImg = imgs.bg1;
-
-    ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+        if (this.invincibility % 6 < 3) ctx.drawImage(imgs.player, this.x, this.y, PLAYER_SIZE, PLAYER_SIZE);
         this.drawHP();
     }
     
@@ -3414,11 +3406,23 @@ function gameOver() {
 function gameLoop() {
     if (!gameRunning) return;
     
-    ctx.drawImage(imgs.background, 0, 0, canvas.width, canvas.height);
+    // --- 1. DRAW BACKGROUND (Must be first!) ---
+    // Select background based on height
+    let bgImg = imgs.bg0;
+    if (score >= 13000) bgImg = imgs.bg5;
+    else if (score >= 9000) bgImg = imgs.bg4;
+    else if (score >= 7000) bgImg = imgs.bg3;
+    else if (score >= 5000) bgImg = imgs.bg2;
+    else if (score >= 2000) bgImg = imgs.bg1;
 
+    // Draw it
+    ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+    // --- 2. UPDATE & DRAW PLAYER ---
     player.update();
     player.draw();
 
+    // --- 3. PLATFORM LOGIC ---
     let highestY = canvas.height;
     let lowestY = -1000;
     platforms.forEach(p => {
@@ -3427,12 +3431,13 @@ function gameLoop() {
         if(checkY > lowestY) lowestY = checkY;
     });
 
-    // SPAWN LOGIC
+    // Spawn new platforms moving up
     if (highestY > -100) {
         let newY = highestY - (Math.random() * (MAX_GAP - MIN_GAP) + MIN_GAP);
         platforms.push(createPlatform(newY));
     }
     
+    // Safety net for falling
     if (isFallingBack && lowestY < canvas.height) {
         platforms.push(createPlatform(canvas.height + 50, true));
     }
@@ -3453,10 +3458,7 @@ function gameLoop() {
 
         ctx.drawImage(asset, p.x, p.y, p.width, PLATFORM_HEIGHT);
 
-        // --- DRAW ITEM (COIN/DIAMOND) ---
-// Inside gameLoop(), update the ITEM DRAW section:
-
-   // --- DRAW ITEM (COIN/DIAMOND/BUFF) ---
+        // --- DRAW ITEM (COIN/DIAMOND/BUFF) ---
         if (p.item) {
             let itemImg;
             let size = 24;
@@ -3472,12 +3474,12 @@ function gameLoop() {
             let floatY = Math.sin(Date.now() / 200) * 3;
             
             // Calculate actual drawing position using the saved offsets
-            // p.itemOffsetX starts at 0, but the Player Magnet logic increases it
             let drawX = p.x + p.width/2 - size/2 + p.itemOffsetX;
             let drawY = p.y - 35 + floatY + p.itemOffsetY;
             
             ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
+
         // --- DRAW ENEMY & HP BAR ---
         if(p.enemy && !p.enemy.dead) {
             const enemyImg = imgs[`enemy${p.enemy.type}`];
@@ -3498,7 +3500,7 @@ function gameLoop() {
             ctx.fillStyle = '#2ecc71';
             ctx.fillRect(ex, ey - 10, barW * hpPct, barH);
             
-            // Dificultatea inamicului
+            // Enemy Shooting Logic
             const shootDelay = Math.max(40, 90 - score/500);
             p.enemy.shootTimer++;
             if(p.enemy.shootTimer >= shootDelay) {
@@ -3514,13 +3516,16 @@ function gameLoop() {
         if (p.y > canvas.height + 800 || p.y < -2000) platforms.splice(i, 1);
     });
 
+    // --- DRAW FIREBALLS ---
     fireballs.forEach((f, i) => {
         f.update(); f.draw();
         if(f.y > canvas.height + 100 || f.y < -1000) fireballs.splice(i, 1);
     });
 
+    // --- DRAW SCORE ---
     ctx.fillStyle = "#fff"; ctx.font = "bold 22px Orbitron";
     ctx.fillText(`${Math.max(0, score)}m`, 20, 75); 
+    
     requestAnimationFrame(gameLoop);
 }
 
