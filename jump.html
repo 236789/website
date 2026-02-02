@@ -1645,6 +1645,28 @@
     padding: 10px 20px;
     border-radius: 10px;
 }
+
+
+#gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%; /* Forțăm canvas-ul să umple containerul */
+    background: #000;
+    /* Îmbunătățește claritatea pe unele browsere mobile */
+    image-rendering: -webkit-optimize-contrast;
+}
+
+
+#mobileHUD {
+    position: absolute;
+    bottom: 50px; /* Coborâm butoanele mai aproape de marginea de jos a ecranului */
+    width: 100%;
+    display: none;
+    justify-content: space-between;
+    padding: 0 25px;
+    z-index: 20;
+    pointer-events: none;
+}
   </style>
 </head>
 <body>
@@ -3747,18 +3769,28 @@ function flyRewardAnim(type) {
         flyer.style.transition = 'none'; // reset
     }, 1100);
 }
-
 function initGame() {
-  // Hide BOTH overlays when game starts
+    // Hide BOTH overlays when game starts
     document.getElementById('gameOverlay').style.display = 'none';
     document.getElementById('gameOverOverlay').style.display = 'none';
 
-    playRandomBGM(); // <--- Start the randomized playlist
+    playRandomBGM();
 
+    // --- FIX SPAȚIU GOL: Ajustăm înălțimea canvas-ului la ecranul telefonului ---
+    const container = document.getElementById('gameContainer');
+    const screenRatio = container.clientHeight / container.clientWidth;
+    canvas.height = 400 * screenRatio; // Menținem lățimea de 400, dar extindem înălțimea proporțional
 
+    player = new Player(); 
+    score = 0; 
+    platforms = []; 
+    fireballs = [];
+    gameRunning = true; 
+    isFallingBack = false;
 
-    player = new Player(); score = 0; platforms = []; fireballs = [];
-    gameRunning = true; overlay.style.display = 'none'; isFallingBack = false;
+    // Resetăm calitatea imaginilor după redimensionare
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     let currentY = canvas.height - 50;
     platforms.push({ x: canvas.width/2 - 50, y: currentY, width: 100, type: 'NORMAL', variant: 1 });
@@ -3877,7 +3909,7 @@ function gameLoop() {
 
 if (p.item) {
             let itemImg;
-            let size = 24;
+            let size = 30;
             if (p.item === 'COIN') itemImg = imgs.coin;
             else if (p.item === 'DIAMOND') itemImg = imgs.diamond;
             else if (p.item === 'BUFF_HP') { itemImg = imgs.buff_hp; size = 32; }
@@ -3893,6 +3925,12 @@ else if (p.item === 'BUFF_GHOST') { itemImg = imgs.buff_ghost; size = 32; }
             let floatY = Math.sin(Date.now() / 200) * 5;
             let drawX = p.x + p.width/2 - size/2 + p.itemOffsetX;
             let drawY = p.y - 40 + floatY + p.itemOffsetY;
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(itemImg, drawX, drawY, size, size);
+        ctx.restore();
             
             if (itemImg) ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
