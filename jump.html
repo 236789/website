@@ -3477,21 +3477,41 @@ const sfx = {
     jump: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fcartoon-jump-6462%20(1).mp3?alt=media&token=610a2227-789e-4176-aea2-44fa9effb9f6'),
     elevator: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fboing-spring-mouth-harp-04-20-13-4-103346.mp3?alt=media&token=c14f2b69-bd61-4d38-ad4e-2f5408415274'),
 
-    
-    // NEW SOUNDS
-    bgm: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2FSam%20Lux%20-%20Cut%20Loose.mp3?alt=media&token=a76abfbc-1369-4694-b8cc-70cebc65b8a0'),
-    death: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F8-bit-game-over-sound-effect-331435.mp3?alt=media&token=ad3bbb4d-6e07-47e3-be66-90fb75b17aed'),
-    shoot: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2Flaser-312360.mp3?alt=media&token=f4147a34-1ad2-43af-a6c9-8cb50da3ef51'),
-    kill: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2Fslap-hurt-pain-sound-effect-262618.mp3?alt=media&token=95e22f38-1e75-4506-a1af-6e01bfc43a2e'),
+ 
 };
 
-// Configure Music
-sfx.bgm.loop = true;
-sfx.bgm.volume = 0.15; // "Very low" as requested
-// Function to play sounds safely (resets them so they can play rapidly)
-function playSFX(sound) {
-    sound.currentTime = 0;
-    sound.play().catch(e => console.log("Audio play blocked until user clicks"));
+
+// 1. The Playlist Array
+const bgmPlaylist = [
+    'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2FSam%20Lux%20-%20Cut%20Loose.mp3?alt=media&token=a76abfbc-1369-4694-b8cc-70cebc65b8a0',
+    'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F1%2Fgame-gaming-video-game-music-471936.mp3?alt=media&token=1bd895b8-a60f-4c0c-b50c-921a4891b3bd',
+    'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F1%2Fedm-gaming-music-335408.mp3?alt=media&token=d34786a3-1c80-4f5e-851f-3d6560cc0e18',
+    'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F1%2Fgaming-game-video-game-music-474671.mp3?alt=media&token=520cec89-2d8f-44ea-a0e2-9ab2fdb8c7a0',
+    'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F1%2Fvictory-awaits-in-the-gaming-universe_astronaut-265184.mp3?alt=media&token=3d82610f-5634-4d3a-bca7-dd72c44c1775'
+];
+
+let currentBgm = null; // This will hold the playing track
+
+// 2. The Music Controller Function
+function playRandomBGM() {
+    // If something is playing, stop it first
+    if (currentBgm) {
+        currentBgm.pause();
+        currentBgm.remove();
+    }
+
+    // Pick a random song from the list
+    const randomTrack = bgmPlaylist[Math.floor(Math.random() * bgmPlaylist.length)];
+    
+    currentBgm = new Audio(randomTrack);
+    currentBgm.volume = 0.10; // Keeping it very low as requested
+    
+    // When this song ends, automatically call this function again to play another
+    currentBgm.onended = () => {
+        if (gameRunning) playRandomBGM();
+    };
+
+    currentBgm.play().catch(e => console.log("Music waiting for interaction"));
 }
 
 let currentBgImg = null;
@@ -3674,7 +3694,7 @@ function initGame() {
     document.getElementById('gameOverlay').style.display = 'none';
     document.getElementById('gameOverOverlay').style.display = 'none';
 
-    sfx.bgm.play(); // Start the music
+    playRandomBGM(); // <--- Start the randomized playlist
 
 
 
@@ -3693,10 +3713,13 @@ function initGame() {
 
 function gameOver() {
     gameRunning = false;
-    sfx.bgm.pause();         // Stop the music
-    sfx.bgm.currentTime = 0; // Reset it to start
-    playSFX(sfx.death);      // Play the death sound
+    // Stop the BGM playlist
+    if (currentBgm) {
+        currentBgm.pause();
+        currentBgm.currentTime = 0;
+    }
     
+    playSFX(sfx.death); // Play the death sound
     
     // Hide main menu, show Game Over screen
     document.getElementById('gameOverlay').style.display = 'none';
