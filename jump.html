@@ -3612,24 +3612,26 @@ function createPlatform(y, forceNormal = false) {
 
     // --- ITEM LOGIC (Buffs + Coins + Diamonds) ---
     // Only spawn items if there is NO enemy and it's not a Spike/Boost platform
-    if (!enemy && !type.includes('SPIKES') && type !== 'BOOST' && score > 200) {
+// --- ITEM LOGIC (Buffs + Coins + Diamonds) ---
+    // Buffs now start at 3000m and are much more common
+    if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random();
         
-// Update the BUFF_HP / MAGNET / SHIELD / DAMAGE section
-if (rItem < 0.02) {
-    const buffRoll = Math.random();
-    if (buffRoll < 0.20) item = 'BUFF_HP';
-    else if (buffRoll < 0.40) item = 'BUFF_MAGNET';
-    else if (buffRoll < 0.60) item = 'BUFF_SHIELD';
-    else if (buffRoll < 0.80) item = 'BUFF_DAMAGE';
-    else item = 'BUFF_FIRE'; // Added Fire buff here
-}
-        // 2. DIAMOND (1% Chance - Range 0.02 to 0.03)
-        else if (rItem < 0.03) { 
+        // 1. BUFF SPAWNING (Starts at 3000m)
+        if (score > 3000 && rItem < 0.10) { // 10% chance for a Buff (Was 2%)
+            const buffRoll = Math.random();
+            if (buffRoll < 0.20) item = 'BUFF_HP';
+            else if (buffRoll < 0.40) item = 'BUFF_MAGNET';
+            else if (buffRoll < 0.60) item = 'BUFF_SHIELD';
+            else if (buffRoll < 0.80) item = 'BUFF_DAMAGE';
+            else item = 'BUFF_FIRE'; // Fire is now easy to find
+        }
+        // 2. DIAMOND (Starts at 1000m)
+        else if (score > 1000 && rItem < 0.12) { 
             item = 'DIAMOND'; 
         } 
-        // 3. COIN (Chance depends on difficulty - Range 0.03 to 0.03+coinChance)
-        else if (rItem < (0.03 + coinChance)) { 
+        // 3. COIN (Always available)
+        else if (rItem < (0.12 + coinChance)) { 
             item = 'COIN'; 
         }
     }
@@ -3836,46 +3838,48 @@ if (p.item) {
             let size = 24;
             if (p.item === 'COIN') itemImg = imgs.coin;
             else if (p.item === 'DIAMOND') itemImg = imgs.diamond;
-            else if (p.item === 'BUFF_HP') { itemImg = imgs.buff_hp; size = 30; }
-            else if (p.item === 'BUFF_MAGNET') { itemImg = imgs.buff_magnet; size = 30; }
-            else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 30; }
-            else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 30; }
-            // --- ADD THIS LINE BELOW ---
-            else if (p.item === 'BUFF_FIRE') { itemImg = imgs.buff_fire; size = 30; } 
+            else if (p.item === 'BUFF_HP') { itemImg = imgs.buff_hp; size = 32; }
+            else if (p.item === 'BUFF_MAGNET') { itemImg = imgs.buff_magnet; size = 32; }
+            else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 32; }
+            else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 32; }
+            else if (p.item === 'BUFF_FIRE') { itemImg = imgs.buff_fire; size = 32; } // IMPORTANT LINE
 
-            let floatY = Math.sin(Date.now() / 200) * 3;
+            let floatY = Math.sin(Date.now() / 200) * 5;
             let drawX = p.x + p.width/2 - size/2 + p.itemOffsetX;
-            let drawY = p.y - 35 + floatY + p.itemOffsetY;
+            let drawY = p.y - 40 + floatY + p.itemOffsetY;
             
-            // This is where it was crashing because itemImg was undefined
             if (itemImg) ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
-
 if(p.enemy && !p.enemy.dead) {
             const enemyImg = imgs[`enemy${p.enemy.type}`];
             const ex = p.x + p.width/2 - 20;
             const ey = p.y - 40;
 
-            // --- FIRE BUFF BURN LOGIC ---
+// --- FIRE BUFF BURN LOGIC ---
             if (player.hasBuff('BUFF_FIRE')) {
                 const dx = (player.x + PLAYER_SIZE/2) - (ex + 20);
                 const dy = (player.y + PLAYER_SIZE/2) - (ey + 20);
                 const distToPlayer = Math.sqrt(dx*dx + dy*dy);
 
-                if (distToPlayer < 300) { // Burn Range
-                    p.enemy.hp -= 0.025; // Burn speed (adjust this to kill faster/slower)
+                if (distToPlayer < 300) { 
+                    p.enemy.hp -= 0.04; // Increased damage speed
                     
-                    // Draw Burn Effect (Flickering fire icon over the enemy)
+                    // Visual "On Fire" Effect
                     ctx.save();
-                    ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 100) * 0.3; // Flicker effect
-    if (imgs.buff_fire) {
-        ctx.drawImage(imgs.buff_fire, ex - 10, ey - 15, 60, 60);
-    }                    ctx.restore();
+                    // Add a glowing orange aura
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = "#ff4500";
+                    ctx.globalAlpha = 0.7 + Math.sin(Date.now() / 50) * 0.3; // Rapid flicker
+                    
+                    if (imgs.buff_fire) {
+                        ctx.drawImage(imgs.buff_fire, ex - 15, ey - 20, 70, 70);
+                    }
+                    ctx.restore();
 
                     if (p.enemy.hp <= 0) {
                         p.enemy.dead = true;
                         playSFX(sfx.kill);
-                        return; // Stop processing this enemy since he's dead
+                        return; 
                     }
                 }
             }
