@@ -2958,43 +2958,94 @@ update() {
 
 function createPlatform(y, forceNormal = false) {
     let type = 'NORMAL';
-    let cracks = 0; let enemy = null; let item = null;
+    let cracks = 0; 
+    let enemy = null; 
+    let item = null;
     const r = Math.random();
-    
-    // Difficulty logic
-    const diffFactor = Math.min(0.15, score / 100000);
-    
-    if (!forceNormal && score > 500) {
-        if (r > 0.95 + diffFactor) type = 'BOOST';
-        else if (r > 0.91) type = 'HEAL';
-        else if (r > 0.85 + diffFactor) type = 'ELEVATOR';
-        else if (r > 0.78) type = 'SPIKES_PURPLE';
-        else if (r > 0.72) type = 'SPIKES_BLUE';
-        else if (r > 0.55) type = 'FRAGILE';
+
+    // --- DIFFICULTY TIERS & VARIABLES ---
+    let coinChance = 0.10; // Default (Easy)
+    let enemyChance = 0.05; 
+    let maxEnemyHp = 1;
+
+    // 1. EASY (0 - 5000m)
+    if (score < 5000) {
+        // Mostly normal. Small chance for Boosts/Heals.
+        if (!forceNormal) {
+            if (r > 0.95) type = 'BOOST';
+            else if (r > 0.92) type = 'HEAL';
+        }
+        coinChance = 0.10; // Low coins
+        maxEnemyHp = 1;
+    } 
+    // 2. MEDIUM (5000m - 10000m)
+    else if (score < 10000) {
+        if (!forceNormal) {
+            if (r > 0.90) type = 'BOOST';
+            else if (r > 0.85) type = 'FRAGILE';
+            else if (r > 0.80) type = 'ELEVATOR';
+            else if (r > 0.75) type = 'HEAL';
+        }
+        coinChance = 0.20; // More coins
+        enemyChance = 0.10;
+        maxEnemyHp = 3;
+    } 
+    // 3. HARD (10000m - 20000m)
+    else if (score < 20000) {
+        if (!forceNormal) {
+            if (r > 0.85) type = 'SPIKES_BLUE'; // Introduce Spikes
+            else if (r > 0.75) type = 'FRAGILE';
+            else if (r > 0.65) type = 'ELEVATOR';
+        }
+        coinChance = 0.30; // Lots of coins
+        enemyChance = 0.15;
+        maxEnemyHp = 4;
+    } 
+    // 4. HARDCORE (20000m +)
+    else {
+        if (!forceNormal) {
+            if (r > 0.80) type = 'SPIKES_PURPLE'; // Harder Spikes
+            else if (r > 0.70) type = 'SPIKES_BLUE';
+            else if (r > 0.60) type = 'FRAGILE';
+            else if (r > 0.50) type = 'ELEVATOR';
+        }
+        coinChance = 0.40; // Raining coins
+        enemyChance = 0.20;
+        maxEnemyHp = 5;
     }
 
-    // Enemy Logic (HP Scales with Height)
-    if (type === 'NORMAL' && Math.random() > (0.90 - score/20000) && score > 1500) {
-        // Calculate max HP based on score (1 HP base + 1 per 2000 score, max 5)
-        let hpCalc = 1 + Math.floor(score / 2000);
-        if (hpCalc > 5) hpCalc = 5;
-
+    // --- ENEMY SPAWN LOGIC ---
+    // Only spawn enemies on Normal/Fragile/Elevator platforms (not spikes/boosts)
+    if (['NORMAL', 'FRAGILE', 'ELEVATOR'].includes(type) && Math.random() < enemyChance && score > 1000) {
+        // Calculate HP based on tier limits calculated above
+        let hp = Math.floor(Math.random() * maxEnemyHp) + 1; 
+        
         enemy = { 
             type: Math.floor(Math.random() * 3) + 1, 
             dead: false, 
             shootTimer: Math.random() * 60,
-            hp: hpCalc,
-            maxHp: hpCalc 
+            hp: hp,
+            maxHp: hp 
         };
     }
 
-    // Item Logic (Coins/Diamonds) - Only on safe platforms without enemies
-    if (!enemy && type !== 'FRAGILE' && type !== 'SPIKES_PURPLE' && type !== 'SPIKES_BLUE' && score > 100) {
+    // --- ITEM LOGIC (Coins/Diamonds) ---
+    // Only spawn items if there is NO enemy and it's not a Spike platform
+    if (!enemy && !type.includes('SPIKES') && type !== 'BOOST' && score > 200) {
         let rItem = Math.random();
-        if (rItem < 0.05) item = 'DIAMOND'; // 5% chance
-        else if (rItem < 0.20) item = 'COIN';    // 15% chance
+        
+        // 1. DIAMOND (Very Rare: 1%)
+        if (rItem < 0.01) { 
+            item = 'DIAMOND'; 
+        } 
+        // 2. COIN (Chance depends on difficulty)
+        // e.g., if coinChance is 0.20, range is 0.01 to 0.21
+        else if (rItem < (0.01 + coinChance)) { 
+            item = 'COIN'; 
+        }
     }
 
+    // Fragile cracks logic
     if (type === 'FRAGILE' && Math.random() > 0.6) cracks = Math.random() > 0.5 ? 1 : 2;
 
     return { 
