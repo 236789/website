@@ -1585,6 +1585,53 @@
     50% { filter: grayscale(0) brightness(2); transform: scale(1.1); box-shadow: 0 0 80px var(--primary), inset 0 0 50px #fff; border-color: #fff; }
     100% { filter: grayscale(0) brightness(1); transform: scale(1); box-shadow: 0 0 30px var(--primary-dim); border-color: var(--primary); }
 }
+
+
+/* --- Stil pentru cardul cu imagine full --- */
+.full-bg-card {
+    padding: 0 !important; /* Eliminăm padding-ul ca imaginea să atingă marginile */
+    justify-content: flex-end !important; /* Împingem textul spre partea de jos */
+    border: 2px solid var(--primary) !important;
+}
+
+.hub-img-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Aceasta face ca imaginea să umple tot spațiul fără să se deformeze */
+    z-index: 0;
+    transition: transform 0.5s ease;
+}
+
+/* Gradient negru la bază ca să se vadă textul bine mereu */
+.hub-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 10%, transparent 70%);
+    z-index: 1;
+}
+
+.full-bg-card span {
+    margin-bottom: 15px; /* Spațiu sub text */
+}
+
+/* Efect de zoom pe imagine la hover */
+.full-bg-card:hover .hub-img-bg {
+    transform: scale(1.1);
+}
+
+/* Ajustare pentru lacăt când jocul este blocat */
+.full-bg-card.locked-game::after {
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.4);
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
   </style>
 </head>
 <body>
@@ -1892,13 +1939,14 @@
         ROATA NOROCULUI
     </span>
 </div>
-        <!-- BLOCAT 2 -->
-        <div class="hub-card locked">
-            <i class="fas fa-lock"></i>
-            <span style="font-family:'Orbitron'; font-weight:800; font-size:10px;">COMING SOON</span>
-            <i class="fas fa-link lock-badge" style="opacity:0.5;"></i>
-        </div>
-
+<!-- 4. KSDA JUMPER (LOCKED - 2000 COINS) -->
+<div id="game_jumper" class="hub-card locked-game full-bg-card" onclick="handleGameClick('jumper', 'jump.html', 2000)">
+    <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2Faa121184-a341-4917-828e-3bc8a34f4fbc.png?alt=media&token=df623721-90a9-4675-b0f3-fa266e79be84" 
+         class="hub-img-bg" alt="Jumper">
+    <div class="hub-card-overlay"></div>
+    <span style="font-family:'Orbitron'; font-weight:800; font-size:12px; text-align:center; color:#fff; text-shadow: 0 0 10px var(--primary); position: relative; z-index: 2;">
+    </span>
+</div>
         <!-- BLOCAT 3 -->
         <div class="hub-card locked">
             <i class="fas fa-lock"></i>
@@ -2804,18 +2852,22 @@ onAuthStateChanged(auth, user => {
                 const data = uSnap.data();
                 
                 // --- [NEW] CHECK LOCKED GAMES STATUS ---
-                const unlockedGames = data.unlockedGames || [];
-                
-                // If 'spin' is in the array, unlock the UI immediately
-                if (unlockedGames.includes('spin')) {
-                    const spinCard = document.getElementById('game_spin');
-                    if (spinCard) {
-                        spinCard.classList.remove('locked-game');
-                        // Change click to direct link (removes the modal trigger)
-                        spinCard.onclick = () => { window.location.href = 'SpinWeel.html'; };
-                    }
-                }
+// --- [MODIFICAT] CHECK LOCKED GAMES STATUS ---
+const unlockedGames = data.unlockedGames || [];
 
+// Listă cu jocurile care pot fi deblocate
+const lockableGames = [
+    { id: 'spin', cardId: 'game_spin', url: 'SpinWeel.html' },
+    { id: 'jumper', cardId: 'game_jumper', url: 'KSDAJumper.html' }
+];
+
+lockableGames.forEach(game => {
+    const card = document.getElementById(game.cardId);
+    if (card && unlockedGames.includes(game.id)) {
+        card.classList.remove('locked-game');
+        card.onclick = () => { window.location.href = game.url; };
+    }
+});
                 // --- A. QUEST RESET & STREAK LOSS LOGIC ---
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
