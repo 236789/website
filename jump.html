@@ -3126,7 +3126,6 @@ if(btnLeft && btnRight) {
     btnRight.addEventListener('mousedown', (e) => { handleMobile('ArrowRight', true); });
     btnRight.addEventListener('mouseup', (e) => { handleMobile('ArrowRight', false); });
 }
-
 class Fireball {
     constructor(x, y, targetX, targetY, speedBoost) {
         this.x = x; this.y = y; this.size = 22;
@@ -3135,173 +3134,15 @@ class Fireball {
         this.vy = Math.sin(this.angle) * (3.5 + speedBoost);
         this.frame = 0; this.frameTimer = 0;
     }
-update() {
-        // --- 1. DEFINE SLOW MOTION FACTOR ---
-        // If Time Stop is active, everything moves at 35% speed
-        let timeSlow = this.hasBuff('BUFF_TIMESTOP') ? 0.35 : 1.0;
-
-        // --- BUFF TIMERS ---
-        if (this.activeBuffs.length > 0) {
-            this.activeBuffs.forEach(b => {
-                b.timer--;
-
-                // MUSIC RESET: If Time Stop just ended this frame, set music back to 1.0
-                if (b.type === 'BUFF_TIMESTOP' && b.timer <= 0) {
-                    if (currentBgm) currentBgm.playbackRate = 1.0;
-                }
-
-                const bar = document.getElementById(`bar-${b.type}`);
-                if (bar) {
-                    const pct = (b.timer / b.maxTimer) * 100;
-                    bar.style.width = `${pct}%`;
-                }
-            });
-
-            const activeCount = this.activeBuffs.length;
-            this.activeBuffs = this.activeBuffs.filter(b => b.timer > 0);
-            
-            if (this.activeBuffs.length !== activeCount) {
-                this.renderBuffs();
-            }
-        }
-
-        // --- MAGNET LOGIC (Scaled by timeSlow) ---
-        if (this.hasBuff('BUFF_MAGNET')) {
-            platforms.forEach(p => {
-                if (p.item) {
-                    const itemRealX = p.x + p.width/2 + p.itemOffsetX;
-                    const itemRealY = p.y - 30 + p.itemOffsetY;
-                    const centerPx = this.x + PLAYER_SIZE/2;
-                    const centerPy = this.y + PLAYER_SIZE/2;
-                    const dx = centerPx - itemRealX;
-                    const dy = centerPy - itemRealY;
-                    const dist = Math.hypot(dx, dy);
-                    
-                    if (dist < 300) { 
-                        // Attraction is slower during Time Stop
-                        p.itemOffsetX += dx * 0.10 * timeSlow;
-                        p.itemOffsetY += dy * 0.10 * timeSlow;
-
-                        if (dist < 50) {
-                            if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
-                            else collectItem(p.item);
-                            p.item = null;
-                        }
-                    }
-                }
-            });
-        }
-
-        // --- STANDARD PHYSICS (Scaled by timeSlow) ---
-        if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8 * timeSlow;
-        if (keys['ArrowRight'] || keys['d']) this.vx += 0.8 * timeSlow;
-        this.vx *= 0.85; 
-        this.x += this.vx;
-
-        if (this.x + PLAYER_SIZE < 0) this.x = canvas.width;
-        if (this.x > canvas.width) this.x = -PLAYER_SIZE;
-
-        this.vy += GRAVITY * timeSlow;
-        this.y += this.vy * timeSlow; // Movement per frame is reduced
-
-        if(this.invincibility > 0) this.invincibility--;
-
-        // Collision logic
-        if (this.vy > 0) {
-            platforms.forEach((p, i) => {
-                if (this.x + PLAYER_SIZE * 0.7 > p.x && 
-                    this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
-                    this.y + PLAYER_SIZE > p.y && 
-                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
-                    
-                    isFallingBack = false;
-                    let jumpPower = JUMP_FORCE;
-
-                    if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
-                        jumpPower *= 1.8;
-                        playSFX(sfx.elevator);
-                    } else {
-                        playSFX(sfx.jump);
-                    }
-
-                    this.vy = jumpPower;
-                    
-                    if (p.item) {
-                        if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
-                        else collectItem(p.item);
-                        p.item = null;
-                    }
-
-                    if (p.type === 'HEAL' && !p.used) {
-                        this.hp = Math.min(5, this.hp + 2);
-                        p.used = true;
-                    }
-
-                    if (p.type === 'FRAGILE') {
-                        p.cracks++;
-                        if (p.cracks >= 3) {
-                            playSFX(sfx.crack);
-                            this.vy = jumpPower;
-                            platforms.splice(i, 1);
-                            return;
-                        }
-                    }
-
-                    if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
-                        if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
-                    }
-                }
-            });
-        }
-
-        // Enemy Collision
-        platforms.forEach(p => {
-            if(p.enemy && !p.enemy.dead) {
-                const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
-                if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
-                    if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
-                        let dmg = 1;
-                        if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; 
-                        p.enemy.hp -= dmg; 
-                        this.vy = JUMP_FORCE; 
-                        if (p.enemy.hp <= 0) p.enemy.dead = true;
-                        playSFX(sfx.kill);
-                    } 
-                    else if(this.invincibility <= 0) { 
-                        if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage(); 
-                    }
-                }
-            }
-        });
-
-        fireballs.forEach((f, i) => {
-            const dist = Math.hypot((this.x + PLAYER_SIZE/2) - f.x, (this.y + PLAYER_SIZE/2) - f.y);
-            if(dist < 20 && this.invincibility <= 0) {
-                if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
-                fireballs.splice(i, 1);
-            }
-        });
-
-        // Camera Logic (Scaled by timeSlow to match physics)
-        if (this.y < canvas.height / 2.5) {
-            let d = (canvas.height / 2.5 - this.y);
-            this.y = canvas.height / 2.5;
-            score += Math.floor(d);
-            platforms.forEach(p => { p.y += d; if(p.startY) p.startY += d; });
-            fireballs.forEach(f => f.y += d);
-        }
-        if (this.y > canvas.height) {
-             if (score > 0) {
-                isFallingBack = true;
-                let fallSpeed = 15 * timeSlow;
-                score -= Math.floor(fallSpeed);
-                platforms.forEach(p => { p.y -= fallSpeed; if(p.startY) p.startY -= fallSpeed; });
-                fireballs.forEach(f => f.y -= fallSpeed);
-                this.y = canvas.height - 30;
-            } else {
-                this.hp = 0; gameOver();
-            }
-        }
+    update() {
+        // Use player.hasBuff instead of this.hasBuff
+        let timeSlow = player.hasBuff('BUFF_TIMESTOP') ? 0.35 : 1.0;
+        
+        this.x += this.vx * timeSlow;
+        this.y += this.vy * timeSlow;
+        
+        this.frameTimer++; 
+        if(this.frameTimer % 8 === 0) this.frame = (this.frame + 1) % 4;
     }
     draw() {
         const frameImg = imgs[`fb${this.frame + 1}`];
@@ -3405,12 +3246,17 @@ else if (type === 'BUFF_FIRE') {
         return this.activeBuffs.some(b => b.type === type);
     }
 
-    update() {
+update() {
+        // --- 1. DEFINE SLOW MOTION FACTOR ---
+        let timeSlow = this.hasBuff('BUFF_TIMESTOP') ? 0.35 : 1.0;
+
         // --- BUFF TIMERS ---
         if (this.activeBuffs.length > 0) {
             this.activeBuffs.forEach(b => {
                 b.timer--;
-                // Update the width of the existing DOM element directly (No Flicker)
+                if (b.type === 'BUFF_TIMESTOP' && b.timer <= 0) {
+                    if (currentBgm) currentBgm.playbackRate = 1.0;
+                }
                 const bar = document.getElementById(`bar-${b.type}`);
                 if (bar) {
                     const pct = (b.timer / b.maxTimer) * 100;
@@ -3418,63 +3264,50 @@ else if (type === 'BUFF_FIRE') {
                 }
             });
 
-            // Check for expired buffs
             const activeCount = this.activeBuffs.length;
             this.activeBuffs = this.activeBuffs.filter(b => b.timer > 0);
-            
-            // If a buff expired, rebuild the list
             if (this.activeBuffs.length !== activeCount) {
                 this.renderBuffs();
             }
         }
 
         // --- MAGNET LOGIC ---
-// --- MAGNET LOGIC ---
         if (this.hasBuff('BUFF_MAGNET')) {
             platforms.forEach(p => {
                 if (p.item) {
-                    // Calculate where the item is currently (Platform Pos + Offset)
                     const itemRealX = p.x + p.width/2 + p.itemOffsetX;
                     const itemRealY = p.y - 30 + p.itemOffsetY;
-                    
                     const centerPx = this.x + PLAYER_SIZE/2;
                     const centerPy = this.y + PLAYER_SIZE/2;
-                    
                     const dx = centerPx - itemRealX;
                     const dy = centerPy - itemRealY;
                     const dist = Math.hypot(dx, dy);
                     
-                    // If within range (300px), pull it!
                     if (dist < 300) { 
-                        // Move the item 10% of the distance closer every frame
-                        p.itemOffsetX += dx * 0.10;
-                        p.itemOffsetY += dy * 0.10;
+                        p.itemOffsetX += dx * 0.10 * timeSlow;
+                        p.itemOffsetY += dy * 0.10 * timeSlow;
 
-                        // If it gets close enough, collect it
-// Inside update() under MAGNET LOGIC
-if (dist < 50) {
-    if (p.item.startsWith('BUFF_')) {
-        this.activateBuff(p.item); // This now handles BUFF_FIRE automatically
-    } else {
-        collectItem(p.item);
-    }
-    p.item = null;
-}
+                        if (dist < 50) {
+                            if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
+                            else collectItem(p.item);
+                            p.item = null;
+                        }
                     }
                 }
             });
         }
 
         // --- STANDARD PHYSICS ---
-        if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8;
-        if (keys['ArrowRight'] || keys['d']) this.vx += 0.8;
-        this.vx *= 0.85; this.x += this.vx;
+        if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8 * timeSlow;
+        if (keys['ArrowRight'] || keys['d']) this.vx += 0.8 * timeSlow;
+        this.vx *= 0.85; 
+        this.x += this.vx;
 
         if (this.x + PLAYER_SIZE < 0) this.x = canvas.width;
         if (this.x > canvas.width) this.x = -PLAYER_SIZE;
 
-        this.vy += GRAVITY;
-        this.y += this.vy;
+        this.vy += GRAVITY * timeSlow;
+        this.y += this.vy * timeSlow;
 
         if(this.invincibility > 0) this.invincibility--;
 
@@ -3484,23 +3317,19 @@ if (dist < 50) {
                 if (this.x + PLAYER_SIZE * 0.7 > p.x && 
                     this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
                     this.y + PLAYER_SIZE > p.y && 
-                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + this.vy) {
+                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
                     
                     isFallingBack = false;
                     let jumpPower = JUMP_FORCE;
-                    if (p.type === 'BOOST') jumpPower *= 1.8;
 
+                    if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
+                        jumpPower *= 1.8;
+                        playSFX(sfx.elevator);
+                    } else {
+                        playSFX(sfx.jump);
+                    }
 
-            if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
-                jumpPower *= 1.8;
-                playSFX(sfx.elevator);
-            } else {
-                // NORMAL JUMP SOUND
-                playSFX(sfx.jump);
-            }
-
-           // Apply the velocity so the player actually jumps!
-            this.vy = jumpPower;
+                    this.vy = jumpPower;
                     
                     if (p.item) {
                         if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
@@ -3513,21 +3342,19 @@ if (dist < 50) {
                         p.used = true;
                     }
 
-if (p.type === 'FRAGILE') {
-    p.cracks++;
-    if (p.cracks >= 3) {
-        playSFX(sfx.crack); // <--- ADD THIS
-        this.vy = jumpPower;
-        platforms.splice(i, 1);
-        return;
-    }
-}
+                    if (p.type === 'FRAGILE') {
+                        p.cracks++;
+                        if (p.cracks >= 3) {
+                            playSFX(sfx.crack);
+                            this.vy = jumpPower;
+                            platforms.splice(i, 1);
+                            return;
+                        }
+                    }
 
                     if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
                         if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
                     }
-
-                    this.vy = jumpPower;
                 }
             });
         }
@@ -3536,17 +3363,6 @@ if (p.type === 'FRAGILE') {
         platforms.forEach(p => {
             if(p.enemy && !p.enemy.dead) {
                 const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
-                
-                // MAGNET LOGIC
-                if (this.hasBuff('BUFF_MAGNET') && p.item) {
-                     const dist = Math.hypot(this.x - p.x, this.y - p.y);
-                     if (dist < 200) { 
-                        if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
-                        else collectItem(p.item);
-                        p.item = null; 
-                     }
-                }
-
                 if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
                     if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
                         let dmg = 1;
@@ -3554,8 +3370,7 @@ if (p.type === 'FRAGILE') {
                         p.enemy.hp -= dmg; 
                         this.vy = JUMP_FORCE; 
                         if (p.enemy.hp <= 0) p.enemy.dead = true;
-        playSFX(sfx.kill); // <--- ADD THIS (Slap/Pain sound)
-
+                        playSFX(sfx.kill);
                     } 
                     else if(this.invincibility <= 0) { 
                         if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage(); 
@@ -3573,8 +3388,8 @@ if (p.type === 'FRAGILE') {
         });
 
         // Camera Logic
-         if (this.y < canvas.height / 2.5) {
-            let d = canvas.height / 2.5 - this.y;
+        if (this.y < canvas.height / 2.5) {
+            let d = (canvas.height / 2.5 - this.y);
             this.y = canvas.height / 2.5;
             score += Math.floor(d);
             platforms.forEach(p => { p.y += d; if(p.startY) p.startY += d; });
@@ -3583,8 +3398,8 @@ if (p.type === 'FRAGILE') {
         if (this.y > canvas.height) {
              if (score > 0) {
                 isFallingBack = true;
-                let fallSpeed = 15;
-                score -= fallSpeed;
+                let fallSpeed = 15 * timeSlow;
+                score -= Math.floor(fallSpeed);
                 platforms.forEach(p => { p.y -= fallSpeed; if(p.startY) p.startY -= fallSpeed; });
                 fireballs.forEach(f => f.y -= fallSpeed);
                 this.y = canvas.height - 30;
