@@ -2998,17 +2998,28 @@ class Player {
         }
 
         // --- MAGNET LOGIC ---
+// --- MAGNET LOGIC ---
         if (this.hasBuff('BUFF_MAGNET')) {
             platforms.forEach(p => {
                 if (p.item) {
+                    // Calculate where the item is currently (Platform Pos + Offset)
+                    const itemRealX = p.x + p.width/2 + p.itemOffsetX;
+                    const itemRealY = p.y - 30 + p.itemOffsetY;
+                    
                     const centerPx = this.x + PLAYER_SIZE/2;
                     const centerPy = this.y + PLAYER_SIZE/2;
-                    const itemX = p.x + p.width/2;
-                    const itemY = p.y - 30; 
                     
-                    const dist = Math.hypot(centerPx - itemX, centerPy - itemY);
+                    const dx = centerPx - itemRealX;
+                    const dy = centerPy - itemRealY;
+                    const dist = Math.hypot(dx, dy);
                     
-                    if (dist < 250) { 
+                    // If within range (300px), pull it!
+                    if (dist < 300) { 
+                        // Move the item 10% of the distance closer every frame
+                        p.itemOffsetX += dx * 0.10;
+                        p.itemOffsetY += dy * 0.10;
+
+                        // If it gets close enough, collect it
                          if (dist < 50) {
                             if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
                             else collectItem(p.item);
@@ -3300,11 +3311,16 @@ function createPlatform(y, forceNormal = false) {
     // Fragile cracks logic
     if (type === 'FRAGILE' && Math.random() > 0.6) cracks = Math.random() > 0.5 ? 1 : 2;
 
+// ... rest of createPlatform code ...
+
     return { 
         x: Math.random() * (canvas.width - PLATFORM_WIDTH), 
         y: y, startY: y, width: PLATFORM_WIDTH, 
         type: type, cracks: cracks, enemy: enemy, item: item, used: false,
-        variant: Math.random() > 0.5 ? 1 : 2, offset: Math.random() * Math.PI * 2
+        variant: Math.random() > 0.5 ? 1 : 2, offset: Math.random() * Math.PI * 2,
+        // ADD THESE TWO LINES:
+        itemOffsetX: 0, 
+        itemOffsetY: 0
     };
 }
 
@@ -3425,7 +3441,7 @@ function gameLoop() {
         // --- DRAW ITEM (COIN/DIAMOND) ---
 // Inside gameLoop(), update the ITEM DRAW section:
 
-        // --- DRAW ITEM (COIN/DIAMOND/BUFF) ---
+   // --- DRAW ITEM (COIN/DIAMOND/BUFF) ---
         if (p.item) {
             let itemImg;
             let size = 24;
@@ -3437,25 +3453,16 @@ function gameLoop() {
             else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 30; }
             else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 30; }
 
-            // Float animation
+            // Float animation (Visual only)
             let floatY = Math.sin(Date.now() / 200) * 3;
             
-            // Check if Magnet is active for visual pull effect (Simulated)
-            let drawX = p.x + p.width/2 - size/2;
-            let drawY = p.y - 35 + floatY;
-            
-            if (player && player.hasBuff && player.hasBuff('BUFF_MAGNET')) {
-                // If close, make it look like it's moving to player
-                const dist = Math.hypot(player.x - drawX, player.y - drawY);
-                if (dist < 200) {
-                     drawX += (player.x - drawX) * 0.1;
-                     drawY += (player.y - drawY) * 0.1;
-                }
-            }
+            // Calculate actual drawing position using the saved offsets
+            // p.itemOffsetX starts at 0, but the Player Magnet logic increases it
+            let drawX = p.x + p.width/2 - size/2 + p.itemOffsetX;
+            let drawY = p.y - 35 + floatY + p.itemOffsetY;
             
             ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
-
         // --- DRAW ENEMY & HP BAR ---
         if(p.enemy && !p.enemy.dead) {
             const enemyImg = imgs[`enemy${p.enemy.type}`];
