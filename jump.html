@@ -3265,11 +3265,15 @@ else if (type === 'BUFF_FIRE') {
                         p.itemOffsetY += dy * 0.10;
 
                         // If it gets close enough, collect it
-                         if (dist < 50) {
-                            if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
-                            else collectItem(p.item);
-                            p.item = null;
-                         }
+// Inside update() under MAGNET LOGIC
+if (dist < 50) {
+    if (p.item.startsWith('BUFF_')) {
+        this.activateBuff(p.item); // This now handles BUFF_FIRE automatically
+    } else {
+        collectItem(p.item);
+    }
+    p.item = null;
+}
                     }
                 }
             });
@@ -3549,11 +3553,10 @@ function createPlatform(y, forceNormal = false) {
     // 1. EASY (0 - 5000m)
     if (score < 5000) {
         if (!forceNormal) {
-            // Introduce Fragile and Boosts early
             if (r > 0.94) type = 'BOOST';
-            else if (score > 300 && r > 0.75) type = 'FRAGILE'; // Now starts at 300m and spawns 20% of time
+            else if (score > 300 && r > 0.75) type = 'FRAGILE'; 
             else if (r > 0.84) type = 'HEAL';
-            else if (r > 0.80 && score > 2000) type = 'ELEVATOR'; // Start at 2000m
+            else if (r > 0.80 && score > 2000) type = 'ELEVATOR'; 
         }
         coinChance = 0.12;
         maxEnemyHp = 1;
@@ -3596,11 +3599,8 @@ function createPlatform(y, forceNormal = false) {
     }
 
     // --- ENEMY SPAWN LOGIC ---
-    // Only spawn enemies on Normal/Fragile/Elevator platforms (not spikes/boosts)
     if (['NORMAL', 'FRAGILE', 'ELEVATOR'].includes(type) && Math.random() < enemyChance && score > 1000) {
-        // Calculate HP based on tier limits calculated above
         let hp = Math.floor(Math.random() * maxEnemyHp) + 1; 
-        
         enemy = { 
             type: Math.floor(Math.random() * 3) + 1, 
             dead: false, 
@@ -3611,27 +3611,25 @@ function createPlatform(y, forceNormal = false) {
     }
 
     // --- ITEM LOGIC (Buffs + Coins + Diamonds) ---
-    // Only spawn items if there is NO enemy and it's not a Spike/Boost platform
-// --- ITEM LOGIC (Buffs + Coins + Diamonds) ---
-    // Buffs now start at 3000m and are much more common
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random();
         
         // 1. BUFF SPAWNING (Starts at 3000m)
-        if (score > 3000 && rItem < 0.10) { // 10% chance for a Buff (Was 2%)
+        // I increased this to 0.15 (15% chance) so it's not impossible to find
+        if (score > 3000 && rItem < 0.15) { 
             const buffRoll = Math.random();
             if (buffRoll < 0.20) item = 'BUFF_HP';
             else if (buffRoll < 0.40) item = 'BUFF_MAGNET';
             else if (buffRoll < 0.60) item = 'BUFF_SHIELD';
             else if (buffRoll < 0.80) item = 'BUFF_DAMAGE';
-            else item = 'BUFF_FIRE'; // Fire is now easy to find
+            else item = 'BUFF_FIRE'; 
         }
         // 2. DIAMOND (Starts at 1000m)
-        else if (score > 1000 && rItem < 0.12) { 
+        else if (score > 1000 && rItem < 0.20) { 
             item = 'DIAMOND'; 
         } 
-        // 3. COIN (Always available)
-        else if (rItem < (0.12 + coinChance)) { 
+        // 3. COIN
+        else if (rItem < (0.20 + coinChance)) { 
             item = 'COIN'; 
         }
     }
@@ -3639,14 +3637,11 @@ function createPlatform(y, forceNormal = false) {
     // Fragile cracks logic
     if (type === 'FRAGILE' && Math.random() > 0.6) cracks = Math.random() > 0.5 ? 1 : 2;
 
-// ... rest of createPlatform code ...
-
     return { 
         x: Math.random() * (canvas.width - PLATFORM_WIDTH), 
         y: y, startY: y, width: PLATFORM_WIDTH, 
         type: type, cracks: cracks, enemy: enemy, item: item, used: false,
         variant: Math.random() > 0.5 ? 1 : 2, offset: Math.random() * Math.PI * 2,
-        // ADD THESE TWO LINES:
         itemOffsetX: 0, 
         itemOffsetY: 0
     };
