@@ -2810,6 +2810,25 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
+// --- TOAST NOTIFICATION SYSTEM ---
+window.showToast = (message) => {
+    const box = document.getElementById('toastBox-v2');
+    if(!box) return; // Safety check
+    
+    const toast = document.createElement('div');
+    toast.className = 'custom-toast-v2';
+    toast.innerHTML = `<i class="fas fa-bell"></i> ${message}`;
+    
+    box.appendChild(toast);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        setTimeout(() => toast.remove(), 400);
+    }, 3000);
+};
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const overlay = document.getElementById('gameOverlay');
@@ -2914,18 +2933,22 @@ class Player {
         }
 
         let duration = 0;
-        let desc = "";
+        let label = "";
         
-        if (type === 'BUFF_MAGNET') { duration = 1200; desc = "Attracts items"; } // 20s * 60fps
-        else if (type === 'BUFF_SHIELD') { duration = 1800; desc = "Invincible"; } // 30s
-        else if (type === 'BUFF_DAMAGE') { duration = 1800; desc = "x2 Damage"; } // 30s
+        // 60 frames = 1 second
+        if (type === 'BUFF_MAGNET') { duration = 1200; label = "Magnet: Attract items"; } // 20s
+        else if (type === 'BUFF_SHIELD') { duration = 1800; label = "Shield: Invincible"; } // 30s
+        else if (type === 'BUFF_DAMAGE') { duration = 1800; label = "X2 Damage: Double Hit"; } // 30s
 
         // Check if already active, if so, refresh timer
         const existing = this.activeBuffs.find(b => b.type === type);
         if (existing) {
             existing.timer = duration;
+            existing.maxTimer = duration; // Reset max for bar
+            window.showToast(label.split(':')[0] + " Extended!");
         } else {
-            this.activeBuffs.push({ type: type, timer: duration, maxTimer: duration, desc: desc });
+            this.activeBuffs.push({ type: type, timer: duration, maxTimer: duration, label: label });
+            window.showToast(label.split(':')[0] + " Activated!");
         }
         this.updateBuffUI();
     }
@@ -2938,8 +2961,14 @@ class Player {
         // --- BUFF TIMERS ---
         if (this.activeBuffs.length > 0) {
             this.activeBuffs.forEach(b => b.timer--);
+            // Remove expired buffs
+            const prevLength = this.activeBuffs.length;
             this.activeBuffs = this.activeBuffs.filter(b => b.timer > 0);
-            this.updateBuffUI(); // Update UI bars
+            
+            // Only update UI if timer changed significantly or buff expired (optimization)
+            if (this.activeBuffs.length !== prevLength || Math.random() < 0.1) {
+                this.updateBuffUI();
+            }
         }
 
         // --- MAGNET LOGIC ---
@@ -2953,35 +2982,19 @@ class Player {
                     
                     const dist = Math.hypot(centerPx - itemX, centerPy - itemY);
                     
-                    if (dist < 250) { // Range
-                        // Move item towards player
-                        const angle = Math.atan2(centerPy - itemY, centerPx - itemX);
-                        const speed = 15; // Fast pull
-                        
-                        // We need to visually move the item relative to the platform
-                        // This is tricky because items are usually static relative to platform
-                        // For simplicity: We auto-collect if range < 250
-                        // A true physics pull requires separating items from platforms array, 
-                        // but let's do "Instant Magnet" for smoother gameplay or a simpler pull
-                        
-                        // Simple Magnet: If within range, treat as collected
+                    if (dist < 250) { // Magnet Range
                          if (dist < 50) {
-                            collectItem(p.item);
+                            // Instant collect if close enough
+                            if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
+                            else collectItem(p.item);
                             p.item = null;
-                         } else {
-                            // Visual Pull Hack: Adjust platform item offset? 
-                            // Easier: Just Auto-Collect instantly from a distance for this game style
-                            // Or imply "Magnetic field"
-                            
-                            // Let's implement the "Pull" by modifying the collecting logic in gameLoop 
-                            // For now, let's just extend the collection range in the collision logic below
-                        }
+                         }
                     }
                 }
             });
         }
 
-        // ... Standard Physics ...
+        // --- STANDARD PHYSICS ---
         if (keys['ArrowLeft'] || keys['a']) this.vx -= 0.8;
         if (keys['ArrowRight'] || keys['d']) this.vx += 0.8;
         this.vx *= 0.85; this.x += this.vx;
@@ -2997,7 +3010,7 @@ class Player {
         // Collision logic
         if (this.vy > 0) {
             platforms.forEach((p, i) => {
-                // ... Platform Hit Logic ...
+                // Platform Hit Logic
                 if (this.x + PLAYER_SIZE * 0.7 > p.x && 
                     this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
                     this.y + PLAYER_SIZE > p.y && 
@@ -3046,10 +3059,10 @@ class Player {
                 // MAGNET LOGIC (Applied here for items on platforms near player)
                 if (this.hasBuff('BUFF_MAGNET') && p.item) {
                      const dist = Math.hypot(this.x - p.x, this.y - p.y);
-                     if (dist < 200) { // Magnet Range
+                     if (dist < 200) { 
                         if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
                         else collectItem(p.item);
-                        p.item = null; // Sucked in!
+                        p.item = null; 
                      }
                 }
 
@@ -3082,7 +3095,7 @@ class Player {
             }
         });
 
-        // ... Camera & Fallback logic (Keep existing) ...
+        // Camera Logic
          if (this.y < canvas.height / 2.5) {
             let d = canvas.height / 2.5 - this.y;
             this.y = canvas.height / 2.5;
@@ -3091,7 +3104,6 @@ class Player {
             fireballs.forEach(f => f.y += d);
         }
         if (this.y > canvas.height) {
-            // ... fallback logic ...
              if (score > 0) {
                 isFallingBack = true;
                 let fallSpeed = 15;
@@ -3116,8 +3128,6 @@ class Player {
             ctx.shadowBlur = 15;
             ctx.shadowColor = '#00ffff';
             ctx.stroke();
-            
-            // Subtle fill
             ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
             ctx.fill();
             ctx.restore();
@@ -3130,14 +3140,15 @@ class Player {
     // UI Update Function
     updateBuffUI() {
         const container = document.getElementById('buffContainer');
+        if(!container) return;
+        
         container.innerHTML = ''; // Clear current
 
         this.activeBuffs.forEach(buff => {
             let imgUrl = '';
-            let label = '';
-            if (buff.type === 'BUFF_MAGNET') { imgUrl = assets.buff_magnet; label = "Magnet: Attract items (20s)"; }
-            if (buff.type === 'BUFF_SHIELD') { imgUrl = assets.buff_shield; label = "Shield: Invincibility (30s)"; }
-            if (buff.type === 'BUFF_DAMAGE') { imgUrl = assets.buff_damage; label = "X2 Damage: Double Hit (30s)"; }
+            if (buff.type === 'BUFF_MAGNET') imgUrl = assets.buff_magnet;
+            else if (buff.type === 'BUFF_SHIELD') imgUrl = assets.buff_shield;
+            else if (buff.type === 'BUFF_DAMAGE') imgUrl = assets.buff_damage;
 
             // Calculate width %
             const pct = (buff.timer / buff.maxTimer) * 100;
@@ -3148,8 +3159,8 @@ class Player {
                 <div class="buff-icon-wrapper">
                     <img src="${imgUrl}" class="buff-img">
                     <div class="buff-desc-box">
-                        <strong>${label.split(':')[0]}</strong><br>
-                        ${label.split(':')[1]}
+                        <strong>${buff.label.split(':')[0]}</strong><br>
+                        ${buff.label.split(':')[1]}
                     </div>
                 </div>
                 <div class="buff-timer-bar">
@@ -3172,7 +3183,6 @@ class Player {
         }
     }
     
-    // Helper needed for original code
     takeDamage() {
          const diffMult = Math.min(3, 1 + score / 8000);
          this.hp -= (0.5 * diffMult);
