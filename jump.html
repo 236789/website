@@ -3050,6 +3050,7 @@ const assets = {
     buff_magnet: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FMagnet%20Buff%20.png?alt=media&token=bd764b55-f191-4970-8496-309e5ac799f2',
     buff_shield: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FShield%20buff.png?alt=media&token=c1da2bd5-4e24-43b1-b52a-896faf7843ae',
     buff_damage: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FX2%20DAMAGE%20BUFF.png?alt=media&token=5ac0902b-254c-4fe0-882a-f1c284c8302c',
+    buff_fire: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fe%2F3%2Ffire%20Enemyes%20brun.png?alt=media&token=45164897-c14e-4919-a958-805fe5925c7e',
 
     coin: 'https://iili.io/fhc1SKQ.png',
 
@@ -3188,6 +3189,13 @@ class Player {
             label = "X2 Damage: Double Hit"; 
             imgUrl = assets.buff_damage;
         }
+
+// Add this inside the if/else chain in activateBuff(type)
+else if (type === 'BUFF_FIRE') {
+    duration = 600; // 10 seconds (60fps * 10)
+    label = "Fire: Enemies in range burn";
+    imgUrl = assets.buff_fire;
+}
 
         const existing = this.activeBuffs.find(b => b.type === type);
         if (existing) {
@@ -3607,14 +3615,15 @@ function createPlatform(y, forceNormal = false) {
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST' && score > 200) {
         let rItem = Math.random();
         
-        // 1. BUFFS (2% Chance total - 0.5% per buff)
-        if (rItem < 0.02) {
-            const buffRoll = Math.random();
-            if (buffRoll < 0.25) item = 'BUFF_HP';
-            else if (buffRoll < 0.50) item = 'BUFF_MAGNET';
-            else if (buffRoll < 0.75) item = 'BUFF_SHIELD';
-            else item = 'BUFF_DAMAGE';
-        }
+// Update the BUFF_HP / MAGNET / SHIELD / DAMAGE section
+if (rItem < 0.02) {
+    const buffRoll = Math.random();
+    if (buffRoll < 0.20) item = 'BUFF_HP';
+    else if (buffRoll < 0.40) item = 'BUFF_MAGNET';
+    else if (buffRoll < 0.60) item = 'BUFF_SHIELD';
+    else if (buffRoll < 0.80) item = 'BUFF_DAMAGE';
+    else item = 'BUFF_FIRE'; // Added Fire buff here
+}
         // 2. DIAMOND (1% Chance - Range 0.02 to 0.03)
         else if (rItem < 0.03) { 
             item = 'DIAMOND'; 
@@ -3838,27 +3847,53 @@ function gameLoop() {
             ctx.drawImage(itemImg, drawX, drawY, size, size);
         }
 
-        if(p.enemy && !p.enemy.dead) {
+if(p.enemy && !p.enemy.dead) {
             const enemyImg = imgs[`enemy${p.enemy.type}`];
             const ex = p.x + p.width/2 - 20;
             const ey = p.y - 40;
+
+            // --- FIRE BUFF BURN LOGIC ---
+            if (player.hasBuff('BUFF_FIRE')) {
+                const dx = (player.x + PLAYER_SIZE/2) - (ex + 20);
+                const dy = (player.y + PLAYER_SIZE/2) - (ey + 20);
+                const distToPlayer = Math.sqrt(dx*dx + dy*dy);
+
+                if (distToPlayer < 300) { // Burn Range
+                    p.enemy.hp -= 0.025; // Burn speed (adjust this to kill faster/slower)
+                    
+                    // Draw Burn Effect (Flickering fire icon over the enemy)
+                    ctx.save();
+                    ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 100) * 0.3; // Flicker effect
+                    ctx.drawImage(imgs.buff_fire, ex - 10, ey - 15, 60, 60);
+                    ctx.restore();
+
+                    if (p.enemy.hp <= 0) {
+                        p.enemy.dead = true;
+                        playSFX(sfx.kill);
+                        return; // Stop processing this enemy since he's dead
+                    }
+                }
+            }
+
+            // Draw Enemy
             ctx.drawImage(enemyImg, ex, ey, 40, 40);
 
+            // Draw Health Bar
             const barW = 40;
             const barH = 5;
-            const hpPct = p.enemy.hp / p.enemy.maxHp;
+            const hpPct = Math.max(0, p.enemy.hp / p.enemy.maxHp);
             ctx.fillStyle = '#ff4757'; 
             ctx.fillRect(ex, ey - 10, barW, barH);
             ctx.fillStyle = '#2ecc71';
             ctx.fillRect(ex, ey - 10, barW * hpPct, barH);
             
+            // Shooting Logic
             const shootDelay = Math.max(40, 90 - score/500);
             p.enemy.shootTimer++;
             if(p.enemy.shootTimer >= shootDelay) {
                 const dist = Math.hypot(player.x - (p.x + p.width/2), player.y - p.y);
                 if(dist < 300) {
-        playSFX(sfx.shoot); // <--- ADD THIS (Laser sound)
-
+                    playSFX(sfx.shoot); 
                     const sBoost = Math.min(4, score/10000);
                     fireballs.push(new Fireball(p.x + p.width/2, p.y - 20, player.x + PLAYER_SIZE/2, player.y + PLAYER_SIZE/2, sBoost));
                 }
