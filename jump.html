@@ -3160,6 +3160,9 @@ class Player {
 
     // Apply a buff
     activateBuff(type) {
+    playSFX(sfx.buff); 
+
+
         if (type === 'BUFF_HP') {
             this.hp = Math.min(5, this.hp + 3); 
             window.showToast("HP Recovered! (+3)");
@@ -3288,6 +3291,18 @@ class Player {
                     isFallingBack = false;
                     let jumpPower = JUMP_FORCE;
                     if (p.type === 'BOOST') jumpPower *= 1.8;
+
+
+            if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
+                jumpPower *= 1.8;
+                playSFX(sfx.elevator);
+            } else {
+                // NORMAL JUMP SOUND
+                playSFX(sfx.jump);
+            }
+
+           // Apply the velocity so the player actually jumps!
+            this.vy = jumpPower;
                     
                     if (p.item) {
                         if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
@@ -3300,14 +3315,15 @@ class Player {
                         p.used = true;
                     }
 
-                    if (p.type === 'FRAGILE') {
-                        p.cracks++;
-                        if (p.cracks >= 3) {
-                            this.vy = jumpPower;
-                            platforms.splice(i, 1);
-                            return;
-                        }
-                    }
+if (p.type === 'FRAGILE') {
+    p.cracks++;
+    if (p.cracks >= 3) {
+        playSFX(sfx.crack); // <--- ADD THIS
+        this.vy = jumpPower;
+        platforms.splice(i, 1);
+        return;
+    }
+}
 
                     if ((p.type === 'SPIKES_PURPLE' || p.type === 'SPIKES_BLUE') && this.invincibility <= 0) {
                         if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage();
@@ -3449,6 +3465,23 @@ div.innerHTML = `
 }
 
 
+
+// --- AUDIO ENGINE ---
+const sfx = {
+    crack: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fsmall-crack-shatter-sound-zzz000111-1-47921.mp3?alt=media&token=5e71061b-b9cd-4da2-a45f-766ecb06a126'),
+    diamond: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fscale-c6-106131.mp3?alt=media&token=b1f9f9a3-880c-4be9-8324-8f9b6a6295d7'),
+    buff: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fdiamond-found-190255.mp3?alt=media&token=9f859b8f-f672-4c00-b6b5-3a40b6783fef'),
+    coin: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fcoin-recieved-230517.mp3?alt=media&token=e2e8f38b-f19a-4fc7-911e-e0719883c4c8'),
+    jump: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fcartoon-jump-6462%20(1).mp3?alt=media&token=610a2227-789e-4176-aea2-44fa9effb9f6'),
+    elevator: new Audio('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fboing-spring-mouth-harp-04-20-13-4-103346.mp3?alt=media&token=c14f2b69-bd61-4d38-ad4e-2f5408415274')
+};
+
+// Function to play sounds safely (resets them so they can play rapidly)
+function playSFX(sound) {
+    sound.currentTime = 0;
+    sound.play().catch(e => console.log("Audio play blocked until user clicks"));
+}
+
 let currentBgImg = null;
 let nextBgImg = null;
 let bgFadeAlpha = 0;
@@ -3575,12 +3608,15 @@ async function collectItem(type) {
     const userRef = doc(db, "accounts", auth.currentUser.uid);
 
     if (type === 'COIN') {
-        const amount = Math.floor(Math.random() * (850 - 100 + 1)) + 100;
-        flyRewardAnim('coin');
+
+        playSFX(sfx.coin); // <--- ADD THIS
+        const amount = Math.floor(Math.random() * (850 - 100 + 1)) + 100;      
+  flyRewardAnim('coin');
         await updateDoc(userRef, { coins: increment(amount) });
         window.showToast(`+${amount} KSDA Coins!`); // Assuming you have a toast function, else alert/console
     } 
     else if (type === 'DIAMOND') {
+        playSFX(sfx.diamond); // <--- ADD THIS
         const amount = Math.floor(Math.random() * (5 - 1 + 1)) + 1;
         flyRewardAnim('diamond');
         await updateDoc(userRef, { diamonds: increment(amount) });
