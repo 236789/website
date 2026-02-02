@@ -1594,6 +1594,50 @@
 .side-img { 
     width: 155px; 
 }
+
+
+ @keyframes toastSlide { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+
+
+
+/* GAME OVER SCREEN */
+#gameOverOverlay {
+    position: absolute;
+    inset: 0;
+    /* Your new Game Over Background */
+    background-image: url('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2FChatGPT%20Image%202%20feb.%202026%2C%2004_41_42.png?alt=media&token=27dae120-5152-46fa-be65-8637f3e5630d');
+    background-size: cover;
+    background-position: center;
+    z-index: 15; /* Higher than the main menu */
+    display: none; /* Hidden by default */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.play-again-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    padding: 0;
+    margin-top: 150px; /* Adjust this to move the button up/down on the screen */
+}
+
+.play-again-btn:hover { transform: scale(1.1); }
+
+.final-score-text {
+    font-family: 'Orbitron';
+    color: #fff;
+    font-size: 24px;
+    font-weight: 900;
+    text-shadow: 0 0 15px #ff4757;
+    margin-bottom: 10px;
+    background: rgba(0,0,0,0.5);
+    padding: 10px 20px;
+    border-radius: 10px;
+}
   </style>
 </head>
 <body>
@@ -1924,6 +1968,15 @@
             <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Clicker%2Fhow%20to%20play.png?alt=media&token=44fa1ff3-6b70-4f61-870d-e4f766f9343b" class="side-img">
         </button>
     </div>
+</div>
+
+<!-- NEW GAME OVER OVERLAY -->
+<div id="gameOverOverlay">
+    <div class="final-score-text" id="finalScoreDisplay">SCORE: 0m</div>
+    
+    <button id="playAgainBtn" class="play-again-btn">
+        <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2Fbackrounds%2Fplay%20again.png?alt=media&token=577d31a9-bbc0-489e-8a6e-89888395648d" style="width: 220px;">
+    </button>
 </div>
 
         <canvas id="gameCanvas" width="400" height="600" style="display: block; width: 100%; height: auto; background: #000;"></canvas>
@@ -2941,24 +2994,46 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
-// --- TOAST NOTIFICATION SYSTEM ---
 window.showToast = (message) => {
-    const box = document.getElementById('toastBox-v2');
-    if(!box) return; // Safety check
+    let container = document.getElementById('toast-container');
     
+    // Create container if it doesn't exist
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        // Add some basic CSS via JS for the container
+        container.style.cssText = "position:fixed; top:100px; right:20px; z-index:100000; display:flex; flex-direction:column; gap:10px; pointer-events:none;";
+        document.body.appendChild(container);
+    }
+
     const toast = document.createElement('div');
-    toast.className = 'custom-toast-v2';
-    toast.innerHTML = `<i class="fas fa-bell"></i> ${message}`;
+    toast.className = 'modern-toast';
     
-    box.appendChild(toast);
+    // Auto-select icon based on message text
+    let iconUrl = "";
+    if (message.includes('Coins')) iconUrl = "https://iili.io/fhc1SKQ.png";
+    else if (message.includes('Diamonds')) iconUrl = "https://iili.io/fv5bmtj.png";
     
-    // Remove after 3 seconds
+    // Build Toast HTML
+    toast.innerHTML = `
+        ${iconUrl ? `<img src="${iconUrl}" style="width:24px; height:24px; object-fit:contain;">` : '<i class="fas fa-bell" style="color:#29f3ff"></i>'}
+        <span style="font-family:'Orbitron'; font-size:12px; font-weight:700;">${message}</span>
+    `;
+
+    // Add styles to the toast itself
+    toast.style.cssText = "background:rgba(8,16,27,0.9); border:1px solid #29f3ff; backdrop-filter:blur(10px); padding:12px 20px; border-radius:15px; color:#fff; display:flex; align-items:center; gap:12px; box-shadow:0 10px 30px rgba(0,0,0,0.5); animation: toastSlide 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;";
+
+    container.appendChild(toast);
+
+    // Remove toast after 4 seconds
     setTimeout(() => {
         toast.style.opacity = '0';
-        toast.style.transform = 'translateY(20px)';
-        setTimeout(() => toast.remove(), 400);
-    }, 3000);
+        toast.style.transform = 'translateX(50px)';
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
 };
+
+
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -3545,6 +3620,11 @@ function flyRewardAnim(type) {
 }
 
 function initGame() {
+  // Hide BOTH overlays when game starts
+    document.getElementById('gameOverlay').style.display = 'none';
+    document.getElementById('gameOverOverlay').style.display = 'none';
+
+
     player = new Player(); score = 0; platforms = []; fireballs = [];
     gameRunning = true; overlay.style.display = 'none'; isFallingBack = false;
 
@@ -3560,11 +3640,14 @@ function initGame() {
 
 function gameOver() {
     gameRunning = false;
-    overlay.style.display = 'flex';
     
-    // We just stop the game and show the menu. 
-    // The score is still kept in the 'score' variable for highscores, 
-    // but it won't show up as a "thingy" on the screen.
+    // Hide main menu, show Game Over screen
+    document.getElementById('gameOverlay').style.display = 'none';
+    const goOverlay = document.getElementById('gameOverOverlay');
+    goOverlay.style.display = 'flex';
+    
+    // Update the score display
+    document.getElementById('finalScoreDisplay').innerText = `SCORE: ${Math.max(0, score)}m`;
 }
 
 function gameLoop() {
@@ -3717,6 +3800,9 @@ function gameLoop() {
 }
 
 startBtn.onclick = initGame;
+
+// Add this near where you have startBtn.onclick = initGame;
+document.getElementById('playAgainBtn').onclick = initGame;
 
 // Add this at the bottom of your script
 document.addEventListener('click', (e) => {
