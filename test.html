@@ -2470,6 +2470,16 @@ input:checked + .slider:before { transform: translateX(16px); }
     width: 220px;
     filter: invert(100%) hue-rotate(180deg) brightness(1.5); /* Makes standard player white/cyan */
 }
+
+
+/* Recording Timer Style */
+.rec-timer {
+    font-size: 10px;
+    font-family: 'Orbitron';
+    color: #ff4757;
+    margin-left: 5px;
+    font-weight: 800;
+}
   </style>
 
 </head>
@@ -4841,64 +4851,82 @@ function linkify(text) {
 
 
 
-let mediaRecorder;
+// --- SNAPVIBE POWERED RECORDING ENGINE ---
+let mediaRecorder = null;
 let audioChunks = [];
-let recordingStream; // Global scope to prevent it from closing early
+let recInterval = null;
+let recSeconds = 0;
 
 window.toggleRecording = async () => {
     const micBtn = document.getElementById('micBtn');
     
-    if (!mediaRecorder || mediaRecorder.state === "inactive") {
-        try {
-            // 1. Check for supported formats (iOS needs mp4, others use webm)
-            let mimeType = 'audio/webm';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-                mimeType = 'audio/mp4'; // Fallback for iPhone/Safari
+    // If we are already recording, stop it
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        return;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Better MIME type detection from SnapVibe logic
+        let options = {};
+        if (typeof MediaRecorder.isTypeSupported === 'function') {
+            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) options.mimeType = 'audio/webm;codecs=opus';
+            else if (MediaRecorder.isTypeSupported('audio/webm')) options.mimeType = 'audio/webm';
+            else if (MediaRecorder.isTypeSupported('audio/mp4')) options.mimeType = 'audio/mp4';
+        }
+
+        mediaRecorder = new MediaRecorder(stream, options);
+        audioChunks = [];
+        recSeconds = 0;
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            // Stop the red light/mic access
+            stream.getTracks().forEach(t => t.stop());
+            clearInterval(recInterval);
+            
+            micBtn.classList.remove('recording');
+            micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+            
+            // Combine chunks into a final Blob
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+            
+            // If the recording is too small (empty), don't send
+            if (audioBlob.size < 1000) {
+                showToast("Înregistrare prea scurtă!");
+                return;
             }
 
-            recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log("Recording complete. Size:", audioBlob.size, "Type:", audioBlob.type);
+            await uploadVoiceMessage(audioBlob);
+        };
+
+        // START RECORDING (Use 100ms slices like SnapVibe to prevent "empty" blobs)
+        mediaRecorder.start(100);
+        
+        // UI Updates
+        micBtn.classList.add('recording');
+        showToast("Înregistrare pornită...", "success");
+
+        // Start Timer
+        recInterval = setInterval(() => {
+            recSeconds++;
+            let m = Math.floor(recSeconds / 60);
+            let s = recSeconds % 60;
+            micBtn.innerHTML = `<i class="fas fa-stop-circle"></i> <span class="rec-timer">${m}:${s < 10 ? '0' : ''}${s}</span>`;
             
-            mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
-            audioChunks = [];
+            // Auto stop after 2 minutes to prevent huge files
+            if(recSeconds > 120) mediaRecorder.stop();
+        }, 1000);
 
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data && event.data.size > 0) {
-                    audioChunks.push(event.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                // Create the final Blob using the exact same mimeType as the recorder
-                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-                
-                // Final safety check: if blob is tiny, it's a failed recording
-                if (audioBlob.size < 500) {
-                    showToast("Eroare: Înregistrare prea scurtă sau goală!");
-                    return;
-                }
-                
-                console.log("Recording finished. Size:", audioBlob.size, "Type:", audioBlob.type);
-                await uploadVoiceMessage(audioBlob);
-
-                // Stop all microphone tracks to turn off the red "recording" light in the browser
-                recordingStream.getTracks().forEach(track => track.stop());
-            };
-
-            // Start recording in 1-second slices
-            mediaRecorder.start(1000); 
-            
-            micBtn.classList.add('recording');
-            micBtn.innerHTML = '<i class="fas fa-stop-circle"></i>';
-            showToast("Înregistrare pornită...", "success");
-        } catch (err) {
-            console.error("Mic Error:", err);
-            showToast("Acces microfon refuzat sau eroare hardware!");
-        }
-    } else {
-        // Stop the recorder
-        mediaRecorder.stop();
-        micBtn.classList.remove('recording');
-        micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+    } catch (err) {
+        console.error("Mic Access Error:", err);
+        showToast("Nu pot accesa microfonul!");
     }
 };
 
@@ -4906,20 +4934,18 @@ async function uploadVoiceMessage(blob) {
     if (!auth.currentUser) return;
     showToast("Se trimite mesajul vocal...", "success");
 
-    // Get correct extension based on MIME type
-    const extension = blob.type.includes('mp4') ? 'mp4' : 'webm';
-    const fileName = `vocal/${auth.currentUser.uid}_${Date.now()}.${extension}`;
+    // Detect extension based on the blob type
+    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+    const fileName = `vocal/${auth.currentUser.uid}_${Date.now()}.${ext}`;
     const storageRef = ref(storage, fileName);
 
     try {
-        // Upload the blob to Firebase Storage
         const snapshot = await uploadBytes(storageRef, blob);
         const url = await getDownloadURL(snapshot.ref);
         
-        // Save the URL to the chat
         await sendVoiceToFirestore(url);
     } catch (e) {
-        console.error("Upload Error:", e);
+        console.error("Firebase Upload Error:", e);
         showToast("Eroare la încărcarea audio.");
     }
 }
@@ -4931,7 +4957,7 @@ async function sendVoiceToFirestore(audioUrl) {
     await addDoc(collection(db, "wall_messages"), {
         uid: auth.currentUser.uid,
         name: userData.username || auth.currentUser.displayName,
-        audioUrl: audioUrl, // THE KEY FIELD
+        audioUrl: audioUrl,
         type: 'vocal',
         createdAt: serverTimestamp(),
         isAdmin: isAdmin,
@@ -4939,7 +4965,9 @@ async function sendVoiceToFirestore(audioUrl) {
         isMod: isMod,
         isHelper: isHelper,
         seenBy: [auth.currentUser.uid],
-        isDeleted: false
+        isDeleted: false,
+        equippedBanner: userData.equippedBanner || null,
+        equippedText: userData.equippedText || null
     });
 }
 
