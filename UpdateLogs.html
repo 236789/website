@@ -1434,8 +1434,12 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
+    
+    /* CENTRARE */
+    text-align: center;
+    width: 100%;
+    display: block; /* Ne asigurăm că ocupă tot rândul pentru a se putea centra */
 }
-
 .log-body {
     padding: 25px;
     display: flex;
@@ -1754,6 +1758,20 @@
 }
 .block-image-container img:hover {
     filter: brightness(1.2);
+}
+
+.block-text {
+    font-family: 'Poppins', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    margin-bottom: 15px;
+
+    /* MODIFICĂRILE CERUTE */
+    font-weight: 700 !important;      /* Bold forțat */
+    text-align: center !important;    /* Centrare forțată */
+    color: var(--primary);            /* Culoarea Cyan Neon */
+    text-shadow: 0 0 10px rgba(41, 243, 255, 0.4); /* Efect de strălucire */
 }
   </style>
 </head>
@@ -2193,7 +2211,6 @@ async function registerLogView(logId, currentViewers) {
     }
 }
 
-// --- 2. CREAREA CARDULUI (CU PREVIEW LA CLICK) ---
 function createLogCard(id, data) {
     const card = document.createElement('div');
     card.className = 'log-card';
@@ -2205,30 +2222,37 @@ function createLogCard(id, data) {
 
     let bodyHtml = '';
     data.blocks.forEach(block => {
+        // --- BLOC TEXT: BOLD, CYAN, CENTRAT ---
         if (block.type === 'text') {
             const isGrad = block.isGradient;
-            const style = isGrad 
-                ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2});` 
-                : `color: ${block.color1 || block.color || '#fff'};`;
-            
-            bodyHtml += `<div class="block-text ${isGrad ? 'gradient-text-logic' : ''}" style="${style}">${block.content}</div>`;
+            let inlineStyle = "";
+
+            if (isGrad) {
+                inlineStyle = `background: linear-gradient(90deg, ${block.color1}, ${block.color2});`;
+            } else if (block.color1 || block.color) {
+                // Dacă ai ales o culoare specială în Admin, o folosim.
+                inlineStyle = `color: ${block.color1 || block.color};`;
+            }
+            // Dacă nu alegi culoare, style rămâne gol și ia automat Bold + Cyan din CSS
+
+            bodyHtml += `<div class="block-text ${isGrad ? 'gradient-text-logic' : ''}" style="${inlineStyle}">${block.content}</div>`;
         } 
+        // --- BLOC IMAGINE: CU ZOOM PREVIEW ---
         else if (block.type === 'image') {
             if (block.images && Array.isArray(block.images)) {
-                // MODIFICAT: Adăugat onclick pentru fiecare imagine din rând
                 let imgsHtml = block.images.map(img => `
                     <div class="block-image-container">
                         <img src="${img.url}" loading="lazy" onclick="window.openImagePreview('${img.url}')">
                     </div>`).join('');
                 bodyHtml += `<div class="log-image-row">${imgsHtml}</div>`;
             } else if (block.url) {
-                // MODIFICAT: Adăugat onclick pentru imagine unică
                 bodyHtml += `
                     <div class="block-image-container" style="width:100%">
                         <img src="${block.url}" loading="lazy" onclick="window.openImagePreview('${block.url}')">
                     </div>`;
             }
         }
+        // --- BLOC VIDEO ---
         else if (block.type === 'video') {
             bodyHtml += `
                 <div class="block-video-container">
