@@ -1648,32 +1648,6 @@
     display: block;
     object-fit: contain;
 }
-
-/* --- ADMIN LOG DELETE BUTTON --- */
-.log-delete-btn {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(255, 71, 87, 0.1);
-    border: 1px solid #ff4757;
-    color: #ff4757;
-    width: 35px;
-    height: 35px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: 0.3s;
-    z-index: 10;
-}
-
-.log-delete-btn:hover {
-    background: #ff4757;
-    color: #fff;
-    box-shadow: 0 0 15px rgba(255, 71, 87, 0.5);
-    transform: scale(1.1);
-}
   </style>
 </head>
 <body>
@@ -2025,7 +1999,7 @@
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, 
     increment, arrayUnion, serverTimestamp, collection, 
-    query, orderBy, addDoc,deleteDoc 
+    query, orderBy, addDoc 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -2096,39 +2070,6 @@ window.loadNewsFeed = () => {
     });
 };
 
-
-// --- FIX LIKE ERROR ---
-window.toggleLogLike = async (logId) => {
-    if (!auth.currentUser) return alert("Trebuie să fii logat pentru a da Like!");
-    const logRef = doc(db, "update_logs", logId);
-    const uid = auth.currentUser.uid;
-    try {
-        const snap = await getDoc(logRef);
-        const likes = snap.data().likes || {};
-        if (likes[uid]) { delete likes[uid]; } 
-        else { likes[uid] = true; }
-        await updateDoc(logRef, { likes: likes });
-    } catch (e) { console.error("Like error:", e); }
-};
-
-// --- NEW: DELETE LOG LOGIC ---
-window.deleteUpdateLog = async (logId) => {
-    // Only allow if it's you or Kevin
-    const email = auth.currentUser ? auth.currentUser.email : "";
-    const isStaff = (email === 'nicaemmanuel433qe@gmail.com' || email === 'kevin.trinity2020@gmail.com');
-    
-    if(!isStaff) return alert("Nu ai permisiunea de a șterge logs!");
-
-    if (!confirm("⚠️ Ștergi definitiv acest Update Log?")) return;
-
-    try {
-        await deleteDoc(doc(db, "update_logs", logId));
-        alert("Update Log eliminat!");
-    } catch (e) {
-        alert("Eroare: " + e.message);
-    }
-};
-
 // --- MISSING FUNCTION: REGISTER LOG VIEW ---
 async function registerLogView(logId, currentViewers) {
     // Only track if the user is logged in
@@ -2149,14 +2090,10 @@ async function registerLogView(logId, currentViewers) {
     }
 }
 
+// --- UPDATED CREATE LOG CARD (With Comment Toggle & Viewer Click) ---
 function createLogCard(id, data) {
     const card = document.createElement('div');
     card.className = 'log-card';
-
-    // Staff check for delete button
-    const email = auth.currentUser ? auth.currentUser.email : "";
-    const isStaff = (email === 'nicaemmanuel433qe@gmail.com' || email === 'kevin.trinity2020@gmail.com');
-    const deleteBtn = isStaff ? `<button class="log-delete-btn" onclick="deleteUpdateLog('${id}')"><i class="fas fa-trash"></i></button>` : '';
 
     const likes = data.likes || {};
     const likeCount = Object.keys(likes).length;
@@ -2175,8 +2112,7 @@ function createLogCard(id, data) {
     const date = data.createdAt ? data.createdAt.toDate().toLocaleDateString('ro-RO') : "Recent";
 
     card.innerHTML = `
-        <div class="log-header" style="position:relative;">
-            ${deleteBtn}
+        <div class="log-header">
             <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 5px;">${date}</p>
             <h2 class="log-title-text">${data.title}</h2>
         </div>
@@ -2195,6 +2131,7 @@ function createLogCard(id, data) {
             </div>
         </div>
         
+        <!-- HIDDEN COMMENT SECTION -->
         <div id="comments-box-${id}" class="log-comments-section">
             <div id="comment-list-${id}" class="log-comment-list"></div>
             <div class="comment-input-row">
