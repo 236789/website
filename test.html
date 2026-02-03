@@ -2652,6 +2652,40 @@ input:checked + .slider:before { transform: translateX(16px); }
 .msg-bubble {
     overflow: visible !important; /* Keep visible for the menu, but content is handled above */
 }
+
+
+
+/* --- IMPROVED LOCKED MODAL STYLES --- */
+
+/* When this class is added via JS, it fixes the layout */
+.reward-modal.locked-state .reward-coin-icon,
+.reward-modal.locked-state .reward-label {
+    display: none; /* Hide the coin and the "KSDA COINS" label */
+}
+
+.reward-modal.locked-state .reward-amount-txt {
+    font-size: 22px !important; /* Shrink the huge text */
+    text-transform: none !important;
+    letter-spacing: 0;
+    margin-top: 10px;
+    display: block;
+    line-height: 1.4;
+    color: #fff; /* Make it white so it doesn't look like a reward */
+}
+
+.reward-modal.locked-state .reward-title {
+    color: #ff4757; /* Red for "Locked" */
+}
+
+.reward-modal.locked-state .reward-card {
+    border-color: #ff4757; /* Red border for locked status */
+    box-shadow: 0 0 40px rgba(255, 71, 87, 0.2);
+}
+
+.reward-modal.locked-state .reward-btn {
+    background: #ffd700; /* Gold button for Shop */
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
   </style>
 
 </head>
@@ -3477,32 +3511,39 @@ async function logTransaction(amount, type, desc) {
 
 
     // --- 2. UNIFIED TOGGLE PICKER (FIXED) ---
-// --- 1. PICKER LOGIC (GIF & STICKER ONLY) ---
-    window.togglePicker = async (type) => {
-        const pickerDrawer = document.getElementById('pickerDrawer');
-        const gifSection = document.getElementById('gifSection');
-        const stickerSection = document.getElementById('stickerSection');
+window.togglePicker = async (type) => {
+    const pickerDrawer = document.getElementById('pickerDrawer');
+    const gifSection = document.getElementById('gifSection');
+    const stickerSection = document.getElementById('stickerSection');
+    const modal = document.getElementById('rewardModal');
+    const btn = modal.querySelector('.reward-btn');
+
+    // Reset modal from previous states
+    modal.classList.remove('locked-state');
+    btn.innerText = "SUPER!";
+    btn.onclick = () => modal.classList.remove('active');
+
+    // Permission Checks
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
+    const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
+
+    if (!hasAccess) {
+        pickerDrawer.classList.remove('open');
         
-        const gifBtn = document.getElementById('gifBtn');
-        const stickerBtn = document.getElementById('stickerBtn');
-        const allBtns = [gifBtn, stickerBtn];
-
-        // Permission Checks
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        const data = userSnap.data();
-        const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
-
-        if (!hasAccess) {
-            pickerDrawer.classList.remove('open');
-            allBtns.forEach(b => b?.classList.remove('active'));
-            
-            const modal = document.getElementById('rewardModal');
-            modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> LOCKED";
-            document.getElementById('rewardText').innerText = `Nu ai acces la ${type.toUpperCase()}!`;
-            document.getElementById('rewardAmount').innerText = "Cumpără permisul din Shop.";
-            modal.classList.add('active');
-            return;
-        }
+        // APPLY THE NEW STYLING & LINKS
+        modal.classList.add('locked-state');
+        modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> ACCES RESTRICȚIONAT";
+        document.getElementById('rewardText').innerText = `Nu ai deblocat pachetul de ${type.toUpperCase()}.`;
+        document.getElementById('rewardAmount').innerText = "Vizitează magazinul pentru a cumpăra permisul de utilizare.";
+        
+        // Update Button for Shop
+        btn.innerText = "MERGI SPRE SHOP";
+        btn.onclick = () => window.location.href = 'shop.html';
+        
+        modal.classList.add('active');
+        return;
+    }
 
         const targetBtn = document.getElementById(type + 'Btn');
 
@@ -4177,12 +4218,18 @@ async function handleLoginFlow() {
         signOut(auth).then(() => accountModal.classList.remove('active'));
     };
 
-    // Helper to show modal dynamically
-    function showRewardModal(msg, coins) {
-        rewardText.innerText = msg;
-        rewardAmount.innerText = coins;
-        rewardModal.classList.add('active');
-    }
+function showRewardModal(msg, coins) {
+    const modal = document.getElementById('rewardModal');
+    const btn = modal.querySelector('.reward-btn');
+    
+    modal.classList.remove('locked-state'); // CRITICAL FIX
+    btn.innerText = "SUPER!";
+    btn.onclick = () => modal.classList.remove('active');
+
+    rewardText.innerText = msg;
+    rewardAmount.innerText = coins;
+    modal.classList.add('active');
+}
 
     // --- COSMETICS & INVENTORY FUNCTIONS ---
 window.openInventory = async (type = 'badges') => {
