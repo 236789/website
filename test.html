@@ -3114,14 +3114,13 @@ window.finalizeRegistration = async function() {
         return;
     }
 
-    try {
-        // 1. Set the flag to true so the auto-redirect stops
-        onboardingInProgress = true; 
+    errorEl.innerText = "Cod corect! Se pregătește configurarea...";
 
+    try {
         const cred = await createUserWithEmailAndPassword(auth, pendingRegData.email, pendingRegData.pass);
         const ip = await getIP(); 
 
-        // 2. Create the initial doc
+        // Cream documentul cu onboardingComplete: false
         await setDoc(doc(db, "accounts", cred.user.uid), {
             uid: cred.user.uid,
             username: pendingRegData.username,
@@ -3133,21 +3132,11 @@ window.finalizeRegistration = async function() {
             joinedAt: serverTimestamp(),
             ip: ip,
             verified: true,
-            onboardingComplete: false // NEW FLAG
+            onboardingComplete: false // <--- ACESTA ÎL BLOCHEAZĂ SĂ PLECE
         });
 
-        // 3. UI logic: Hide the Auth container, Show Onboarding container
-        document.getElementById('loginForm').style.display = 'none';
-        document.getElementById('registerForm').style.display = 'none';
-        document.querySelector('.auth-divider').style.display = 'none';
-        document.querySelector('.social-btns-row').style.display = 'none';
-        document.getElementById('authCardTitle').parentElement.style.display = 'none'; // Hide "AUTENTIFICARE" header
-        
-        document.getElementById('onboardingCard').style.display = 'block'; 
-        document.getElementById('obUserNameDisplay').innerText = pendingRegData.username;
-
+        // NOTĂ: Nu facem redirect aici. onSnapshot de mai jos va vedea schimarea și va arăta Pasul 1.
     } catch (e) {
-        onboardingInProgress = false;
         errorEl.innerText = "Eroare: " + e.message;
     }
 };
@@ -3155,7 +3144,6 @@ window.finalizeRegistration = async function() {
 window.saveOnboardingData = async () => {
     if(!auth.currentUser) return;
     
-    // Check if custom URL is used
     const customAv = document.getElementById('obAvatarUrl').value;
     const finalAvatar = customAv || selectedAvatarSrc;
     
@@ -3171,23 +3159,41 @@ window.saveOnboardingData = async () => {
 
     try {
         const userRef = doc(db, "accounts", auth.currentUser.uid);
+        // Salvăm datele de profil (dar onboardingComplete rămâne false până dă click pe ultimul buton)
         await updateDoc(userRef, onboardingData);
 
-        // PREVIEW GENERATION
+        // GENERĂM PREVIEW-UL PENTRU PASUL 5
         document.getElementById('prevImg').src = finalAvatar;
-        document.getElementById('prevName').innerText = auth.currentUser.displayName || pendingRegData.username;
-        document.getElementById('prevPhone').innerText = onboardingData.phone ? "📞 " + onboardingData.phone : "";
-        document.getElementById('prevBirth').innerText = onboardingData.birthDate ? "🎂 " + onboardingData.birthDate : "";
+        document.getElementById('prevName').innerText = document.getElementById('obUserNameDisplay').innerText;
+        document.getElementById('prevPhone').innerText = onboardingData.phone ? "📞 " + onboardingData.phone : "Fără telefon";
+        document.getElementById('prevBirth').innerText = onboardingData.birthDate ? "🎂 " + onboardingData.birthDate : "Fără dată naștere";
         
         let socialHtml = "";
-        if(onboardingData.tiktokLink) socialHtml += `<i class="fab fa-tiktok" style="color:#ff0050;"></i>`;
-        if(onboardingData.instaLink) socialHtml += `<i class="fab fa-instagram" style="color:#e1306c;"></i>`;
+        if(onboardingData.tiktokLink) socialHtml += `<i class="fab fa-tiktok" style="color:#ff0050; margin-right:10px;"></i>`;
+        if(onboardingData.instaLink) socialHtml += `<i class="fab fa-instagram" style="color:#e1306c; margin-right:10px;"></i>`;
         if(onboardingData.fbLink) socialHtml += `<i class="fab fa-facebook" style="color:#1877f2;"></i>`;
-        document.getElementById('prevSocials').innerHTML = socialHtml;
+        document.getElementById('prevSocials').innerHTML = socialHtml || "<p style='font-size:10px;'>Fără rețele sociale</p>";
 
         window.nextObStep(5);
     } catch(e) {
         alert("Eroare la salvare: " + e.message);
+    }
+};
+
+// ACESTA ESTE BUTONUL "MERGI ACASĂ" DIN PASUL 5
+window.finishOnboarding = async () => {
+    if (!auth.currentUser) return;
+    
+    try {
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        // ACUM marcăm onboarding-ul ca fiind gata
+        await updateDoc(userRef, { onboardingComplete: true });
+        
+        // Trimitem userul pe index
+        window.location.href = "index.html";
+    } catch(e) {
+        console.error(e);
+        window.location.href = "index.html";
     }
 };
 
@@ -3213,33 +3219,62 @@ window.finishOnboarding = async () => {
 
 
 onAuthStateChanged(auth, user => {
+    // Referințe către elementele de UI pentru Onboarding și Login
+    const authOverlay = document.getElementById('authOverlay');
+    const onboardingCard = document.getElementById('onboardingCard');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const authDivider = document.querySelector('.auth-divider');
+    const socialBtns = document.querySelector('.social-btns-row');
+    const authHeader = document.querySelector('.auth-header');
+
     if (user) {
-        if (!location.pathname.endsWith("index.html") && location.pathname !== "/") {
-             location.href = "index.html";
-        }
+        // Nu mai facem redirect automat la index.html aici.
+        // Verificarea se mută în Snapshot-ul bazei de date.
 
         const userRef = doc(db, "accounts", user.uid);
 
-        // 1. UI Updates for Logged In User
-        headerLoginText.innerText = "ACCOUNT";
-        headerUserImg.style.display = "block";
-        
-        if(mobileLoginBtn) {
-            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
-        }
-
-        document.getElementById('authOverlay').style.display = "none";
-
-        // 2. Listen for Global Metadata (Notifications)
+        // 1. Listen for Global Metadata (Notifications / News Count)
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
             const totalGlobal = metaSnap.data()?.totalNews || 0;
 
-            // 3. Listen for User Data LIVE
+            // 2. Listen for User Data LIVE (Baza de date decide dacă are voie în site)
             onSnapshot(userRef, async (uSnap) => {
-                if(!uSnap.exists()) return;
+                if (!uSnap.exists()) return;
                 const data = uSnap.data();
-                
-                headerUserImg.src = data.image || "https://iili.io/fXks1Dv.png";
+
+                // --- LOGICA DE ONBOARDING (Garda de acces) ---
+                // Dacă profilul nu este gata, îl blocăm în pașii de configurare
+                if (data.onboardingComplete === false) {
+                    authOverlay.style.display = "flex";
+                    loginForm.style.display = "none";
+                    registerForm.style.display = "none";
+                    if (authDivider) authDivider.style.display = "none";
+                    if (socialBtns) socialBtns.style.display = "none";
+                    if (authHeader) authHeader.style.display = "none";
+
+                    // Afișăm Cardul de Onboarding și numele userului
+                    onboardingCard.style.display = "block";
+                    const obName = document.getElementById('obUserNameDisplay');
+                    if (obName) obName.innerText = data.username || "User";
+                    
+                    // Oprim execuția restului de UI pentru a nu "pâlpâi" site-ul în spate
+                    return; 
+                } else {
+                    // UTILIZATORUL A TERMINAT ONBOARDING-UL
+                    // Acum are voie să vadă site-ul
+                    authOverlay.style.display = "none";
+                    onboardingCard.style.display = "none";
+
+                    // UI Updates for Header
+                    headerLoginText.innerText = "ACCOUNT";
+                    headerUserImg.style.display = "block";
+                    headerUserImg.src = data.image || "https://iili.io/fXks1Dv.png";
+
+                    if (mobileLoginBtn) {
+                        mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+                    }
+                }
 
                 // --- A. QUEST RESET & STREAK LOSS LOGIC ---
                 if (typeof resetUserQuests === "function") {
@@ -3251,29 +3286,24 @@ onAuthStateChanged(auth, user => {
                 const completedIds = data.completedQuests || [];
                 const finishedCount = activeIds.filter(id => completedIds.includes(id)).length;
 
-                // Check if all 6 quests are done and not already awarded for this block
                 if (activeIds.length === 6 && finishedCount === 6 && data.lastResetBlock !== "FORCE_RESET") {
                     if (data.lastStreakAwardedBlock !== data.lastResetBlock) {
                         if (!isAwardingInProgress) {
                             isAwardingInProgress = true;
-
                             const oldStr = data.streak || 0;
-                            
-                            // Update Firebase: Give +1 Streak and +1 Diamond
+
                             await updateDoc(userRef, {
                                 streak: increment(1),
                                 diamonds: increment(1),
                                 lastStreakAwardedBlock: data.lastResetBlock
                             });
 
-                            // Show the FIRE Modal
                             const rewardModal = document.getElementById('streakRewardModal');
                             if (rewardModal) {
                                 document.getElementById('streakOld').innerText = oldStr;
                                 document.getElementById('streakNew').innerText = oldStr + 1;
                                 rewardModal.classList.add('active');
                             }
-                            
                             setTimeout(() => { isAwardingInProgress = false; }, 3000);
                         }
                     }
@@ -3282,14 +3312,13 @@ onAuthStateChanged(auth, user => {
                 // --- C. AVATAR & FRAME LOGIC ---
                 document.getElementById('popUserImg').src = data.image || "https://iili.io/fXks1Dv.png";
                 const popFrame = document.getElementById('popUserFrame');
-                if(popFrame) {
+                if (popFrame) {
                     if (data.equippedFrame && data.equippedFrame.img) {
                         popFrame.src = data.equippedFrame.img;
                         popFrame.style.display = "block";
                         const scale = data.equippedFrame.scale || 1.45;
-                        const sizePct = scale * 100;
-                        popFrame.style.width = `${sizePct}%`;
-                        popFrame.style.height = `${sizePct}%`;
+                        popFrame.style.width = `${scale * 100}%`;
+                        popFrame.style.height = `${scale * 100}%`;
                     } else {
                         popFrame.style.display = "none";
                     }
@@ -3297,7 +3326,7 @@ onAuthStateChanged(auth, user => {
 
                 // --- D. NAME CUSTOMIZATION ---
                 let rawName = data.username || "Anonim";
-                if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                if (data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
 
                 const popNameEl = document.getElementById('popUserName');
                 if (data.equippedText && data.equippedText.cssClass) {
@@ -3308,32 +3337,39 @@ onAuthStateChanged(auth, user => {
 
                 // --- E. STACKED BADGES (Staff + Cosmetic) ---
                 const popBadgeBox = document.getElementById('popUserBadges');
-                if(popBadgeBox) {
+                if (popBadgeBox) {
                     let staffHtml = "";
                     const email = data.email || "";
-                    
-                    if(email === 'nicaemmanuel433qe@gmail.com') staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
-                    else if(email === 'kevin.trinity2020@gmail.com') staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
-                    else if(['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
-                    else if(['norbyims@gmail.com', 'promovarideafaceri7@gmail.com', 'violetaflorentinadima@gmail.com', 'biggycelmic.115@gmail.com'].includes(email)) staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
-                    
+
+                    if (email === 'nicaemmanuel433qe@gmail.com') {
+                        staffHtml = `<div><span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span></div>`;
+                    } else if (email === 'kevin.trinity2020@gmail.com') {
+                        staffHtml = `<div><span class="admin-badge">ADMIN</span></div>`;
+                    } else if (['mary.bughi@gmail.com', 'emmanuel.nica83@gmail.com'].includes(email)) {
+                        staffHtml = `<div><span class="mod-badge">MODERATOR</span></div>`;
+                    } else if (['norbyims@gmail.com', 'promovarideafaceri7@gmail.com'].includes(email)) {
+                        staffHtml = `<div><span class="helper-badge">HELPER</span></div>`;
+                    }
+
                     let cosmeticHtml = "";
-                    if(data.equippedBadge) {
+                    if (data.equippedBadge) {
                         cosmeticHtml = `<div style="margin-top:5px;"><span class="cosmetic-badge" style="background:${data.equippedBadge.color}; color:#000; border:none; box-shadow:0 0 5px ${data.equippedBadge.color};"><i class="fas ${data.equippedBadge.icon}"></i> ${data.equippedBadge.text}</span></div>`;
                     }
                     popBadgeBox.innerHTML = staffHtml + cosmeticHtml;
                 }
 
                 // --- F. DUAL CURRENCY & STREAK UI ---
-                document.getElementById('popUserEmail').innerText = data.email || user.email;
-                
-                // Use formatCurrency (e.g., 1000 -> 1k)
-                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+                const emailEl = document.getElementById('popUserEmail');
+                if (emailEl) emailEl.innerText = data.email || user.email;
+
+                const coinsEl = document.getElementById('popUserCoins');
+                if (coinsEl) coinsEl.innerText = formatCurrency(data.coins || 0);
+
                 const diamondEl = document.getElementById('popUserDiamonds');
-                if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+                if (diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
 
                 const streakTxt = document.querySelector('.streak-txt');
-                if(streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
+                if (streakTxt) streakTxt.innerText = `Daily Streak: ${data.streak || 0}`;
 
                 // --- G. NOTIFICATION BADGE LOGIC ---
                 const userVazute = data.lastSeenNewsCount || 0;
@@ -3356,16 +3392,21 @@ onAuthStateChanged(auth, user => {
 
         updateOnlineStatus(); // Start tracking online presence
     } else {
-        // LOGGED OUT STATE
+        // LOGGED OUT STATE - Resetăm totul la starea inițială
         headerLoginText.innerText = "LOGIN";
         headerUserImg.style.display = "none";
-        
-        if(mobileLoginBtn) {
+
+        if (mobileLoginBtn) {
             mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
 
-        document.getElementById('authOverlay').style.display = "flex";
-    } 
+        authOverlay.style.display = "flex";
+        onboardingCard.style.display = "none";
+        loginForm.style.display = "block";
+        if (authDivider) authDivider.style.display = "block";
+        if (socialBtns) socialBtns.style.display = "flex";
+        if (authHeader) authHeader.style.display = "block";
+    }
 });
 
 
