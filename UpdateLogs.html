@@ -1648,6 +1648,49 @@
     display: block;
     object-fit: contain;
 }
+
+
+/* Suport pentru Text Gradient */
+.gradient-text-logic {
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    display: inline-block;
+}
+
+/* Fix pentru rândul de imagini */
+.log-image-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    width: 100%;
+}
+
+.block-image-container {
+    border-radius: 15px;
+    overflow: hidden;
+    border: 2px solid rgba(41, 243, 255, 0.1);
+}
+
+.block-image-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Caseta Autor */
+.log-author-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.author-pfp-small {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1.5px solid var(--primary);
+    object-fit: cover;
+}
   </style>
 </head>
 <body>
@@ -1999,7 +2042,7 @@
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, 
     increment, arrayUnion, serverTimestamp, collection, 
-    query, orderBy, addDoc 
+    query, orderBy, addDoc,deleteDoc 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -2090,7 +2133,6 @@ async function registerLogView(logId, currentViewers) {
     }
 }
 
-// --- UPDATED CREATE LOG CARD (With Comment Toggle & Viewer Click) ---
 function createLogCard(id, data) {
     const card = document.createElement('div');
     card.className = 'log-card';
@@ -2103,9 +2145,22 @@ function createLogCard(id, data) {
     let bodyHtml = '';
     data.blocks.forEach(block => {
         if (block.type === 'text') {
-            bodyHtml += `<div class="block-text" style="color: ${block.color}">${block.content}</div>`;
-        } else if (block.type === 'image') {
-            bodyHtml += `<div class="block-image-container" style="width: ${block.width}%"><img src="${block.url}" loading="lazy"></div>`;
+            const isGrad = block.isGradient;
+            const style = isGrad 
+                ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2});` 
+                : `color: ${block.color1 || block.color || '#fff'};`;
+            
+            bodyHtml += `<div class="block-text ${isGrad ? 'gradient-text-logic' : ''}" style="${style}">${block.content}</div>`;
+        } 
+        else if (block.type === 'image') {
+            // Verificăm dacă blocul are array-ul de imagini (structura nouă)
+            if (block.images && Array.isArray(block.images)) {
+                let imgsHtml = block.images.map(img => `<div class="block-image-container"><img src="${img.url}" loading="lazy"></div>`).join('');
+                bodyHtml += `<div class="log-image-row">${imgsHtml}</div>`;
+            } else if (block.url) {
+                // Fallback pentru postările vechi (structura veche)
+                bodyHtml += `<div class="block-image-container" style="width:100%"><img src="${block.url}" loading="lazy"></div>`;
+            }
         }
     });
 
@@ -2113,7 +2168,13 @@ function createLogCard(id, data) {
 
     card.innerHTML = `
         <div class="log-header">
-            <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 5px;">${date}</p>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin:0;">${date}</p>
+                <div class="log-author-box">
+                    <span style="font-size:9px; color:#888; font-family:'Orbitron';">BY ${data.authorName || 'ADMIN'}</span>
+                    <img src="${data.authorPfp || 'https://iili.io/fXks1Dv.png'}" class="author-pfp-small">
+                </div>
+            </div>
             <h2 class="log-title-text">${data.title}</h2>
         </div>
         <div class="log-body">${bodyHtml}</div>
@@ -2125,13 +2186,16 @@ function createLogCard(id, data) {
                 <button class="int-btn" onclick="toggleLogComments('${id}')">
                     <i class="far fa-comment"></i> DISCUȚIE
                 </button>
+                <!-- BUTON ȘTERGERE -->
+                <button class="int-btn" style="color:#ff4757; margin-left:10px;" onclick="deleteLog('${id}')">
+                    <i class="fas fa-trash"></i>
+                </button>
             </div>
             <div class="viewers-count" style="cursor:pointer;" onclick="openLogViewersModal('${id}')">
                 <i class="far fa-eye"></i> ${viewerCount} VĂZUT
             </div>
         </div>
         
-        <!-- HIDDEN COMMENT SECTION -->
         <div id="comments-box-${id}" class="log-comments-section">
             <div id="comment-list-${id}" class="log-comment-list"></div>
             <div class="comment-input-row">
@@ -2178,6 +2242,46 @@ window.openLogViewersModal = async (logId) => {
     } catch (e) {
         console.error(e);
         content.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
+    }
+};
+
+
+// FUNCȚIA DE LIKE
+window.toggleLogLike = async (logId) => {
+    if (!auth.currentUser) return alert("Trebuie să fii logat!");
+    const uid = auth.currentUser.uid;
+    const logRef = doc(db, "update_logs", logId);
+
+    try {
+        const snap = await getDoc(logRef);
+        let likes = snap.data().likes || {};
+
+        if (likes[uid]) {
+            delete likes[uid]; // Scoate like
+        } else {
+            likes[uid] = true; // Pune like
+        }
+
+        await updateDoc(logRef, { likes: likes });
+    } catch (e) {
+        console.error("Eroare like:", e);
+    }
+};
+
+// FUNCȚIA DE ȘTERGERE
+window.deleteLog = async (logId) => {
+    // Verificăm dacă e admin (opțional, poți pune aici emailul tău)
+    if (auth.currentUser.email !== 'nicaemmanuel433qe@gmail.com') {
+        return alert("Doar un administrator poate șterge update-uri!");
+    }
+
+    if (!confirm("Ești sigur că vrei să ștergi acest update definitiv?")) return;
+
+    try {
+        await deleteDoc(doc(db, "update_logs", logId));
+        alert("Update șters!");
+    } catch (e) {
+        alert("Eroare la ștergere: " + e.message);
     }
 };
 
