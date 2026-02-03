@@ -1569,6 +1569,57 @@
     padding: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
+
+
+/* --- FIX: COMMENT INPUT & BUTTON --- */
+.com-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important;
+    padding: 12px 18px !important;
+    border-radius: 50px !important;
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    outline: none;
+    transition: 0.3s;
+}
+.com-input:focus {
+    border-color: var(--primary) !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    box-shadow: 0 0 15px rgba(41, 243, 255, 0.2);
+}
+
+.com-send-btn {
+    background: var(--primary) !important;
+    color: #000 !important;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.com-send-btn:hover {
+    transform: scale(1.1) rotate(10deg);
+    box-shadow: 0 0 15px var(--primary);
+}
+
+/* --- COMMENT BANNER FIX --- */
+/* This ensures that when a comment has a banner class (like .bubble-galaxy), it styles the whole comment card */
+.log-comment-item.bubble-galaxy, 
+.log-comment-item.bubble-fire, 
+.log-comment-item.bubble-toxic,
+.log-comment-item.bubble-neon,
+.log-comment-item.bubble-rainbow,
+.log-comment-item[class*="bubble-"],
+.log-comment-item[class*="anim-"] {
+    border: 1px solid rgba(255,255,255,0.4) !important;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
   </style>
 </head>
 <body>
@@ -2064,39 +2115,42 @@ function createLogCard(id, data) {
     return card;
 }
 
-// --- LOGIC: WHO VIEWED MODAL ---
 window.openLogViewersModal = async (logId) => {
     const modal = document.getElementById('viewersModal');
     const content = document.getElementById('viewersListContent');
     modal.classList.add('active');
-    content.innerHTML = '<p style="color:#888; text-align:center;">Se încarcă lista...</p>';
+    content.innerHTML = '<div style="text-align:center; padding:20px;"><i class="fas fa-spinner fa-spin"></i></div>';
 
-    const logRef = doc(db, "update_logs", logId);
-    const snap = await getDoc(logRef);
-    const uids = snap.data().viewers || [];
+    try {
+        const logRef = doc(db, "update_logs", logId);
+        const snap = await getDoc(logRef);
+        const uids = snap.data().viewers || [];
 
-    if(uids.length === 0) {
-        content.innerHTML = '<p style="color:#555; text-align:center;">Nimeni încă.</p>';
-        return;
-    }
-
-    let html = "";
-    // Loop through viewers. Use cachedUsers if available to speed up
-    for(let uid of uids) {
-        let u = cachedUsers.find(user => user.uid === uid);
-        if(!u) {
-            const uSnap = await getDoc(doc(db, "accounts", uid));
-            if(uSnap.exists()) u = uSnap.data();
+        if(uids.length === 0) {
+            content.innerHTML = '<p style="color:#555; text-align:center;">Nimeni încă.</p>';
+            return;
         }
-        if(u) {
-            html += `
-                <div class="viewer-row">
-                    <img src="${u.pfp || u.image}" style="width:30px; height:30px; border-radius:50%; border:1px solid var(--primary);">
-                    <span style="color:#fff; font-family:'Orbitron'; font-size:12px;">${u.username}</span>
-                </div>`;
-        }
+
+        let html = "";
+        // Fetch each user's info from the 'accounts' collection
+        const promises = uids.map(uid => getDoc(doc(db, "accounts", uid)));
+        const userSnaps = await Promise.all(promises);
+
+        userSnaps.forEach(uSnap => {
+            if(uSnap.exists()) {
+                const u = uSnap.data();
+                html += `
+                    <div class="viewer-row" style="display:flex; align-items:center; gap:12px; padding:10px; border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <img src="${u.image || u.pfp || 'https://iili.io/fXks1Dv.png'}" style="width:35px; height:35px; border-radius:50%; border:2px solid var(--primary); object-fit:cover;">
+                        <span style="color:#fff; font-family:'Orbitron'; font-size:13px; font-weight:700;">${u.username}</span>
+                    </div>`;
+            }
+        });
+        content.innerHTML = html;
+    } catch (e) {
+        console.error(e);
+        content.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
     }
-    content.innerHTML = html;
 };
 
 // --- LOGIC: COMMENTS ENGINE ---
@@ -2121,31 +2175,32 @@ window.toggleLogComments = (logId) => {
             return;
         }
 
-        snapshot.forEach(docSnap => {
-            const c = docSnap.data();
-            
-            // Build the Name with Custom Text Color
-            const nameHtml = c.equippedText ? `<span class="${c.equippedText.cssClass}">${c.name}</span>` : c.name;
-            
-            // Build the Frame overlay
-            const frameHtml = c.equippedFrame ? `<img src="${c.equippedFrame.img}" class="comment-frame-overlay" style="width:${(c.equippedFrame.scale || 1.45)*100}%; height:${(c.equippedFrame.scale || 1.45)*100}%;">` : '';
+// Inside toggleLogComments, find the line where you add the HTML:
+snapshot.forEach(docSnap => {
+    const c = docSnap.data();
+    
+    // 1. Get Banner CSS
+    const bannerClass = c.equippedBanner ? c.equippedBanner.cssClass : '';
+    
+    // 2. Get Name with Custom Text Color
+    const nameHtml = c.equippedText ? `<span class="${c.equippedText.cssClass}">${c.name}</span>` : c.name;
+    
+    // 3. Get Frame
+    const frameHtml = c.equippedFrame ? `<img src="${c.equippedFrame.img}" class="comment-frame-overlay" style="width:${(c.equippedFrame.scale || 1.45)*100}%; height:${(c.equippedFrame.scale || 1.45)*100}%;">` : '';
 
-            // Apply Banner class to the bubble if it exists
-            const bannerClass = c.equippedBanner ? c.equippedBanner.cssClass : '';
-
-            list.innerHTML += `
-                <div class="log-comment-item ${bannerClass}">
-                    <div class="comment-pfp-wrapper">
-                        <img src="${c.photo}" class="comment-pfp-img">
-                        ${frameHtml}
-                    </div>
-                    <div style="flex:1;">
-                        <div style="font-family:'Orbitron'; font-size:11px; font-weight:800; margin-bottom:4px;">${nameHtml}</div>
-                        <div style="color:#eee; font-size:13px; line-height:1.4;">${c.text}</div>
-                    </div>
-                </div>
-            `;
-        });
+    list.innerHTML += `
+        <div class="log-comment-item ${bannerClass}">
+            <div class="comment-pfp-wrapper">
+                <img src="${c.photo}" class="comment-pfp-img">
+                ${frameHtml}
+            </div>
+            <div style="flex:1;">
+                <div style="font-family:'Orbitron'; font-size:11px; font-weight:800; margin-bottom:4px;">${nameHtml}</div>
+                <div style="color:#eee; font-size:13px; line-height:1.4; font-weight:500;">${c.text}</div>
+            </div>
+        </div>
+    `;
+});
         list.scrollTop = list.scrollHeight;
     });
 };
