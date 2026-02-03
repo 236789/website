@@ -5588,71 +5588,90 @@ function renderLogBlocks() {
     });
 }
 
-// 4. PREVIEW LOGIC (FIXED)
+// 1. REPARARE PREVIEW (Folosim innerHTML în loc de appendChild)
 window.previewUpdateLog = () => {
     const container = document.getElementById('previewContainer');
     const title = document.getElementById('logTitle').value || "Titlu Update Demo";
     
+    // Pregătim datele pentru randare
     const fakeData = {
         title: title,
-        blocks: updateLogBlocks,
+        blocks: updateLogBlocks, // Folosește array-ul curent din editor
         authorName: auth.currentUser?.displayName || "Admin",
         authorPfp: auth.currentUser?.photoURL || "https://iili.io/fXks1Dv.png",
-        createdAt: { toDate: () => new Date() }
+        createdAt: { toDate: () => new Date() } // Simulează data curentă
     };
 
-    // We use innerHTML here to prevent the "Node type" error
+    // GENERARE HTML: Folosim .innerHTML pentru că funcția returnează un String
     container.innerHTML = window.renderLogCardHTML("preview", fakeData);
+    
+    // Afișăm modalul
     document.getElementById('logPreviewModal').classList.add('active');
 };
 
-// 5. PUBLISHING (FIXED FILE OBJECT ERROR)
+// 2. REPARARE PUBLISH (Urcăm fișierele și curățăm obiectul înainte de salvare)
 window.publishUpdateLog = async () => {
     const title = document.getElementById('logTitle').value.trim();
-    if (!title) return alert("Introdu un titlu!");
+    if (!title) return alert("Introdu un titlu pentru update!");
     
     const btn = document.getElementById('btnPublishLog');
-    btn.disabled = true; btn.innerText = "SE TRIMITE...";
+    btn.disabled = true; 
+    btn.innerText = "SE ÎNCARCĂ IMAGINILE...";
 
     try {
-        // Deep copy of blocks to avoid modifying the UI state during upload
-        let blocksToSave = JSON.parse(JSON.stringify(updateLogBlocks));
+        // Creăm o copie curată a blocurilor pentru baza de date
+        // Nu folosim JSON.stringify aici pentru că am pierde referințele la fișierele pozelor
+        let cleanBlocks = [];
 
-        for (let i = 0; i < updateLogBlocks.length; i++) {
-            if (updateLogBlocks[i].type === 'image') {
-                for (let j = 0; j < updateLogBlocks[i].images.length; j++) {
-                    const imgFile = updateLogBlocks[i].images[j].file;
-                    if (imgFile) {
-                        const storageRef = ref(storage, `updates/${Date.now()}_img`);
-                        const snapshot = await uploadBytes(storageRef, imgFile);
-                        const downloadUrl = await getDownloadURL(snapshot.ref);
-                        blocksToSave[i].images[j].url = downloadUrl;
+        for (let block of updateLogBlocks) {
+            if (block.type === 'text') {
+                cleanBlocks.push({ ...block });
+            } 
+            else if (block.type === 'image') {
+                let uploadedImages = [];
+                for (let imgObj of block.images) {
+                    // Dacă avem un fișier nou selectat (obiectul File)
+                    if (imgObj.file) {
+                        const storageRef = window.ref(window.storage, `updates/${Date.now()}_${Math.random().toString(36).substring(7)}`);
+                        const snapshot = await window.uploadBytes(storageRef, imgObj.file);
+                        const downloadUrl = await window.getDownloadURL(snapshot.ref);
+                        uploadedImages.push({ url: downloadUrl });
+                    } else if (imgObj.url) {
+                        // Dacă imaginea are deja URL (ex: dintr-un link extern)
+                        uploadedImages.push({ url: imgObj.url });
                     }
-                    // Delete file object before Firestore save
-                    delete blocksToSave[i].images[j].file; 
                 }
+                cleanBlocks.push({ type: 'image', images: uploadedImages });
             }
         }
 
-        await addDoc(collection(db, "update_logs"), {
+        // SALVARE ÎN FIRESTORE
+        // Acum 'cleanBlocks' conține doar URL-uri (String), nu obiecte 'File'
+        await window.addDoc(window.collection(window.db, "update_logs"), {
             title: title,
-            blocks: blocksToSave,
+            blocks: cleanBlocks,
             authorName: auth.currentUser.displayName || "Lost Soul",
             authorPfp: auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
-            createdAt: serverTimestamp(),
+            createdAt: window.serverTimestamp(),
             viewers: [],
             likes: {}
         });
 
-        alert("Update Log Publicat!");
-        updateLogBlocks = []; document.getElementById('logTitle').value = ''; renderLogBlocks();
+        alert("Update Log-ul a fost publicat cu succes!");
+        
+        // Resetare Editor
+        document.getElementById('logTitle').value = '';
+        window.updateLogBlocks = []; 
+        if (typeof renderLogBlocks === "function") renderLogBlocks();
+
     } catch (e) {
+        console.error("Eroare la publicare:", e);
         alert("Eroare: " + e.message);
     } finally {
-        btn.disabled = false; btn.innerText = "PUBLICAȚI UPDATE LOG";
+        btn.disabled = false; 
+        btn.innerText = "PUBLICAȚI UPDATE LOG";
     }
 };
-
 // 6. HELPERS
 window.updateBlockData = (index, key, value) => {
     updateLogBlocks[index][key] = value;
