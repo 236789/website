@@ -9843,120 +9843,141 @@ onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 // 🔔 NOU: Luăm numărul total de mesaje de pe Wall
                 const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
 
-                // 3. User Data Listener
-// 3. User Data Listener
-// 3. User Data Listener
-// 3. User Data Listener
-// 3. User Data Listener (Citire setări la Login/Refresh)
-// 3. User Data Listener (VARIÂNTA COMPLETĂ: Profil + Resizer + Mood)
-                onSnapshot(userRef, async (uSnap) => {
-                    if(!uSnap.exists()) return;
-                    const data = uSnap.data();
 
-                    // LIVE BAN CHECK
-                    if (data.isBanned === true) { location.reload(); return; }
+onSnapshot(userRef, async (uSnap) => {
+    if(!uSnap.exists()) return;
+    const data = uSnap.data();
 
-                    // --- 1. LOGICĂ RESIZER & ASPECT (MOBILE/PC) ---
-                    const savedW = data.phoneBoxWidth;
-                    const savedH = data.phoneBoxHeight;
-                    const savedFS = data.chatFontSize;
+    // LIVE BAN CHECK
+    if (data.isBanned === true) { 
+        localStorage.setItem('ksda_perma_ban', 'true');
+        location.reload(); 
+        return; 
+    }
 
-                    if (typeof window.applyMessengerStyles === "function") {
-                        window.applyMessengerStyles(savedW, savedH, savedFS);
-                    }
+    // --- 1. LOGICĂ RESIZER & ASPECT (MOBILE/PC) ---
+    const savedW = data.phoneBoxWidth || 240;
+    const savedH = data.phoneBoxHeight || 380;
+    const savedFS = data.chatFontSize || 11;
 
-                    // Sincronizare Slidere și Valori UI
-                    if (document.getElementById('rangeW')) {
-                        let displayW = savedW || 240;
-                        let displayH = savedH || 380;
-                        let displayFS = savedFS || 11;
-                        if (window.innerWidth <= 768) {
-                            displayW = Math.min(displayW, 320);
-                            displayH = Math.min(displayH, 500);
-                            displayFS = Math.min(displayFS, 15);
-                        }
-                        document.getElementById('rangeW').value = displayW;
-                        document.getElementById('rangeH').value = displayH;
-                        document.getElementById('rangeFS').value = displayFS;
-                        document.getElementById('valW').innerText = displayW;
-                        document.getElementById('valH').innerText = displayH;
-                        document.getElementById('valFS').innerText = displayFS;
-                    }
+    if (typeof window.applyMessengerStyles === "function") {
+        window.applyMessengerStyles(savedW, savedH, savedFS);
+    }
 
-                    // --- 2. KEVIN-BOT MOOD SYNC ---
-                    if (data.kevinAnger !== undefined) {
-                        window.kevinAnger = data.kevinAnger;
-                        const fill = document.getElementById('moodBarFill');
-                        const emoji = document.getElementById('moodEmoji');
-                        if(fill && emoji) {
-                            fill.style.width = data.kevinAnger + "%";
-                            emoji.style.left = data.kevinAnger + "%";
-                            const a = data.kevinAnger;
-                            if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-                            else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-                            else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-                            else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
-                            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
-                        }
-                    }
+    // Sincronizare Slidere și Valori UI (dacă elementele există în pagină)
+    if (document.getElementById('rangeW')) {
+        let displayW = savedW;
+        let displayH = savedH;
+        let displayFS = savedFS;
+        if (window.innerWidth <= 768) {
+            displayW = Math.min(displayW, 320);
+            displayH = Math.min(displayH, 500);
+            displayFS = Math.min(displayFS, 15);
+        }
+        document.getElementById('rangeW').value = displayW;
+        document.getElementById('rangeH').value = displayH;
+        document.getElementById('rangeFS').value = displayFS;
+        document.getElementById('valW').innerText = displayW;
+        document.getElementById('valH').innerText = displayH;
+        document.getElementById('valFS').innerText = displayFS;
+    }
 
-                    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
-                    // Imagine Profil
-                    document.getElementById('popUserImg').src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
-                    
-                    // Ramă Profil
-                    const popFrame = document.getElementById('popUserFrame');
-                    if(popFrame) {
-                        if (data.equippedFrame?.img) {
-                            popFrame.src = data.equippedFrame.img;
-                            popFrame.style.display = "block";
-                            const scale = data.equippedFrame.scale || 1.45;
-                            popFrame.style.width = (scale * 100) + "%";
-                            popFrame.style.height = (scale * 100) + "%";
-                        } else {
-                            popFrame.style.display = "none";
-                        }
-                    }
+    // --- 2. KEVIN-BOT MOOD SYNC ---
+    if (data.kevinAnger !== undefined) {
+        window.kevinAnger = data.kevinAnger;
+        const fill = document.getElementById('moodBarFill');
+        const emoji = document.getElementById('moodEmoji');
+        if(fill && emoji) {
+            fill.style.width = data.kevinAnger + "%";
+            emoji.style.left = data.kevinAnger + "%";
+            const a = data.kevinAnger;
+            if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+            else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+            else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+            else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
+        }
+    }
 
-                    // Nume și Text Cosmetic
-                    const nameEl = document.getElementById('popUserName');
-                    let rawName = data.username || user.displayName || "Utilizator";
-                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-                    if (data.equippedText?.cssClass) {
-                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                    } else {
-                        nameEl.innerText = rawName;
-                    }
+    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
+    
+    // Imagine Profil (Pop-up + Header)
+    const finalPhoto = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
+    document.getElementById('popUserImg').src = finalPhoto;
+    if(document.getElementById('headerUserImg')) {
+        document.getElementById('headerUserImg').src = finalPhoto;
+        document.getElementById('headerUserImg').style.display = "block";
+    }
+    
+    // Ramă Profil
+    const popFrame = document.getElementById('popUserFrame');
+    if(popFrame) {
+        if (data.equippedFrame?.img) {
+            popFrame.src = data.equippedFrame.img;
+            popFrame.style.display = "block";
+            const scale = data.equippedFrame.scale || 1.45;
+            popFrame.style.width = (scale * 100) + "%";
+            popFrame.style.height = (scale * 100) + "%";
+        } else {
+            popFrame.style.display = "none";
+        }
+    }
 
-                    // Email, Monede, Diamante și Streak
-                    document.getElementById('popUserEmail').innerText = data.email || user.email;
-                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                    const diamondEl = document.getElementById('popUserDiamonds');
-                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-                    const streakDisplay = document.querySelector('.streak-txt');
-                    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
+    // Nume și Text Cosmetic (Pop-up + Header)
+    let rawName = data.username || user.displayName || "Utilizator Nou";
+    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
 
+    // Update Pop-up Name
+    const nameEl = document.getElementById('popUserName');
+    if (data.equippedText?.cssClass) {
+        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+    } else {
+        nameEl.innerText = rawName;
+    }
 
-                    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
-                    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
+    // Update Header Name (Să nu mai apară LOGIN)
+    const headerLoginText = document.getElementById('headerLoginText');
+    if (headerLoginText) {
+        headerLoginText.innerText = rawName.toUpperCase();
+    }
 
-                    if (data.agreedToRules !== true) {
-                        setTimeout(() => {
-                            const rulesModal = document.getElementById('rulesReminderModal');
-                            if(rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
-                        }, 4000);
-                    }
+    // Email, Monede, Diamante și Streak
+    const emailDisplay = data.email || user.email || "fara-email@exemplu.com";
+    document.getElementById('popUserEmail').innerText = emailDisplay;
+    
+    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+    
+    const diamondEl = document.getElementById('popUserDiamonds');
+    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
+    
+    const streakDisplay = document.querySelector('.streak-txt');
+    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    if (data.pendingReferrals > 0) {
-                        const count = data.pendingReferrals;
-                        const refModal = document.getElementById('referralRewardModal');
-                        if (refModal) {
-                            refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
-                            refModal.classList.add('active');
-                            await updateDoc(userRef, { pendingReferrals: 0 });
-                        }
-                    }
-                });
+    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
+    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
+
+    // Reminder Regulament
+    if (data.agreedToRules !== true) {
+        setTimeout(() => {
+            const rulesModal = document.getElementById('rulesReminderModal');
+            if(rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
+        }, 4000);
+    }
+
+    // Bonus Referral (Dacă a invitat pe cineva)
+    if (data.pendingReferrals > 0) {
+        const count = data.pendingReferrals;
+        const refModal = document.getElementById('referralRewardModal');
+        if (refModal) {
+            refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
+            refModal.classList.add('active');
+            await updateDoc(userRef, { pendingReferrals: 0 });
+        }
+    }
+}, (error) => {
+    // FIX pentru eroarea de permisiuni: Dacă snapshot-ul crapă, dăm un mesaj în consolă
+    console.warn("Eroare Snapshot (posibil permisiuni):", error.message);
+});
             });
 
             updateOnlineStatus(); 
@@ -10208,7 +10229,6 @@ function generateDailyIds() {
   </script>
 </body>
 </html>
-
 
 
 
