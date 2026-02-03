@@ -5499,19 +5499,16 @@ window.addImgToBlock = (index) => {
     renderLogBlocks();
 };
 
-// 2. THE CORE RENDERER (Ensures a real Node is returned)
-window.createLogCard = (id, data) => {
-    const card = document.createElement('div');
-    card.className = 'log-card';
-
+// 2. THE CORE RENDERER (Now returns a string to be safe)
+window.renderLogCardHTML = (id, data) => {
     let bodyHtml = '';
     data.blocks.forEach(block => {
         if (block.type === 'text') {
             const style = block.isGradient 
-                ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2});` 
+                ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2}); -webkit-background-clip: text; -webkit-text-fill-color: transparent;` 
                 : `color: ${block.color1};`;
             const gradClass = block.isGradient ? 'gradient-text-logic' : '';
-            bodyHtml += `<div class="block-text ${gradClass}" style="${style} font-weight:bold; font-size:16px;">${block.content}</div>`;
+            bodyHtml += `<div class="block-text ${gradClass}" style="${style} font-weight:bold; font-size:16px; margin-bottom:10px;">${block.content}</div>`;
         } else if (block.type === 'image') {
             bodyHtml += `<div class="log-image-row">` + 
                 block.images.map(img => `<div class="block-image-container"><img src="${img.url}"></div>`).join('') + 
@@ -5521,24 +5518,25 @@ window.createLogCard = (id, data) => {
 
     const date = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('ro-RO') : "Recent";
 
-    card.innerHTML = `
-        <div class="log-header">
-            <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 5px;">${date}</p>
-            <h2 class="log-title-text">${data.title}</h2>
-        </div>
-        <div class="log-body">${bodyHtml}</div>
-        <div class="log-footer">
-            <div class="interaction-btns">
-                <button class="int-btn"><i class="far fa-heart"></i> 0</button>
-                <button class="int-btn"><i class="far fa-comment"></i> DISCUȚIE</button>
+    return `
+        <div class="log-card" id="log-${id}">
+            <div class="log-header">
+                <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 5px;">${date}</p>
+                <h2 class="log-title-text">${data.title}</h2>
             </div>
-            <div class="log-author-box">
-                <img src="${data.authorPfp}" class="author-pfp-small">
-                <span style="font-size:9px; color:#aaa; font-family:'Orbitron';">BY ${data.authorName}</span>
+            <div class="log-body">${bodyHtml}</div>
+            <div class="log-footer">
+                <div class="interaction-btns">
+                    <button class="int-btn"><i class="far fa-heart"></i> 0</button>
+                    <button class="int-btn"><i class="far fa-comment"></i> DISCUȚIE</button>
+                </div>
+                <div class="log-author-box">
+                    <img src="${data.authorPfp || 'https://iili.io/fXks1Dv.png'}" class="author-pfp-small">
+                    <span style="font-size:9px; color:#aaa; font-family:'Orbitron';">BY ${data.authorName || 'ADMIN'}</span>
+                </div>
             </div>
         </div>
     `;
-    return card;
 };
 
 // 3. EDITOR UI RENDERER
@@ -5563,9 +5561,9 @@ function renderLogBlocks() {
                 <span style="font-size:9px; color:var(--primary); font-family:'Orbitron';">TEXT BLOCK</span>
                 <textarea class="com-input" style="height:60px; margin-bottom:10px;" onkeyup="updateBlockData(${index}, 'content', this.value)">${block.content}</textarea>
                 <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
-                    <div style="display:flex; align-items:center; gap:5px;"><label style="font-size:10px;">CULOARE 1:</label><input type="color" value="${block.color1}" onchange="updateBlockData(${index}, 'color1', this.value)"></div>
+                    <div style="display:flex; align-items:center; gap:5px;"><label style="font-size:10px;">COLOR 1:</label><input type="color" value="${block.color1}" onchange="updateBlockData(${index}, 'color1', this.value)"></div>
                     <div style="display:flex; align-items:center; gap:8px;"><label style="font-size:10px;">GRADIENT?</label><input type="checkbox" ${block.isGradient ? 'checked' : ''} onchange="updateBlockData(${index}, 'isGradient', this.checked)"></div>
-                    ${block.isGradient ? `<div style="display:flex; align-items:center; gap:5px;"><label style="font-size:10px;">CULOARE 2:</label><input type="color" value="${block.color2}" onchange="updateBlockData(${index}, 'color2', this.value)"></div>` : ''}
+                    ${block.isGradient ? `<div style="display:flex; align-items:center; gap:5px;"><label style="font-size:10px;">COLOR 2:</label><input type="color" value="${block.color2}" onchange="updateBlockData(${index}, 'color2', this.value)"></div>` : ''}
                 </div>`;
         } else {
             let imgsHtml = block.images.map((img, iIdx) => `
@@ -5590,51 +5588,7 @@ function renderLogBlocks() {
     });
 }
 
-// 4. PUBLISHING (CLEANS FILE OBJECTS)
-window.publishUpdateLog = async () => {
-    const title = document.getElementById('logTitle').value.trim();
-    if (!title) return alert("Introdu un titlu!");
-    
-    const btn = document.getElementById('btnPublishLog');
-    btn.disabled = true; btn.innerText = "SE TRIMITE...";
-
-    try {
-        // Step 1: Upload images row by row
-        for (let block of updateLogBlocks) {
-            if (block.type === 'image') {
-                for (let img of block.images) {
-                    if (img.file) {
-                        const storageRef = ref(storage, `updates/${Date.now()}_img`);
-                        const snapshot = await uploadBytes(storageRef, img.file);
-                        img.url = await getDownloadURL(snapshot.ref);
-                        // CRITICAL: Delete the file object so Firestore doesn't error out
-                        delete img.file; 
-                    }
-                }
-            }
-        }
-
-        // Step 2: Save metadata and blocks to Firestore
-        await addDoc(collection(db, "update_logs"), {
-            title: title,
-            blocks: updateLogBlocks,
-            authorName: auth.currentUser.displayName || "Lost Soul",
-            authorPfp: auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
-            createdAt: serverTimestamp(),
-            viewers: [],
-            likes: {}
-        });
-
-        alert("Update Log Publicat!");
-        updateLogBlocks = []; document.getElementById('logTitle').value = ''; renderLogBlocks();
-    } catch (e) {
-        alert("Eroare la publicare: " + e.message);
-    } finally {
-        btn.disabled = false; btn.innerText = "PUBLICAȚI UPDATE LOG";
-    }
-};
-
-// 5. PREVIEW SYSTEM
+// 4. PREVIEW LOGIC (FIXED)
 window.previewUpdateLog = () => {
     const container = document.getElementById('previewContainer');
     const title = document.getElementById('logTitle').value || "Titlu Update Demo";
@@ -5647,13 +5601,59 @@ window.previewUpdateLog = () => {
         createdAt: { toDate: () => new Date() }
     };
 
-    container.innerHTML = '';
-    const logNode = window.createLogCard("preview", fakeData);
-    container.appendChild(logNode); // This now receives a true HTML Node
+    // We use innerHTML here to prevent the "Node type" error
+    container.innerHTML = window.renderLogCardHTML("preview", fakeData);
     document.getElementById('logPreviewModal').classList.add('active');
 };
 
-// 6. HELPER HANDLERS
+// 5. PUBLISHING (FIXED FILE OBJECT ERROR)
+window.publishUpdateLog = async () => {
+    const title = document.getElementById('logTitle').value.trim();
+    if (!title) return alert("Introdu un titlu!");
+    
+    const btn = document.getElementById('btnPublishLog');
+    btn.disabled = true; btn.innerText = "SE TRIMITE...";
+
+    try {
+        // Deep copy of blocks to avoid modifying the UI state during upload
+        let blocksToSave = JSON.parse(JSON.stringify(updateLogBlocks));
+
+        for (let i = 0; i < updateLogBlocks.length; i++) {
+            if (updateLogBlocks[i].type === 'image') {
+                for (let j = 0; j < updateLogBlocks[i].images.length; j++) {
+                    const imgFile = updateLogBlocks[i].images[j].file;
+                    if (imgFile) {
+                        const storageRef = ref(storage, `updates/${Date.now()}_img`);
+                        const snapshot = await uploadBytes(storageRef, imgFile);
+                        const downloadUrl = await getDownloadURL(snapshot.ref);
+                        blocksToSave[i].images[j].url = downloadUrl;
+                    }
+                    // Delete file object before Firestore save
+                    delete blocksToSave[i].images[j].file; 
+                }
+            }
+        }
+
+        await addDoc(collection(db, "update_logs"), {
+            title: title,
+            blocks: blocksToSave,
+            authorName: auth.currentUser.displayName || "Lost Soul",
+            authorPfp: auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png",
+            createdAt: serverTimestamp(),
+            viewers: [],
+            likes: {}
+        });
+
+        alert("Update Log Publicat!");
+        updateLogBlocks = []; document.getElementById('logTitle').value = ''; renderLogBlocks();
+    } catch (e) {
+        alert("Eroare: " + e.message);
+    } finally {
+        btn.disabled = false; btn.innerText = "PUBLICAȚI UPDATE LOG";
+    }
+};
+
+// 6. HELPERS
 window.updateBlockData = (index, key, value) => {
     updateLogBlocks[index][key] = value;
     if (key === 'isGradient') renderLogBlocks();
@@ -5667,21 +5667,20 @@ window.moveBlock = (index, direction) => {
     renderLogBlocks();
 };
 window.handleRowImage = (bIdx, iIdx, input) => {
-    const file = input.files[0]; 
+    const file = input.files[0];
     if(!file) return;
-    updateLogBlocks[bIdx].images[iIdx].file = file;
+    updateLogBlocks[bIdx].images[iIdx].file = file; // Stored only locally for upload
     updateLogBlocks[bIdx].images[iIdx].url = URL.createObjectURL(file);
     renderLogBlocks();
 };
 window.removeImgFromBlock = (bIdx, iIdx) => {
     updateLogBlocks[bIdx].images.splice(iIdx, 1);
-    renderLogBlocks(); 
+    renderLogBlocks();
 };
 window.removeBlock = (index) => {
     updateLogBlocks.splice(index, 1);
     renderLogBlocks();
 };
-
 // 4. Select User
 window.selectUserForAdmin = (user) => {
     selectedAdminTargetUid = user.uid;
