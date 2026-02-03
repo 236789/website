@@ -5516,25 +5516,44 @@ window.addImgToBlock = (index) => {
 
 window.renderLogCardHTML = (id, data) => {
     let bodyHtml = '';
+    
     data.blocks.forEach(block => {
         if (block.type === 'text') {
             const style = block.isGradient 
                 ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2}); -webkit-background-clip: text; -webkit-text-fill-color: transparent;` 
-                : `color: ${block.color1};`;
-            bodyHtml += `<div class="block-text" style="${style}">${block.content}</div>`;
+                : `color: ${block.color1 || '#fff'};`;
+            bodyHtml += `<div class="block-text" style="${style} font-weight:600; margin-bottom:15px; font-size:14px;">${block.content}</div>`;
         } else if (block.type === 'image') {
             bodyHtml += `<div class="log-image-row">` + 
                 block.images.map(img => `<div class="block-image-container"><img src="${img.url}"></div>`).join('') + 
             `</div>`;
         } else if (block.type === 'video') {
-            // ADAUGĂ ACEST ELSE IF
             bodyHtml += `
                 <div class="block-video-container">
                     <video src="${block.url}" controls loop playsinline preload="metadata"></video>
                 </div>`;
         }
     });
-    // ... restul funcției tale (header, footer etc.) ...
+
+    const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+    const dateStr = dateObj.toLocaleDateString();
+
+    // FOARTE IMPORTANT: Trebuie să avem RETURN la final
+    return `
+        <div class="log-card" id="log-${id}">
+            <div class="log-header">
+                <h2 class="log-title-text">${data.title}</h2>
+                <div style="font-size:10px; color:#555; margin-top:5px; font-family:'Orbitron';">PUBLISHED: ${dateStr}</div>
+            </div>
+            <div class="log-body">
+                ${bodyHtml}
+                <div class="log-author-box">
+                    <img src="${data.authorPfp}" class="author-pfp-small">
+                    <span style="font-size:11px; color:#fff; font-family:'Orbitron'; font-weight:700;">${data.authorName}</span>
+                </div>
+            </div>
+        </div>
+    `;
 };
 
 // 1. Adăugăm funcția de adăugare bloc Video
@@ -5572,8 +5591,6 @@ window.handleLogVideoFile = (index, input) => {
     video.src = URL.createObjectURL(file);
 };
 
-// 3. Actualizăm Render Editor (Adaugă cazul 'video' în switch/if-else)
-// Modifică funcția renderLogBlocks existentă:
 function renderLogBlocks() {
     const container = document.getElementById('logBlocksContainer');
     if(!container) return;
@@ -5589,19 +5606,40 @@ function renderLogBlocks() {
         </div>`;
 
         if (block.type === 'text') {
-            // ... codul tău existent pentru text ...
-            div.innerHTML = `${controls}<span style="font-size:9px; color:var(--primary);">TEXT BLOCK</span><textarea class="com-input" onkeyup="updateBlockData(${index}, 'content', this.value)">${block.content}</textarea>`;
-        } else if (block.type === 'image') {
-            // ... codul tău existent pentru image row ...
-            div.innerHTML = `${controls}<span style="font-size:9px; color:#ffcc00;">IMAGE ROW</span><button onclick="addImgToBlock(${index})" class="filter-btn">+ POZĂ</button>`;
-        } else if (block.type === 'video') {
-            // CAZUL NOU: VIDEO
             div.innerHTML = `
                 ${controls}
-                <span style="font-size:9px; color:#00ff88; font-family:'Orbitron';">VIDEO BLOCK (MAX 1 MIN)</span>
+                <span style="font-size:9px; color:var(--primary);">TEXT BLOCK</span>
+                <textarea class="com-input" onkeyup="updateBlockData(${index}, 'content', this.value)">${block.content}</textarea>
+            `;
+        } else if (block.type === 'image') {
+            // COD REPARAT AICI: Afișăm sloturile pentru imagini
+            let imagesHtml = '<div class="log-image-row" style="margin-top:10px;">';
+            block.images.forEach((img, imgIdx) => {
+                imagesHtml += `
+                    <div style="position:relative; width:120px;">
+                        <button class="btn-block-ctrl btn-block-delete" style="position:absolute; top:-5px; right:-5px; z-index:10;" onclick="removeImgFromBlock(${index}, ${imgIdx})">✕</button>
+                        <label class="custom-file-upload" style="min-height:80px; width:100%;">
+                            <input type="file" accept="image/*" style="display:none" onchange="handleRowImage(${index}, ${imgIdx}, this)">
+                            ${img.url ? `<img src="${img.url}" style="width:100%; border-radius:8px;">` : '<i class="fas fa-camera"></i>'}
+                        </label>
+                    </div>
+                `;
+            });
+            imagesHtml += '</div>';
+
+            div.innerHTML = `
+                ${controls}
+                <span style="font-size:9px; color:#ffcc00; font-family:'Orbitron';">IMAGE ROW</span>
+                <button onclick="addImgToBlock(${index})" class="filter-btn" style="margin-bottom:10px;">+ SLOT POZĂ</button>
+                ${imagesHtml}
+            `;
+        } else if (block.type === 'video') {
+            div.innerHTML = `
+                ${controls}
+                <span style="font-size:9px; color:#00ff88; font-family:'Orbitron';">VIDEO BLOCK</span>
                 <label class="custom-file-upload">
                     <input type="file" accept="video/*" style="display:none" onchange="handleLogVideoFile(${index}, this)">
-                    <i class="fas fa-video" style="font-size:18px; margin-bottom:5px;"></i> ${block.url ? 'SCHIMBĂ VIDEO' : 'ALIAȚI VIDEO'}
+                    <i class="fas fa-video"></i> ${block.url ? 'SCHIMBĂ' : 'ADĂUGĂ'}
                 </label>
                 ${block.url ? `<div class="block-video-container"><video src="${block.url}" controls muted></video></div>` : ''}
             `;
