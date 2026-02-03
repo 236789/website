@@ -2084,7 +2084,8 @@ if (inviteBtn) {
 }
 
 
-// --- START NEWS FEED ENGINE ---
+
+// --- 1. ENGINE-UL DE FEED (NOUTĂȚI) ---
 window.loadNewsFeed = () => {
     const container = document.getElementById('updateLogsFeed');
     if (!container) return;
@@ -2093,7 +2094,6 @@ window.loadNewsFeed = () => {
 
     onSnapshot(q, (snapshot) => {
         container.innerHTML = '';
-
         if (snapshot.empty) {
             container.innerHTML = '<p style="text-align:center; color:#555;">Nicio noutate postată încă.</p>';
             return;
@@ -2103,10 +2103,10 @@ window.loadNewsFeed = () => {
             const data = docSnap.data();
             const logId = docSnap.id;
             
-            // 1. REGISTER VIEW (If user is logged in and hasn't seen it)
+            // Înregistrăm vizualizarea
             registerLogView(logId, data.viewers || []);
 
-            // 2. RENDER THE LOG
+            // Randăm cardul
             const logElement = createLogCard(logId, data);
             container.appendChild(logElement);
         });
@@ -2115,24 +2115,14 @@ window.loadNewsFeed = () => {
 
 // --- MISSING FUNCTION: REGISTER LOG VIEW ---
 async function registerLogView(logId, currentViewers) {
-    // Only track if the user is logged in
     if (!auth.currentUser) return;
     const uid = auth.currentUser.uid;
-    
-    // If the user's ID is not already in the list, add them
     if (!currentViewers.includes(uid)) {
-        try {
-            const logRef = doc(db, "update_logs", logId);
-            await updateDoc(logRef, {
-                viewers: arrayUnion(uid)
-            });
-            console.log("View registered for log:", logId);
-        } catch (e) {
-            console.error("Error registering view:", e);
-        }
+        await updateDoc(doc(db, "update_logs", logId), { viewers: arrayUnion(uid) });
     }
 }
 
+// --- 2. CREAREA CARDULUI (FIX IMAGINI, AUTOR, GRADIENT) ---
 function createLogCard(id, data) {
     const card = document.createElement('div');
     card.className = 'log-card';
@@ -2146,6 +2136,7 @@ function createLogCard(id, data) {
     data.blocks.forEach(block => {
         if (block.type === 'text') {
             const isGrad = block.isGradient;
+            // Aplicăm culorile pentru gradient sau culoare solidă
             const style = isGrad 
                 ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2});` 
                 : `color: ${block.color1 || block.color || '#fff'};`;
@@ -2153,12 +2144,11 @@ function createLogCard(id, data) {
             bodyHtml += `<div class="block-text ${isGrad ? 'gradient-text-logic' : ''}" style="${style}">${block.content}</div>`;
         } 
         else if (block.type === 'image') {
-            // Verificăm dacă blocul are array-ul de imagini (structura nouă)
+            // Suport pentru imagini multiple (structura nouă) sau imagine unică (veche)
             if (block.images && Array.isArray(block.images)) {
                 let imgsHtml = block.images.map(img => `<div class="block-image-container"><img src="${img.url}" loading="lazy"></div>`).join('');
                 bodyHtml += `<div class="log-image-row">${imgsHtml}</div>`;
             } else if (block.url) {
-                // Fallback pentru postările vechi (structura veche)
                 bodyHtml += `<div class="block-image-container" style="width:100%"><img src="${block.url}" loading="lazy"></div>`;
             }
         }
@@ -2168,7 +2158,7 @@ function createLogCard(id, data) {
 
     card.innerHTML = `
         <div class="log-header">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin:0;">${date}</p>
                 <div class="log-author-box">
                     <span style="font-size:9px; color:#888; font-family:'Orbitron';">BY ${data.authorName || 'ADMIN'}</span>
@@ -2186,10 +2176,8 @@ function createLogCard(id, data) {
                 <button class="int-btn" onclick="toggleLogComments('${id}')">
                     <i class="far fa-comment"></i> DISCUȚIE
                 </button>
-                <!-- BUTON ȘTERGERE -->
-                <button class="int-btn" style="color:#ff4757; margin-left:10px;" onclick="deleteLog('${id}')">
-                    <i class="fas fa-trash"></i>
-                </button>
+                ${auth.currentUser && auth.currentUser.email === 'nicaemmanuel433qe@gmail.com' ? 
+                    `<button class="int-btn" style="color:#ff4757;" onclick="deleteLog('${id}')"><i class="fas fa-trash"></i></button>` : ''}
             </div>
             <div class="viewers-count" style="cursor:pointer;" onclick="openLogViewersModal('${id}')">
                 <i class="far fa-eye"></i> ${viewerCount} VĂZUT
@@ -2214,17 +2202,11 @@ window.openLogViewersModal = async (logId) => {
     content.innerHTML = '<div style="text-align:center; padding:20px;"><i class="fas fa-spinner fa-spin"></i></div>';
 
     try {
-        const logRef = doc(db, "update_logs", logId);
-        const snap = await getDoc(logRef);
+        const snap = await getDoc(doc(db, "update_logs", logId));
         const uids = snap.data().viewers || [];
-
-        if(uids.length === 0) {
-            content.innerHTML = '<p style="color:#555; text-align:center;">Nimeni încă.</p>';
-            return;
-        }
+        if(uids.length === 0) { content.innerHTML = '<p>Nimeni încă.</p>'; return; }
 
         let html = "";
-        // Fetch each user's info from the 'accounts' collection
         const promises = uids.map(uid => getDoc(doc(db, "accounts", uid)));
         const userSnaps = await Promise.all(promises);
 
@@ -2239,101 +2221,66 @@ window.openLogViewersModal = async (logId) => {
             }
         });
         content.innerHTML = html;
-    } catch (e) {
-        console.error(e);
-        content.innerHTML = '<p style="color:red; text-align:center;">Eroare la încărcare.</p>';
-    }
+    } catch (e) { console.error(e); }
 };
 
 
-// FUNCȚIA DE LIKE
 window.toggleLogLike = async (logId) => {
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
     const uid = auth.currentUser.uid;
     const logRef = doc(db, "update_logs", logId);
-
     try {
         const snap = await getDoc(logRef);
         let likes = snap.data().likes || {};
-
-        if (likes[uid]) {
-            delete likes[uid]; // Scoate like
-        } else {
-            likes[uid] = true; // Pune like
-        }
-
-        await updateDoc(logRef, { likes: likes });
-    } catch (e) {
-        console.error("Eroare like:", e);
-    }
+        if (likes[uid]) delete likes[uid];
+        else likes[uid] = true;
+        await updateDoc(logRef, { likes });
+    } catch (e) { console.error(e); }
 };
 
-// FUNCȚIA DE ȘTERGERE
 window.deleteLog = async (logId) => {
-    // Verificăm dacă e admin (opțional, poți pune aici emailul tău)
-    if (auth.currentUser.email !== 'nicaemmanuel433qe@gmail.com') {
-        return alert("Doar un administrator poate șterge update-uri!");
-    }
-
-    if (!confirm("Ești sigur că vrei să ștergi acest update definitiv?")) return;
-
+    if (auth.currentUser.email !== 'nicaemmanuel433qe@gmail.com') return;
+    if (!confirm("Ești sigur că vrei să ștergi acest update?")) return;
     try {
         await deleteDoc(doc(db, "update_logs", logId));
-        alert("Update șters!");
-    } catch (e) {
-        alert("Eroare la ștergere: " + e.message);
-    }
+        alert("Șters cu succes!");
+    } catch (e) { alert("Eroare: " + e.message); }
 };
 
-// --- LOGIC: COMMENTS ENGINE ---
+
+// --- 4. COMENTARII ---
 window.toggleLogComments = (logId) => {
     const box = document.getElementById(`comments-box-${logId}`);
     const list = document.getElementById(`comment-list-${logId}`);
-    
-    if (box.style.display === 'block') {
-        box.style.display = 'none';
-        return;
-    }
-    
+    if (box.style.display === 'block') { box.style.display = 'none'; return; }
     box.style.display = 'block';
     list.innerHTML = '<p style="color:#888; font-size:12px;">Se încarcă discuția...</p>';
 
-    // Set up Real-time listener for comments
     const q = query(collection(db, `update_logs/${logId}/comments`), orderBy("createdAt", "asc"));
     onSnapshot(q, (snapshot) => {
         list.innerHTML = '';
         if(snapshot.empty) {
-            list.innerHTML = '<p style="color:#555; font-size:12px; text-align:center;">Niciun comentariu încă. Fii primul!</p>';
+            list.innerHTML = '<p style="color:#555; font-size:12px; text-align:center;">Fii primul care comentează!</p>';
             return;
         }
+        snapshot.forEach(docSnap => {
+            const c = docSnap.data();
+            const bannerClass = c.equippedBanner ? c.equippedBanner.cssClass : '';
+            const nameHtml = c.equippedText ? `<span class="${c.equippedText.cssClass}">${c.name}</span>` : c.name;
+            const frameHtml = c.equippedFrame ? `<img src="${c.equippedFrame.img}" class="comment-frame-overlay" style="width:${(c.equippedFrame.scale || 1.45)*100}%; height:${(c.equippedFrame.scale || 1.45)*100}%;">` : '';
 
-// Inside toggleLogComments, find the line where you add the HTML:
-snapshot.forEach(docSnap => {
-    const c = docSnap.data();
-    
-    // 1. Get Banner CSS
-    const bannerClass = c.equippedBanner ? c.equippedBanner.cssClass : '';
-    
-    // 2. Get Name with Custom Text Color
-    const nameHtml = c.equippedText ? `<span class="${c.equippedText.cssClass}">${c.name}</span>` : c.name;
-    
-    // 3. Get Frame
-    const frameHtml = c.equippedFrame ? `<img src="${c.equippedFrame.img}" class="comment-frame-overlay" style="width:${(c.equippedFrame.scale || 1.45)*100}%; height:${(c.equippedFrame.scale || 1.45)*100}%;">` : '';
-
-    list.innerHTML += `
-        <div class="log-comment-item ${bannerClass}">
-            <div class="comment-pfp-wrapper">
-                <img src="${c.photo}" class="comment-pfp-img">
-                ${frameHtml}
-            </div>
-            <div style="flex:1;">
-                <div style="font-family:'Orbitron'; font-size:11px; font-weight:800; margin-bottom:4px;">${nameHtml}</div>
-                <div style="color:#eee; font-size:13px; line-height:1.4; font-weight:500;">${c.text}</div>
-            </div>
-        </div>
-    `;
-});
-        list.scrollTop = list.scrollHeight;
+            list.innerHTML += `
+                <div class="log-comment-item ${bannerClass}">
+                    <div class="comment-pfp-wrapper">
+                        <img src="${c.photo}" class="comment-pfp-img">
+                        ${frameHtml}
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-family:'Orbitron'; font-size:11px; font-weight:800; margin-bottom:4px;">${nameHtml}</div>
+                        <div style="color:#eee; font-size:13px; line-height:1.4;">${c.text}</div>
+                    </div>
+                </div>`;
+        });
     });
 };
 
@@ -2341,30 +2288,21 @@ window.postLogComment = async (logId) => {
     const input = document.getElementById(`input-${logId}`);
     const text = input.value.trim();
     if(!text || !auth.currentUser) return;
-
-    // Get current user cosmetics to save with the comment snapshot
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const uSnap = await getDoc(userRef);
+    const uSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const uData = uSnap.data();
-
     await addDoc(collection(db, `update_logs/${logId}/comments`), {
-        text: text,
-        uid: auth.currentUser.uid,
-        name: uData.username || auth.currentUser.displayName,
-        photo: auth.currentUser.photoURL,
-        equippedFrame: uData.equippedFrame || null,
-        equippedBanner: uData.equippedBanner || null,
-        equippedText: uData.equippedText || null,
+        text, uid: auth.currentUser.uid, name: uData.username || auth.currentUser.displayName,
+        photo: auth.currentUser.photoURL, equippedFrame: uData.equippedFrame || null,
+        equippedBanner: uData.equippedBanner || null, equippedText: uData.equippedText || null,
         createdAt: serverTimestamp()
     });
-
     input.value = '';
 };
-// Initialize
+
+// --- INIT ---
 onAuthStateChanged(auth, user => {
     if(user) window.loadNewsFeed();
 });
-
 // 2. Copy to Clipboard Function
 window.copyRefLinkV2 = () => {
     const linkText = document.getElementById('refLinkDisplay-v2').innerText;
