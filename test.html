@@ -1747,6 +1747,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     background: rgba(41, 243, 255, 0.15);
     border-style: solid;
 }
+
+
+.ob-step {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    animation: fadeIn 0.4s ease-out;
+}
+
+.ob-step.active {
+    display: flex;
+}
+
+#authOverlay .auth-card {
+    min-height: 500px; /* Force size to stay stable */
+}
   </style>
 </head>
 <body>
@@ -1846,32 +1862,28 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     <div class="cyber-scanner"></div>
     
 <!-- STEP 1: WELCOME & AVATAR -->
-<div id="obStep1" class="ob-step active">
-    <h2 class="auth-card-title">BINE AI VENIT, <span id="obUserNameDisplay" style="color: var(--primary);">USER</span>!</h2>
-    <p style="font-size: 12px; color: #aaa; margin-bottom: 20px;">Hai să-ți configurăm profilul rapid.</p>
+<!-- STEP 1: WELCOME & AVATAR PREVIEW -->
+<div id="obStep1" class="ob-step active" style="display: flex; flex-direction: column; align-items: center;">
+    <h2 class="auth-card-title">BINE AI VENIT!</h2>
     
-    <label class="edit-label">PASUL 1: ALEGE UN AVATAR</label>
-    <div class="avatar-picker-grid">
-        <img src="https://i.pravatar.cc/150?u=1" class="av-pick" onclick="selectAvatar(this)">
-        <img src="https://i.pravatar.cc/150?u=2" class="av-pick" onclick="selectAvatar(this)">
-        <img src="https://i.pravatar.cc/150?u=3" class="av-pick" onclick="selectAvatar(this)">
-        <img src="https://i.pravatar.cc/150?u=4" class="av-pick" onclick="selectAvatar(this)">
-        <img src="https://i.pravatar.cc/150?u=5" class="av-pick" onclick="selectAvatar(this)">
-        <img src="https://i.pravatar.cc/150?u=6" class="av-pick" onclick="selectAvatar(this)">
+    <!-- Profile Preview Area -->
+    <div style="text-align: center; margin-bottom: 25px;">
+        <div style="position: relative; width: 120px; height: 120px; margin: 0 auto;">
+            <img id="obPreviewImg" src="https://iili.io/fXks1Dv.png" 
+                 style="width: 100%; height: 100%; border-radius: 50%; border: 3px solid var(--primary); object-fit: cover; box-shadow: 0 0 20px var(--primary-dim);">
+        </div>
+        <h3 id="obUserNameDisplay" style="font-family: 'Orbitron'; color: #fff; margin-top: 15px; text-transform: uppercase; letter-spacing: 2px;">USER</h3>
     </div>
 
-    <div class="clean-input-group" style="margin-top:15px;">
-        <label>SAU ÎNCARCĂ DIN DISPOZITIV (PC/GALERIE)</label>
-        <!-- Hidden File Input -->
+    <div class="clean-input-group" style="width: 100%;">
+        <label>SCHIMBĂ POZA DE PROFIL (PC/GALERIE)</label>
         <input type="file" id="obAvatarFile" accept="image/*" style="display:none;" onchange="handleFileUpload(this)">
-        <!-- Trigger Button -->
         <button class="btn-upload-gallery" onclick="document.getElementById('obAvatarFile').click()">
-            <i class="fas fa-image"></i> ALEGE DIN GALERIE
+            <i class="fas fa-camera"></i> ÎNCARCĂ O FOTOGRAFIE
         </button>
-        <p id="fileUploadName" style="font-size: 9px; color: #00ff88; margin-top: 5px; display: none;">Imagine selectată!</p>
     </div>
 
-    <button class="btn-cyber-main blue-glow" onclick="nextObStep(2)" style="margin-top: 15px;">URMĂTORUL PAS</button>
+    <button class="btn-cyber-main blue-glow" onclick="nextObStep(2)" style="margin-top: 20px;">CONTINUĂ</button>
 </div>
 
     <!-- STEP 2: BIRTH & PHONE -->
@@ -3172,47 +3184,37 @@ window.selectAvatar = (el) => {
     document.getElementById('fileUploadName').style.display = 'none';
 };
 
-// Handle File Upload from PC/Gallery
 window.handleFileUpload = (input) => {
     if (input.files && input.files[0]) {
         const reader = new FileReader();
-        
         reader.onload = function(e) {
-            // Set the selected source to the uploaded image (Base64)
             selectedAvatarSrc = e.target.result;
-            
-            // Visual feedback: remove selection from presets
-            document.querySelectorAll('.av-pick').forEach(img => img.classList.remove('selected'));
-            
-            // Show "Image Selected" text
-            const msg = document.getElementById('fileUploadName');
-            msg.innerText = "Imagine încărcată: " + input.files[0].name;
-            msg.style.display = 'block';
+            // Update the new preview image on Step 1
+            const preview = document.getElementById('obPreviewImg');
+            if(preview) preview.src = e.target.result;
         };
-        
         reader.readAsDataURL(input.files[0]);
     }
 };
 
-// Update nextObStep to fix the "Stacking" bug
 window.nextObStep = (step) => {
-    // Hide all steps within the onboarding card
-    document.querySelectorAll('.ob-step').forEach(s => {
-        s.style.display = 'none';
-        s.classList.remove('active');
-    });
+    // 1. Hide the old auth messages (fixes the stacking)
+    const errorEl = document.getElementById('authError');
+    if(errorEl) errorEl.innerText = "";
     
-    // Show specific step
-    const target = document.getElementById('obStep' + step);
-    if (target) {
-        target.style.display = 'flex';
-        target.style.flexDirection = 'column';
-        target.classList.add('active');
-    }
+    const statusMsg = document.querySelector('.auth-card > p'); // Clears "Cod corect..."
+    if(statusMsg && statusMsg.innerText.includes("Cod")) statusMsg.style.display = "none";
 
-    // Ensure the main Login/Register forms stay hidden
+    // 2. Clear old forms
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('registerForm').style.display = 'none';
+    const authDivider = document.querySelector('.auth-divider');
+    if(authDivider) authDivider.style.display = 'none';
+
+    // 3. Toggle steps
+    document.querySelectorAll('.ob-step').forEach(s => s.style.display = 'none');
+    const target = document.getElementById('obStep' + step);
+    if (target) target.style.display = 'flex';
 };
 
 window.finalizeRegistration = async function() {
@@ -3250,12 +3252,11 @@ window.finalizeRegistration = async function() {
         errorEl.innerText = "Eroare: " + e.message;
     }
 };
-
 window.saveOnboardingData = async () => {
     if(!auth.currentUser) return;
     
-    const customAv = document.getElementById('obAvatarUrl').value;
-    const finalAvatar = customAv || selectedAvatarSrc;
+    // Use the variable we defined earlier instead of looking for the deleted 'obAvatarUrl'
+    const finalAvatar = selectedAvatarSrc; 
     
     const onboardingData = {
         image: finalAvatar,
@@ -3269,21 +3270,15 @@ window.saveOnboardingData = async () => {
 
     try {
         const userRef = doc(db, "accounts", auth.currentUser.uid);
-        // Salvăm datele de profil (dar onboardingComplete rămâne false până dă click pe ultimul buton)
         await updateDoc(userRef, onboardingData);
 
-        // GENERĂM PREVIEW-UL PENTRU PASUL 5
+        // Prepare Step 5 Preview
         document.getElementById('prevImg').src = finalAvatar;
-        document.getElementById('prevName').innerText = document.getElementById('obUserNameDisplay').innerText;
+        const nameEl = document.getElementById('obUserNameDisplay');
+        document.getElementById('prevName').innerText = nameEl ? nameEl.innerText : "User";
         document.getElementById('prevPhone').innerText = onboardingData.phone ? "📞 " + onboardingData.phone : "Fără telefon";
         document.getElementById('prevBirth').innerText = onboardingData.birthDate ? "🎂 " + onboardingData.birthDate : "Fără dată naștere";
         
-        let socialHtml = "";
-        if(onboardingData.tiktokLink) socialHtml += `<i class="fab fa-tiktok" style="color:#ff0050; margin-right:10px;"></i>`;
-        if(onboardingData.instaLink) socialHtml += `<i class="fab fa-instagram" style="color:#e1306c; margin-right:10px;"></i>`;
-        if(onboardingData.fbLink) socialHtml += `<i class="fab fa-facebook" style="color:#1877f2;"></i>`;
-        document.getElementById('prevSocials').innerHTML = socialHtml || "<p style='font-size:10px;'>Fără rețele sociale</p>";
-
         window.nextObStep(5);
     } catch(e) {
         alert("Eroare la salvare: " + e.message);
