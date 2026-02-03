@@ -3342,6 +3342,21 @@
 /* AUTHOR BOX */
 .log-author-box { display: flex; align-items: center; gap: 10px; padding: 6px 15px; background: rgba(0,0,0,0.3); border-radius: 50px; border: 1px solid rgba(255,255,255,0.05); margin-left: auto; }
 .author-pfp-small { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--primary); object-fit: cover; }
+
+
+.block-video-container {
+    border-radius: 15px;
+    overflow: hidden;
+    border: 2px solid var(--primary);
+    background: #000;
+    margin: 10px auto;
+    width: 100%;
+    max-width: 550px; /* Consistență cu imaginile pe PC */
+}
+.block-video-container video {
+    width: 100%;
+    display: block;
+}
   </style>
 </head>
 <body>
@@ -4643,6 +4658,10 @@
 <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
     <button onclick="addLogTextBlock()" class="filter-btn" style="border-color: #29f3ff; color: #29f3ff;"><i class="fas fa-font"></i> + TEXT</button>
     <button onclick="addLogImageBlock()" class="filter-btn" style="border-color: #ffcc00; color: #ffcc00;"><i class="fas fa-images"></i> + IMAGINE ROW</button>
+
+    <!-- BUTONUL NOU -->
+    <button onclick="addLogVideoBlock()" class="filter-btn" style="border-color: #00ff88; color: #00ff88;"><i class="fas fa-video"></i> + VIDEO</button>
+
     <button onclick="previewUpdateLog()" class="filter-btn" style="border-color: #bf55ec; color: #bf55ec; margin-left: auto;"><i class="fas fa-eye"></i> PREVIEW</button>
 </div>
 
@@ -5499,7 +5518,6 @@ window.addImgToBlock = (index) => {
     renderLogBlocks();
 };
 
-// 2. THE CORE RENDERER (Now returns a string to be safe)
 window.renderLogCardHTML = (id, data) => {
     let bodyHtml = '';
     data.blocks.forEach(block => {
@@ -5507,39 +5525,59 @@ window.renderLogCardHTML = (id, data) => {
             const style = block.isGradient 
                 ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2}); -webkit-background-clip: text; -webkit-text-fill-color: transparent;` 
                 : `color: ${block.color1};`;
-            const gradClass = block.isGradient ? 'gradient-text-logic' : '';
-            bodyHtml += `<div class="block-text ${gradClass}" style="${style} font-weight:bold; font-size:16px; margin-bottom:10px;">${block.content}</div>`;
+            bodyHtml += `<div class="block-text" style="${style}">${block.content}</div>`;
         } else if (block.type === 'image') {
             bodyHtml += `<div class="log-image-row">` + 
                 block.images.map(img => `<div class="block-image-container"><img src="${img.url}"></div>`).join('') + 
             `</div>`;
+        } else if (block.type === 'video') {
+            // ADAUGĂ ACEST ELSE IF
+            bodyHtml += `
+                <div class="block-video-container">
+                    <video src="${block.url}" controls loop playsinline preload="metadata"></video>
+                </div>`;
         }
     });
-
-    const date = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString('ro-RO') : "Recent";
-
-    return `
-        <div class="log-card" id="log-${id}">
-            <div class="log-header">
-                <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 5px;">${date}</p>
-                <h2 class="log-title-text">${data.title}</h2>
-            </div>
-            <div class="log-body">${bodyHtml}</div>
-            <div class="log-footer">
-                <div class="interaction-btns">
-                    <button class="int-btn"><i class="far fa-heart"></i> 0</button>
-                    <button class="int-btn"><i class="far fa-comment"></i> DISCUȚIE</button>
-                </div>
-                <div class="log-author-box">
-                    <img src="${data.authorPfp || 'https://iili.io/fXks1Dv.png'}" class="author-pfp-small">
-                    <span style="font-size:9px; color:#aaa; font-family:'Orbitron';">BY ${data.authorName || 'ADMIN'}</span>
-                </div>
-            </div>
-        </div>
-    `;
+    // ... restul funcției tale (header, footer etc.) ...
 };
 
-// 3. EDITOR UI RENDERER
+// 1. Adăugăm funcția de adăugare bloc Video
+window.addLogVideoBlock = () => {
+    updateLogBlocks.push({ type: 'video', url: '', file: null });
+    renderLogBlocks();
+};
+
+// 2. Gestionarea fișierului video (Limită 1 minut)
+window.handleLogVideoFile = (index, input) => {
+    const file = input.files[0];
+    if (!file) return;
+
+    // Verificăm mărimea (aprox 50MB pentru siguranță)
+    if (file.size > 50 * 1024 * 1024) {
+        alert("Video-ul este prea mare! Încearcă un fișier sub 50MB.");
+        input.value = "";
+        return;
+    }
+
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = function() {
+        window.URL.revokeObjectURL(video.src);
+        if (video.duration > 61) { // 60 secunde + 1 marjă
+            alert("Video-ul are " + Math.round(video.duration) + " secunde. Limita este de 60 secunde!");
+            input.value = "";
+            return;
+        }
+        // Dacă e OK, salvăm
+        updateLogBlocks[index].file = file;
+        updateLogBlocks[index].url = URL.createObjectURL(file);
+        renderLogBlocks();
+    };
+    video.src = URL.createObjectURL(file);
+};
+
+// 3. Actualizăm Render Editor (Adaugă cazul 'video' în switch/if-else)
+// Modifică funcția renderLogBlocks existentă:
 function renderLogBlocks() {
     const container = document.getElementById('logBlocksContainer');
     if(!container) return;
@@ -5548,7 +5586,6 @@ function renderLogBlocks() {
     updateLogBlocks.forEach((block, index) => {
         const div = document.createElement('div');
         div.className = 'log-block-item';
-        
         let controls = `<div class="log-block-controls">
             <button class="btn-block-ctrl" onclick="moveBlock(${index}, -1)">▲</button>
             <button class="btn-block-ctrl" onclick="moveBlock(${index}, 1)">▼</button>
@@ -5556,33 +5593,22 @@ function renderLogBlocks() {
         </div>`;
 
         if (block.type === 'text') {
+            // ... codul tău existent pentru text ...
+            div.innerHTML = `${controls}<span style="font-size:9px; color:var(--primary);">TEXT BLOCK</span><textarea class="com-input" onkeyup="updateBlockData(${index}, 'content', this.value)">${block.content}</textarea>`;
+        } else if (block.type === 'image') {
+            // ... codul tău existent pentru image row ...
+            div.innerHTML = `${controls}<span style="font-size:9px; color:#ffcc00;">IMAGE ROW</span><button onclick="addImgToBlock(${index})" class="filter-btn">+ POZĂ</button>`;
+        } else if (block.type === 'video') {
+            // CAZUL NOU: VIDEO
             div.innerHTML = `
                 ${controls}
-                <span style="font-size:9px; color:var(--primary); font-family:'Orbitron';">TEXT BLOCK</span>
-                <textarea class="com-input" style="height:60px; margin-bottom:10px;" onkeyup="updateBlockData(${index}, 'content', this.value)">${block.content}</textarea>
-                <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
-                    <div style="display:flex; align-items:center; gap:5px;"><label style="font-size:10px;">COLOR 1:</label><input type="color" value="${block.color1}" onchange="updateBlockData(${index}, 'color1', this.value)"></div>
-                    <div style="display:flex; align-items:center; gap:8px;"><label style="font-size:10px;">GRADIENT?</label><input type="checkbox" ${block.isGradient ? 'checked' : ''} onchange="updateBlockData(${index}, 'isGradient', this.checked)"></div>
-                    ${block.isGradient ? `<div style="display:flex; align-items:center; gap:5px;"><label style="font-size:10px;">COLOR 2:</label><input type="color" value="${block.color2}" onchange="updateBlockData(${index}, 'color2', this.value)"></div>` : ''}
-                </div>`;
-        } else {
-            let imgsHtml = block.images.map((img, iIdx) => `
-                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:12px; min-width:140px; display:flex; flex-direction:column; gap:8px;">
-                    <label class="custom-file-upload">
-                        <input type="file" style="display:none" onchange="handleRowImage(${index}, ${iIdx}, this)">
-                        <i class="fas fa-image" style="font-size:18px; margin-bottom:5px;"></i> ALEGE IMAGINE
-                    </label>
-                    ${img.url ? `<img src="${img.url}" style="width:100%; border-radius:5px; border:1px solid var(--primary);">` : ''}
-                    <button class="btn-block-ctrl btn-block-delete" style="width:100%" onclick="removeImgFromBlock(${index}, ${iIdx})">ȘTERGE</button>
-                </div>`).join('');
-
-            div.innerHTML = `
-                ${controls}
-                <span style="font-size:9px; color:#ffcc00; font-family:'Orbitron';">IMAGE ROW (MULTIPLE)</span>
-                <div style="display:flex; gap:10px; overflow-x:auto; padding:5px;">
-                    ${imgsHtml}
-                    <button onclick="addImgToBlock(${index})" class="filter-btn" style="border-style:dashed; min-width:100px;">+ ADD IMAGE</button>
-                </div>`;
+                <span style="font-size:9px; color:#00ff88; font-family:'Orbitron';">VIDEO BLOCK (MAX 1 MIN)</span>
+                <label class="custom-file-upload">
+                    <input type="file" accept="video/*" style="display:none" onchange="handleLogVideoFile(${index}, this)">
+                    <i class="fas fa-video" style="font-size:18px; margin-bottom:5px;"></i> ${block.url ? 'SCHIMBĂ VIDEO' : 'ALIAȚI VIDEO'}
+                </label>
+                ${block.url ? `<div class="block-video-container"><video src="${block.url}" controls muted></video></div>` : ''}
+            `;
         }
         container.appendChild(div);
     });
@@ -5609,44 +5635,59 @@ window.previewUpdateLog = () => {
     document.getElementById('logPreviewModal').classList.add('active');
 };
 
-// 2. REPARARE PUBLISH (Urcăm fișierele și curățăm obiectul înainte de salvare)
+// 2. REPARARE PUBLISH (Urcăm imagini ȘI video, eliminăm obiectele File)
 window.publishUpdateLog = async () => {
     const title = document.getElementById('logTitle').value.trim();
     if (!title) return alert("Introdu un titlu pentru update!");
     
     const btn = document.getElementById('btnPublishLog');
     btn.disabled = true; 
-    btn.innerText = "SE ÎNCARCĂ IMAGINILE...";
+    btn.innerText = "SE ÎNCARCĂ FIȘIERELE...";
 
     try {
-        // Creăm o copie curată a blocurilor pentru baza de date
-        // Nu folosim JSON.stringify aici pentru că am pierde referințele la fișierele pozelor
         let cleanBlocks = [];
 
         for (let block of updateLogBlocks) {
+            // --- CAZ 1: TEXT ---
             if (block.type === 'text') {
                 cleanBlocks.push({ ...block });
             } 
+            // --- CAZ 2: IMAGINI (Array) ---
             else if (block.type === 'image') {
                 let uploadedImages = [];
                 for (let imgObj of block.images) {
-                    // Dacă avem un fișier nou selectat (obiectul File)
                     if (imgObj.file) {
-                        const storageRef = window.ref(window.storage, `updates/${Date.now()}_${Math.random().toString(36).substring(7)}`);
+                        const storageRef = window.ref(window.storage, `updates/images/${Date.now()}_${Math.random().toString(36).substring(7)}`);
                         const snapshot = await window.uploadBytes(storageRef, imgObj.file);
                         const downloadUrl = await window.getDownloadURL(snapshot.ref);
                         uploadedImages.push({ url: downloadUrl });
                     } else if (imgObj.url) {
-                        // Dacă imaginea are deja URL (ex: dintr-un link extern)
                         uploadedImages.push({ url: imgObj.url });
                     }
                 }
                 cleanBlocks.push({ type: 'image', images: uploadedImages });
             }
+            // --- CAZ 3: VIDEO (Single File) ---
+            else if (block.type === 'video') {
+                let finalVideoUrl = block.url;
+                
+                if (block.file) {
+                    // Dacă avem un fișier video brut, îl urcăm în Storage
+                    const storageRef = window.ref(window.storage, `updates/videos/${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`);
+                    const snapshot = await window.uploadBytes(storageRef, block.file);
+                    finalVideoUrl = await window.getDownloadURL(snapshot.ref);
+                }
+                
+                // Salvăm doar URL-ul, nu și obiectul File
+                if (finalVideoUrl && !finalVideoUrl.startsWith('blob:')) {
+                    cleanBlocks.push({ type: 'video', url: finalVideoUrl });
+                } else {
+                    console.warn("Un bloc video a fost omis deoarece nu are un fișier valid urcat.");
+                }
+            }
         }
 
-        // SALVARE ÎN FIRESTORE
-        // Acum 'cleanBlocks' conține doar URL-uri (String), nu obiecte 'File'
+        // SALVARE FINALĂ ÎN FIRESTORE
         await window.addDoc(window.collection(window.db, "update_logs"), {
             title: title,
             blocks: cleanBlocks,
@@ -5657,7 +5698,7 @@ window.publishUpdateLog = async () => {
             likes: {}
         });
 
-        alert("Update Log-ul a fost publicat cu succes!");
+        alert("Update Log-ul (cu suport Media) a fost publicat!");
         
         // Resetare Editor
         document.getElementById('logTitle').value = '';
@@ -5666,7 +5707,7 @@ window.publishUpdateLog = async () => {
 
     } catch (e) {
         console.error("Eroare la publicare:", e);
-        alert("Eroare: " + e.message);
+        alert("Eroare la publicare: " + e.message);
     } finally {
         btn.disabled = false; 
         btn.innerText = "PUBLICAȚI UPDATE LOG";
