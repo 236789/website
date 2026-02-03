@@ -2407,6 +2407,53 @@ input:checked + .slider:before { transform: translateX(16px); }
 .msg-row-layout {
     overflow: visible !important;
 }
+
+
+
+/* Keeps the username and badges on one neat line until they really have to wrap */
+.msg-author-row {
+    white-space: nowrap;
+}
+
+/* Fix badge sizing and stop text inside badges from breaking into two lines */
+.owner-badge, .admin-badge, .mod-badge, .helper-badge, .cosmetic-badge, .badge-wheel-god {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap !important; /* Forces text to stay on one line */
+    padding: 3px 8px !important;
+    font-size: 8px !important;
+    height: 18px !important; /* Keeps them all the same height */
+    line-height: 1 !important;
+}
+
+/* Ensure icons inside badges don't push the text */
+.owner-badge i, .cosmetic-badge i {
+    font-size: 9px;
+}
+
+/* Make the username slightly smaller so it fits better with badges */
+.msg-author-name span {
+    font-size: 14px;
+}
+
+/* Hide 3 dots by default and show on hover of the whole message row */
+.msg-options {
+    opacity: 0 !important;
+    transition: 0.2s;
+}
+.msg-row-layout:hover .msg-options {
+    opacity: 1 !important;
+}
+
+/* Correct positioning for the 3-dots dropdown menu */
+.options-dropdown {
+    position: absolute;
+    top: 0;
+    z-index: 1000;
+}
+.msg-wrapper.mine .options-dropdown { right: 30px; }
+.msg-wrapper.theirs .options-dropdown { left: 30px; }
   </style>
 
 </head>
@@ -4793,6 +4840,7 @@ async function sendMessage() {
 
         const currentBadge = userData.equippedBadge || null;
         const currentBanner = userData.equippedBanner || null;
+        const currentFrame = userData.equippedFrame || null;
 
         // 4. Construct Payload
         const payload = {
@@ -4808,6 +4856,7 @@ async function sendMessage() {
             isHelper: isHelper,
             equippedBadge: currentBadge, 
             equippedBanner: currentBanner,
+            equippedFrame: currentFrame,
             equippedText: userData.equippedText || null, 
             createdAt: serverTimestamp(),
             isDeleted: false,
@@ -5395,8 +5444,7 @@ if (data.uid === 'system-alert') {
                     </div>
                 `;
             }
-
-// --- FIX FOR PROBLEM 4: Prepare the Frame HTML ---
+// --- FIX: Prepare Frame HTML ---
             let pfpFrameHtml = "";
             if (data.equippedFrame && data.equippedFrame.img) {
                 const scale = data.equippedFrame.scale || 1.45;
@@ -5404,40 +5452,46 @@ if (data.uid === 'system-alert') {
                 pfpFrameHtml = `<img src="${data.equippedFrame.img}" class="header-frame-overlay" style="width:${sizePct}; height:${sizePct}; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); pointer-events:none; z-index:2;">`;
             }
 
-            // Safe strings for reply action
             const safeName = (data.name || "User").toString().replace(/'/g, "\\'");
             const safeText = (data.text || "Media").toString().replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const replyAction = (data.uid === 'system-alert') ? "" : `onclick="startReply('${msgId}', '${safeName}', '${safeText}', '${data.uid}')"`;
 
-            // --- REVISED LAYOUT ---
-            // 'align-items: flex-start' moves the PFP to the top
             wrapper.innerHTML = `
-                <div class="msg-row-layout" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; position: relative; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
+                <div class="msg-row-layout" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
                     
-                    <!-- AVATAR SECTION (TOP ALIGNED) -->
+                    <!-- AVATAR SECTION -->
                     <div class="msg-avatar-container" style="width: 38px; height: 38px; flex-shrink: 0; position: relative; cursor: pointer; margin-top: 5px;" onclick="window.openUserProfile('${data.uid}')">
                         <img src="${data.photo || 'https://iili.io/fXks1Dv.png'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
                         ${pfpFrameHtml}
                     </div>
 
-                    <!-- CONTENT SECTION -->
-                    <div class="msg-column" style="display: flex; flex-direction: column; max-width: 75%; position: relative; ${isMine ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
-                        <div class="msg-author" style="margin-bottom: 4px; display: flex; align-items: center; gap: 5px;">${finalNameHtml}</div>
+                    <!-- CONTENT COLUMN -->
+                    <div class="msg-column" style="display: flex; flex-direction: column; max-width: 85%; position: relative; ${isMine ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
                         
-                        <!-- BUBBLE (Click to Tag) -->
-                        <div class="${bubbleClass}" style="cursor: pointer; position: relative; width: fit-content;" ${replyAction}>
-                            ${bubbleContent}
+                        <!-- NEW ORGANIZED AUTHOR ROW -->
+                        <div class="msg-author-row" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
+                             <div class="msg-author-name" style="font-weight: 700; font-size: 13px;">${authorNameText}</div>
+                             ${staffHtml}
+                             ${cosmeticHtml}
+                        </div>
+                        
+                        <!-- BUBBLE & 3-DOTS CONTAINER -->
+                        <div style="position: relative; display: flex; align-items: center; gap: 8px; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
+                            <div class="${bubbleClass}" style="cursor: pointer; width: fit-content; max-width: 100%;" ${replyAction}>
+                                ${bubbleContent}
+                            </div>
+                            <!-- 3 DOTS (Positioned nicely next to bubble) -->
+                            <div class="msg-options" onclick="toggleMenu('${msgId}')" style="cursor:pointer; opacity: 0.6; font-size: 12px;"><i class="fas fa-ellipsis-v"></i></div>
+                            <div id="menu-${msgId}" class="options-dropdown">
+                                ${menuHtml.split('class="options-dropdown">')[1]} 
+                            </div>
                         </div>
 
-                        <!-- 3-DOTS MENU (RESTORED & POSITIONED PROPERLY) -->
-                        ${menuHtml}
-
                         ${reactionsHtml}
-                        <div class="msg-info" style="margin-top: 5px;"><span>${time}</span> ${seenBtnHtml}</div>
+                        <div class="msg-info" style="margin-top: 4px;"><span>${time}</span> ${seenBtnHtml}</div>
                     </div>
                 </div>
             `;
-            
             feed.appendChild(wrapper);
             seenObserver.observe(wrapper);
         });
