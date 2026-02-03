@@ -3186,6 +3186,47 @@
     flex-shrink: 0;
     margin-left: auto;
 }
+
+
+
+/* Update Log Editor Styles */
+.log-block-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 15px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.log-block-controls {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    display: flex;
+    gap: 5px;
+}
+.btn-block-ctrl {
+    background: #222;
+    border: 1px solid #444;
+    color: #fff;
+    width: 25px;
+    height: 25px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 10px;
+}
+.btn-block-ctrl:hover { background: var(--primary); color: #000; }
+.btn-block-delete { color: #ff4757; }
+.btn-block-delete:hover { background: #ff4757; color: #fff; }
+
+.block-img-preview {
+    max-width: 200px;
+    border-radius: 8px;
+    border: 1px solid var(--primary);
+    margin-top: 10px;
+}
   </style>
 </head>
 <body>
@@ -3648,6 +3689,12 @@
 <a href="#" class="ga-nav-item" onclick="switchSection('feedback-manager-view', this)">
     <i class="fas fa-comment-dots" style="color: #29f3ff;"></i>
     <span>Manager Feedback</span>
+
+
+<a href="#" class="ga-nav-item" onclick="switchSection('update-log-creator-view', this)">
+    <i class="fas fa-file-code" style="color: #00ff88;"></i>
+    <span>Creator Update Logs</span>
+</a>
 </a>
     </div>
 </div>
@@ -4653,6 +4700,42 @@
         <div style="text-align: center; color: #888; padding: 20px;">Se încarcă feedback-ul...</div>
     </div>
 </div>
+
+
+
+<!-- VIEW: UPDATE LOG CREATOR -->
+<div id="update-log-creator-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; color: #00ff88;">
+        <i class="fas fa-plus-circle"></i> NEW UPDATE LOG
+    </h2>
+
+    <div class="stat-card-pro" style="max-width: 900px; margin: 0 auto; border-color: #00ff88;">
+        <!-- Header Info -->
+        <div style="margin-bottom: 20px; width: 100%;">
+            <label class="edit-label">TITLU UPDATE (ex: Update 40)</label>
+            <input type="text" id="logTitle" class="edit-input" placeholder="Numele Update-ului...">
+        </div>
+
+        <!-- Dynamic Content Area -->
+        <div id="logBlocksContainer" style="display: flex; flex-direction: column; gap: 15px; width: 100%; margin-bottom: 20px;">
+            <!-- Blocks will be injected here -->
+        </div>
+
+        <!-- Add Controls -->
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <button onclick="addLogTextBlock()" class="filter-btn" style="border-color: #29f3ff; color: #29f3ff;">
+                <i class="fas fa-font"></i> + TEXT
+            </button>
+            <button onclick="addLogImageBlock()" class="filter-btn" style="border-color: #ffcc00; color: #ffcc00;">
+                <i class="fas fa-image"></i> + IMAGINE
+            </button>
+        </div>
+
+        <button id="btnPublishLog" onclick="publishUpdateLog()" class="super-btn" style="width: 100%; background: #00ff88; color: #000;">
+            PUBLICAȚI UPDATE LOG <i class="fas fa-upload"></i>
+        </button>
+    </div>
+</div>
 </main>
 <!-- MAIN CONTENT AREA END -->
 
@@ -5038,7 +5121,7 @@ window.voteReview = async (reviewId, type, btnElement) => {
     import { getFirestore, doc, getDocs, collection, query, orderBy, limit, where, addDoc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp, getCountFromServer, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     
     // --- LINIA ASTA LIPSEA (ESTE ESENȚIALĂ PENTRU UPLOAD POZE) ---
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     const firebaseConfig = { 
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -5270,6 +5353,148 @@ function populateAdminUserList(usersArray) {
         list.appendChild(div);
     });
 }
+
+
+
+let updateLogBlocks = [];
+
+// 1. Add a Text Block
+window.addLogTextBlock = () => {
+    updateLogBlocks.push({
+        type: 'text',
+        content: '',
+        color: '#ffffff'
+    });
+    renderLogBlocks();
+};
+
+// 2. Add an Image Block
+window.addLogImageBlock = () => {
+    updateLogBlocks.push({
+        type: 'image',
+        url: '',
+        width: '100', // percentage
+        file: null
+    });
+    renderLogBlocks();
+};
+
+// 3. Move Block up or down
+window.moveBlock = (index, direction) => {
+    let newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= updateLogBlocks.length) return;
+    let temp = updateLogBlocks[index];
+    updateLogBlocks[index] = updateLogBlocks[newIndex];
+    updateLogBlocks[newIndex] = temp;
+    renderLogBlocks();
+};
+
+// 4. Update specific data in a block
+window.updateBlockData = (index, key, value) => {
+    updateLogBlocks[index][key] = value;
+    if (key === 'width') renderLogBlocks(); // Re-render to show size change
+};
+
+window.handleBlockImage = (index, input) => {
+    const file = input.files[0];
+    if (!file) return;
+    updateLogBlocks[index].file = file;
+    updateLogBlocks[index].url = URL.createObjectURL(file); // Local preview
+    renderLogBlocks();
+};
+
+window.removeBlock = (index) => {
+    updateLogBlocks.splice(index, 1);
+    renderLogBlocks();
+};
+
+// 5. Render the blocks in the UI
+function renderLogBlocks() {
+    const container = document.getElementById('logBlocksContainer');
+    if(!container) return;
+    container.innerHTML = '';
+
+    updateLogBlocks.forEach((block, index) => {
+        const div = document.createElement('div');
+        div.className = 'log-block-item';
+        
+        let controls = `
+            <div class="log-block-controls">
+                <button class="btn-block-ctrl" onclick="moveBlock(${index}, -1)"><i class="fas fa-arrow-up"></i></button>
+                <button class="btn-block-ctrl" onclick="moveBlock(${index}, 1)"><i class="fas fa-arrow-down"></i></button>
+                <button class="btn-block-ctrl btn-block-delete" onclick="removeBlock(${index})"><i class="fas fa-trash"></i></button>
+            </div>
+        `;
+
+        if (block.type === 'text') {
+            div.innerHTML = `
+                ${controls}
+                <span style="font-size:10px; color:#29f3ff; font-family:'Orbitron';">TEXT BLOCK</span>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input type="color" value="${block.color}" onchange="updateBlockData(${index}, 'color', this.value)" style="width:40px; height:40px; border:none; background:none; cursor:pointer;">
+                    <textarea class="com-input" style="flex:1; height:60px; border-radius:10px;" onkeyup="updateBlockData(${index}, 'content', this.value)" placeholder="Scrie textul aici...">${block.content}</textarea>
+                </div>
+            `;
+        } else {
+            div.innerHTML = `
+                ${controls}
+                <span style="font-size:10px; color:#ffcc00; font-family:'Orbitron';">IMAGE BLOCK</span>
+                <input type="file" accept="image/*" onchange="handleBlockImage(${index}, this)" style="font-size:12px;">
+                ${block.url ? `<img src="${block.url}" class="block-img-preview" style="width:${block.width}%; margin: 10px auto; display:block;">` : ''}
+                <div style="margin-top:10px;">
+                    <label style="font-size:10px; color:#888;">LĂȚIME: ${block.width}%</label>
+                    <input type="range" min="10" max="100" value="${block.width}" oninput="updateBlockData(${index}, 'width', this.value)" style="width:100%; accent-color:#ffcc00;">
+                </div>
+            `;
+        }
+        container.appendChild(div);
+    });
+}
+
+// 6. Final Publish Function
+window.publishUpdateLog = async () => {
+    const title = document.getElementById('logTitle').value.trim();
+    if (!title) return alert("Adaugă un titlu (ex: Update 40)!");
+    if (updateLogBlocks.length === 0) return alert("Adaugă măcar un rând de text sau o imagine!");
+
+    const btn = document.getElementById('btnPublishLog');
+    btn.disabled = true;
+    btn.innerText = "SE ÎNCARCĂ IMAGINILE...";
+
+    try {
+        // Step A: Upload images to Storage and swap blobs for URLs
+        for (let block of updateLogBlocks) {
+            if (block.type === 'image' && block.file) {
+                const storageRef = ref(storage, `updates/${Date.now()}_${block.file.name}`);
+                const snapshot = await uploadBytes(storageRef, block.file);
+                block.url = await getDownloadURL(snapshot.ref);
+                delete block.file; // Clean up the object before saving to Firestore
+            }
+        }
+
+        // Step B: Save to Firestore
+        await addDoc(collection(db, "update_logs"), {
+            title: title,
+            blocks: updateLogBlocks,
+            createdAt: serverTimestamp(),
+            author: auth.currentUser.displayName || "Admin"
+        });
+
+        alert("Update Log publicat cu succes!");
+        
+        // Reset UI
+        document.getElementById('logTitle').value = '';
+        updateLogBlocks = [];
+        renderLogBlocks();
+
+    } catch (e) {
+        console.error(e);
+        alert("Eroare: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "PUBLICAȚI UPDATE LOG";
+    }
+};
 
 // 4. Select User
 window.selectUserForAdmin = (user) => {
@@ -6711,6 +6936,15 @@ window.switchSection = (sectionId, btnElement) => {
 
 case 'feedback-manager-view':
     window.loadAdminFeedback();
+    break;
+
+case 'update-log-creator-view':
+    // Initialize the blocks if the list is empty, otherwise just render
+    if (updateLogBlocks.length === 0) {
+        // Start with one default text block so it's not empty
+        updateLogBlocks = [{ type: 'text', content: '', color: '#ffffff' }];
+    }
+    renderLogBlocks();
     break;
 
 
