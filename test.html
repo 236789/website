@@ -2482,102 +2482,89 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-/* WhatsApp Style Voice Note Card */
+/* Professional Clean Voice Message */
 .wa-voice-card {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    min-width: 280px;
+    gap: 15px;
+    padding: 12px 16px;
+    min-width: 220px; /* Adjusted for mobile */
     max-width: 320px;
     user-select: none;
+    position: relative;
+    overflow: hidden;
 }
 
-/* Play/Pause Button */
+/* Play/Pause Button - Perfect Centering */
 .wa-play-btn {
-    width: 35px;
-    height: 35px;
+    width: 30px;
+    height: 30px;
     background: transparent;
     border: none;
-    color: inherit; /* Matches bubble text color */
-    font-size: 22px;
+    color: inherit;
+    font-size: 20px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.2s;
+    flex-shrink: 0;
 }
-.wa-play-btn:active { transform: scale(0.9); }
 
-/* Center Section: Waveform and Time */
+/* Center Section */
 .wa-voice-main {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    justify-content: center; /* Vertical alignment */
+    min-width: 0;
 }
 
-/* Simulated Waveform */
+/* Simulated Waveform - Centered height */
 .wa-waveform {
     display: flex;
-    align-items: center;
-    gap: 2px;
-    height: 25px;
+    align-items: center; /* Centers bars vertically */
+    gap: 3px;
+    height: 32px; /* Fixed height for consistent vertical centering */
     cursor: pointer;
 }
 
 .wa-bar {
     flex: 1;
     height: var(--h, 50%);
-    background: rgba(255, 255, 255, 0.3); /* Dimmed background */
-    border-radius: 2px;
-    transition: background 0.2s;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    transition: background 0.2s, height 0.2s;
+    min-width: 2px;
 }
 
 .wa-bar.active {
-    background: #00f2ea; /* Progress color - Cyan */
+    background: var(--primary, #00f2ea);
 }
 
-/* Time labels */
+/* Time row */
 .wa-time-row {
     display: flex;
     justify-content: space-between;
-    font-size: 11px;
-    font-family: 'Orbitron', sans-serif;
-    opacity: 0.8;
-}
-
-/* Right Section: Avatar & Icon */
-.wa-voice-right {
-    position: relative;
-    width: 45px;
-    height: 45px;
-    flex-shrink: 0;
-}
-
-.wa-avatar {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.wa-mic-status {
-    position: absolute;
-    bottom: -2px;
-    left: -5px;
-    background: #00f2ea;
-    color: #000;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     font-size: 10px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+    font-family: 'Orbitron', sans-serif;
+    opacity: 0.7;
+    margin-top: 2px;
 }
+
+/* Mobile Fixes */
+@media (max-width: 768px) {
+    .wa-voice-card {
+        min-width: 180px;
+        padding: 10px 12px;
+        gap: 10px;
+    }
+    .wa-bar { min-width: 1.5px; gap: 2px; }
+    .wa-play-btn { font-size: 18px; }
+}
+
+
+
+
   </style>
 
 </head>
@@ -5637,10 +5624,10 @@ function loadMessages() {
              * is properly constructed within the glass bubble.
              */
 else if (data.type === 'vocal') {
-    // Generate 20 waveform bars with random heights
+    // Generate 25 waveform bars with random heights for a professional look
     let barsHtml = "";
     for(let i=0; i<25; i++) {
-        let h = Math.floor(Math.random() * 70) + 20; // random height between 20-90%
+        let h = Math.floor(Math.random() * 60) + 20; // random height between 20-80%
         barsHtml += `<div class="wa-bar" style="--h: ${h}%"></div>`;
     }
 
@@ -5656,21 +5643,14 @@ else if (data.type === 'vocal') {
                 </div>
                 <div class="wa-time-row">
                     <span id="cur-${msgId}">0:00</span>
-                    <span id="dur-${msgId}">...</span>
+                    <span id="dur-${msgId}">0:00</span>
                 </div>
             </div>
 
-            <div class="wa-voice-right">
-                <img src="${data.photo || 'https://iili.io/fhc1SKQ.png'}" class="wa-avatar">
-                <div class="wa-mic-status"><i class="fas fa-microphone"></i></div>
-            </div>
-            
-            <audio id="aud-${msgId}" src="${data.audioUrl}" preload="metadata"></audio>
+            <audio id="aud-${msgId}" src="${data.audioUrl}" preload="metadata" onloadedmetadata="document.getElementById('dur-${msgId}').innerText = formatTime(this.duration)"></audio>
         </div>
     `;
-}
-
-            /**
+} /**
              * CATEGORY 3: INTERACTIVE POLLS
              */
             else if (data.type === 'poll') {
@@ -5981,74 +5961,7 @@ else if (data.type === 'vocal') {
     // END OF FUNCTION loadMessages
 }
 
-window.toggleWaAudio = (id) => {
-    const audio = document.getElementById(`aud-${id}`);
-    const btn = document.getElementById(`pbtn-${id}`);
-    
-    // Stop all other playing audio first (Professional behavior)
-    document.querySelectorAll('audio').forEach(a => {
-        if(a.id !== `aud-${id}`) {
-            a.pause();
-            const otherId = a.id.split('-')[1];
-            const otherBtn = document.getElementById(`pbtn-${otherId}`);
-            if(otherBtn) otherBtn.innerHTML = '<i class="fas fa-play"></i>';
-        }
-    });
-
-    if (audio.paused) {
-        audio.play();
-        btn.innerHTML = '<i class="fas fa-pause"></i>';
-        
-        // Duration set once it loads
-        audio.onloadedmetadata = () => {
-            document.getElementById(`dur-${id}`).innerText = formatTime(audio.duration);
-        };
-
-        // Update loop
-        audio.ontimeupdate = () => {
-            const progress = (audio.currentTime / audio.duration) * 100;
-            const curTimeLabel = document.getElementById(`cur-${id}`);
-            if(curTimeLabel) curTimeLabel.innerText = formatTime(audio.currentTime);
-
-            // Update Waveform bars
-            const bars = document.querySelectorAll(`#vnote-${id} .wa-bar`);
-            const activeThreshold = Math.floor((audio.currentTime / audio.duration) * bars.length);
-            
-            bars.forEach((bar, index) => {
-                if(index <= activeThreshold) bar.classList.add('active');
-                else bar.classList.remove('active');
-            });
-        };
-
-        audio.onended = () => {
-            btn.innerHTML = '<i class="fas fa-play"></i>';
-            audio.currentTime = 0;
-        };
-    } else {
-        audio.pause();
-        btn.innerHTML = '<i class="fas fa-play"></i>';
-    }
-};
-
-// Seek function for clicking the waveform
-window.seekWaAudio = (e, id) => {
-    const audio = document.getElementById(`aud-${id}`);
-    const waveform = e.currentTarget;
-    const rect = waveform.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = x / rect.width;
-    audio.currentTime = pct * audio.duration;
-};
-
-// Helper to format 0:00
-function formatTime(seconds) {
-    if(!seconds) return "0:00";
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-}
-
-
+window.toggleWaAud
 
     window.openSeenByList = async (msgId) => {
         const modal = document.getElementById('seenByModal');
