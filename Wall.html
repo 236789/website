@@ -550,8 +550,31 @@ input:checked + .slider:before { transform: translateX(16px); }
         box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
 
-    .quoted-msg { background: rgba(0, 0, 0, 0.2); border-left: 3px solid rgba(255, 255, 255, 0.3); padding: 8px 10px; border-radius: 6px; font-size: 11px; margin-bottom: 8px; color: rgba(255, 255, 255, 0.7); display: block; margin-top: -4px; word-break: break-all; }
-    .quoted-msg strong { color: rgba(255, 255, 255, 0.9); display: block; margin-bottom: 2px; font-weight: 700; }
+
+/* If it's my message, show PFP on the right */
+.msg-wrapper.mine .msg-main-row {
+    flex-direction: row-reverse;
+}
+
+/* Adjust author name alignment */
+.msg-wrapper.mine .msg-author {
+    text-align: right;
+    margin-right: 5px;
+}
+
+/* Update these for better visibility on dark theme */
+.quoted-msg {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-left: 3px solid var(--primary) !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    padding: 8px !important;
+}
+
+.quoted-msg strong {
+    color: var(--primary) !important; /* Makes the username in reply cyan */
+}
+
+/* Remove the old .msg-wrapper.mine .quoted-msg colors that were forcing black */
 
     /* Colors */
     .msg-wrapper.mine .msg-bubble { background: var(--primary); color: #000; border-bottom-right-radius: 2px; font-weight: 500; }
@@ -2310,6 +2333,23 @@ input:checked + .slider:before { transform: translateX(16px); }
 @keyframes jackpotPulse {
     from { transform: scale(1); border-color: #ffd700; }
     to { transform: scale(1.02); border-color: #fff; box-shadow: 0 0 50px #ffd700; }
+}
+
+
+
+/* Change this to make the menu pop out correctly even on short messages */
+.options-dropdown {
+    position: absolute;
+    top: 25px; /* Adjust height */
+    right: 0;  /* Anchor to the right of the message */
+    left: auto !important; /* Prevent it from pushing left */
+    z-index: 1000;
+}
+
+/* Ensure the message wrapper can hold the menu */
+.msg-wrapper {
+    position: relative;
+    overflow: visible !important; /* Crucial so menu isn't hidden */
 }
   </style>
 
@@ -5300,12 +5340,38 @@ if (data.uid === 'system-alert') {
                 `;
             }
 
+// --- FIX FOR PROBLEM 4: Prepare the Frame HTML ---
+            let pfpFrameHtml = "";
+            if (data.equippedFrame && data.equippedFrame.img) {
+                const scale = data.equippedFrame.scale || 1.45;
+                const sizePct = (scale * 100) + '%';
+                pfpFrameHtml = `<img src="${data.equippedFrame.img}" class="header-frame-overlay" style="width:${sizePct}; height:${sizePct}; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); pointer-events:none; z-index:2;">`;
+            }
+
+            // --- REVISED LAYOUT (Fixes PFP, Frames, and Click-to-Tag) ---
             wrapper.innerHTML = `
-                <div class="msg-author">${finalNameHtml}</div>
-                <div class="${bubbleClass}">${bubbleContent}</div>
-                ${reactionsHtml}
-                <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
-                ${menuHtml}
+                <div class="msg-row-layout" style="display: flex; gap: 12px; align-items: flex-end; width: 100%; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
+                    
+                    <!-- AVATAR & FRAME SECTION -->
+                    <div class="msg-avatar-container" style="width: 38px; height: 38px; flex-shrink: 0; position: relative; cursor: pointer;" onclick="window.openUserProfile('${data.uid}')">
+                        <img src="${data.photo || 'https://iili.io/fXks1Dv.png'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
+                        ${pfpFrameHtml}
+                    </div>
+
+                    <!-- CONTENT SECTION -->
+                    <div class="msg-column" style="display: flex; flex-direction: column; max-width: 80%; ${isMine ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
+                        <div class="msg-author" style="margin-bottom: 2px;">${finalNameHtml}</div>
+                        
+                        <!-- CLICKABLE BUBBLE (Problem 2 Fix: clicking tags/replies) -->
+                        <div class="${bubbleClass}" style="cursor: pointer; position: relative;" onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')">
+                            ${bubbleContent}
+                            ${menuHtml} <!-- Moved menu inside here or next to it to fix cut-off -->
+                        </div>
+
+                        ${reactionsHtml}
+                        <div class="msg-info"><span>${time}</span> ${seenBtnHtml}</div>
+                    </div>
+                </div>
             `;
             
             feed.appendChild(wrapper);
