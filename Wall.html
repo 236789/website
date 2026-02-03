@@ -5348,7 +5348,15 @@ if (data.uid === 'system-alert') {
                 pfpFrameHtml = `<img src="${data.equippedFrame.img}" class="header-frame-overlay" style="width:${sizePct}; height:${sizePct}; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); pointer-events:none; z-index:2;">`;
             }
 
-            // --- REVISED LAYOUT (Fixes PFP, Frames, and Click-to-Tag) ---
+            // --- 🛡️ CRASH FIX: Safe strings for the onclick handler ---
+            // This prevents the "null replace" error by providing fallbacks
+            const safeName = (data.name || "Sistem").toString().replace(/'/g, "\\'");
+            const safeText = (data.text || "Media").toString().replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            
+            // Don't allow clicking to reply on System Alerts
+            const replyOnClick = (data.uid === 'system-alert') ? "" : `onclick="startReply('${msgId}', '${safeName}', '${safeText}', '${data.uid}')"`;
+
+            // --- REVISED LAYOUT ---
             wrapper.innerHTML = `
                 <div class="msg-row-layout" style="display: flex; gap: 12px; align-items: flex-end; width: 100%; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
                     
@@ -5362,10 +5370,10 @@ if (data.uid === 'system-alert') {
                     <div class="msg-column" style="display: flex; flex-direction: column; max-width: 80%; ${isMine ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
                         <div class="msg-author" style="margin-bottom: 2px;">${finalNameHtml}</div>
                         
-                        <!-- CLICKABLE BUBBLE (Problem 2 Fix: clicking tags/replies) -->
-                        <div class="${bubbleClass}" style="cursor: pointer; position: relative;" onclick="startReply('${msgId}', '${data.name.replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')">
+                        <!-- Safe Bubble with Click-to-Reply -->
+                        <div class="${bubbleClass}" style="cursor: pointer; position: relative;" ${replyOnClick}>
                             ${bubbleContent}
-                            ${menuHtml} <!-- Moved menu inside here or next to it to fix cut-off -->
+                            ${menuHtml}
                         </div>
 
                         ${reactionsHtml}
