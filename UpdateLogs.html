@@ -1501,9 +1501,88 @@
     font-family: 'Orbitron';
     text-transform: uppercase;
 }
+
+
+/* --- UPDATE LOG COMMENT STYLES --- */
+.log-comments-section {
+    display: none; /* Hidden by default */
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.4);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.log-comment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Individual Comment Card */
+.log-comment-item {
+    position: relative;
+    padding: 15px;
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    gap: 15px;
+}
+
+/* Fix for frame layering in comments */
+.comment-pfp-wrapper {
+    position: relative;
+    width: 45px;
+    height: 45px;
+    flex-shrink: 0;
+}
+.comment-pfp-img {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    z-index: 1;
+}
+.comment-frame-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 145%; height: 145%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.comment-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 15px;
+}
+
+/* Viewer list styling */
+.viewer-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
   </style>
 </head>
 <body>
+
+<!-- MODAL: WHO VIEWED THIS LOG -->
+<div id="viewersModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 380px;">
+        <button class="close-pop" onclick="document.getElementById('viewersModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px; font-size: 16px;">VĂZUT DE:</h3>
+        <div id="viewersListContent" class="lobby-container" style="max-height: 50vh; overflow-y: auto;">
+            <!-- Users list here -->
+        </div>
+    </div>
+</div>
 <!-- BANNED OVERLAY -->
 <div id="bannedOverlay">
     <i class="fas fa-ban ban-icon"></i>
@@ -1912,26 +1991,22 @@ window.loadNewsFeed = () => {
     });
 };
 
+// --- UPDATED CREATE LOG CARD (With Comment Toggle & Viewer Click) ---
 function createLogCard(id, data) {
     const card = document.createElement('div');
     card.className = 'log-card';
 
-    // Calculate Likes
     const likes = data.likes || {};
     const likeCount = Object.keys(likes).length;
     const isLiked = auth.currentUser && likes[auth.currentUser.uid];
+    const viewerCount = data.viewers ? data.viewers.length : 0;
 
-    // Build the Block Content
     let bodyHtml = '';
     data.blocks.forEach(block => {
         if (block.type === 'text') {
             bodyHtml += `<div class="block-text" style="color: ${block.color}">${block.content}</div>`;
         } else if (block.type === 'image') {
-            bodyHtml += `
-                <div class="block-image-container" style="width: ${block.width}%">
-                    <img src="${block.url}" loading="lazy">
-                </div>
-            `;
+            bodyHtml += `<div class="block-image-container" style="width: ${block.width}%"><img src="${block.url}" loading="lazy"></div>`;
         }
     });
 
@@ -1942,58 +2017,142 @@ function createLogCard(id, data) {
             <p style="font-size: 10px; color: var(--primary); font-family: 'Orbitron'; margin-bottom: 5px;">${date}</p>
             <h2 class="log-title-text">${data.title}</h2>
         </div>
-        <div class="log-body">
-            ${bodyHtml}
-        </div>
+        <div class="log-body">${bodyHtml}</div>
         <div class="log-footer">
             <div class="interaction-btns">
                 <button class="int-btn ${isLiked ? 'active-like' : ''}" onclick="toggleLogLike('${id}')">
                     <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i> ${likeCount}
                 </button>
-                <button class="int-btn">
+                <button class="int-btn" onclick="toggleLogComments('${id}')">
                     <i class="far fa-comment"></i> DISCUȚIE
                 </button>
             </div>
-            <div class="viewers-count">
-                <i class="far fa-eye"></i> ${data.viewers ? data.viewers.length : 0} VĂZUT
+            <div class="viewers-count" style="cursor:pointer;" onclick="openLogViewersModal('${id}')">
+                <i class="far fa-eye"></i> ${viewerCount} VĂZUT
+            </div>
+        </div>
+        
+        <!-- HIDDEN COMMENT SECTION -->
+        <div id="comments-box-${id}" class="log-comments-section">
+            <div id="comment-list-${id}" class="log-comment-list"></div>
+            <div class="comment-input-row">
+                <input id="input-${id}" class="com-input" placeholder="Scrie un comentariu...">
+                <button class="com-send-btn" onclick="postLogComment('${id}')"><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
     `;
     return card;
 }
 
-// Register View Logic
-async function registerLogView(logId, currentViewers) {
-    if (!auth.currentUser) return;
-    const uid = auth.currentUser.uid;
-    
-    if (!currentViewers.includes(uid)) {
-        const logRef = doc(db, "update_logs", logId);
-        await updateDoc(logRef, {
-            viewers: arrayUnion(uid)
-        });
-    }
-}
+// --- LOGIC: WHO VIEWED MODAL ---
+window.openLogViewersModal = async (logId) => {
+    const modal = document.getElementById('viewersModal');
+    const content = document.getElementById('viewersListContent');
+    modal.classList.add('active');
+    content.innerHTML = '<p style="color:#888; text-align:center;">Se încarcă lista...</p>';
 
-// Like Logic
-window.toggleLogLike = async (logId) => {
-    if (!auth.currentUser) return alert("Trebuie să fii logat pentru a da Like!");
-    
     const logRef = doc(db, "update_logs", logId);
-    const uid = auth.currentUser.uid;
-    
     const snap = await getDoc(logRef);
-    const likes = snap.data().likes || {};
-    
-    if (likes[uid]) {
-        delete likes[uid];
-    } else {
-        likes[uid] = true;
+    const uids = snap.data().viewers || [];
+
+    if(uids.length === 0) {
+        content.innerHTML = '<p style="color:#555; text-align:center;">Nimeni încă.</p>';
+        return;
     }
-    
-    await updateDoc(logRef, { likes: likes });
+
+    let html = "";
+    // Loop through viewers. Use cachedUsers if available to speed up
+    for(let uid of uids) {
+        let u = cachedUsers.find(user => user.uid === uid);
+        if(!u) {
+            const uSnap = await getDoc(doc(db, "accounts", uid));
+            if(uSnap.exists()) u = uSnap.data();
+        }
+        if(u) {
+            html += `
+                <div class="viewer-row">
+                    <img src="${u.pfp || u.image}" style="width:30px; height:30px; border-radius:50%; border:1px solid var(--primary);">
+                    <span style="color:#fff; font-family:'Orbitron'; font-size:12px;">${u.username}</span>
+                </div>`;
+        }
+    }
+    content.innerHTML = html;
 };
 
+// --- LOGIC: COMMENTS ENGINE ---
+window.toggleLogComments = (logId) => {
+    const box = document.getElementById(`comments-box-${logId}`);
+    const list = document.getElementById(`comment-list-${logId}`);
+    
+    if (box.style.display === 'block') {
+        box.style.display = 'none';
+        return;
+    }
+    
+    box.style.display = 'block';
+    list.innerHTML = '<p style="color:#888; font-size:12px;">Se încarcă discuția...</p>';
+
+    // Set up Real-time listener for comments
+    const q = query(collection(db, `update_logs/${logId}/comments`), orderBy("createdAt", "asc"));
+    onSnapshot(q, (snapshot) => {
+        list.innerHTML = '';
+        if(snapshot.empty) {
+            list.innerHTML = '<p style="color:#555; font-size:12px; text-align:center;">Niciun comentariu încă. Fii primul!</p>';
+            return;
+        }
+
+        snapshot.forEach(docSnap => {
+            const c = docSnap.data();
+            
+            // Build the Name with Custom Text Color
+            const nameHtml = c.equippedText ? `<span class="${c.equippedText.cssClass}">${c.name}</span>` : c.name;
+            
+            // Build the Frame overlay
+            const frameHtml = c.equippedFrame ? `<img src="${c.equippedFrame.img}" class="comment-frame-overlay" style="width:${(c.equippedFrame.scale || 1.45)*100}%; height:${(c.equippedFrame.scale || 1.45)*100}%;">` : '';
+
+            // Apply Banner class to the bubble if it exists
+            const bannerClass = c.equippedBanner ? c.equippedBanner.cssClass : '';
+
+            list.innerHTML += `
+                <div class="log-comment-item ${bannerClass}">
+                    <div class="comment-pfp-wrapper">
+                        <img src="${c.photo}" class="comment-pfp-img">
+                        ${frameHtml}
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-family:'Orbitron'; font-size:11px; font-weight:800; margin-bottom:4px;">${nameHtml}</div>
+                        <div style="color:#eee; font-size:13px; line-height:1.4;">${c.text}</div>
+                    </div>
+                </div>
+            `;
+        });
+        list.scrollTop = list.scrollHeight;
+    });
+};
+
+window.postLogComment = async (logId) => {
+    const input = document.getElementById(`input-${logId}`);
+    const text = input.value.trim();
+    if(!text || !auth.currentUser) return;
+
+    // Get current user cosmetics to save with the comment snapshot
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const uSnap = await getDoc(userRef);
+    const uData = uSnap.data();
+
+    await addDoc(collection(db, `update_logs/${logId}/comments`), {
+        text: text,
+        uid: auth.currentUser.uid,
+        name: uData.username || auth.currentUser.displayName,
+        photo: auth.currentUser.photoURL,
+        equippedFrame: uData.equippedFrame || null,
+        equippedBanner: uData.equippedBanner || null,
+        equippedText: uData.equippedText || null,
+        createdAt: serverTimestamp()
+    });
+
+    input.value = '';
+};
 // Initialize
 onAuthStateChanged(auth, user => {
     if(user) window.loadNewsFeed();
