@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
+
+
+<!-- EmailJS Library -->
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+<script type="text/javascript">
+   (function(){
+      emailjs.init("Y0dkZymRLyZIEETYZ");
+   })();
+</script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-B6DWPJ4T2C"></script>
   <script>
@@ -1654,32 +1663,53 @@
             <p class="auth-switch-text">Nu ai cont? <span onclick="switchAuthMode('register')">Înregistrează-te</span></p>
         </div>
 
-        <!-- REGISTER FORM -->
-        <div id="registerForm" class="auth-mode-container" style="display: none;">
-            <div class="clean-input-group">
-                <label>NUME UTILIZATOR</label>
-                <input type="text" id="regUser" placeholder="Username" required spellcheck="false">
-            </div>
-
-            <div class="clean-input-group">
-                <label>ADRESA EMAIL</label>
-                <input type="email" id="regEmail" placeholder="email@exemplu.com" required spellcheck="false">
-            </div>
-
-            <div class="clean-input-group">
-                <label>PAROLA</label>
-                <input type="password" id="regPass" placeholder="minim 6 caractere" required>
-            </div>
-             <!-- ADDED CONFIRM PASS INPUT FOR SAFETY -->
-            <div class="clean-input-group">
-                <label>CONFIRMĂ PAROLA</label>
-                <input type="password" id="regConfirmPass" placeholder="repeta parola" required>
-            </div>
-
-            <button class="btn-cyber-main purple-glow" onclick="handleEmailRegister()">CREEAZĂ CONT</button>
-            
-            <p class="auth-switch-text">Ai deja cont? <span onclick="switchAuthMode('login')">Loghează-te</span></p>
+<div id="registerForm" class="auth-mode-container" style="display: none;">
+    
+    <!-- STEP 1: DATELE -->
+    <div id="regStep1">
+        <div class="clean-input-group">
+            <label>NUME UTILIZATOR</label>
+            <input type="text" id="regUser" placeholder="Username" required spellcheck="false">
         </div>
+
+        <div class="clean-input-group">
+            <label>ADRESA EMAIL</label>
+            <input type="email" id="regEmail" placeholder="email@real.com" required spellcheck="false">
+        </div>
+
+        <div class="clean-input-group">
+            <label>PAROLA</label>
+            <input type="password" id="regPass" placeholder="minim 6 caractere" required>
+        </div>
+        
+        <div class="clean-input-group">
+            <label>CONFIRMĂ PAROLA</label>
+            <input type="password" id="regConfirmPass" placeholder="repeta parola" required>
+        </div>
+
+        <button class="btn-cyber-main purple-glow" onclick="initiateRegistrationVerification()">TRIMITE COD DE VERIFICARE</button>
+    </div>
+
+    <!-- STEP 2: CODUL (Ascuns la inceput) -->
+    <div id="regStep2" style="display: none; animation: fadeIn 0.5s;">
+        <p style="color: #00ff88; font-size: 11px; margin-bottom: 10px; text-align: center;">
+            Am trimis un cod pe email. Verifică și Spam-ul!
+        </p>
+        
+        <div class="clean-input-group">
+            <label>COD VERIFICARE (6 CIFRE)</label>
+            <input type="number" id="regCodeInput" placeholder="Ex: 123456" style="letter-spacing: 5px; text-align: center; font-size: 18px; font-weight: bold;">
+        </div>
+
+        <button class="btn-cyber-main blue-glow" onclick="finalizeRegistration()">VERIFICĂ ȘI CREEAZĂ CONT</button>
+        
+        <p class="auth-switch-text" style="margin-top: 10px; cursor: pointer;" onclick="backToStep1()">
+            Greșit email-ul? <span>Înapoi</span>
+        </p>
+    </div>
+
+    <p class="auth-switch-text">Ai deja cont? <span onclick="switchAuthMode('login')">Loghează-te</span></p>
+</div>
 
         <div class="auth-divider"><span>SAU</span></div>
 
@@ -2858,6 +2888,121 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
         } catch(e) {
             alert("Eroare la salvare: " + e.message);
         }
+    };
+
+
+
+// --- VARIABILE PENTRU VERIFICARE ---
+    let generatedVerificationCode = null;
+    let pendingRegData = {}; 
+
+    // 1. TRIMITE EMAILUL (STEP 1)
+    window.initiateRegistrationVerification = function() {
+        const username = document.getElementById('regUser').value.trim();
+        const email = document.getElementById('regEmail').value.trim();
+        const pass = document.getElementById('regPass').value;
+        const confirmPass = document.getElementById('regConfirmPass').value;
+        const errorEl = document.getElementById('authError');
+
+        // Validari simple
+        if (!username || !email || !pass) return errorEl.innerText = "Completează toate câmpurile!";
+        if (pass.length < 6) return errorEl.innerText = "Parola trebuie să aibă minim 6 caractere!";
+        if (pass !== confirmPass) return errorEl.innerText = "Parolele nu coincid!";
+        if (!email.includes('@')) return errorEl.innerText = "Email invalid!";
+
+        errorEl.innerText = "Se trimite codul...";
+
+        // Generam un cod random de 6 cifre
+        generatedVerificationCode = Math.floor(100000 + Math.random() * 900000);
+        
+        // Salvam datele temporar
+        pendingRegData = { username, email, pass };
+
+        // --- EMAILJS CONFIGURAT CU DATELE TALE ---
+        const serviceID = "service_3aati3e"; 
+        const templateID = "template_yl9ja7b";
+
+        const templateParams = {
+            to_email: email,    // Trimite la adresa scrisa de user
+            to_name: username,  // Numele userului
+            code: generatedVerificationCode // Codul generat
+        };
+
+        emailjs.send(serviceID, templateID, templateParams)
+            .then(() => {
+                // Succes
+                errorEl.innerText = "";
+                document.getElementById('regStep1').style.display = 'none';
+                document.getElementById('regStep2').style.display = 'block';
+                // Optional: alert pentru confirmare vizuala rapida
+                // alert("Cod trimis! Verifică email-ul: " + email);
+            }, (err) => {
+                // Eroare
+                console.error('EmailJS Error:', err);
+                errorEl.innerText = "Eroare la trimitere email. Verifică adresa scrisa.";
+            });
+    };
+
+    // 2. VERIFICA CODUL SI CREEAZA CONTUL (STEP 2)
+    window.finalizeRegistration = async function() {
+        const userCode = document.getElementById('regCodeInput').value;
+        const errorEl = document.getElementById('authError');
+
+        // Verificam daca codul introdus de user e egal cu cel generat
+        if (parseInt(userCode) !== generatedVerificationCode) {
+            errorEl.innerText = "Cod incorect! Încearcă din nou.";
+            return;
+        }
+
+        errorEl.innerText = "Cod corect! Se creează contul...";
+
+        try {
+            // Cream contul in Firebase Auth
+            const cred = await createUserWithEmailAndPassword(auth, pendingRegData.email, pendingRegData.pass);
+            
+            // Luam IP-ul pentru securitate
+            const ip = await getIP(); 
+
+            // Cream documentul in baza de date
+            await setDoc(doc(db, "accounts", cred.user.uid), {
+                uid: cred.user.uid,
+                username: pendingRegData.username,
+                email: pendingRegData.email,
+                image: "https://iili.io/fXks1Dv.png",
+                coins: 250,
+                diamonds: 0,
+                streak: 0,
+                joinedAt: serverTimestamp(),
+                ip: ip,
+                kevinMessagesToday: 0,
+                completedQuests: [],
+                verified: true // Marcam ca verificat
+            });
+
+            // Gata! Ascundem login-ul si aratam modalul de bun venit
+            document.getElementById('authOverlay').style.display = 'none';
+            document.getElementById('rewardModal').classList.add('active');
+            
+            // Resetam datele
+            pendingRegData = {};
+            generatedVerificationCode = null;
+
+        } catch (e) {
+            console.error(e);
+            if(e.code === 'auth/email-already-in-use') {
+                errorEl.innerText = "Acest email este deja folosit!";
+                window.backToStep1();
+            } else {
+                errorEl.innerText = "Eroare: " + e.message;
+            }
+        }
+    };
+
+    // 3. BUTON INAPOI
+    window.backToStep1 = function() {
+        document.getElementById('regStep1').style.display = 'block';
+        document.getElementById('regStep2').style.display = 'none';
+        document.getElementById('authError').innerText = "";
     };
 
 
