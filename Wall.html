@@ -2454,6 +2454,46 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 .msg-wrapper.mine .options-dropdown { right: 30px; }
 .msg-wrapper.theirs .options-dropdown { left: 30px; }
+
+
+/* FIX: Stop short words like 'test' from breaking across lines */
+.msg-bubble {
+    word-break: normal !important;        /* Removed 'break-all' */
+    overflow-wrap: break-word !important; /* Only breaks if word is longer than bubble */
+    white-space: pre-wrap;                /* Keeps spaces and breaks naturally */
+    display: inline-block;
+    max-width: 100%;
+}
+
+/* FIX: Badges and Name row styling */
+.msg-author-row {
+    line-height: 1.2;
+}
+
+.owner-badge, .admin-badge, .mod-badge, .helper-badge, .cosmetic-badge, .badge-wheel-god {
+    height: 18px !important;
+    padding: 2px 8px !important;
+    font-size: 9px !important;
+    display: inline-flex !important;
+    align-items: center;
+    white-space: nowrap !important; /* Prevents badge text from ever breaking into two lines */
+    border-radius: 4px !important;
+}
+
+/* Fix Dropdown position relative to new layout */
+.options-dropdown {
+    position: absolute;
+    top: 0;
+    z-index: 1000;
+}
+.msg-wrapper.mine .options-dropdown { right: 25px; }
+.msg-wrapper.theirs .options-dropdown { left: 25px; }
+
+/* Move PFP Frame to be slightly bigger than the circle */
+.msg-avatar-container .header-frame-overlay {
+    width: 150% !important;
+    height: 150% !important;
+}
   </style>
 
 </head>
@@ -5444,7 +5484,7 @@ if (data.uid === 'system-alert') {
                     </div>
                 `;
             }
-// --- FIX: Prepare Frame HTML ---
+// --- FIX FOR PROBLEM 4: Prepare the Frame HTML ---
             let pfpFrameHtml = "";
             if (data.equippedFrame && data.equippedFrame.img) {
                 const scale = data.equippedFrame.scale || 1.45;
@@ -5460,35 +5500,38 @@ if (data.uid === 'system-alert') {
                 <div class="msg-row-layout" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
                     
                     <!-- AVATAR SECTION -->
-                    <div class="msg-avatar-container" style="width: 38px; height: 38px; flex-shrink: 0; position: relative; cursor: pointer; margin-top: 5px;" onclick="window.openUserProfile('${data.uid}')">
+                    <div class="msg-avatar-container" style="width: 40px; height: 40px; flex-shrink: 0; position: relative; cursor: pointer; margin-top: 5px;" onclick="window.openUserProfile('${data.uid}')">
                         <img src="${data.photo || 'https://iili.io/fXks1Dv.png'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
                         ${pfpFrameHtml}
                     </div>
 
                     <!-- CONTENT COLUMN -->
-                    <div class="msg-column" style="display: flex; flex-direction: column; max-width: 85%; position: relative; ${isMine ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
+                    <div class="msg-column" style="display: flex; flex-direction: column; max-width: 80%; position: relative; ${isMine ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
                         
-                        <!-- NEW ORGANIZED AUTHOR ROW -->
-                        <div class="msg-author-row" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
-                             <div class="msg-author-name" style="font-weight: 700; font-size: 13px;">${authorNameText}</div>
-                             ${staffHtml}
-                             ${cosmeticHtml}
+                        <!-- CLEAN NAME & BADGE ROW -->
+                        <div class="msg-author-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
+                             <div class="msg-author-name" style="font-weight: 800; font-size: 14px;">${authorNameText}</div>
+                             <div style="display: flex; gap: 4px;">${staffHtml}${cosmeticHtml}</div>
                         </div>
                         
-                        <!-- BUBBLE & 3-DOTS CONTAINER -->
-                        <div style="position: relative; display: flex; align-items: center; gap: 8px; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
-                            <div class="${bubbleClass}" style="cursor: pointer; width: fit-content; max-width: 100%;" ${replyAction}>
+                        <!-- BUBBLE & 3-DOTS -->
+                        <div style="position: relative; display: flex; align-items: center; gap: 10px; width: 100%; ${isMine ? 'flex-direction: row-reverse;' : 'flex-direction: row;'}">
+                            <div class="${bubbleClass}" style="cursor: pointer; width: fit-content; min-width: 50px;" ${replyAction}>
                                 ${bubbleContent}
                             </div>
-                            <!-- 3 DOTS (Positioned nicely next to bubble) -->
-                            <div class="msg-options" onclick="toggleMenu('${msgId}')" style="cursor:pointer; opacity: 0.6; font-size: 12px;"><i class="fas fa-ellipsis-v"></i></div>
+                            
+                            <!-- 3 DOTS (Positioned outside the bubble space to prevent squishing) -->
+                            <div class="msg-options" onclick="toggleMenu('${msgId}')" style="cursor:pointer; opacity: 0.5; font-size: 14px;"><i class="fas fa-ellipsis-v"></i></div>
                             <div id="menu-${msgId}" class="options-dropdown">
                                 ${menuHtml.split('class="options-dropdown">')[1]} 
                             </div>
                         </div>
 
-                        ${reactionsHtml}
-                        <div class="msg-info" style="margin-top: 4px;"><span>${time}</span> ${seenBtnHtml}</div>
+                        <!-- INFO BELOW BUBBLE -->
+                        <div class="msg-info" style="margin-top: 5px; display: flex; gap: 10px; align-items: center;">
+                            <span style="font-size: 10px; opacity: 0.6;">${time}</span> 
+                            ${seenBtnHtml}
+                        </div>
                     </div>
                 </div>
             `;
