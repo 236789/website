@@ -1662,6 +1662,34 @@
 .ob-step {
     animation: fadeIn 0.5s ease;
 }
+
+
+
+.avatar-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+.av-pick {
+    width: 100%;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: 0.3s;
+}
+.av-pick.selected {
+    border-color: var(--primary);
+    transform: scale(1.1);
+    box-shadow: 0 0 15px var(--primary-dim);
+}
+.profile-preview-card {
+    background: rgba(255,255,255,0.05);
+    padding: 20px;
+    border-radius: 20px;
+    border: 1px solid var(--primary-dim);
+    margin: 15px 0;
+}
   </style>
 </head>
 <body>
@@ -2184,6 +2212,9 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+
+let onboardingInProgress = false
 
 // --- INVITE SYSTEM LOGIC ---
 
@@ -3074,7 +3105,6 @@ window.nextObStep = (step) => {
     document.getElementById('obStep' + step).style.display = 'block';
 };
 
-// --- UPDATE finalizeRegistration ---
 window.finalizeRegistration = async function() {
     const userCode = document.getElementById('regCodeInput').value;
     const errorEl = document.getElementById('authError');
@@ -3085,10 +3115,13 @@ window.finalizeRegistration = async function() {
     }
 
     try {
+        // 1. Set the flag to true so the auto-redirect stops
+        onboardingInProgress = true; 
+
         const cred = await createUserWithEmailAndPassword(auth, pendingRegData.email, pendingRegData.pass);
         const ip = await getIP(); 
 
-        // Create the initial doc
+        // 2. Create the initial doc
         await setDoc(doc(db, "accounts", cred.user.uid), {
             uid: cred.user.uid,
             username: pendingRegData.username,
@@ -3099,15 +3132,22 @@ window.finalizeRegistration = async function() {
             streak: 0,
             joinedAt: serverTimestamp(),
             ip: ip,
-            verified: true
+            verified: true,
+            onboardingComplete: false // NEW FLAG
         });
 
-        // INSTEAD OF REDIRECT -> Show Onboarding
-        document.querySelector('#registerForm').parentElement.style.display = 'none'; // Hide Login Card
-        document.getElementById('onboardingCard').style.display = 'block'; // Show Onboarding
+        // 3. UI logic: Hide the Auth container, Show Onboarding container
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('registerForm').style.display = 'none';
+        document.querySelector('.auth-divider').style.display = 'none';
+        document.querySelector('.social-btns-row').style.display = 'none';
+        document.getElementById('authCardTitle').parentElement.style.display = 'none'; // Hide "AUTENTIFICARE" header
+        
+        document.getElementById('onboardingCard').style.display = 'block'; 
         document.getElementById('obUserNameDisplay').innerText = pendingRegData.username;
 
     } catch (e) {
+        onboardingInProgress = false;
         errorEl.innerText = "Eroare: " + e.message;
     }
 };
@@ -3151,9 +3191,17 @@ window.saveOnboardingData = async () => {
     }
 };
 
-window.finishOnboarding = () => {
-    // Final redirect only after everything is saved
-    window.location.href = "index.html";
+window.finishOnboarding = async () => {
+    try {
+        const userRef = doc(db, "accounts", auth.currentUser.uid);
+        await updateDoc(userRef, { onboardingComplete: true });
+        
+        // Now it is safe to go to index
+        onboardingInProgress = false; 
+        window.location.href = "index.html";
+    } catch(e) {
+        window.location.href = "index.html";
+    }
 };
 
     // 3. BUTON INAPOI
@@ -3166,7 +3214,9 @@ window.finishOnboarding = () => {
 
 onAuthStateChanged(auth, user => {
     if (user) {
-        if (!location.pathname.endsWith("index.html") && location.pathname !== "/") location.href = "index.html";
+        if (!location.pathname.endsWith("index.html") && location.pathname !== "/") {
+             location.href = "index.html";
+        }
 
         const userRef = doc(db, "accounts", user.uid);
 
