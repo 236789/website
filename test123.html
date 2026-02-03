@@ -3227,6 +3227,51 @@
     border: 1px solid var(--primary);
     margin-top: 10px;
 }
+
+
+/* Custom Styled File Input */
+.custom-file-upload {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px dashed var(--primary);
+    color: var(--primary);
+    padding: 10px;
+    border-radius: 8px;
+    display: inline-block;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: 'Orbitron';
+    text-align: center;
+    transition: 0.3s;
+}
+.custom-file-upload:hover { background: rgba(41, 243, 255, 0.1); }
+
+/* Multi-Image Row Grid */
+.log-image-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 15px;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Gradient Text Support */
+.gradient-text-logic {
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+/* Author Badge in Logs */
+.log-author-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+.author-pfp {
+    width: 25px; height: 25px; border-radius: 50%; border: 1px solid var(--primary);
+}
   </style>
 </head>
 <body>
@@ -3240,6 +3285,18 @@
         <span class="ban-info-label">Motiv:</span>
         <span class="ban-info-val" id="globalBanReason">Încălcare regulament comunitate</span>
         <p style="font-size:12px; color:#999; margin:0;">Adresa ta IP (<span id="globalBanIp">...</span>) a fost blocată.</p>
+    </div>
+</div>
+
+<!-- MODAL: LIVE PREVIEW -->
+<div id="logPreviewModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 850px; width: 95%; padding: 20px;">
+        <button class="close-pop" onclick="document.getElementById('logPreviewModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px;">LIVE PREVIEW</h3>
+        <div id="previewContainer" style="text-align: left;">
+            <!-- The rendered log card will appear here -->
+        </div>
+        <button class="super-btn" style="margin-top: 20px;" onclick="document.getElementById('logPreviewModal').classList.remove('active')">ÎNCHIDE PREVIEW</button>
     </div>
 </div>
 <!-- COOKIE POPUP -->
@@ -4729,6 +4786,9 @@
             <button onclick="addLogImageBlock()" class="filter-btn" style="border-color: #ffcc00; color: #ffcc00;">
                 <i class="fas fa-image"></i> + IMAGINE
             </button>
+
+
+    <button onclick="previewUpdateLog()" class="filter-btn" style="border-color: #bf55ec; color: #bf55ec; margin-left: auto;"><i class="fas fa-eye"></i> PREVIEW</button>
         </div>
 
         <button id="btnPublishLog" onclick="publishUpdateLog()" class="super-btn" style="width: 100%; background: #00ff88; color: #000;">
@@ -5358,24 +5418,19 @@ function populateAdminUserList(usersArray) {
 
 let updateLogBlocks = [];
 
-// 1. Add a Text Block
 window.addLogTextBlock = () => {
-    updateLogBlocks.push({
-        type: 'text',
-        content: '',
-        color: '#ffffff'
-    });
+    updateLogBlocks.push({ type: 'text', content: '', color: '#ffffff', isGradient: false, gradient: 'linear-gradient(90deg, #29f3ff, #7000ff)' });
     renderLogBlocks();
 };
 
-// 2. Add an Image Block
 window.addLogImageBlock = () => {
-    updateLogBlocks.push({
-        type: 'image',
-        url: '',
-        width: '100', // percentage
-        file: null
-    });
+    // Images is now an array to support multiple in a row
+    updateLogBlocks.push({ type: 'image', images: [] });
+    renderLogBlocks(); 
+};
+
+window.addImgToBlock = (index) => {
+    updateLogBlocks[index].images.push({ url: '', file: null, width: 100 });
     renderLogBlocks();
 };
 
@@ -5408,7 +5463,6 @@ window.removeBlock = (index) => {
     renderLogBlocks();
 };
 
-// 5. Render the blocks in the UI
 function renderLogBlocks() {
     const container = document.getElementById('logBlocksContainer');
     if(!container) return;
@@ -5417,40 +5471,94 @@ function renderLogBlocks() {
     updateLogBlocks.forEach((block, index) => {
         const div = document.createElement('div');
         div.className = 'log-block-item';
-        
-        let controls = `
-            <div class="log-block-controls">
-                <button class="btn-block-ctrl" onclick="moveBlock(${index}, -1)"><i class="fas fa-arrow-up"></i></button>
-                <button class="btn-block-ctrl" onclick="moveBlock(${index}, 1)"><i class="fas fa-arrow-down"></i></button>
-                <button class="btn-block-ctrl btn-block-delete" onclick="removeBlock(${index})"><i class="fas fa-trash"></i></button>
-            </div>
-        `;
+        let controls = `<div class="log-block-controls">
+            <button class="btn-block-ctrl" onclick="moveBlock(${index}, -1)">▲</button>
+            <button class="btn-block-ctrl" onclick="moveBlock(${index}, 1)">▼</button>
+            <button class="btn-block-ctrl btn-block-delete" onclick="removeBlock(${index})">✕</button>
+        </div>`;
 
         if (block.type === 'text') {
-            div.innerHTML = `
-                ${controls}
-                <span style="font-size:10px; color:#29f3ff; font-family:'Orbitron';">TEXT BLOCK</span>
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <input type="color" value="${block.color}" onchange="updateBlockData(${index}, 'color', this.value)" style="width:40px; height:40px; border:none; background:none; cursor:pointer;">
-                    <textarea class="com-input" style="flex:1; height:60px; border-radius:10px;" onkeyup="updateBlockData(${index}, 'content', this.value)" placeholder="Scrie textul aici...">${block.content}</textarea>
-                </div>
-            `;
+            div.innerHTML = `${controls}
+                <span style="font-size:9px; color:var(--primary);">TEXT BLOCK</span>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <textarea class="com-input" style="height:60px;" onkeyup="updateBlockData(${index}, 'content', this.value)">${block.content}</textarea>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <label style="font-size:10px;">Culoare:</label>
+                        <input type="color" value="${block.color}" onchange="updateBlockData(${index}, 'color', this.value)">
+                        <label style="font-size:10px; margin-left:10px;">Gradient?</label>
+                        <input type="checkbox" ${block.isGradient ? 'checked' : ''} onchange="updateBlockData(${index}, 'isGradient', this.checked)">
+                        ${block.isGradient ? `<input type="text" class="edit-input" style="font-size:10px; height:25px;" placeholder="linear-gradient(...)" onkeyup="updateBlockData(${index}, 'gradient', this.value)" value="${block.gradient}">` : ''}
+                    </div>
+                </div>`;
         } else {
-            div.innerHTML = `
-                ${controls}
-                <span style="font-size:10px; color:#ffcc00; font-family:'Orbitron';">IMAGE BLOCK</span>
-                <input type="file" accept="image/*" onchange="handleBlockImage(${index}, this)" style="font-size:12px;">
-                ${block.url ? `<img src="${block.url}" class="block-img-preview" style="width:${block.width}%; margin: 10px auto; display:block;">` : ''}
-                <div style="margin-top:10px;">
-                    <label style="font-size:10px; color:#888;">LĂȚIME: ${block.width}%</label>
-                    <input type="range" min="10" max="100" value="${block.width}" oninput="updateBlockData(${index}, 'width', this.value)" style="width:100%; accent-color:#ffcc00;">
+            let imgsHtml = block.images.map((img, iIdx) => `
+                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px;">
+                    <label class="custom-file-upload">
+                        <input type="file" style="display:none" onchange="handleRowImage(${index}, ${iIdx}, this)">
+                        <i class="fas fa-upload"></i> ALEGE IMAGINE ${iIdx+1}
+                    </label>
+                    ${img.url ? `<img src="${img.url}" style="width:50px; display:block; margin:5px 0;">` : ''}
+                    <button class="btn-block-ctrl btn-block-delete" style="width:100%" onclick="removeImgFromBlock(${index}, ${iIdx})">STREGE</button>
                 </div>
-            `;
+            `).join('');
+
+            div.innerHTML = `${controls}
+                <span style="font-size:9px; color:#ffcc00;">IMAGE ROW (Multi-Image Support)</span>
+                <div style="display:flex; gap:10px; overflow-x:auto; padding:5px;">
+                    ${imgsHtml}
+                    <button onclick="addImgToBlock(${index})" class="filter-btn" style="border-style:dashed;">+ ADD IMG</button>
+                </div>`;
         }
         container.appendChild(div);
     });
 }
 
+// Logic for Row Images
+window.handleRowImage = (bIdx, iIdx, input) => {
+    const file = input.files[0];
+    if(!file) return;
+    updateLogBlocks[bIdx].images[iIdx].file = file;
+    updateLogBlocks[bIdx].images[iIdx].url = URL.createObjectURL(file);
+    renderLogBlocks();
+};
+window.removeImgFromBlock = (bIdx, iIdx) => {
+    updateLogBlocks[bIdx].images.splice(iIdx, 1);
+    renderLogBlocks();
+};
+
+
+
+window.previewUpdateLog = () => {
+    const title = document.getElementById('logTitle').value || "Titlu Update";
+    const container = document.getElementById('previewContainer');
+    
+    // We create a "Fake" data object for the renderer
+    const fakeData = {
+        title: title,
+        blocks: updateLogBlocks,
+        createdAt: { toDate: () => new Date() },
+        authorName: auth.currentUser.displayName,
+        authorPfp: auth.currentUser.photoURL,
+        viewers: [],
+        likes: {}
+    };
+
+    container.innerHTML = '';
+    container.appendChild(createLogCard("preview", fakeData));
+    document.getElementById('logPreviewModal').classList.add('active');
+};
+// Logic for Row Images
+window.handleRowImage = (bIdx, iIdx, input) => {
+    const file = input.files[0];
+    if(!file) return;
+    updateLogBlocks[bIdx].images[iIdx].file = file;
+    updateLogBlocks[bIdx].images[iIdx].url = URL.createObjectURL(file);
+    renderLogBlocks();
+};
+window.removeImgFromBlock = (bIdx, iIdx) => {
+    updateLogBlocks[bIdx].images.splice(iIdx, 1);
+    renderLogBlocks();
+};
 // 6. Final Publish Function
 window.publishUpdateLog = async () => {
     const title = document.getElementById('logTitle').value.trim();
