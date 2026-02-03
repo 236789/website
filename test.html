@@ -3610,8 +3610,6 @@ async function logTransaction(amount, type, desc) {
     const GIPHY_KEY = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
 // --- 1. EMOJI LIST & POPULATION ---
 
-
-    // --- 2. UNIFIED TOGGLE PICKER (FIXED) ---
 window.togglePicker = async (type) => {
     const pickerDrawer = document.getElementById('pickerDrawer');
     const gifSection = document.getElementById('gifSection');
@@ -3619,26 +3617,29 @@ window.togglePicker = async (type) => {
     const modal = document.getElementById('rewardModal');
     const btn = modal.querySelector('.reward-btn');
 
-    // Reset modal from previous states
+    // --- FIX: Definim butoanele AICI, la începutul funcției ---
+    const gifBtn = document.getElementById('gifBtn');
+    const stickerBtn = document.getElementById('stickerBtn');
+    const allBtns = [gifBtn, stickerBtn]; 
+    // ---------------------------------------------------------
+
     modal.classList.remove('locked-state');
     btn.innerText = "SUPER!";
     btn.onclick = () => modal.classList.remove('active');
 
-    // Permission Checks
     const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const data = userSnap.data();
     const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
 
     if (!hasAccess) {
         pickerDrawer.classList.remove('open');
+        allBtns.forEach(b => b?.classList.remove('active')); // Acum va funcționa!
         
-        // APPLY THE NEW STYLING & LINKS
         modal.classList.add('locked-state');
         modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> ACCES RESTRICȚIONAT";
         document.getElementById('rewardText').innerText = `Nu ai deblocat pachetul de ${type.toUpperCase()}.`;
         document.getElementById('rewardAmount').innerText = "Vizitează magazinul pentru a cumpăra permisul de utilizare.";
         
-        // Update Button for Shop
         btn.innerText = "MERGI SPRE SHOP";
         btn.onclick = () => window.location.href = 'shop.html';
         
@@ -3646,29 +3647,28 @@ window.togglePicker = async (type) => {
         return;
     }
 
-        const targetBtn = document.getElementById(type + 'Btn');
+    const targetBtn = document.getElementById(type + 'Btn');
 
-        if (pickerDrawer.classList.contains('open') && targetBtn.classList.contains('active')) {
-            pickerDrawer.classList.remove('open');
-            targetBtn.classList.remove('active');
-        } else {
-            // Explicitly hide sections
-            gifSection.style.display = 'none';
-            stickerSection.style.display = 'none';
-            allBtns.forEach(b => b?.classList.remove('active'));
+    if (pickerDrawer.classList.contains('open') && targetBtn.classList.contains('active')) {
+        pickerDrawer.classList.remove('open');
+        targetBtn.classList.remove('active');
+    } else {
+        gifSection.style.display = 'none';
+        stickerSection.style.display = 'none';
+        allBtns.forEach(b => b?.classList.remove('active'));
 
-            if (type === 'gif') {
-                gifSection.style.display = 'flex';
-                loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
-            } else if (type === 'sticker') {
-                stickerSection.style.display = 'grid';
-                loadStickers();
-            }
-
-            pickerDrawer.classList.add('open');
-            targetBtn.classList.add('active');
+        if (type === 'gif') {
+            gifSection.style.display = 'flex';
+            loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`);
+        } else if (type === 'sticker') {
+            stickerSection.style.display = 'grid';
+            loadStickers();
         }
-    };
+
+        pickerDrawer.classList.add('open');
+        targetBtn.classList.add('active');
+    }
+};
 
     // --- 3. STICKER LOGIC ---
     const stickerSearchInput = document.getElementById('stickerSearchInput');
