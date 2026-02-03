@@ -4843,53 +4843,59 @@ function linkify(text) {
 
 let mediaRecorder;
 let audioChunks = [];
+let recordingStream; // Global scope to prevent it from closing early
 
 window.toggleRecording = async () => {
     const micBtn = document.getElementById('micBtn');
     
     if (!mediaRecorder || mediaRecorder.state === "inactive") {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            // Verificăm ce format suportă browserul (WebM e standard, dar unele preferă altele)
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-                             ? 'audio/webm;codecs=opus' 
-                             : 'audio/webm';
+            // 1. Check for supported formats (iOS needs mp4, others use webm)
+            let mimeType = 'audio/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/mp4'; // Fallback for iPhone/Safari
+            }
 
-            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
             audioChunks = [];
 
             mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
+                if (event.data && event.data.size > 0) {
                     audioChunks.push(event.data);
                 }
             };
 
             mediaRecorder.onstop = async () => {
-                // Creăm Blobu-ul final
-                const audioBlob = new Blob(audioChunks, { type: mimeType });
+                // Create the final Blob using the exact same mimeType as the recorder
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
                 
-                // DACĂ BLOB-UL E PREA MIC, ÎNSEAMNĂ CĂ N-A ÎNREGISTRAT NIMIC
-                if (audioBlob.size < 1000) {
+                // Final safety check: if blob is tiny, it's a failed recording
+                if (audioBlob.size < 500) {
                     showToast("Eroare: Înregistrare prea scurtă sau goală!");
                     return;
                 }
                 
+                console.log("Recording finished. Size:", audioBlob.size, "Type:", audioBlob.type);
                 await uploadVoiceMessage(audioBlob);
-                stream.getTracks().forEach(track => track.stop()); // Oprim microfonul
+
+                // Stop all microphone tracks to turn off the red "recording" light in the browser
+                recordingStream.getTracks().forEach(track => track.stop());
             };
 
-            // START: IMPORTANT! Adăugăm (1000) pentru a trimite date la fiecare secundă
+            // Start recording in 1-second slices
             mediaRecorder.start(1000); 
             
             micBtn.classList.add('recording');
             micBtn.innerHTML = '<i class="fas fa-stop-circle"></i>';
             showToast("Înregistrare pornită...", "success");
         } catch (err) {
-            console.error(err);
-            showToast("Acces microfon refuzat!");
+            console.error("Mic Error:", err);
+            showToast("Acces microfon refuzat sau eroare hardware!");
         }
     } else {
+        // Stop the recorder
         mediaRecorder.stop();
         micBtn.classList.remove('recording');
         micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
@@ -4900,17 +4906,20 @@ async function uploadVoiceMessage(blob) {
     if (!auth.currentUser) return;
     showToast("Se trimite mesajul vocal...", "success");
 
-    const fileName = `vocal/${auth.currentUser.uid}_${Date.now()}.webm`;
+    // Get correct extension based on MIME type
+    const extension = blob.type.includes('mp4') ? 'mp4' : 'webm';
+    const fileName = `vocal/${auth.currentUser.uid}_${Date.now()}.${extension}`;
     const storageRef = ref(storage, fileName);
 
     try {
+        // Upload the blob to Firebase Storage
         const snapshot = await uploadBytes(storageRef, blob);
         const url = await getDownloadURL(snapshot.ref);
         
-        // Send to Firestore as a special message
+        // Save the URL to the chat
         await sendVoiceToFirestore(url);
     } catch (e) {
-        console.error(e);
+        console.error("Upload Error:", e);
         showToast("Eroare la încărcarea audio.");
     }
 }
