@@ -2434,43 +2434,73 @@ window.equipText = async (id, cssClass) => {
         }
     };
 
-    // Email Register
-    window.handleEmailRegister = async () => {
-        const username = document.getElementById('regUser').value.trim();
-        const email = document.getElementById('regEmail').value.trim();
-        const pass = document.getElementById('regPass').value;
-        const confirmPass = document.getElementById('regConfirmPass')?.value; // Make sure you have this input in HTML or remove check
-        const errorEl = document.getElementById('authError');
+// Înlocuiește handleEmailRegister în pagina de Login
+window.handleEmailRegister = async () => {
+    const username = document.getElementById('regUser').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const pass = document.getElementById('regPass').value;
+    const confirmPass = document.getElementById('regConfirmPass')?.value;
+    const errorEl = document.getElementById('authError');
 
-        if (!username || !email || !pass) return errorEl.innerText = "Completează toate câmpurile!";
-        if (pass.length < 6) return errorEl.innerText = "Parola minim 6 caractere!";
-        
-        // Optional: Add password match check if you added the confirm input in HTML
-        if (confirmPass && pass !== confirmPass) return errorEl.innerText = "Parolele nu coincid!";
+    if (!username || !email || !pass) return errorEl.innerText = "Completează toate câmpurile!";
+    if (pass.length < 6) return errorEl.innerText = "Parola minim 6 caractere!";
+    if (confirmPass && pass !== confirmPass) return errorEl.innerText = "Parolele nu coincid!";
 
-        try {
-            const cred = await createUserWithEmailAndPassword(auth, email, pass);
-            const ip = await getIP();
-            
-            // Create Account in DB
-            await setDoc(doc(db, "accounts", cred.user.uid), {
-                uid: cred.user.uid,
-                username: username,
-                email: email,
-                image: "https://iili.io/fXks1Dv.png",
-                coins: 250,
-                diamonds: 0,
-                streak: 0,
-                joinedAt: serverTimestamp(),
-                agreedToRules: false,
-                ip: ip,
-                kevinMessagesToday: 0
+    try {
+        const cred = await createUserWithEmailAndPassword(auth, email, pass);
+        const user = cred.user;
+
+        // --- SCHIMBAREA NR 1: Setează numele și poza în sistemul Firebase Auth ---
+        // Importă updateProfile la începutul scriptului tău dacă nu e deja
+        const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
+        await updateProfile(user, {
+            displayName: username,
+            photoURL: "https://iili.io/fXks1Dv.png" // Poza default
+        });
+
+        const ip = await getIP();
+        const userRef = doc(db, "accounts", user.uid);
+
+        // --- SCHIMBAREA NR 2: Logica de Referral (să primească bonusul de invitație) ---
+        let startingCoins = 250;
+        let referrerId = sessionStorage.getItem('referrerUid');
+        if (referrerId && referrerId !== user.uid) {
+            startingCoins += 1000;
+            // Dă bonusul celui care a invitat
+            const inviterRef = doc(db, "accounts", referrerId);
+            await updateDoc(inviterRef, {
+                coins: increment(1000),
+                totalReferrals: increment(1),
+                pendingReferrals: increment(1)
             });
-        } catch (e) {
-            if (e.code === 'auth/email-already-in-use') errorEl.innerText = "Email deja folosit!";
-            else errorEl.innerText = "Eroare: " + e.message;
         }
-    };
+
+        // --- SCHIMBAREA NR 3: Creare document Firestore complet ---
+        await setDoc(userRef, {
+            uid: user.uid,
+            username: username,
+            email: email,
+            image: "https://iili.io/fXks1Dv.png",
+            coins: startingCoins,
+            diamonds: 0,
+            streak: 0,
+            joinedAt: serverTimestamp(),
+            agreedToRules: false,
+            ip: ip,
+            kevinMessagesToday: 0,
+            completedQuests: []
+        });
+
+        // --- SCHIMBAREA NR 4: Logare tranzacție bonus ---
+        await logTransaction(250, "COINS", "Welcome Bonus", "Email Register");
+
+        // Trimite utilizatorul la index după ce totul e gata
+        window.location.href = "index.html";
+
+    } catch (e) {
+        errorEl.innerText = "Eroare: " + e.message;
+    }
+};
 
     // Google Login
     window.handleLoginFlow = async () => {
@@ -2871,7 +2901,7 @@ onAuthStateChanged(auth, user => {
 
         // 1. UI Updates for Logged In User
         headerLoginText.innerText = "ACCOUNT";
-        headerUserImg.src = user.photoURL;
+        headerUserImg.src = user.photoURL || 'https://iili.io/fXks1Dv.png';
         headerUserImg.style.display = "block";
         
         if(mobileLoginBtn) {
@@ -2928,7 +2958,7 @@ onAuthStateChanged(auth, user => {
                 }
 
                 // --- C. AVATAR & FRAME LOGIC ---
-                document.getElementById('popUserImg').src = data.image || user.photoURL;
+document.getElementById('popUserImg').src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
                 const popFrame = document.getElementById('popUserFrame');
                 if(popFrame) {
                     if (data.equippedFrame && data.equippedFrame.img) {
