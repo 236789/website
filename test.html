@@ -3424,6 +3424,7 @@ input:checked + .slider:before { transform: translateX(16px); }
 
 /* --- V10 SUPREME CYBER GLASS --- */
 .auth-full-overlay {
+    display: none; /* Schimbă din flex în none */
     position: fixed;
     inset: 0;
     /* FUNDALUL TĂU GIF */
@@ -10199,13 +10200,13 @@ async function resetUserQuests(userRef, snapData) {
 
 onAuthStateChanged(auth, async (user) => {
     const authOverlay = document.getElementById('authOverlay');
+    const siteContent = document.getElementById('siteContent');
     const headerLoginText = document.getElementById('headerLoginText');
     const headerUserImg = document.getElementById('headerUserImg');
     const mobileLoginBtn = document.getElementById('mobileLoginBtn');
 
     if (user) {
         // --- 1. LOGIN MANAGEMENT ---
-        if (authOverlay) authOverlay.style.display = 'none'; // Ascundem login-ul
         const userRef = doc(db, "accounts", user.uid);
 
         // --- 2. INITIAL BAN & SECURITY CHECK ---
@@ -10217,31 +10218,26 @@ onAuthStateChanged(auth, async (user) => {
             localStorage.setItem('ksda_perma_ban', 'true');
             sessionStorage.setItem('isBanned', 'true');
 
-            const content = document.getElementById('siteContent');
-            const sideMenu = document.getElementById('sideMenu');
-            const header = document.querySelector('.header-container');
-            if (content) content.remove();
-            if (sideMenu) sideMenu.remove();
-            if (header) header.remove();
+            if (siteContent) siteContent.remove();
+            if (document.getElementById('sideMenu')) document.getElementById('sideMenu').remove();
+            if (document.querySelector('.header-container')) document.querySelector('.header-container').remove();
 
-            const overlay = document.getElementById('bannedOverlay');
-            if (overlay) {
-                overlay.style.display = 'flex';
+            const overlayBan = document.getElementById('bannedOverlay');
+            if (overlayBan) {
+                overlayBan.style.display = 'flex';
                 document.getElementById('globalBanReason').innerText = "Cont Banat Permanent";
                 document.getElementById('globalBanIp').innerText = "UID: " + user.uid;
             }
             document.body.style.overflow = 'hidden';
-            return; // Oprim execuția aici
-        } else {
-            // Auto-heal dacă userul a fost debanat din DB
-            if (localStorage.getItem('ksda_perma_ban') === 'true') {
-                localStorage.removeItem('ksda_perma_ban');
-                sessionStorage.removeItem('isBanned');
-                window.location.reload();
-            }
+            return; 
         }
 
-        // --- 3. HEADER & ADMIN UI UPDATE ---
+        // --- 3. REPARAȚIE FLICKER (LOGAT) ---
+        // Dacă suntem aici, userul e ok. Ascundem Login-ul și Arătăm Site-ul
+        if (authOverlay) authOverlay.style.display = 'none';
+        if (siteContent) siteContent.style.opacity = '1';
+
+        // --- 4. HEADER & ADMIN UI UPDATE ---
         if (headerLoginText) headerLoginText.innerText = "CONT";
         if (headerUserImg) {
             headerUserImg.src = user.photoURL || 'https://iili.io/fXks1Dv.png';
@@ -10255,14 +10251,11 @@ onAuthStateChanged(auth, async (user) => {
         if (user.email === 'nicaemmanuel433qe@gmail.com' && adminBtn) {
             adminBtn.style.display = 'inline-block';
         }
-
-        // --- 4. GLOBAL METADATA SNAPSHOT (Independent) ---
+ 
+        // --- 5. SNAPSHOTS (Metadata & UserData) ---
         onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
             if (!metaSnap.exists()) return;
-            const meta = metaSnap.data();
-            // Aici poți pune logică de badge-uri pt știri noi (ex: totalNews)
         });
-
         // --- 5. REAL-TIME USER DATA SNAPSHOT (Cea mai importantă parte) ---
         onSnapshot(userRef, async (uSnap) => {
             if (!uSnap.exists()) return;
@@ -10376,9 +10369,11 @@ onAuthStateChanged(auth, async (user) => {
 
         updateOnlineStatus(); // Pornim tracking-ul de activitate
 
-    } else {
-        // --- 6. NOT LOGGED IN ---
-        if (authOverlay) authOverlay.style.display = 'flex'; // Arătăm overlay-ul de login
+   } else {
+        // --- 6. NOT LOGGED IN (ARĂTĂM OVERLAY-UL) ---
+        if (authOverlay) authOverlay.style.display = 'flex'; 
+        if (siteContent) siteContent.style.opacity = '0'; // Site-ul rămâne invizibil
+        
         if (headerLoginText) headerLoginText.innerText = "LOGIN";
         if (headerUserImg) headerUserImg.style.display = "none";
         if (mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
