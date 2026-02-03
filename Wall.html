@@ -2350,33 +2350,55 @@ input:checked + .slider:before { transform: translateX(16px); }
 
 
 
-.msg-bubble {
-    padding: 12px 16px;
-    border-radius: 18px;
-    position: relative;
-    font-size: 14px;
-    line-height: 1.5;
-    word-wrap: break-word;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+/* 1. Fix Bubble Length and Alignment */
+.msg-bubble { 
+    padding: 12px 16px; 
+    border-radius: 18px; 
+    position: relative; 
+    font-size: 14px; 
+    line-height: 1.5; 
+    word-wrap: break-word; 
+    word-break: break-word; 
+    overflow-wrap: anywhere; 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
     
-    /* --- THE FIX FOR LONG BUBBLES --- */
-    width: fit-content;      /* Makes bubble only as wide as the text */
-    max-width: 100%;         /* Ensures it doesn't break the layout */
-    display: block;          /* Keeps it as a block for proper spacing */
+    /* THE FIX: Only as wide as the text */
+    width: fit-content !important; 
+    max-width: 85%; 
+    display: block; 
 }
 
-/* Ensure the wrapper handles the alignment properly */
-.msg-wrapper.mine {
-    align-self: flex-end;
-    align-items: flex-end; /* Pushes bubble to the right */
+/* 2. Fix Menu Clipping & Wrapper */
+.msg-wrapper { 
+    display: flex; 
+    flex-direction: column; 
+    position: relative; 
+    margin-bottom: 10px;
+    /* THE FIX: Allows menu to float outside the box */
+    overflow: visible !important; 
+    z-index: 1;
 }
 
-.msg-wrapper.theirs {
-    align-self: flex-start;
-    align-items: flex-start; /* Pushes bubble to the left */
+.msg-wrapper.mine { align-self: flex-end; align-items: flex-end; }
+.msg-wrapper.theirs { align-self: flex-start; align-items: flex-start; }
+
+/* 3. Fix Dropdown Positioning */
+.options-dropdown { 
+    display: none; 
+    position: absolute; 
+    top: 25px; 
+    z-index: 5000 !important; 
+    background: #08101b; 
+    border: 1px solid var(--primary); 
+    border-radius: 12px; 
+    overflow: hidden; 
+    width: 220px; 
+    box-shadow: 0 10px 25px rgba(0,0,0,0.8); 
 }
+
+/* Adjust dropdown position so it doesn't go off-screen */
+.msg-wrapper.mine .options-dropdown { right: 0; }
+.msg-wrapper.theirs .options-dropdown { left: 0; }
   </style>
 
 </head>
@@ -4724,10 +4746,12 @@ function linkify(text) {
         return `<a href="${url}" target="_blank">${url}</a>`; 
     });
 
-    // Mentions/Tags Logic: Detects @Anything and gives it a cyan glow
-    const mentionRegex = /(@[a-zA-Z0-9_]+)/g;
+    // Updated Regex: Matches @ followed by letters and spaces (handles "Lost Soul")
+    // It colors everything from @ until it hits a punctuation or the end of a typical name
+    const mentionRegex = /(@[a-zA-Z0-9_]+(?:\s[a-zA-Z0-9_]+)?)/g;
+    
     processed = processed.replace(mentionRegex, function(mention) {
-        return `<span style="color:var(--primary); font-weight:bold; text-shadow: 0 0 8px var(--primary);">${mention}</span>`;
+        return `<span style="color:var(--primary); font-weight:900; text-shadow: 0 0 10px rgba(41, 243, 255, 0.8);">${mention}</span>`;
     });
 
     return processed;
@@ -5165,17 +5189,19 @@ async function sendBotMessage(text, customClass = null) {
     };
 function loadMessages() {
     // =========================================================================
-    // 1. SUBSCRIPTION MANAGEMENT
+    // 1. LISTENER MANAGEMENT
     // =========================================================================
-    // We terminate the existing listener (if any) to prevent duplicate 
-    // data streams and ensure memory efficiency on the client side.
-    if (unsubscribe) unsubscribe();
+    // We must detach any existing listener before creating a new one to
+    // prevent duplicate messages and excessive memory usage in the browser.
+    if (unsubscribe) {
+        unsubscribe();
+    }
 
     // =========================================================================
-    // 2. QUERY INITIALIZATION
+    // 2. FIRESTORE QUERY CONFIGURATION
     // =========================================================================
-    // We target the "wall_messages" collection, sorting by the creation date.
-    // By limiting to 50, we ensure the UI remains responsive and quick.
+    // We query the 'wall_messages' collection, sorting by 'createdAt' in
+    // descending order and limiting to 50 results for optimal performance.
     const q = query(
         collection(db, "wall_messages"), 
         orderBy("createdAt", "desc"), 
@@ -5183,16 +5209,16 @@ function loadMessages() {
     );
 
     // =========================================================================
-    // 3. ATTACH DATA SNAPSHOT LISTENER
+    // 3. REAL-TIME DATA STREAM
     // =========================================================================
     unsubscribe = onSnapshot(q, snapshot => {
         const feed = messagesFeed;
         
-        // Detection logic: Was the user at the bottom before new data arrived?
-        // This allows us to keep the scroll pinned to the newest messages.
+        // Determine if the user is currently at the bottom of the message list.
+        // This is used later to decide if we should auto-scroll to the new message.
         const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 200);
 
-        // Transform the Firestore documents into a local array of objects.
+        // Map the snapshot documents into a standard JavaScript array.
         const docs = [];
         snapshot.forEach(doc => {
             docs.push({ 
@@ -5201,60 +5227,61 @@ function loadMessages() {
             });
         });
 
-        // We reverse the array to ensure chronological order (Bottom = Newest).
+        // The query is descending (newest first), so we reverse the array
+        // to display them from top (oldest) to bottom (newest) in the UI.
         docs.reverse();
 
-        // Clear the current display before re-rendering the updated state.
+        // Clear the feed container before re-rendering the updated data.
         feed.innerHTML = '';
 
         // =====================================================================
-        // 4. MESSAGE RENDERING LOOP
+        // 4. MAIN RENDERING ENGINE
         // =====================================================================
         docs.forEach(data => {
             
-            // Validation: Do not render messages marked for deletion by staff.
+            // Security: Skip messages that have been flagged as deleted.
             if (data.isDeleted) return;
 
-            // Define identity constants for easier logic handling.
+            // Establish core variables for identification and styling.
             const msgId = data.id;
             const isMine = data.uid === currentUid;
             const isBot = data.isBot === true;
             
-            // Flag role-based logic for coloring and menu permissions.
+            // Map Boolean roles to constants for cleaner conditional logic.
             const msgIsAdmin = data.isAdmin === true;
             const msgIsOwner = data.isOwner === true;
             const msgIsMod = data.isMod === true;
             const msgIsHelper = data.isHelper === true;
 
-            // Construct the main container wrapper for the message row.
+            // Initialize the main DOM container for this specific message.
             const wrapper = document.createElement('div');
             wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'}`;
             wrapper.dataset.id = msgId;
 
-            // Generate time strings. Use local formatting for hours/minutes.
+            // Format the message timestamp into a human-readable local time.
             let time = data.createdAt ? data.createdAt.toDate().toLocaleTimeString([], {
                 hour: '2-digit', 
                 minute: '2-digit'
             }) : "";
 
-            // Initialize visual properties.
+            // Prepare bubble content and CSS class holders.
             let bubbleContent = "";
             let bubbleClass = 'msg-bubble';
 
-            // Check if the sender has a custom text cosmetic (e.g., Matrix, Neon).
+            // Check if the user has equipped a custom text style cosmetic.
             const textStyleClass = (data.equippedText && data.equippedText.cssClass) ? data.equippedText.cssClass : "";
 
             // -----------------------------------------------------------------
-            // SUB-SECTION: CONTENT TYPE DETECTOR
+            // SUB-SECTION: SPECIAL CONTENT TYPES
             // -----------------------------------------------------------------
 
-            // CONTENT A: SYSTEM ALERTS (Jackpots / Maintenance)
+            // TYPE A: SYSTEM-GENERATED ALERTS (JACKPOTS)
             if (data.uid === 'system-alert') {
                 bubbleClass += ' jackpot-system-alert'; 
                 bubbleContent = data.text; 
             }
             
-            // CONTENT B: INTERACTIVE COMMUNITY POLLS
+            // TYPE B: INTERACTIVE POLLS & VOTING
             else if (data.type === 'poll') {
                 const now = Date.now();
                 const isExpired = now > data.expiresAt;
@@ -5265,7 +5292,7 @@ function loadMessages() {
                 const results = new Array(optionCount).fill(0);
                 let totalVotes = 0;
                 
-                // Process vote tallies from the document's map.
+                // Calculate vote distribution from the votes map.
                 if (data.votes) {
                     Object.values(data.votes).forEach(val => {
                         if (val >= 0 && val < optionCount) { 
@@ -5279,7 +5306,7 @@ function loadMessages() {
                 if (data.options) {
                     data.options.forEach((opt, idx) => {
                         if (isExpired || hasVoted) {
-                            // Show results view.
+                            // Display results view after voting.
                             const count = results[idx];
                             const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
                             const myChoiceStyle = (myVote === idx) ? "border: 1px solid var(--primary); box-shadow: 0 0 10px var(--primary-dim);" : "";
@@ -5293,7 +5320,7 @@ function loadMessages() {
                                     </div>
                                 </div>`;
                         } else {
-                            // Show voting view.
+                            // Display clickable buttons for active polls.
                             optionsHtml += `<button class="poll-btn" onclick="votePoll('${msgId}', ${idx})">${opt}</button>`;
                         }
                     });
@@ -5312,36 +5339,36 @@ function loadMessages() {
                     </div>`;
             } 
 
-            // CONTENT C: STANDARD CHAT MESSAGES
+            // TYPE C: REGULAR CHAT MESSAGES
             else {
-                // If it's a reply, render the context bar.
+                // Handle context for replies to specific users.
                 if (data.replyToName) {
-                    const cleanReply = (data.replyToText || "Media").replace(/</g, "&lt;");
-                    const shortText = cleanReply.length > 60 ? cleanReply.substring(0, 60) + "..." : cleanReply;
+                    const cleanReplyText = (data.replyToText || "Media").replace(/</g, "&lt;");
+                    const shortText = cleanReplyText.length > 60 ? cleanReplyText.substring(0, 60) + "..." : cleanReplyText;
                     bubbleContent += `
                         <span class="quoted-msg">
                             <strong>${data.replyToName}</strong>${shortText}
                         </span>`;
                 }
 
-                // If an image or sticker is present.
+                // Handle embedded images or GIFs.
                 if (data.image) {
                     bubbleContent += `
                         <img src="${data.image}" class="msg-img-content" onclick="window.open('${data.image}', '_blank')">`;
                 }
                 
-                // Process the body text.
+                // Final text body processing.
                 if (data.isSpecial === true) {
-                    // System Bot bypass for formatting.
+                    // System bot formatting bypass.
                     let botText = data.text ? data.text.replace(/\n/g, "<br>") : "";
                     bubbleContent += botText;
                 } 
                 else {
-                    // Sanitize and format normal user text.
+                    // Standard user text sanitization.
                     let safeText = data.text ? data.text.replace(/</g, "&lt;").replace(/\n/g, "<br>") : "";
                     
                     if (safeText) {
-                        // Apply Linkification and Tagging highlights.
+                        // Apply link and mention styling via linkify.
                         let styledText = textStyleClass 
                             ? `<span class="${textStyleClass}">${linkify(safeText)}</span>` 
                             : linkify(safeText);
@@ -5350,7 +5377,7 @@ function loadMessages() {
                     }
                 }
 
-                // Determine Bubble aesthetics based on banners or roles.
+                // Apply banner aesthetics based on profile or role.
                 if (data.equippedBanner && data.equippedBanner.cssClass) {
                     bubbleClass += ` ${data.equippedBanner.cssClass}`;
                 } else {
@@ -5366,31 +5393,31 @@ function loadMessages() {
             // SUB-SECTION: IDENTITY COMPONENTS
             // -----------------------------------------------------------------
 
-            // Calculate the author's display name.
+            // Construct the display name with optional icons.
             let authorNameText = (data.name || "Anonim");
             if (isBot) authorNameText = `🤖 ${authorNameText}`;
             
-            // Colorize the username if a cosmetic text is equipped.
+            // Colorize the username based on equipped cosmetic settings.
             if (textStyleClass) {
                 authorNameText = `<span class="${textStyleClass}">${(data.name || "Anonim")}</span>`;
             }
 
-            // Attach specific staff badges to the name display.
+            // Generate specific rank badges based on rank logic.
             let staffHtml = "";
             if (msgIsOwner) staffHtml = ` <span class="owner-badge"><i class="fas fa-crown"></i> WEBSITE OWNER</span>`;
             else if (msgIsAdmin) staffHtml = ` <span class="admin-badge"><i class="fas fa-shield-alt"></i> ADMIN</span>`;
             else if (msgIsMod) staffHtml = ` <span class="mod-badge"><i class="fas fa-gavel"></i> MOD</span>`;
             else if (msgIsHelper) staffHtml = ` <span class="helper-badge"><i class="fas fa-hands-helping"></i> HELPER</span>`;
 
-            // Append additional shop-bought cosmetic badges.
+            // Append additional shop badges (e.g. Boss, V.I.P).
             let cosmeticHtml = getCosmeticBadge(data.equippedBadge);
             let finalNameHtml = authorNameText + staffHtml + cosmeticHtml;
 
             // -----------------------------------------------------------------
-            // SUB-SECTION: INTERACTION UI (REACTIONS / MENU / SEEN)
+            // SUB-SECTION: INTERACTIVE UI (REACTIONS, SEEN, DROPDOWN)
             // -----------------------------------------------------------------
 
-            // Build the reaction pills.
+            // Construct the reaction pills displayed under the bubble.
             let reactionsHtml = "";
             if (data.reactions) {
                 const counts = {};
@@ -5407,18 +5434,18 @@ function loadMessages() {
                 }
             }
 
-            // Build the "Seen" indicator button.
+            // Construct the read receipts (Seen by) indicator.
             const seenCount = (data.seenBy || []).length;
             const seenBtnHtml = `
                 <button class="seen-btn ${seenCount > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
                     <i class="fas fa-eye"></i> ${seenCount}
                 </button>`;
 
-            // Build the message options menu (Dropdown).
+            // Build the dynamic options menu for interaction.
             let menuHtml = "";
-            const canShowMenu = (data.uid !== 'system-alert') || (isOwner || isAdmin);
+            const canDisplayMenu = (data.uid !== 'system-alert') || (isOwner || isAdmin);
 
-            if (canShowMenu) {
+            if (canDisplayMenu) {
                 let pinBtnHtml = "";
                 if (isOwner || isAdmin || isMod || isHelper) {
                     if (data.isPinned) {
@@ -5494,14 +5521,14 @@ function loadMessages() {
             }
 
             // =================================================================
-            // 5. DOM CONSTRUCTION & TAGGING HOOKS
+            // 5. DOM ASSEMBLY & MENTION HOOK
             // =================================================================
 
-            // ASSEMBLY: Using window.tagUser to handle clicks for mentions.
+            // ASSEMBLY: We bind window.tagUser to the bubble to enable easy tagging.
             wrapper.innerHTML = `
                 <div class="msg-author">${finalNameHtml}</div>
                 <div class="${bubbleClass}" 
-                     onclick="window.tagUser('${(data.name || "User").replace(/'/g, "\\'")}', '${textStyleClass}')" 
+                     onclick="window.tagUser('${(data.name || "User").replace(/'/g, "\\'")}')" 
                      title="Apasă pentru a-l menționa pe ${data.name || 'User'}">
                     ${bubbleContent}
                 </div>
@@ -5513,14 +5540,14 @@ function loadMessages() {
                 ${menuHtml}
             `;
             
-            // Final insertion and observation logic.
+            // Push the completed element to the chat feed and activate the seen observer.
             feed.appendChild(wrapper);
             seenObserver.observe(wrapper);
         });
         
-        // Auto-Scroll check: If user was at bottom, pull them down to see new chat.
-        const lastDoc = docs[docs.length - 1];
-        if (wasAtBottom || (lastDoc && lastDoc.uid === currentUid)) {
+        // Finalize state: Auto-scroll the view if the user is pinned to the bottom.
+        const lastMsg = docs[docs.length - 1];
+        if (wasAtBottom || (lastMsg && lastMsg.uid === currentUid)) {
             feed.scrollTo({ 
                 top: feed.scrollHeight, 
                 behavior: 'smooth' 
@@ -5528,8 +5555,8 @@ function loadMessages() {
         }
     });
     
-    // Logic sequence finished.
-    // Ensure accurate logging of UI cycles for performance tracking.
+    // Rendering cycle documented and complete.
+    // Ensure all logic paths remain scalable for future system updates.
 }
 
 
