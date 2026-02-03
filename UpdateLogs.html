@@ -1691,6 +1691,70 @@
     border: 1.5px solid var(--primary);
     object-fit: cover;
 }
+
+
+.block-video-container {
+    border-radius: 15px;
+    overflow: hidden;
+    border: 2px solid var(--primary);
+    background: #000;
+    margin: 15px auto;
+    width: 100%;
+}
+
+@media (min-width: 1024px) {
+    .block-video-container {
+        max-width: 550px; /* Să nu fie uriaș pe monitor de PC */
+    }
+}
+
+
+
+/* IMAGE PREVIEW OVERLAY STYLES */
+.img-preview-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(10px);
+    z-index: 20000;
+    justify-content: center;
+    align-items: center;
+    cursor: zoom-out;
+    animation: fadeIn 0.3s ease;
+}
+
+.img-preview-overlay img {
+    max-width: 90%;
+    max-height: 85%;
+    border-radius: 15px;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 50px rgba(41, 243, 255, 0.3);
+    transition: transform 0.3s ease;
+    cursor: default;
+}
+
+.close-preview {
+    position: absolute;
+    top: 30px; right: 30px;
+    color: #fff;
+    font-size: 40px;
+    cursor: pointer;
+    font-family: 'Orbitron';
+    opacity: 0.7;
+}
+
+.close-preview:hover { opacity: 1; color: var(--primary); }
+
+/* Add zoom cursor to original images */
+.block-image-container img {
+    cursor: zoom-in;
+    transition: 0.3s;
+}
+.block-image-container img:hover {
+    filter: brightness(1.2);
+}
   </style>
 </head>
 <body>
@@ -1704,6 +1768,13 @@
             <!-- Users list here -->
         </div>
     </div>
+</div>
+
+
+<!-- IMAGE PREVIEW OVERLAY -->
+<div id="imagePreviewOverlay" class="img-preview-overlay" onclick="closeImagePreview()">
+    <span class="close-preview">✕</span>
+    <img id="previewFullImg" src="" onclick="event.stopPropagation()">
 </div>
 <!-- BANNED OVERLAY -->
 <div id="bannedOverlay">
@@ -2122,7 +2193,7 @@ async function registerLogView(logId, currentViewers) {
     }
 }
 
-// --- 2. CREAREA CARDULUI (FIX IMAGINI, AUTOR, GRADIENT) ---
+// --- 2. CREAREA CARDULUI (CU PREVIEW LA CLICK) ---
 function createLogCard(id, data) {
     const card = document.createElement('div');
     card.className = 'log-card';
@@ -2136,7 +2207,6 @@ function createLogCard(id, data) {
     data.blocks.forEach(block => {
         if (block.type === 'text') {
             const isGrad = block.isGradient;
-            // Aplicăm culorile pentru gradient sau culoare solidă
             const style = isGrad 
                 ? `background: linear-gradient(90deg, ${block.color1}, ${block.color2});` 
                 : `color: ${block.color1 || block.color || '#fff'};`;
@@ -2144,13 +2214,26 @@ function createLogCard(id, data) {
             bodyHtml += `<div class="block-text ${isGrad ? 'gradient-text-logic' : ''}" style="${style}">${block.content}</div>`;
         } 
         else if (block.type === 'image') {
-            // Suport pentru imagini multiple (structura nouă) sau imagine unică (veche)
             if (block.images && Array.isArray(block.images)) {
-                let imgsHtml = block.images.map(img => `<div class="block-image-container"><img src="${img.url}" loading="lazy"></div>`).join('');
+                // MODIFICAT: Adăugat onclick pentru fiecare imagine din rând
+                let imgsHtml = block.images.map(img => `
+                    <div class="block-image-container">
+                        <img src="${img.url}" loading="lazy" onclick="window.openImagePreview('${img.url}')">
+                    </div>`).join('');
                 bodyHtml += `<div class="log-image-row">${imgsHtml}</div>`;
             } else if (block.url) {
-                bodyHtml += `<div class="block-image-container" style="width:100%"><img src="${block.url}" loading="lazy"></div>`;
+                // MODIFICAT: Adăugat onclick pentru imagine unică
+                bodyHtml += `
+                    <div class="block-image-container" style="width:100%">
+                        <img src="${block.url}" loading="lazy" onclick="window.openImagePreview('${block.url}')">
+                    </div>`;
             }
+        }
+        else if (block.type === 'video') {
+            bodyHtml += `
+                <div class="block-video-container">
+                    <video src="${block.url}" controls loop playsinline preload="metadata" style="width:100%; border-radius:15px; display:block;"></video>
+                </div>`;
         }
     });
 
@@ -2298,10 +2381,10 @@ window.postLogComment = async (logId) => {
     });
     input.value = '';
 };
+window.loadNewsFeed(); // Runs immediately for everyone
 
 // --- INIT ---
 onAuthStateChanged(auth, user => {
-    if(user) window.loadNewsFeed();
 });
 // 2. Copy to Clipboard Function
 window.copyRefLinkV2 = () => {
@@ -3215,7 +3298,19 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
+window.openImagePreview = (src) => {
+    const overlay = document.getElementById('imagePreviewOverlay');
+    const fullImg = document.getElementById('previewFullImg');
+    fullImg.src = src;
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden'; // Stop scrolling behind
+};
 
+window.closeImagePreview = () => {
+    const overlay = document.getElementById('imagePreviewOverlay');
+    overlay.style.display = 'none';
+    document.body.style.overflow = 'auto'; // Restore scrolling
+};
   </script>
 </body>
 </html>
