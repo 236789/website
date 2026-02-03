@@ -9769,30 +9769,42 @@ async function resetUserQuests(userRef, snapData) {
     let isAwardingInProgress = false; // Previne dublarea ferestrelor
 
 // --- 5. AUTH & LOGIC (UPDATED WITH BAN CHECK) ---
-
 onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            const userRef = doc(db, "accounts", user.uid);
-            
-            // --- BAN SYSTEM LOGIC ---
+    // ============================================================
+    // 1. DEFINIREA VARIABILELOR GLOBALE DE UI (REPARĂ REFERENCE ERROR)
+    // ============================================================
+    const headerImg = document.getElementById('headerUserImg');
+    const headerText = document.getElementById('headerLoginText');
+    const popImg = document.getElementById('popUserImg');
+    const popName = document.getElementById('popUserName');
+    const popFrame = document.getElementById('popUserFrame');
+    const popEmail = document.getElementById('popUserEmail');
+    const popCoins = document.getElementById('popUserCoins');
+    const popDiamonds = document.getElementById('popUserDiamonds');
+    const rewardModal = document.getElementById('rewardModal');
+    const rulesModal = document.getElementById('rulesReminderModal');
+    const refModal = document.getElementById('referralRewardModal');
+    const streakDisplay = document.querySelector('.streak-txt');
+
+    if (user) {
+        const userRef = doc(db, "accounts", user.uid);
+        
+        // ============================================================
+        // 2. LOGICA DE BAN (EXECUȚIE INSTANTĂ LA LOGIN)
+        // ============================================================
+        try {
             const snapCheck = await getDoc(userRef);
             const isDbBanned = snapCheck.exists() && snapCheck.data().isBanned === true;
 
             if (isDbBanned) {
-                // 1. EXECUTE BAN (If DB says banned)
                 console.log("ACCOUNT BANNED. NUKING INTERFACE.");
                 localStorage.setItem('ksda_perma_ban', 'true');
                 sessionStorage.setItem('isBanned', 'true');
 
-                // Remove Site Content
-                const content = document.getElementById('siteContent');
-                const sideMenu = document.getElementById('sideMenu');
-                const header = document.querySelector('.header-container');
-                if(content) content.remove();
-                if(sideMenu) sideMenu.remove();
-                if(header) header.remove();
-
-                // Show Overlay
+                document.getElementById('siteContent')?.remove();
+                document.getElementById('sideMenu')?.remove();
+                document.querySelector('.header-container')?.remove();
+                
                 const overlay = document.getElementById('bannedOverlay');
                 if(overlay) {
                     overlay.style.display = 'flex';
@@ -9801,206 +9813,201 @@ onAuthStateChanged(auth, async (user) => {
                 }
                 document.body.style.overflow = 'hidden';
 
-                // Anti-Tamper
                 document.addEventListener('contextmenu', event => event.preventDefault());
                 document.onkeydown = function(e) {
                     if(e.keyCode == 123) return false; 
                     if(e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0))) return false;
                     if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
-                }
+                };
                 return; // STOP EXECUTION
-            }  
-            else {
-                // 2. UNBAN RECOVERY (SELF-HEALING)
-                // If DB says NOT banned, but browser has the mark, remove it and reload.
+            } else {
                 if (localStorage.getItem('ksda_perma_ban') === 'true') {
-                    console.log("Account is safe. Removing local ban mark...");
+                    console.log("Account safe. Removing mark...");
                     localStorage.removeItem('ksda_perma_ban');
                     sessionStorage.removeItem('isBanned');
-                    window.location.reload(); // Reload to restore the deleted site content
+                    window.location.reload();
                     return;
                 }
             }
-            // --- END BAN LOGIC ---
+        } catch (e) { console.warn("Ban check offline/slow"); }
 
-            headerLoginText.innerText = "ACCOUNT";
-            headerUserImg.src = user.photoURL;
-            headerUserImg.style.display = "block";
-            
-            if(mobileLoginBtn) {
-                mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+        // ============================================================
+        // 3. UI BASIC SYNC (HEADER)
+        // ============================================================
+        if (headerText) headerText.innerText = "ACCOUNT";
+        if (headerImg) {
+            headerImg.src = user.photoURL || 'https://iili.io/fXks1Dv.png';
+            headerImg.style.display = "block";
+        }
+        if (mobileLoginBtn) {
+            mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
+        }
+
+        const adminBtn = document.getElementById('ownerResetBtn');
+        if (user.email === 'nicaemmanuel433qe@gmail.com' && adminBtn) {
+            adminBtn.style.display = 'inline-block';
+        }
+
+        // ============================================================
+        // 4. METADATA LISTENER (STIRI / WALL COUNTERS)
+        // ============================================================
+        onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+            if(!metaSnap.exists()) return;
+            const totalGlobal = metaSnap.data()?.totalNews || 0;
+            const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
+            // Logica pentru badge-uri (daca ai elementele in pagina)
+        });
+
+        // ============================================================
+        // 5. USER DATA SNAPSHOT (REAL-TIME UI UPDATES)
+        // ============================================================
+        onSnapshot(userRef, async (uSnap) => {
+            if(!uSnap.exists()) return;
+            const data = uSnap.data();
+
+            // BAN CHECK LIVE (In caz de ban in timpul sesiunii)
+            if (data.isBanned === true) { 
+                localStorage.setItem('ksda_perma_ban', 'true');
+                location.reload(); 
+                return; 
             }
 
-            // 1. Verificare OWNER
-            const adminBtn = document.getElementById('ownerResetBtn');
-            if (user.email === 'nicaemmanuel433qe@gmail.com' && adminBtn) {
-                adminBtn.style.display = 'inline-block';
-            }
-
-            // 2. Metadata Listener
-onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
-                const totalGlobal = metaSnap.data()?.totalNews || 0;
-                // 🔔 NOU: Luăm numărul total de mesaje de pe Wall
-                const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
-
-
-onSnapshot(userRef, async (uSnap) => {
-    if(!uSnap.exists()) return;
-    const data = uSnap.data();
-
-    // LIVE BAN CHECK
-    if (data.isBanned === true) { 
-        localStorage.setItem('ksda_perma_ban', 'true');
-        location.reload(); 
-        return; 
-    }
-
-            // Checks if a 'welcomed' flag exists in DB; if not, shows popup and sets flag
+            // --- RECOMPENSA BUN VENIT (WELCOME BONUS) ---
             if (data.welcomed !== true) {
-                rewardModal.classList.add('active');
-                updateDoc(userRef, { welcomed: true });
+                if (rewardModal) rewardModal.classList.add('active');
+                await updateDoc(userRef, { welcomed: true });
             }
 
-            // UPDATE IMAGES (Fixed "Image not shown" issue)
-            const photoURL = data.image || user.photoURL || "https://iili.io/fXks1Dv.png";
+            // --- ACTUALIZARE IMAGINI (FIX PENTRU 404 SI IMAGINE NEAFISATA) ---
+            const placeholder = 'https://iili.io/fXks1Dv.png';
+            const finalPhoto = data.image || user.photoURL || placeholder;
+
             if (headerImg) {
-                headerImg.src = photoURL;
+                headerImg.src = finalPhoto;
                 headerImg.style.display = "block";
             }
+            if (popImg) {
+                popImg.src = finalPhoto;
+            }
 
+            // --- LOGICĂ RESIZER & ASPECT MESSENGER (MOBILE/PC) ---
+            const savedW = data.phoneBoxWidth || 240;
+            const savedH = data.phoneBoxHeight || 380;
+            const savedFS = data.chatFontSize || 11;
 
-    // --- 1. LOGICĂ RESIZER & ASPECT (MOBILE/PC) ---
-    const savedW = data.phoneBoxWidth || 240;
-    const savedH = data.phoneBoxHeight || 380;
-    const savedFS = data.chatFontSize || 11;
+            if (typeof window.applyMessengerStyles === "function") {
+                window.applyMessengerStyles(savedW, savedH, savedFS);
+            }
 
-    if (typeof window.applyMessengerStyles === "function") {
-        window.applyMessengerStyles(savedW, savedH, savedFS);
-    }
+            if (document.getElementById('rangeW')) {
+                let displayW = savedW, displayH = savedH, displayFS = savedFS;
+                if (window.innerWidth <= 768) {
+                    displayW = Math.min(displayW, 320); 
+                    displayH = Math.min(displayH, 500); 
+                    displayFS = Math.min(displayFS, 15);
+                }
+                document.getElementById('rangeW').value = displayW;
+                document.getElementById('rangeH').value = displayH;
+                document.getElementById('rangeFS').value = displayFS;
+                document.getElementById('valW').innerText = displayW;
+                document.getElementById('valH').innerText = displayH;
+                document.getElementById('valFS').innerText = displayFS;
+            }
 
-    // Sincronizare Slidere și Valori UI (dacă elementele există în pagină)
-    if (document.getElementById('rangeW')) {
-        let displayW = savedW;
-        let displayH = savedH;
-        let displayFS = savedFS;
-        if (window.innerWidth <= 768) {
-            displayW = Math.min(displayW, 320);
-            displayH = Math.min(displayH, 500);
-            displayFS = Math.min(displayFS, 15);
-        }
-        document.getElementById('rangeW').value = displayW;
-        document.getElementById('rangeH').value = displayH;
-        document.getElementById('rangeFS').value = displayFS;
-        document.getElementById('valW').innerText = displayW;
-        document.getElementById('valH').innerText = displayH;
-        document.getElementById('valFS').innerText = displayFS;
-    }
+            // --- KEVIN-BOT MOOD SYNC (LOGICA DE FURIE) ---
+            if (data.kevinAnger !== undefined) {
+                window.kevinAnger = data.kevinAnger;
+                const fill = document.getElementById('moodBarFill');
+                const emoji = document.getElementById('moodEmoji');
+                if(fill && emoji) {
+                    fill.style.width = data.kevinAnger + "%";
+                    emoji.style.left = data.kevinAnger + "%";
+                    const a = data.kevinAnger;
+                    if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+                    else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+                    else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+                    else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+                    else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
+                }
+            }
 
-    // --- 2. KEVIN-BOT MOOD SYNC ---
-    if (data.kevinAnger !== undefined) {
-        window.kevinAnger = data.kevinAnger;
-        const fill = document.getElementById('moodBarFill');
-        const emoji = document.getElementById('moodEmoji');
-        if(fill && emoji) {
-            fill.style.width = data.kevinAnger + "%";
-            emoji.style.left = data.kevinAnger + "%";
-            const a = data.kevinAnger;
-            if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
-            else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
-            else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
-            else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
-            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
-        }
-    }
+            // --- ACTUALIZARE PROFIL MODAL (NUME, RAMA, EMAIL) ---
+            let rawName = data.username || user.displayName || "Utilizator Nou";
+            if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
 
-    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
-    
-    // Imagine Profil (Pop-up + Header)
-    const finalPhoto = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
-    document.getElementById('popUserImg').src = finalPhoto;
-    if(document.getElementById('headerUserImg')) {
-        document.getElementById('headerUserImg').src = finalPhoto;
-        document.getElementById('headerUserImg').style.display = "block";
-    }
-    
-    // Ramă Profil
-    const popFrame = document.getElementById('popUserFrame');
-    if(popFrame) {
-        if (data.equippedFrame?.img) {
-            popFrame.src = data.equippedFrame.img;
-            popFrame.style.display = "block";
-            const scale = data.equippedFrame.scale || 1.45;
-            popFrame.style.width = (scale * 100) + "%";
-            popFrame.style.height = (scale * 100) + "%";
-        } else {
-            popFrame.style.display = "none";
-        }
-    }
+            if (popName) {
+                if (data.equippedText?.cssClass) {
+                    popName.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                } else {
+                    popName.innerText = rawName;
+                }
+            }
 
-    // Nume și Text Cosmetic (Pop-up + Header)
-    let rawName = data.username || user.displayName || "Utilizator Nou";
-    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+            if (headerText) {
+                headerText.innerText = rawName.toUpperCase();
+            }
 
-    // Update Pop-up Name
-    const nameEl = document.getElementById('popUserName');
-    if (data.equippedText?.cssClass) {
-        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+            if (popEmail) popEmail.innerText = data.email || user.email;
+            
+            if (popCoins) popCoins.innerText = formatCurrency(data.coins || 0);
+            
+            if (popDiamonds) popDiamonds.innerText = formatCurrency(data.diamonds || 0);
+            
+            if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
+
+            if(popFrame) {
+                if (data.equippedFrame?.img) {
+                    popFrame.src = data.equippedFrame.img;
+                    popFrame.style.display = "block";
+                    const scale = data.equippedFrame.scale || 1.45;
+                    popFrame.style.width = (scale * 100) + "%";
+                    popFrame.style.height = (scale * 100) + "%";
+                } else {
+                    popFrame.style.display = "none";
+                }
+            }
+
+            // --- LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
+            if (typeof resetUserQuests === "function") {
+                await resetUserQuests(userRef, data);
+            }
+
+            // Reminder Regulament
+            if (data.agreedToRules !== true) {
+                setTimeout(() => {
+                    if(rulesModal && !rulesModal.classList.contains('active')) {
+                        rulesModal.classList.add('active');
+                    }
+                }, 4000);
+            }
+
+            // Bonus Referral (Invitații)
+            if (data.pendingReferrals > 0) {
+                const count = data.pendingReferrals;
+                if (refModal) {
+                    refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
+                    refModal.classList.add('active');
+                    await updateDoc(userRef, { pendingReferrals: 0 });
+                }
+            }
+
+        }, (error) => {
+            console.warn("Eroare Snapshot (Posibil offline/permisiuni):", error.message);
+        });
+
+        updateOnlineStatus(); 
+
     } else {
-        nameEl.innerText = rawName;
-    }
-
-    // Update Header Name (Să nu mai apară LOGIN)
-    const headerLoginText = document.getElementById('headerLoginText');
-    if (headerLoginText) {
-        headerLoginText.innerText = rawName.toUpperCase();
-    }
-
-    // Email, Monede, Diamante și Streak
-    const emailDisplay = data.email || user.email || "fara-email@exemplu.com";
-    document.getElementById('popUserEmail').innerText = emailDisplay;
-    
-    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-    
-    const diamondEl = document.getElementById('popUserDiamonds');
-    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-    
-    const streakDisplay = document.querySelector('.streak-txt');
-    if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
-
-    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
-    if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
-
-    // Reminder Regulament
-    if (data.agreedToRules !== true) {
-        setTimeout(() => {
-            const rulesModal = document.getElementById('rulesReminderModal');
-            if(rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
-        }, 4000);
-    }
-
-    // Bonus Referral (Dacă a invitat pe cineva)
-    if (data.pendingReferrals > 0) {
-        const count = data.pendingReferrals;
-        const refModal = document.getElementById('referralRewardModal');
-        if (refModal) {
-            refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
-            refModal.classList.add('active');
-            await updateDoc(userRef, { pendingReferrals: 0 });
+        // ============================================================
+        // 6. LOGOUT STATE (RESET UI)
+        // ============================================================
+        if (headerText) headerText.innerText = "LOGIN";
+        if (headerImg) headerImg.style.display = "none";
+        if (mobileLoginBtn) {
+            mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
     }
-}, (error) => {
-    // FIX pentru eroarea de permisiuni: Dacă snapshot-ul crapă, dăm un mesaj în consolă
-    console.warn("Eroare Snapshot (posibil permisiuni):", error.message);
 });
-            });
-
-            updateOnlineStatus(); 
-        } else {
-            headerLoginText.innerText = "LOGIN";
-            headerUserImg.style.display = "none";
-            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-        }
-    });
 
 
 async function loadLeaderboardPreviews() {
