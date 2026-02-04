@@ -2218,6 +2218,24 @@ body {
     box-shadow: 0 0 15px var(--primary-dim);
     border-color: #fff !important;
 }
+
+
+.gallery-img {
+    width: 100%;
+    height: auto; /* Change from 100% to auto */
+    min-height: 200px; /* Ensure it's not 0 */
+    display: block;
+    object-fit: cover;
+}
+
+.img-wrapper {
+    width: 100%;
+    min-height: 300px; /* Give the black box a default height */
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
   </style>
 </head>
 <body>
@@ -3626,60 +3644,99 @@ onAuthStateChanged(auth, (user) => {
 // --- OPTIMIZED ADMIN UPLOAD LOGIC ---
 
 // Global array to store the *compressed* files
-let filesToUpload = []; 
+// --- MASTER UPLOAD LOGIC (REPLACE ALL OLD ONCLICK/ONCHANGE BLOCKS WITH THIS) ---
+let filesToUpload = [];
 
-// 1. SELECT & COMPRESS (The Magic Happens Here)
 document.getElementById('files').onchange = (e) => {
-    const rawFiles = Array.from(e.target.files).slice(0, 50); // Limit 50 at a time
-    filesToUpload = []; // Reset global array
-    
+    const rawFiles = Array.from(e.target.files).slice(0, 50);
+    filesToUpload = []; 
     const area = document.getElementById('previewArea');
     const wrapper = document.getElementById('previewWrapper');
     
-    area.innerHTML = ''; // Clear preview area
+    area.innerHTML = '';
     if(wrapper) wrapper.style.display = 'block';
 
-    // Loop through files and compress them one by one
     rawFiles.forEach((file, i) => {
-        
-        new Compressor(file, {
-            quality: 0.6, // 60% Quality (Huge size reduction)
-            maxWidth: 1000, // Resize to max 1000px width
-            maxHeight: 1000,
-            mimeType: 'image/jpeg', // Force JPEG for consistency
-            success(result) {
-                // 'result' is the compressed Blob. We save it to our array.
-                // We add a 'name' property back to it because Blob doesn't have it.
-                result.name = file.name; 
-                filesToUpload[i] = result; 
-
-                // Generate Preview from the compressed result
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    // Create the preview card HTML
-                    // We use 'order: ${i}' to keep them in order since compression is async
-                    const div = document.createElement('div');
-                    div.className = 'preview-card';
-                    div.style.order = i;
-                    div.innerHTML = `
-                        <img src="${ev.target.result}">
-                        <div class="preview-inputs">
-                            <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
-                            <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
-                        </div>
-                    `;
-                    area.appendChild(div);
-                };
-                reader.readAsDataURL(result);
-            },
-            error(err) {
-                console.log(err.message);
-            },
-        });
+        if (file.type.startsWith('video/')) {
+            filesToUpload[i] = { file: file, type: 'video' };
+            const url = URL.createObjectURL(file);
+            const div = document.createElement('div');
+            div.className = 'preview-card';
+            div.style.order = i;
+            div.innerHTML = `<video src="${url}" muted style="width:100%; height:100%; object-fit:cover;"></video>
+                <div class="preview-inputs">
+                    <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu Video...">
+                    <textarea id="d-${i}" class="modern-input" placeholder="Descriere..."></textarea>
+                </div>`;
+            area.appendChild(div);
+        } else {
+            new Compressor(file, {
+                quality: 0.6,
+                maxWidth: 1000,
+                success(result) {
+                    filesToUpload[i] = { file: result, type: 'image', fileName: file.name }; 
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const div = document.createElement('div');
+                        div.className = 'preview-card';
+                        div.style.order = i;
+                        div.innerHTML = `<img src="${ev.target.result}">
+                            <div class="preview-inputs">
+                                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu...">
+                                <textarea id="d-${i}" class="modern-input" placeholder="Descriere..."></textarea>
+                            </div>`;
+                        area.appendChild(div);
+                    };
+                    reader.readAsDataURL(result);
+                }
+            });
+        }
     });
-
     document.getElementById('postBtn').style.display = 'inline-flex';
 };
+
+document.getElementById('postBtn').onclick = async () => {
+    if(filesToUpload.length === 0) return alert("Selectează fișiere!");
+    const btn = document.getElementById('postBtn');
+    btn.disabled = true; 
+    btn.innerText = "SE ÎNCARCĂ...";
+
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const userData = userSnap.data() || {};
+
+    for (let i = 0; i < filesToUpload.length; i++) {
+        if(!filesToUpload[i]) continue; 
+        const item = filesToUpload[i];
+        const blob = item.file; 
+        const name = item.fileName || `file_${Date.now()}_${i}`;
+        
+        const sRef = ref(storage, `dovezi/${Date.now()}_${name}`);
+        const task = uploadBytesResumable(sRef, blob);
+
+        await new Promise((resolve) => {
+            task.on('state_changed', null, (err) => {console.error(err); resolve();}, async () => {
+                const url = await getDownloadURL(task.snapshot.ref);
+                await addDoc(collection(db, "dovezi_posts"), {
+                    img: url, 
+                    type: item.type,
+                    title: document.getElementById(`t-${i}`)?.value || "", 
+                    desc: document.getElementById(`d-${i}`)?.value || "",
+                    likes: {}, 
+                    createdAt: serverTimestamp(),
+                    authorName: userData.username || auth.currentUser.displayName,
+                    authorPhoto: userData.image || auth.currentUser.photoURL,
+                    authorUid: auth.currentUser.uid
+                });
+                resolve();
+            });
+        });
+    }
+    alert("Gata!");
+    location.reload();
+};
+
+// 1. SELECT & COMPRESS (The Magic Happens Here)
+
 
 // 2. UPLOAD COMPRESSED FILES
 document.getElementById('postBtn').onclick = async () => {
@@ -4086,67 +4143,7 @@ window.setMediaTypeFilter = (type) => {
     loadGallery();
 };
 
-// --- 2. UPLOAD SELECTION (Modified for Video Support) ---
-document.getElementById('files').onchange = (e) => {
-    const rawFiles = Array.from(e.target.files).slice(0, 50);
-    filesToUpload = []; // Reset
-    
-    const area = document.getElementById('previewArea');
-    const wrapper = document.getElementById('previewWrapper');
-    
-    area.innerHTML = '';
-    if(wrapper) wrapper.style.display = 'block';
 
-    rawFiles.forEach((file, i) => {
-        // CHECK IF VIDEO
-        if (file.type.startsWith('video/')) {
-            filesToUpload[i] = file; // No compression for videos
-            const url = URL.createObjectURL(file);
-            area.innerHTML += `
-                <div class="preview-card" style="order:${i}">
-                    <video src="${url}" muted style="width:100%; height:100%; object-fit:cover;"></video>
-                    <div class="preview-inputs">
-                        <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu Video..." style="font-size:10px; padding:5px;">
-                        <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
-                    </div>
-                </div>`;
-        } else {
-            // IS IMAGE - USE COMPRESSOR
-            new Compressor(file, {
-                quality: 0.6,
-                maxWidth: 1000,
-success(result) {
-    // REZOLVARE EROARE: Nu modificăm obiectul 'result' direct, 
-    // ci creăm un obiect nou în array-ul de upload.
-    filesToUpload[i] = { 
-        blob: result, 
-        name: file.name, 
-        type: 'image' 
-    }; 
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        const div = document.createElement('div');
-        div.className = 'preview-card';
-        div.style.order = i;
-        div.innerHTML = `
-            <img src="${ev.target.result}">
-            <div class="preview-inputs">
-                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
-                <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
-            </div>
-        `;
-        area.appendChild(div);
-    };
-    reader.readAsDataURL(result);
-},
-                 
-            });
-        }
-    });
-
-    document.getElementById('postBtn').style.display = 'inline-flex';
-};
 
 document.getElementById('postBtn').onclick = async () => {
     if(filesToUpload.length === 0) return alert("Selectează fișiere!");
