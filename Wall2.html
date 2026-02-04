@@ -1817,6 +1817,36 @@
 /* Scrollbar Fix */
 .cyber-list::-webkit-scrollbar { width: 4px; }
 .cyber-list::-webkit-scrollbar-thumb { background: #7000ff; border-radius: 10px; }
+
+
+.avatar-wrapper {
+    position: relative; /* This is the anchor point */
+    width: 50px;       /* Set your desired size */
+    height: 50px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.avatar-img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%; /* Makes the avatar a circle */
+    z-index: 1;         /* sits behind the frame */
+}
+
+.frame-img {
+    position: absolute; /* Allows it to sit on top of the avatar */
+    top: 50%;           /* Center vertical */
+    left: 50%;          /* Center horizontal */
+    transform: translate(-50%, -50%); /* Perfect centering */
+    
+    /* Frames usually need to be slightly bigger than the avatar */
+    width: 130%;        
+    height: 130%;
+    z-index: 2;         /* Sits on top of the avatar */
+    pointer-events: none; /* Lets you click through the frame to the profile */
+}
   </style>
 </head>
 <body>
@@ -2366,22 +2396,29 @@ async function loadGlobalLeaderboard() {
             const row = document.createElement('div');
             row.className = 'hs-popup-row';
             
-            // Frame Logic
-            const frameHtml = data.equippedFrame ? `<img src="${data.equippedFrame.img}" class="hs-frame" style="width:${(data.equippedFrame.scale || 1.45) * 100}%">` : '';
+            // --- FIX 1: Frame Positioning ---
+            // Added absolute position, centering transform, and pointer-events to the inline style
+            const frameHtml = data.equippedFrame ? 
+                `<img src="${data.equippedFrame.img}" class="hs-frame" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width:${(data.equippedFrame.scale || 1.45) * 100}%; z-index: 2; pointer-events: none;">` 
+                : '';
             
+            // --- FIX 2: Number Formatting ---
+            // 'de-DE' converts 29366 -> 29.366
+            const formattedScore = Number(data.highScore).toLocaleString('de-DE');
+
             // Text Color Logic
             const nameClass = data.equippedText ? data.equippedText.cssClass : '';
 
             row.innerHTML = `
                 <div class="hs-rank-badge">#${rank}</div>
                 <div class="hs-user-info" style="display: flex; align-items: center; gap: 10px; flex: 1;">
-                    <div class="hs-pfp-wrapper" style="position: relative; width: 35px; height: 35px;">
-                        <img src="${data.image || 'https://iili.io/f1ddIfe.png'}" style="width: 100%; height: 100%; border-radius: 50%;">
+                    <div class="hs-pfp-wrapper" style="position: relative; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center;">
+                        <img src="${data.image || 'https://iili.io/f1ddIfe.png'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; z-index: 1;">
                         ${frameHtml}
                     </div>
                     <div class="hs-name ${nameClass}" style="font-family:'Orbitron'; font-size: 12px; color: #fff;">${data.username || 'Jumper'}</div>
                 </div>
-                <div style="font-family:'Orbitron'; font-weight:800; color:#ffd700;">${data.highScore}m</div>
+                <div style="font-family:'Orbitron'; font-weight:800; color:#ffd700;">${formattedScore}m</div>
             `;
             
             listContainer.appendChild(row);
@@ -2395,16 +2432,7 @@ async function loadGlobalLeaderboard() {
 }
 
 
-// În interiorul onSnapshot sau unde ai logica de butoane:
-document.getElementById('openHighscoreBtn').onclick = () => {
-    document.getElementById('highscoreScreen').style.display = 'flex';
-    loadLeaderboard(); // Funcția de fetch pe care am scris-o anterior
-};
 
-// Acesta va funcționa acum pe imaginea de BACK din colț
-document.getElementById('closeHighscoreBtn').onclick = () => {
-    document.getElementById('highscoreScreen').style.display = 'none';
-};
 
 // 3. Transaction History (Already provided, but ensure it exists for rewards)
 async function logTransaction(amount, type, description, source, customUserId = null) {
@@ -3273,6 +3301,10 @@ function formatCurrency(num) {
     if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
     return num || 0;
 }
+
+
+
+
 
 async function resetUserQuests(userRef, snapData) {
     const now = new Date();
