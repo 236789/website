@@ -4138,7 +4138,6 @@ success(result) {
     document.getElementById('postBtn').style.display = 'inline-flex';
 };
 
-// --- 3. UPLOAD FUNCTION (Saves 'type' to database) ---
 document.getElementById('postBtn').onclick = async () => {
     if(filesToUpload.length === 0) return alert("Selectează fișiere!");
 
@@ -4146,37 +4145,42 @@ document.getElementById('postBtn').onclick = async () => {
     btn.disabled = true; 
     btn.innerText = "SE ÎNCARCĂ...";
     
-    document.getElementById('uploadProgress').style.display = 'block';
-    
-    // Get User Data
+    // Obținem datele utilizatorului o singură dată
     const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const userData = userSnap.data();
-
-    let completedCount = 0;
+    const userData = userSnap.data() || {};
 
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue; 
 
-        const file = filesToUpload[i];
-        const isVideo = file.type.startsWith('video/'); // Detect type
+        const item = filesToUpload[i];
+        // EXTRACȚIE CORECTĂ: Imaginile comprimate sunt în .blob, restul sunt fișiere directe
+        const blob = item.blob ? item.blob : item; 
+        const fileName = item.name ? item.name : "file_" + Date.now();
+        const isVideo = (item.type === 'video' || (blob.type && blob.type.startsWith('video/')));
         
-        const title = document.getElementById(`t-${i}`) ? document.getElementById(`t-${i}`).value : "";
-        const desc = document.getElementById(`d-${i}`) ? document.getElementById(`d-${i}`).value : "";
+        const title = document.getElementById(`t-${i}`)?.value || "";
+        const desc = document.getElementById(`d-${i}`)?.value || "";
         
-        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
+        // Folderul din Storage
+        const sRef = ref(storage, `dovezi/${Date.now()}_${fileName}`);
+        const task = uploadBytesResumable(sRef, blob);
 
         await new Promise((resolve) => {
             task.on('state_changed', 
-                (s) => { document.getElementById('progressBar').style.width = ((s.bytesTransferred/s.totalBytes)*100) + '%'; },
-                null,
+                (snapshot) => {
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    if(document.getElementById('progressBar')) {
+                        document.getElementById('progressBar').style.width = progress + '%';
+                    }
+                },
+                (error) => { console.error("Upload error:", error); resolve(); },
                 async () => {
                     const url = await getDownloadURL(task.snapshot.ref);
                     
-                    // SAVE TO FIRESTORE
+                    // SALVARE ÎN FIRESTORE
                     await addDoc(collection(db, "dovezi_posts"), {
                         img: url, 
-                        type: isVideo ? 'video' : 'image', // SAVE THE TYPE
+                        type: isVideo ? 'video' : 'image',
                         title: title, 
                         desc: desc,
                         likes: {}, 
@@ -4185,8 +4189,6 @@ document.getElementById('postBtn').onclick = async () => {
                         authorPhoto: userData.image || auth.currentUser.photoURL,
                         authorUid: auth.currentUser.uid
                     });
-                    
-                    completedCount++;
                     resolve();
                 }
             );
