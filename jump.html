@@ -3536,24 +3536,21 @@ renderBuffs() {
             }
         }
     }
+takeDamage() { 
+    screenShakeTimer = 15;
+    // Lowered the multiplier from score/8000 to score/15000
+    const diffMult = Math.min(2.5, 1 + score / 15000); 
     
-takeDamage() {
-        screenShakeTimer = 15;
-        const diffMult = Math.min(3, 1 + score / 8000);
-        
-        // --- UPDATED DAMAGE LOGIC ---
-        let baseDmg = 0.5 * diffMult;
-        
-        if (this.hasBuff('BUFF_ARMOR')) {
-            baseDmg *= 0.35; // Reduce by 65% (take only 35% damage)
-        }
-        
-        this.hp -= baseDmg;
-        // ----------------------------
-
-        this.invincibility = 60;
-        if(this.hp <= 0) { this.hp = 0; gameOver(); }
+    let baseDmg = 0.5 * diffMult;
+    
+    if (this.hasBuff('BUFF_ARMOR')) {
+        baseDmg *= 0.35; 
     }
+    
+    this.hp -= baseDmg;
+    this.invincibility = 60; // 1 second of invincibility
+    if(this.hp <= 0) { this.hp = 0; gameOver(); }
+}
 }
 
 
@@ -3616,104 +3613,97 @@ let bgFadeAlpha = 0;
 let screenShakeTimer = 0;
 
 
-// --- ADD THIS VARIABLE AT THE TOP OF YOUR SCRIPT (with other let variables) ---
-let lastEnemyY = 0; 
+// --- ADD THESE TO YOUR GLOBAL VARIABLES AT THE TOP ---
+let platformCounter = 0;
+let lastEnemyPlatform = 0;
 
 function createPlatform(y, forceNormal = false) {
+    platformCounter++;
     let type = 'NORMAL';
     let cracks = 0; 
     let enemy = null; 
     let item = null;
     const r = Math.random();
 
-    // Count currently active (non-dead) enemies to prevent over-spawning
+    // Count active enemies
     let activeEnemies = platforms.filter(p => p.enemy && !p.enemy.dead).length;
 
-    // --- NEW BALANCED DIFFICULTY TIERS ---
-    let coinChance = 0.08;   // Reduced from 0.18
-    let enemyChance = 0.03;  // Reduced base chance
+    // --- DIFFICULTY TIERS ---
+    let coinChance = 0.08; 
+    let enemyChance = 0.15; // Raised chance, but restricted by the logic below
     let maxEnemyHp = 1;
 
     if (score < 5000) {
         if (!forceNormal) {
             if (r > 0.95) type = 'BOOST';
             else if (score > 500 && r > 0.85) type = 'FRAGILE'; 
-            else if (r > 0.90) type = 'HEAL';
-            else if (r > 0.88 && score > 2000) type = 'ELEVATOR'; 
+            else if (r > 0.92) type = 'HEAL';
         }
-        coinChance = 0.08;
-        enemyChance = 0.04;
-    } 
-    else if (score < 10000) {
+    } else if (score < 15000) {
+        maxEnemyHp = 2;
+        coinChance = 0.10;
         if (!forceNormal) {
             if (r > 0.93) type = 'BOOST';
-            else if (r > 0.85) type = 'FRAGILE';
-            else if (r > 0.80) type = 'ELEVATOR';
+            else if (r > 0.80) type = 'FRAGILE';
+            else if (r > 0.75) type = 'ELEVATOR';
         }
-        coinChance = 0.10;
-        enemyChance = 0.06;
-        maxEnemyHp = 2;
-    } 
-    else {
-        // HARDCORE (10k+)
+    } else {
+        // 15k+ HARDCORE
+        maxEnemyHp = 3;
+        coinChance = 0.12;
         if (!forceNormal) {
-            if (r > 0.92) type = 'BOOST';
-            else if (r > 0.88) type = 'SPIKES_BLUE'; 
+            if (r > 0.90) type = 'SPIKES_BLUE';
             else if (r > 0.80) type = 'FRAGILE';
         }
-        coinChance = 0.12; // Even at high scores, we keep coins rarer
-        enemyChance = 0.08; // Capped at 8%
-        maxEnemyHp = 3;
     }
 
-    // --- ENEMY LIMITER LOGIC ---
-    // 1. Max 2 enemies on screen
-    // 2. Must be at least 400 pixels away from the last enemy
-    // 3. Score must be over 1000
-    let canSpawnEnemy = activeEnemies < 2 && (Math.abs(y - lastEnemyY) > 400) && score > 1000;
+    // --- NEW ENEMY SPAWN LOGIC (FIXED) ---
+    // Rule 1: Max 2 enemies on screen.
+    // Rule 2: At least 12 platforms must exist between enemies.
+    let canSpawnEnemy = (activeEnemies < 2) && 
+                        (platformCounter - lastEnemyPlatform > 12) && 
+                        (score > 1500);
 
-    if (['NORMAL', 'FRAGILE', 'ELEVATOR'].includes(type) && Math.random() < enemyChance && canSpawnEnemy) {
+    if (canSpawnEnemy && Math.random() < enemyChance && (type === 'NORMAL' || type === 'ELEVATOR')) {
         let hp = Math.floor(Math.random() * maxEnemyHp) + 1; 
         enemy = { 
             type: Math.floor(Math.random() * 3) + 1, 
             dead: false, 
-            shootTimer: Math.random() * 30, // Randomize start timer so they don't sync shots
+            shootTimer: Math.random() * 40,
             hp: hp,
             maxHp: hp 
         };
-        lastEnemyY = y; // Mark this Y position
+        lastEnemyPlatform = platformCounter; // Mark the platform index
     }
 
-    // --- ITEM SPAWN LOGIC (Coins & Buffs) ---
+    // --- ITEM SPAWN LOGIC ---
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random(); 
 
-        // Buffs (Rare: 5% chance)
+        // Buffs (Rare)
         if (score > 3000 && rItem < 0.05) { 
             const buffRoll = Math.random();
-            if (buffRoll < 0.12)      item = 'BUFF_GHOST';    
-            else if (buffRoll < 0.24) item = 'BUFF_FIRE';     
-            else if (buffRoll < 0.36) item = 'BUFF_TIMESTOP'; 
-            else if (buffRoll < 0.70) item = 'BUFF_HP';       
-            else if (buffRoll < 0.85) item = 'BUFF_SHIELD';   
+            if (buffRoll < 0.20)      item = 'BUFF_TIMESTOP'; 
+            else if (buffRoll < 0.40) item = 'BUFF_HP';       
+            else if (buffRoll < 0.60) item = 'BUFF_SHIELD';   
+            else if (buffRoll < 0.80) item = 'BUFF_FIRE';
             else                      item = 'BUFF_MAGNET';   
         }
-        // Diamonds (Very Rare: 3% chance)
-        else if (score > 5000 && rItem < 0.03) { 
+        // Diamonds (Very Rare)
+        else if (score > 8000 && rItem < 0.02) { 
             item = 'DIAMOND'; 
         } 
-        // Coins (8% - 12% depending on tier)
+        // Coins (Reduced frequency)
         else if (rItem < coinChance) { 
             item = 'COIN'; 
         }
     }
 
-    if (type === 'FRAGILE' && Math.random() > 0.7) cracks = 1;
-
     return { 
         x: Math.random() * (canvas.width - PLATFORM_WIDTH), 
         y: y, startY: y, width: PLATFORM_WIDTH, 
-        type: type, cracks: cracks, enemy: enemy, item: item, used: false,
+        type: type, cracks: (type === 'FRAGILE' ? Math.floor(Math.random()*2) : 0), 
+        enemy: enemy, item: item, used: false,
         variant: Math.random() > 0.5 ? 1 : 2, offset: Math.random() * Math.PI * 2,
         itemOffsetX: 0, itemOffsetY: 0
     };
@@ -4004,8 +3994,10 @@ if(p.enemy && !p.enemy.dead) {
             }
         }
         
-        if (p.y > canvas.height + 800 || p.y < -2000) platforms.splice(i, 1);
-    });
+// Replace the old splice line with this:
+if (p.y > canvas.height + 100) {
+    platforms.splice(i, 1);
+}    });
 
 
 
