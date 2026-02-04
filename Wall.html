@@ -4899,6 +4899,15 @@ onAuthStateChanged(auth, async (user) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
 
+
+    // --- ☢️ NUKE TRIGGER (KICK) ---
+        // If the admin updates nukeTrigger, the user's page will refresh instantly
+        if (data.nukeTrigger && (!window.lastNukeHandled || data.nukeTrigger > window.lastNukeHandled)) {
+            window.lastNukeHandled = data.nukeTrigger;
+            location.reload(); 
+            return; // Stop processing further
+        }
+
                 // --- 🛡️ SHADOW BAN DETECTION ---
                 window.isUserShadowBanned = data.isShadowBanned || false;
 
@@ -6113,6 +6122,11 @@ else if (data.type === 'vocal') {
                             <button style="color:#ff4757; font-weight:900;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')">
                                 <i class="fas fa-gavel"></i> BAN IP
                             </button>` : ''}
+
+${(isAdmin || isOwner) ? `
+    <button style="color:#ff8c00; font-weight:900;" onclick="banUserNuke('${data.uid}', '${data.name}')">
+        <i class="fas fa-radiation"></i> SHADOW NUKE
+    </button>` : ''}
                         
                         <div id="emojis-${msgId}" class="emoji-picker-menu">
       <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
@@ -6555,6 +6569,34 @@ window.deleteMsg = async function(id) {
         }
     } catch(e) { console.error(e); } 
 }
+
+
+window.banUserNuke = async function(targetUid, targetName) {
+    closeAllMenus();
+    if(!isOwner && !isAdmin) return;
+
+    const confirmed = await showCustomConfirm(
+        "SHADOW NUKE", 
+        `Vrei să aplici SHADOW NUKE lui ${targetName}? \n\n1. Nu va mai vedea nimeni mesajele lui.\n2. Browserul lui va primi REFRESH forțat acum.`, 
+        true
+    );
+
+    if(confirmed) {
+        try {
+            const userRef = doc(db, "accounts", targetUid);
+            await updateDoc(userRef, { 
+                isShadowBanned: true,
+                nukeTrigger: Date.now() // This triggers the kick
+            });
+            
+            sendBotMessage(`☣️ Subiectul ${targetName} a fost neutralizat prin Shadow Nuke.`, 'bubble-toxic');
+            showToast("Shadow Nuke aplicat!", "success");
+        } catch(e) {
+            console.error(e);
+            showToast("Eroare la nuke.");
+        }
+    }
+};
     
 window.banIpUser = async function(targetUid, targetName, targetIp) {
         closeAllMenus();
