@@ -466,14 +466,7 @@ input:checked + .slider:before { transform: translateX(16px); }
     .google-btn { background: #fff; color: #000; font-weight: 700; padding: 12px 30px; border-radius: 50px; border: none; cursor: pointer; display: flex; align-items: center; gap: 10px; margin-top: 20px; transition: 0.3s; font-family: 'Poppins'; }
     .google-btn:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(255,255,255,0.5); }
 
-    /* BANNED VIEW */
-    .banned-view { display: none; flex: 1; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px; color: #fff; background: rgba(20, 0, 0, 0.8); animation: pulseRed 2s infinite; }
-    @keyframes pulseRed { 0% { box-shadow: inset 0 0 20px rgba(255,0,0,0.2); } 50% { box-shadow: inset 0 0 50px rgba(255,0,0,0.5); } 100% { box-shadow: inset 0 0 20px rgba(255,0,0,0.2); } }
-    .ban-icon { font-size: 70px; color: #ff4757; margin-bottom: 20px; }
-    .ban-title { font-size: 28px; font-weight: 800; color: #ff4757; margin-bottom: 10px; text-transform: uppercase; }
-    .ban-details { background: rgba(0,0,0,0.5); padding: 20px; border-radius: 15px; border: 1px solid #ff4757; max-width: 400px; width: 100%; }
-    .ban-label { font-size: 12px; color: #aaa; text-transform: uppercase; margin-bottom: 5px; display: block; }
-    .ban-value { font-size: 16px; color: #fff; margin-bottom: 15px; font-weight: 600; display: block; }
+BANNED VIEW
 
     /* Chat View */
     .chat-view { display: none; flex-direction: column; height: 100%; }
@@ -4586,10 +4579,13 @@ window.equipText = async (id, cssClass) => {
     const UPDATE_INTERVAL = 60 * 1000; // 1 minute
     const IDLE_TIMEOUT = 2 * 60 * 1000; // 2 minutes
 
-    async function setStatusOnline() {
+async function setStatusOnline() {
         if (!auth.currentUser) return;
+        
+        // SHADOWBAN CHECK: Stay "Offline"
+        if (window.isUserShadowBanned === true) return;
+
         const now = Date.now();
-        // Update if enough time passed OR if we are forcing a status change
         if (now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
@@ -4902,6 +4898,10 @@ onAuthStateChanged(auth, async (user) => {
         onSnapshot(userRef, async (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
+
+                // --- 🛡️ SHADOW BAN DETECTION ---
+                window.isUserShadowBanned = data.isShadowBanned || false;
+
                 if (typeof resetUserQuests === "function") {
                     await resetUserQuests(userRef, data);
                 }
@@ -5371,6 +5371,8 @@ async function sendMessage() {
             payload.replyToUid = replyData.uid;
         }
 
+            isShadowBanned: window.isUserShadowBanned, 
+
         // 5. Send Message to Firebase
         await addDoc(collection(db, "wall_messages"), payload);
 
@@ -5754,8 +5756,28 @@ function loadMessages() {
      * This listener triggers automatically whenever a new message is added,
      * edited, or deleted in the backend.
      */
-    unsubscribe = onSnapshot(messageQuery, snapshot => {
+unsubscribe = onSnapshot(messageQuery, snapshot => {
         const feed = messagesFeed;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+
+            // --- SHADOWBAN FILTER LOGIC ---
+            // If message is marked as shadowbanned:
+            if (data.isShadowBanned === true) {
+                // Only the author can see it
+                if (currentUid && data.uid === currentUid) {
+                    // Allowed (Self-View)
+                } else {
+                    return; // Skip for everyone else
+                }
+            }
+
+            docs.push({ id: doc.id, ...data });
+        });
+        
+        docs.reverse();
+        feed.innerHTML = '';
         
         // AUTO-SCROLL DETECTION:
         // We check if the user is near the bottom (within 200px) so we can 
