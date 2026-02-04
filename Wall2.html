@@ -3076,6 +3076,34 @@ body {
 .floating-icon svg {
     fill: none !important;
 }
+
+
+
+/* Overlay-ul de apel să stea DOAR în interiorul cardului de wall */
+#callOverlay {
+    display: none;
+    position: absolute; /* IMPORTANT: absolut față de .wall-card */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #050b14;
+    z-index: 5000; /* Peste mesaje, dar sub header-ul site-ului */
+    flex-direction: column;
+    border-radius: 24px;
+    overflow: hidden;
+}
+
+#jitsi-container {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+}
+
+/* Ajustăm cardul de wall să permită overlay-ul absolut */
+.wall-card {
+    position: relative; /* Necesar pentru ca overlay-ul să se ancoreze aici */
+}
   </style>
 
 </head>
@@ -3869,55 +3897,64 @@ window.openCallCreator = () => {
     document.getElementById('callCreatorModal').style.display = 'flex';
 };
 
-// 2. Start Call in Firebase
 window.initiateCall = async (type) => {
     document.getElementById('callCreatorModal').style.display = 'none';
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const userData = userSnap.data();
-
-    const callRoom = "KSDA_" + Math.random().toString(36).substring(7);
     
-    const callData = {
+    const roomName = "KSDA_Room_" + Math.random().toString(36).substring(7);
+    
+    // Update în Firebase
+    await setDoc(doc(db, "sys_config", "active_call"), {
         hostUid: auth.currentUser.uid,
-        hostName: userData.username || auth.currentUser.displayName,
-        hostImg: userData.image || auth.currentUser.photoURL,
-        hostFrame: userData.equippedFrame?.img || "",
+        hostName: auth.currentUser.displayName,
+        hostImg: auth.currentUser.photoURL,
+        room: roomName,
         type: type,
-        room: callRoom,
-        startedAt: serverTimestamp()
-    };
+        timestamp: serverTimestamp() // Folosim timpul serverului
+    });
 
-    const docRef = await addDoc(collection(db, "active_calls"), callData);
-    activeCallId = docRef.id;
+    // Anunț pe chat
+    sendBotMessage(`🔴 ${auth.currentUser.displayName} a deschis un apel ${type.toUpperCase()}! Join now!`, 'bubble-jackpot');
     
-    // Auto-send a bot message so people see it in chat too
-    sendBotMessage(`📞 ${callData.hostName} a început un apel ${type.toUpperCase()}! Join now!`, 'bubble-jackpot');
-    
-    startJitsi(callRoom, type);
+    startJitsi(roomName, type);
 };
 
-// 3. Listen for Calls (For everyone else)
-function listenForCalls() {
-    const q = query(collection(db, "active_calls"), orderBy("startedAt", "desc"), limit(1));
-    onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-            const data = snapshot.docs[0].data();
-            const cid = snapshot.docs[0].id;
+// 1. Definim o variabilă globală pentru a putea opri ascultarea la logout
+let callUnsubscribe = null;
 
-            // Only show if: It's not our call AND we haven't ignored THIS specific call
-            if (data.hostUid !== auth.currentUser.uid && localStorage.getItem('ignored_call') !== cid) {
-                activeCallId = cid;
-                document.getElementById('callerName').innerText = data.hostName;
-                document.getElementById('callerImg').src = data.hostImg;
-                if(data.hostFrame) {
-                    document.getElementById('callerFrame').src = data.hostFrame;
-                    document.getElementById('callerFrame').style.display = 'block';
-                } else {
-                    document.getElementById('callerFrame').style.display = 'none';
-                }
-                document.getElementById('incomingCallModal').classList.add('active');
+function listenForCalls() {
+    // Dacă există deja un listener vechi, îl oprim
+    if (callUnsubscribe) callUnsubscribe();
+    
+    // Verificăm dacă suntem logați înainte de a porni interogarea
+    if (!auth.currentUser) return;
+
+    const q = query(collection(db, "active_calls"), orderBy("startedAt", "desc"), limit(1));
+    
+    callUnsubscribe = onSnapshot(q, (snapshot) => {
+        // Siguranță: verificăm din nou dacă user-ul nu a dat logout între timp
+        if (!auth.currentUser || snapshot.empty) return;
+
+        const data = snapshot.docs[0].data();
+        const cid = snapshot.docs[0].id;
+
+        // FIX: Verificăm dacă UID-ul apelului nu este al nostru
+        if (data.hostUid !== auth.currentUser.uid && localStorage.getItem('ignored_call') !== cid) {
+            activeCallId = cid;
+            document.getElementById('callerName').innerText = data.hostName;
+            document.getElementById('callerImg').src = data.hostImg;
+            
+            const cf = document.getElementById('callerFrame');
+            if (data.hostFrame) {
+                cf.src = data.hostFrame;
+                cf.style.display = 'block';
+            } else {
+                cf.style.display = 'none';
             }
+            document.getElementById('incomingCallModal').classList.add('active');
         }
+    }, (error) => {
+        // Prindem eroarea de permisiuni ca să nu apară în consolă cu roșu
+        console.warn("Call listener așteaptă autentificarea...");
     });
 }
 
@@ -3939,38 +3976,50 @@ window.joinActiveCall = async () => {
     }
 };
 
-// 5. The Actual Jitsi Launcher
-function startJitsi(roomName, type) {
+function startJitsi(room, type) {
     const domain = "meet.jit.si";
     const options = {
-        roomName: roomName,
+        roomName: room,
         width: '100%',
         height: '100%',
         parentNode: document.querySelector('#jitsi-container'),
+        // SETĂRI PENTRU A ELIMINA BUGS
         configOverwrite: {
             startWithAudioMuted: false,
             startWithVideoMuted: (type === 'audio'),
-            disableThirdPartyRequests: true
+            prejoinPageEnabled: false, // Sari peste ecranul de "Check your mic"
+            disableDeepLinking: true,   // Nu mai cere descărcarea aplicației pe mobil
+            enableWelcomePage: false,
+            enableClosePage: false,
+            disableInviteFunctions: true, // Scoate butonul de invite (care dă numere de tel)
+            doNotStoreRoom: true,
+            p2p: { enabled: true } // Îmbunătățește conexiunea pentru grupuri mici
         },
         interfaceConfigOverwrite: {
             TOOLBAR_BUTTONS: [
-                'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
-                'fodeviceselection', 'hangup', 'profile', 'chat', 'recording',
-                'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
-                'videoquality', 'filmstrip', 'invite', 'feedback', 'stats', 'shortcuts',
-                'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone',
-                'e2ee'
+                'microphone', 'camera', 'hangup', 'chat', 'tileview', 'mute-everyone'
             ],
+            MOBILE_APP_PROMO: false, // Nu mai face reclamă la aplicație
+            SHOW_JITSI_WATERMARK: false,
+            DEFAULT_BACKGROUND: '#050b14'
         },
         userInfo: {
-            displayName: auth.currentUser.displayName
+            displayName: auth.currentUser.displayName || "Membru KSDA"
         }
     };
 
     document.getElementById('callOverlay').style.display = 'flex';
+    
+    // Curățăm containerul înainte (în caz că a rămas un iframe vechi)
+    document.getElementById('jitsi-container').innerHTML = "";
+    
     jitsiApi = new JitsiMeetExternalAPI(domain, options);
+    
+    // Dacă Jitsi cere moderator, din păcate pe serverul public (meet.jit.si) 
+    // primul care intră (Host-ul) va trebui să dea "I am the host" 
+    // și să se logheze O SINGURĂ DATĂ cu Google. 
+    // După ce host-ul e înăuntru, ceilalți intră instant.
 
-    // If host leaves, we can choose to delete the call doc
     jitsiApi.addEventListener('videoConferenceLeft', () => {
         leaveCall();
     });
@@ -4412,7 +4461,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 1. MASSIVE LIST OF 200 LUCIDE OUTLINE ICONS
 const ICON_LIST = [
-    "star", "heart", "fire", "ghost", "robot", "bolt", "crown", "gem", "rocket", "skull", "gamepad-2", "moon", "sun", "cloud", "music", "bomb", "eye", "shield", "atom", "user", "brain", "cat", "dog", "cookie", "pizza", "anchor", "mountain", "tree", "leaf", "feather", "key", "lock", "bell", "bug", "code", "terminal", "satellite", "microchip", "flask-conical", "glasses", "compass", "map", "send", "camera", "video", "phone", "mic", "mail", "shopping-cart", "gift", "coffee", "utensils", "briefcase", "archive", "hammer", "wrench", "scissors", "pen", "book", "newspaper", "globe", "plane", "car", "bike", "truck", "train", "navigation", "battery", "wifi", "bluetooth", "cpu", "hard-drive", "mouse", "keyboard", "monitor", "speaker", "tv", "radio", "headphones", "watch", "smartphone", "tablet", "laptop", "server", "database", "cloud-lightning", "cloud-drizzle", "cloud-snow", "wind", "thermometer", "droplets", "umbrella", "fish", "bird", "rabbit", "turtle", "shell", "clover", "flower-2", "tent", "clapperboard", "dice-5", "puzzle", "trophy", "medal", "flag", "target", "dumbbell", "activity", "heart-pulse", "dna", "stethoscope", "syringe", "pill", "microscope", "briefcase-medical", "construction", "factory", "warehouse", "tractor", "shrub", "tent-tree", "waves", "sunrise", "sunset", "palmtree", "ticket", "sparkles", "zap", "flame", "droplet", "binary", "fingerprint", "barcode", "qr-code", "scan", "lightbulb", "cog", "settings", "trash-2", "share-2", "external-link", "download", "upload", "refresh-cw", "search", "filter", "plus", "minus", "check", "x", "alert-circle", "help-circle", "info", "user-plus", "user-minus", "users", "smile", "frown", "meh", "laugh", "angry", "annoyed", "glasses", "party-popper", "confetti", "grape", "cherry", "apple", "banana", "citrus", "ice-cream", "drumstick", "egg", "sandwich", "cupcake", "glass-water", "beer", "wine", "martini", "croissant", "carrot", "beef", "fish-symbol", "paw-print", "mountain-snow", "trees", "volcano"
+    "star", "heart", "flame", "ghost", "bot", "zap", "crown", "gem", "rocket", "skull", "gamepad-2", "moon", "sun", "cloud", "music", "bomb", "eye", "shield", "atom", "user", "cat", "dog", "anchor", "mountain", "leaf", "feather", "key", "lock", "bell", "bug", "code", "terminal", "satellite", "microchip", "glasses", "compass", "map", "send", "camera", "video", "phone", "mic", "mail", "gift", "coffee", "utensils", "archive", "hammer", "wrench", "scissors", "pen", "book", "globe", "plane", "car", "bike", "truck", "train", "battery", "wifi", "bluetooth", "cpu", "mouse", "keyboard", "monitor", "speaker", "tv", "radio", "headphones", "watch", "smartphone", "tablet", "laptop", "server", "database", "cloud-lightning", "wind", "thermometer", "droplets", "umbrella", "fish", "bird", "rabbit", "turtle", "clover", "flower-2", "tent", "dice-5", "puzzle", "trophy", "medal", "flag", "target", "dumbbell", "activity", "heart-pulse", "dna", "pill", "microscope", "factory", "warehouse", "tractor", "shrub", "waves", "sunrise", "sunset", "palmtree", "ticket", "sparkles", "lightbulb", "settings", "share-2", "download", "upload", "search", "filter", "plus", "minus", "check", "x", "info", "user-plus", "users", "smile", "frown", "meh", "laugh", "angry", "party-popper", "cherry", "apple", "banana", "ice-cream", "egg", "beer", "wine", "carrot", "volcano"
 ];
 
 window.initIconBackground = () => {
@@ -5691,6 +5740,9 @@ if (isOwner || isAdmin || isMod || isHelper) {
                 }
             }
         });
+
+        listenForCalls(); 
+
 
         loadMessages();
         listenForTypers();
