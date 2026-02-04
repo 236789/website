@@ -1702,6 +1702,73 @@
 .hud-row.star { color: #ffd700; border-color: #ffd700; }
 
 .hud-row i { font-size: 10px; }
+
+
+
+
+#highscoreListContainer::-webkit-scrollbar { width: 5px; }
+#highscoreListContainer::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+
+.hs-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    border-bottom: 1px solid rgba(41, 243, 255, 0.1);
+    gap: 10px;
+}
+
+.hs-rank {
+    font-family: 'Orbitron';
+    font-weight: 900;
+    color: var(--primary);
+    width: 30px;
+}
+
+.hs-user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.hs-pfp-wrapper {
+    position: relative;
+    width: 40px;
+    height: 40px;
+}
+
+.hs-pfp {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.hs-frame {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 145%; height: 145%;
+    pointer-events: none;
+}
+
+.hs-name {
+    font-family: 'Orbitron';
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.hs-score {
+    font-family: 'Orbitron';
+    font-weight: 800;
+    color: #ffd700;
+    font-size: 14px;
+}
   </style>
 </head>
 <body>
@@ -2029,6 +2096,10 @@
             <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Clicker%2FPLay.png?alt=media&token=c258f78e-10a6-4d81-9e32-58b0c548a5bf" class="play-img">
         </button>
 
+       <button id="openHighscoreBtn" class="img-btn">
+            <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/ChatGPT%20Image%204%20feb.%202026%2C%2013_02_06.png?alt=media&token=7d22975c-5046-4687-a293-49f6f0232dec" class="side-img">
+        </button>
+
         <!-- Shop Button (Future use) -->
         <button class="img-btn" onclick="window.showToast('Shop coming soon!')">
             <img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/Clicker%2FShop.png?alt=media&token=1afd19cc-3f22-4670-838a-80f8bee8b7ff" class="side-img">
@@ -2040,6 +2111,19 @@
         </button>
     </div>
 </div>
+
+
+    <!-- NEW: Leaderboard Screen Overlay -->
+    <div id="highscoreScreen" style="display: none; position: absolute; inset: 0; background-image: url('https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/af02bb1b-5db9-4529-83e7-10a68a561627.png?alt=media&token=8dfc0b77-8499-4959-994a-26047998f523'); background-size: cover; background-position: center; z-index: 20; flex-direction: column; align-items: center; padding-top: 80px;">
+        <button id="closeHighscoreBtn" class="close-pop" style="top: 20px; right: 20px;">✕</button>
+        <h2 style="font-family: 'Orbitron'; color: #fff; text-shadow: 0 0 10px #29f3ff; margin-bottom: 20px;">TOP 50 JUMPERS</h2>
+        
+        <div id="highscoreListContainer" style="width: 90%; max-height: 70%; overflow-y: auto; background: rgba(0,0,0,0.6); border-radius: 15px; border: 1px solid var(--primary); padding: 10px;">
+            <!-- Rândurile vor fi generate de JS -->
+            <div id="highscoreLoading" style="text-align: center; color: var(--primary); font-family: 'Orbitron'; padding: 20px;">ÎNCĂRCARE DATE...</div>
+            <div id="highscoreRows"></div>
+        </div>
+    </div>
 
 <!-- NEW GAME OVER OVERLAY -->
 <div id="gameOverOverlay">
@@ -2102,7 +2186,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection,query,orderBy,limit,getDocs, addDoc, doc, getDoc, setDoc, onSnapshot, updateDoc, increment, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDoH80kffNrzFAcyRqsTVdifs-whUhwH9A",
@@ -2171,6 +2255,66 @@ window.copyRefLinkV2 = () => {
     }).catch(err => {
         console.error('Copy failed', err);
     });
+};
+
+
+
+async function loadLeaderboard() {
+    const rowsContainer = document.getElementById('highscoreRows');
+    const loadingText = document.getElementById('highscoreLoading');
+    
+    rowsContainer.innerHTML = "";
+    loadingText.style.display = "block";
+
+    try {
+        const q = query(collection(db, "accounts"), orderBy("highScore", "desc"), limit(50));
+        const querySnapshot = await getDocs(q);
+        
+        let rank = 1;
+        querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if(!data.highScore) return; // Omitem pe cei fără scor
+
+            const row = document.createElement('div');
+            row.className = 'hs-row';
+            
+            // Verificăm dacă are Frame
+            const frameHtml = data.equippedFrame ? `<img src="${data.equippedFrame.img}" class="hs-frame" style="width:${(data.equippedFrame.scale || 1.45) * 100}%">` : '';
+            
+            // Verificăm dacă are Text special
+            const nameClass = data.equippedText ? data.equippedText.cssClass : '';
+
+            row.innerHTML = `
+                <div class="hs-rank">#${rank}</div>
+                <div class="hs-user-info">
+                    <div class="hs-pfp-wrapper">
+                        <img src="${data.image || 'https://iili.io/f1ddIfe.png'}" class="hs-pfp">
+                        ${frameHtml}
+                    </div>
+                    <div class="hs-name ${nameClass}">${data.username || 'Jumper'}</div>
+                </div>
+                <div class="hs-score">${data.highScore}m</div>
+            `;
+            
+            rowsContainer.appendChild(row);
+            rank++;
+        });
+        
+        loadingText.style.display = "none";
+    } catch (e) {
+        console.error("Error loading leaderboard:", e);
+        loadingText.innerText = "EROARE LA ÎNCĂRCARE";
+    }
+}
+
+
+document.getElementById('openHighscoreBtn').onclick = () => {
+    document.getElementById('highscoreScreen').style.display = 'flex';
+    loadLeaderboard();
+};
+
+document.getElementById('closeHighscoreBtn').onclick = () => {
+    document.getElementById('highscoreScreen').style.display = 'none';
 };
 
 // 3. Transaction History (Already provided, but ensure it exists for rewards)
@@ -3760,7 +3904,7 @@ function createPlatform(y, forceNormal = false) {
         let rItem = Math.random(); 
 
         // 1. ALMIGHTY STAR (1% REAL: de la 0.00 la 0.01)
-        if (rItem < 0.01) {
+        if (score > 15000 && rItem < 0.01) {
             item = 'ALMIGHTY_STAR';
         }
         // 2. VOID SHARDS (3% REAL: de la 0.01 la 0.04 [0.01 + 0.03])
