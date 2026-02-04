@@ -2785,7 +2785,7 @@ input:checked + .slider:before { transform: translateX(16px); }
     padding: 15px !important;
 }
 
-/* --- REALITY SHIFTER V5 CORE FIX --- */
+/* --- REALITY SHIFTER V5 UNIVERSAL ENGINE --- */
 :root {
     --atmo-main: #29f3ff;
     --atmo-bg: #050b14;
@@ -2795,50 +2795,104 @@ input:checked + .slider:before { transform: translateX(16px); }
     --atmo-glow: rgba(41, 243, 255, 0.3);
 }
 
-/* 1. THE TEXT YOU WRITE (Colored) */
-.chat-input {
+/* 1. GLOBAL BACKGROUND FIX */
+body {
+    background-color: var(--atmo-bg) !important;
+    background-image: none !important; /* Force remove the static GIF so the theme shows */
+    transition: background-color 0.8s ease;
+}
+
+/* 2. THE CHAT CARD & INPUT AREA */
+.wall-card, .input-area-wrapper, .chat-tools-bar {
+    background: var(--atmo-input-bg) !important;
+    border-color: var(--atmo-border) !important;
+    box-shadow: 0 0 30px var(--atmo-glow) !important;
+    backdrop-filter: blur(20px) !important;
+}
+
+/* 3. SEND BUTTON FIX (Making the icon visible) */
+#sendBtn { 
+    background: var(--atmo-border) !important; 
+    box-shadow: 0 0 15px var(--atmo-glow) !important;
+    border: none !important;
+}
+
+#sendBtn i { 
+    color: #000 !important; /* Icon is now BLACK so it shows on the bright button */
+    text-shadow: none !important;
+    font-size: 20px !important;
+}
+
+/* 4. THREE DOTS MENU & EMOJI PICKER FIX */
+.options-dropdown, 
+.emoji-picker-menu, 
+.picker-drawer, 
+.account-card, 
+.custom-alert-card,
+.shop-modal-card {
+    background: var(--atmo-input-bg) !important;
+    border: 1px solid var(--atmo-border) !important;
+    backdrop-filter: blur(25px) !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.9) !important;
+}
+
+/* Fix text inside the 3-dots menu */
+.options-dropdown button {
+    color: #fff !important;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+}
+
+.options-dropdown button:hover {
+    background: var(--atmo-glow) !important;
     color: var(--atmo-border) !important;
+}
+
+/* 5. INPUT & TOOLBAR BUTTONS */
+.chat-input {
+    color: #fff !important; /* White text for better readability */
     caret-color: var(--atmo-border) !important;
     border: 1px solid var(--atmo-border) !important;
-    background: rgba(0,0,0,0.4) !important;
-    font-weight: 600;
+    background: rgba(0,0,0,0.5) !important;
 }
-.chat-input::placeholder { color: var(--atmo-border); opacity: 0.4; }
 
-/* 2. ALL BUTTONS (Mic, GIF, etc. - Colored) */
-.tool-btn, .mic-btn, #micBtn, .tool-btn i, #sendBtn i {
+.tool-btn, .mic-btn, #micBtn, .tool-btn i {
     color: var(--atmo-border) !important;
+    opacity: 1 !important;
     text-shadow: 0 0 10px var(--atmo-glow);
 }
-#sendBtn { background: var(--atmo-border) !important; }
 
-/* 3. HIGH-END NEBULA ANIMATION */
+.tool-btn:hover {
+    color: #fff !important;
+    transform: scale(1.1);
+}
+
+/* 6. NEBULA LAYER (Behind the chat) */
 .atmo-visual-layer {
     position: absolute;
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    opacity: 0.6;
+    opacity: 0.5;
     overflow: hidden;
 }
-.atmo-visual-layer::before, .atmo-visual-layer::after {
+
+.atmo-visual-layer::before {
     content: "";
     position: absolute;
     inset: -100%;
-    background: radial-gradient(circle at center, var(--atmo-main) 0%, transparent 40%),
-                radial-gradient(circle at 20% 30%, var(--atmo-glow) 0%, transparent 30%);
-    filter: blur(80px);
-    animation: nebulaRotate 15s linear infinite;
-}
-@keyframes nebulaRotate {
-    0% { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(180deg) scale(1.2); }
-    100% { transform: rotate(360deg) scale(1); }
+    background: radial-gradient(circle at center, var(--atmo-main) 0%, transparent 50%);
+    filter: blur(100px);
+    animation: nebulaRotate 20s linear infinite;
 }
 
-/* 4. SCROLLBAR FIX */
-.atmo-grid-v3::-webkit-scrollbar { width: 4px; }
-.atmo-grid-v3::-webkit-scrollbar-thumb { background: var(--atmo-border); border-radius: 10px; }
+@keyframes nebulaRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* 7. PROGRESS BARS & SCROLLBARS */
+.atmo-grid-v3::-webkit-scrollbar-thumb { background: var(--atmo-border) !important; }
+.wa-bar.active { background: var(--atmo-border) !important; }
   </style>
 
 </head>
@@ -3567,18 +3621,23 @@ window.openPalette = () => {
     document.getElementById('paletteModal').classList.add('active');
 };
 
-window.applyAtmosphere = (atmoClass) => {
-    const wallCard = document.querySelector('.wall-card');
-    if(!wallCard) return;
+window.applyAtmosphere = (index) => {
+    const atmo = ATMOSPHERES_DB[index];
+    const root = document.documentElement;
 
-    // Resetăm atmosferele vechi
-    wallCard.classList.remove('atmo-cyber', 'atmo-stellar', 'atmo-chrome', 'atmo-emerald', 'theme-glass');
-    
-    // Aplicăm noua atmosferă
-    wallCard.classList.add(atmoClass);
-    
-    localStorage.setItem('wall_atmo_engine', atmoClass);
-    showToast("Atmosferă activată: " + atmoClass.replace('atmo-', '').toUpperCase(), "success");
+    // Convert HEX to RGBA for the glass effect
+    const r = parseInt(atmo.bg.slice(1, 3), 16);
+    const g = parseInt(atmo.bg.slice(3, 5), 16);
+    const b = parseInt(atmo.bg.slice(5, 7), 16);
+    const glassBg = `rgba(${r}, ${g}, ${b}, 0.85)`;
+
+    root.style.setProperty('--atmo-bg', atmo.bg);
+    root.style.setProperty('--atmo-border', atmo.main);
+    root.style.setProperty('--atmo-main', atmo.main); 
+    root.style.setProperty('--atmo-input-bg', glassBg);
+    root.style.setProperty('--atmo-glow', atmo.main + '44');
+
+    localStorage.setItem('saved_atmo_index', index);
 };
 
 window.setPersonalAccent = (bgColor, textColor) => {
@@ -3905,7 +3964,7 @@ window.togglePicker = async (type) => {
 const ATMOSPHERES_DB = [
     { name: 'Cyber Blue', main: '#00f5ff', bg: '#050a12', inBg: 'rgba(5,15,30,0.95)' },
     { name: 'Matrix Rain', main: '#00ff41', bg: '#000800', inBg: 'rgba(0,20,5,0.98)' },
-    { name: 'Hellfire', main: '#ff4757', bg: '#100000', inBg: 'rgba(40,5,5,0.95)' },
+    { name: 'Hellfire', main: '#ff4757', bg: '#10000/0', inBg: 'rgba(40,5,5,0.95)' },
     { name: 'Midas Gold', main: '#ffd700', bg: '#0d0a05', inBg: 'rgba(25,20,10,0.95)' },
     { name: 'Amethyst', main: '#bf55ec', bg: '#08000f', inBg: 'rgba(20,5,30,0.95)' },
     { name: 'Toxic lime', main: '#39ff14', bg: '#020a02', inBg: 'rgba(10,30,10,0.95)' },
@@ -3961,9 +4020,13 @@ window.applyAtmosphere = (index) => {
     root.style.setProperty('--atmo-input-bg', atmo.inBg);
     root.style.setProperty('--atmo-glow', atmo.main + '44');
     
-    // Auto-contrast for White/Chrome themes
-    const isLight = atmo.main === '#ffffff' || atmo.main.includes('hsl(0, 0%, 100%)');
+    // This fixes the text contrast automatically
+    const isLight = atmo.main === '#ffffff' || atmo.main === '#eee';
     root.style.setProperty('--atmo-input-text', isLight ? '#000' : atmo.main);
+
+    // Update the visual layer if it exists
+    const visual = document.getElementById('atmoVisual');
+    if(visual) visual.style.opacity = "0.6";
 
     localStorage.setItem('saved_atmo_index', index);
 };
