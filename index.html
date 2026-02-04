@@ -5,7 +5,7 @@
 <html lang="ro">
 <head>
 
-
+<script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -3739,6 +3739,28 @@ input:checked + .slider:before { transform: translateX(16px); }
     60%, 76% { transform: translateX(-60%); }         /* Slide 4: After Jump */
     80%, 96% { transform: translateX(-80%); }         /* Slide 5: More */
     100% { transform: translateX(0); }
+}
+
+
+
+/* --- ANTI-FLICKER SYSTEM --- */
+/* Hide these elements by default so banned users see nothing but black */
+#siteContent, 
+.header-container, 
+#sideMenu, 
+#botBtn {
+    display: none !important; /* Forces them to be hidden initially */
+}
+
+/* We will add this class via JS only if the user is SAFE */
+body.site-loaded #siteContent,
+body.site-loaded .header-container,
+body.site-loaded #botBtn {
+    display: block !important; /* Or flex/grid depending on element */
+}
+/* Special fix for flex elements */
+body.site-loaded .header-container {
+    display: flex !important;
 }
   </style>
 </head>
@@ -8706,7 +8728,16 @@ function animateValue(id, start, end, duration, suffix = "") {
     window.requestAnimationFrame(step);
 }
 
-
+// --- IMMEDIATE BAN CHECK (Prevents Flickering) ---
+(function() {
+    // 1. Check LocalStorage "Mark of Death"
+    if (localStorage.getItem('ksda_perma_ban') === 'true') {
+        document.write('<style>#bannedOverlay { display: flex !important; }</style>');
+        // Stop all other scripts
+        window.stop(); 
+        throw new Error("BANNED DEVICE DETECTED");
+    }
+})();
   </script>
 
 
@@ -9560,75 +9591,93 @@ window.equipText = async (id, cssClass) => {
 
 // 1. GLOBAL BAN CHECK (OPTIMIZED)
 // --- ULTIMATE BAN SYSTEM ---
-// --- 1. SUPERIOR BAN SYSTEM (FIXED) ---
-async function checkGlobalBan() {
-    const overlay = document.getElementById('bannedOverlay');
-    const content = document.getElementById('siteContent');
-    const sideMenu = document.getElementById('sideMenu'); // Get side menu
-    const header = document.querySelector('.header-container'); // Get header
-    
-    const reasonText = document.getElementById('globalBanReason');
-    const ipText = document.getElementById('globalBanIp');
+// --- ADVANCED BAN SYSTEM (IP + DEVICE ID) ---
 
-    // HELPER: EXECUTE THE NUKE (ONLY RUNS IF BANNED)
-    const hammerBan = (reason, ipOrId) => {
-        console.log("BAN TRIGGERED: ", reason);
+// 1. Initialize FingerprintJS
+const fpPromise = import('https://openfpcdn.io/fingerprintjs/v4')
+    .then(FingerprintJS => FingerprintJS.load());
 
-        // 1. Mark the browser (The "Mark of Death")
-        localStorage.setItem('ksda_perma_ban', 'true');
-        sessionStorage.setItem('isBanned', 'true');
-        
-        // 2. NUKE VISUALS (Remove content so they see nothing)
-        if(content) content.remove();
-        if(sideMenu) sideMenu.remove();
-        if(header) header.remove();
-        
-        // 3. SHOW RED OVERLAY
-        if(overlay) {
-            overlay.style.display = 'flex';
-            if(reasonText) reasonText.innerText = reason;
-            if(ipText) ipText.innerText = ipOrId;
-        }
-        document.body.style.overflow = 'hidden'; // Stop scrolling
-
-        // 4. ACTIVATE ANTI-TAMPER (ONLY NOW)
-        document.addEventListener('contextmenu', event => event.preventDefault());
-        document.onkeydown = function(e) {
-            if(e.keyCode == 123) return false; // F12
-            if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
-            if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
-            if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
-            if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
-        }
-    };
-
-    // CHECK 1: Browser Fingerprint (Instant Local Check)
-    if (localStorage.getItem('ksda_perma_ban') === 'true') {
-        hammerBan("Dispozitiv Banat Anterior", "Device-ID");
-        return;
-    }
-
-    // CHECK 2: IP Address (Database Check)
+async function getDeviceId() {
     try {
-        const res = await fetch('https://api.ipify.org?format=json');
-        const data = await res.json();
-        const userIP = data.ip;
-
-        const banRef = doc(db, "banned_ips", userIP);
-        const banSnap = await getDoc(banRef);
-
-        if (banSnap.exists()) {
-            const banData = banSnap.data();
-            hammerBan(banData.reason || "IP Blacklisted", userIP);
-        }
+        const fp = await fpPromise;
+        const result = await fp.get();
+        return result.visitorId;
     } catch (e) {
-        console.error("IP Check Error:", e);
+        console.error("Fingerprint Error", e);
+        return "unknown_device";
     }
 }
 
-// Run the check immediately
-checkGlobalBan();
- 
+// 2. The Hammer Ban Function (Visual Nuke)
+function executeBan(reason, banId) {
+    console.log("BAN EXECUTED:", reason);
+    
+    // Mark the browser permanently
+    localStorage.setItem('ksda_perma_ban', 'true');
+    sessionStorage.setItem('isBanned', 'true');
+
+    // Show Overlay
+    const overlay = document.getElementById('bannedOverlay');
+    if(overlay) {
+        overlay.style.display = 'flex';
+        document.getElementById('globalBanReason').innerText = reason;
+        document.getElementById('globalBanIp').innerText = "ID: " + banId;
+    }
+
+    // Remove Site Content (Double Safety)
+    const content = document.getElementById('siteContent');
+    const header = document.querySelector('.header-container');
+    if(content) content.innerHTML = ""; 
+    if(header) header.innerHTML = "";
+
+    // Disable Scrolling
+    document.body.style.overflow = 'hidden';
+}
+
+// 3. The Main Check Function
+async function checkSecurityAndLoad() {
+    // A. Check LocalStorage First (Instant)
+    if (localStorage.getItem('ksda_perma_ban') === 'true') {
+        executeBan("Dispozitiv Banat Anterior", "Device-Match");
+        return;
+    }
+
+    const ip = await getIP();
+    const deviceId = await getDeviceId();
+
+    try {
+        // B. Check Banned IPs in Firestore
+        const ipRef = doc(db, "banned_ips", ip.replace(/\./g, '_')); // Sanitize IP for doc ID
+        const ipSnap = await getDoc(ipRef);
+
+        if (ipSnap.exists()) {
+            executeBan("IP Banat", ip);
+            return;
+        }
+
+        // C. Check Banned DEVICES in Firestore (The new weapon)
+        // You need to create a collection 'banned_devices' in Firebase manually or via admin panel
+        const devRef = doc(db, "banned_devices", deviceId);
+        const devSnap = await getDoc(devRef);
+
+        if (devSnap.exists()) {
+            executeBan("Dispozitiv Banat (Hardware ID)", deviceId);
+            return;
+        }
+
+        // --- IF SAFE: REVEAL THE SITE ---
+        console.log("Security Check Passed. Loading UI...");
+        document.body.classList.add('site-loaded'); // This triggers the CSS to show content
+
+    } catch (e) {
+        console.error("Security Check Error:", e);
+        // Fallback: Show site if database check fails (to prevent blocking innocent users on error)
+        document.body.classList.add('site-loaded');
+    }
+}
+
+// Run security check immediately
+checkSecurityAndLoad();
 
     // LOGICA QUEST KEVIN BOT (15 MESAJE)
 // LOGICA QUEST KEVIN BOT (15 MESAJE) - WITH FIREBASE CHECK
@@ -10546,5 +10595,4 @@ function generateDailyIds() {
   </script>
 </body>
 </html>
-
 
