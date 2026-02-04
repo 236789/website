@@ -2779,7 +2779,30 @@ BANNED VIEW
 }
 
 
+/* REPARAȚIE PENTRU BANNERE ÎN HEADER ȘI PINNED BAR */
+#chatHeaderBar, #pinnedBar {
+    display: flex !important;      /* Forțează header-ul să rămână flex */
+    width: 100% !important;       /* Forțează lățime maximă */
+    max-width: 100% !important;   /* Previne micșorarea de la clasle de banner */
+    flex-direction: row !important; /* Asigură alinierea corectă a butoanelor */
+    box-sizing: border-box !important;
+    position: relative !important;
+}
 
+/* Dacă Pinned Bar are banner de jackpot, să nu se facă mic */
+#pinnedBar.bubble-jackpot, 
+#chatHeaderBar.bubble-jackpot {
+    display: flex !important;
+    width: 100% !important;
+}
+
+/* Ajustare conținut Pinned Bar să nu iasă din ecran */
+#pinnedContent {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
   </style>
 
 </head>
@@ -5742,37 +5765,26 @@ function loadMessages() {
         limit(50)
     );
 
-    unsubscribe = onSnapshot(messageQuery, snapshot => {
-        const feed = messagesFeed;
-        
-        // 1. Initialize the array at the START
-        const docs = [];
+unsubscribe = onSnapshot(messageQuery, snapshot => {
+    const feed = messagesFeed;
+    const docs = []; // INIȚIALIZARE ÎNAINTE DE LOOP
 
-        // 2. Capture scroll position BEFORE clearing the feed
-        const wasAtBottom = (feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 200);
+    snapshot.forEach(doc => {
+        const data = doc.data();
 
-        // 3. Process the snapshot once
-        snapshot.forEach(doc => {
-            const data = doc.data();
-
-            // --- SHADOWBAN FILTER LOGIC ---
-            if (data.isShadowBanned === true) {
-                // Only the author can see their own shadowbanned messages
-                if (currentUid && data.uid === currentUid) {
-                    // Allowed
-                } else {
-                    return; // Skip for everyone else
-                }
+        // --- SHADOWBAN FILTER ---
+        if (data.isShadowBanned === true) {
+            if (currentUid && data.uid === currentUid) {
+                // Îl lași să treacă doar dacă e mesajul lui
+            } else {
+                return; // Sari peste el pentru ceilalți
             }
-
-            docs.push({ id: doc.id, ...data });
-        });
-        
-        // 4. Sort chronological (Oldest at top)
-        docs.reverse();
-
-        // 5. Clear and Render
-        feed.innerHTML = '';
+        }
+        docs.push({ id: doc.id, ...data });
+    });
+    
+    docs.reverse();
+    feed.innerHTML = '';
 
         docs.forEach(data => {
             if (data.isDeleted) return;
