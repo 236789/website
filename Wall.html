@@ -5696,22 +5696,12 @@ async function uploadVoiceMessage(blob) {
 }
 
 async function sendVoiceToFirestore(audioUrl) {
-    // Luăm datele actuale ale userului din documentul lui de cont
     const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const userData = userSnapshot.data();
 
     await addDoc(collection(db, "wall_messages"), {
         uid: auth.currentUser.uid,
         name: userData.username || auth.currentUser.displayName,
-        
-        // --- DATELE LIPSĂ CARE REPARĂ PFP ȘI RAMA ---
-        photo: userData.image || auth.currentUser.photoURL,
-        equippedFrame: userData.equippedFrame || null,
-        equippedBadge: userData.equippedBadge || null,
-        equippedBanner: userData.equippedBanner || null,
-        equippedText: userData.equippedText || null,
-        // --------------------------------------------
-
         audioUrl: audioUrl,
         type: 'vocal',
         createdAt: serverTimestamp(),
@@ -5721,7 +5711,8 @@ async function sendVoiceToFirestore(audioUrl) {
         isHelper: isHelper,
         seenBy: [auth.currentUser.uid],
         isDeleted: false,
-        reactions: {}
+        equippedBanner: userData.equippedBanner || null,
+        equippedText: userData.equippedText || null
     });
 }
 
@@ -6331,16 +6322,11 @@ docs.forEach(data => {
 
             let fullAuthorHeader = finalDisplayName + staffBadgeHtml + getCosmeticBadge(data.equippedBadge);
 
-// --- ACEST COD TREBUIE SĂ FIE ÎN loadMessages ÎNAINTE DE wrapper.innerHTML ---
-let frameHtml = "";
-if (data.equippedFrame && data.equippedFrame.img) {
-    const scale = data.equippedFrame.scale || 1.45;
-    // Am ajustat puțin scale-ul (105%) ca să stea rama perfect peste cerc
-    frameHtml = `<img src="${data.equippedFrame.img}" class="msg-frame-chat" style="width:${scale * 105}%; height:${scale * 105}%;">`;
-}
-
-const userPfp = data.photo || "https://iili.io/fXks1Dv.png";
-// -------------------------------------------------------------------------
+            let frameHtml = '';
+            if (data.equippedFrame && data.equippedFrame.img) {
+                const sc = data.equippedFrame.scale || 1.45;
+                frameHtml = `<img src="${data.equippedFrame.img}" class="msg-frame-overlay" style="width:${sc*100}%; height:${sc*100}%;">`;
+            }
 
             const avatarHtml = `
                 <div class="msg-pfp-column" onclick="window.openUserProfile('${data.uid}')">
