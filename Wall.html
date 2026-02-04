@@ -3076,38 +3076,6 @@ body {
 .floating-icon svg {
     fill: none !important;
 }
-
-
-
-/* Stil Bulă Exclusivă Kevin-Bot */
-.bubble-bot-exclusive {
-    background: linear-gradient(135deg, #050b14 0%, #0044ff 50%, #050b14 100%) !important;
-    border: 2px solid #29f3ff !important;
-    box-shadow: 0 0 25px rgba(41, 243, 255, 0.4), inset 0 0 15px rgba(0, 242, 234, 0.2) !important;
-    color: #fff !important;
-}
-
-/* Insigna Unică "BOT" */
-.bot-badge-exclusive {
-    background: #fff;
-    color: #000;
-    font-family: 'Orbitron', sans-serif;
-    font-weight: 900;
-    font-size: 9px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    margin-left: 8px;
-    vertical-align: middle;
-    box-shadow: 0 0 10px #fff;
-    text-transform: uppercase;
-}
-
-/* Textul special al botului */
-.t-bot-exclusive {
-    color: #fff !important;
-    font-weight: 800 !important;
-    text-shadow: 0 0 8px rgba(41, 243, 255, 0.8) !important;
-}
   </style>
 
 </head>
@@ -6088,12 +6056,13 @@ async function wipeAllMessages() {
 // --- 4. CONFIGURARE BOT ---
 
 // --- BOT MESSAGE SENDER (UPDATED) ---
-async function sendBotMessage(text, customClass = 'bubble-bot-exclusive', replyData = null) {
+async function sendBotMessage(text, customClass = null) {
     try {
-        const payload = {
+        await addDoc(collection(db, "wall_messages"), {
             text: text,
             uid: 'kevin-bot',
             name: 'Kevin-Bot',
+            // Kevin Bot's avatar
             photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
             ip: 'server',
             isBot: true,
@@ -6103,96 +6072,14 @@ async function sendBotMessage(text, customClass = 'bubble-bot-exclusive', replyD
             isDeleted: false,
             reactions: {},
             seenBy: [],
-            equippedBanner: { cssClass: customClass },
-            equippedText: { cssClass: 't-bot-exclusive' }
-        };
-
-        // Dacă avem date de reply, le adăugăm în mesaj
-        if (replyData) {
-            payload.replyToId = replyData.id;
-            payload.replyToName = replyData.name;
-            payload.replyToText = replyData.text;
-            payload.replyToUid = replyData.uid;
-        }
-
-        await addDoc(collection(db, "wall_messages"), payload);
+            
+            // --- NEW: Apply Custom Class if provided ---
+            equippedBanner: customClass ? { cssClass: customClass } : null
+        });
     } catch(e) { 
         console.error("Bot fail", e); 
     }
 }
-
-
-// --- KEVIN BOT AUTO-REPLY ENGINE ---
-function initBotListener() {
-    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(1));
-    
-    // Verificăm doar mesajele NOI (după ce s-a încărcat pagina)
-    let isInitialLoad = true;
-
-    onSnapshot(q, (snapshot) => {
-        if (isInitialLoad) {
-            isInitialLoad = false;
-            return;
-        }
-
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === "added") {
-                const data = change.doc.data();
-                const msgId = change.doc.id;
-
-                // NU răspundem la propriile mesaje ale botului (prevenim loop-ul)
-                if (data.uid === 'kevin-bot' || data.uid === 'system-alert') return;
-
-                const text = data.text ? data.text.toLowerCase() : "";
-                let botResponse = "";
-
-                // --- LOGICA DE RĂSPUNS (KEYWORDS) ---
-                if (text.includes("portret") || text.includes("desen")) {
-                    botResponse = "Vrei un portret? Kevin face magie! 🎨 Verifică secțiunea 'Kevin' pentru prețuri și detalii. ✨";
-                } 
-                else if (text.includes("unde este chatul") || text.includes("community wall")) {
-                    botResponse = "Ești deja pe Community Wall! Aici vorbim, glumim și ne simțim bine. 🗣️💎";
-                }
-                else if (text.includes("top") || text.includes("clasament")) {
-                    botResponse = "Vrei să vezi cine e șeful? 🏆 Verifică secțiunea 'Clasamente' să vezi legendele KSDA!";
-                }
-                else if (text.includes("recenzie") || text.includes("părere")) {
-                    botResponse = "Părerea ta contează! Lasă o recenzie în secțiunea dedicată să știe lumea cât de cool ești! ⭐";
-                }
-                else if (text.includes("feedback") || text.includes("bug")) {
-                    botResponse = "Ai găsit o eroare? 🐛 Raportează-l în secțiunea Feedback și Lost Soul îl va rezolva imediat!";
-                }
-                // --- ADDED: RĂSPUNSURI LA ÎNJURĂTURI (Inspirat din index.html) ---
-                else if (text.match(/(pula|pizda|coaie|muie|futu)/)) {
-                    botResponse = "Educația e gratis, dar văd că tu n-ai vrut nici varianta free. 😑 Ai grijă la limbaj înainte să chem moderatorii! 🚔";
-                }
-                else if (text.includes("kevin")) {
-                    botResponse = "M-a strigat cineva? Sunt aici, mereu la datorie! 😎 Ce pot să fac pentru tine?";
-                }
-
-                // Dacă s-a găsit un răspuns, botul dă Reply
-                if (botResponse !== "") {
-                    // Adăugăm o mică întârziere să pară că "scrie"
-                    setTimeout(() => {
-                        sendBotMessage(botResponse, 'bubble-bot-exclusive', {
-                            id: msgId,
-                            name: data.name,
-                            text: data.text,
-                            uid: data.uid
-                        });
-                    }, 1500);
-                }
-            }
-        });
-    });
-}
-
-// Lansează motorul botului
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        initBotListener();
-    }
-});
 
 
     const seenObserver = new IntersectionObserver((entries) => {
@@ -6528,9 +6415,8 @@ docs.forEach(data => {
             if (isBot) finalDisplayName = `🤖 ${finalDisplayName}`;
             if (textStyleClass) finalDisplayName = `<span class="${textStyleClass}">${(data.name || "Anonim")}</span>`;
 
-let staffBadgeHtml = "";
-if (isBot) staffBadgeHtml = ` <span class="bot-badge-exclusive">BOT</span>`; // NOU
-else if (userIsOwner) staffBadgeHtml = ` <span class="owner-badge">OWNER</span>`;
+            let staffBadgeHtml = "";
+            if (userIsOwner) staffBadgeHtml = ` <span class="owner-badge">OWNER</span>`;
             else if (userIsAdmin) staffBadgeHtml = ` <span class="admin-badge">ADMIN</span>`;
             else if (userIsMod) staffBadgeHtml = ` <span class="mod-badge">MOD</span>`;
             else if (userIsHelper) staffBadgeHtml = ` <span class="helper-badge">HELPER</span>`;
