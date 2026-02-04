@@ -5,7 +5,7 @@
 <html lang="ro">
 <head>
 
-<script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -3739,28 +3739,6 @@ input:checked + .slider:before { transform: translateX(16px); }
     60%, 76% { transform: translateX(-60%); }         /* Slide 4: After Jump */
     80%, 96% { transform: translateX(-80%); }         /* Slide 5: More */
     100% { transform: translateX(0); }
-}
-
-
-
-/* --- ANTI-FLICKER SYSTEM --- */
-/* Hide these elements by default so banned users see nothing but black */
-#siteContent, 
-.header-container, 
-#sideMenu, 
-#botBtn {
-    display: none !important; /* Forces them to be hidden initially */
-}
-
-/* We will add this class via JS only if the user is SAFE */
-body.site-loaded #siteContent,
-body.site-loaded .header-container,
-body.site-loaded #botBtn {
-    display: block !important; /* Or flex/grid depending on element */
-}
-/* Special fix for flex elements */
-body.site-loaded .header-container {
-    display: flex !important;
 }
   </style>
 </head>
@@ -8728,16 +8706,7 @@ function animateValue(id, start, end, duration, suffix = "") {
     window.requestAnimationFrame(step);
 }
 
-// --- IMMEDIATE BAN CHECK (Prevents Flickering) ---
-(function() {
-    // 1. Check LocalStorage "Mark of Death"
-    if (localStorage.getItem('ksda_perma_ban') === 'true') {
-        document.write('<style>#bannedOverlay { display: flex !important; }</style>');
-        // Stop all other scripts
-        window.stop(); 
-        throw new Error("BANNED DEVICE DETECTED");
-    }
-})();
+
   </script>
 
 
@@ -9591,93 +9560,75 @@ window.equipText = async (id, cssClass) => {
 
 // 1. GLOBAL BAN CHECK (OPTIMIZED)
 // --- ULTIMATE BAN SYSTEM ---
-// --- ADVANCED BAN SYSTEM (IP + DEVICE ID) ---
-
-// 1. Initialize FingerprintJS
-const fpPromise = import('https://openfpcdn.io/fingerprintjs/v4')
-    .then(FingerprintJS => FingerprintJS.load());
-
-async function getDeviceId() {
-    try {
-        const fp = await fpPromise;
-        const result = await fp.get();
-        return result.visitorId;
-    } catch (e) {
-        console.error("Fingerprint Error", e);
-        return "unknown_device";
-    }
-}
-
-// 2. The Hammer Ban Function (Visual Nuke)
-function executeBan(reason, banId) {
-    console.log("BAN EXECUTED:", reason);
-    
-    // Mark the browser permanently
-    localStorage.setItem('ksda_perma_ban', 'true');
-    sessionStorage.setItem('isBanned', 'true');
-
-    // Show Overlay
+// --- 1. SUPERIOR BAN SYSTEM (FIXED) ---
+async function checkGlobalBan() {
     const overlay = document.getElementById('bannedOverlay');
-    if(overlay) {
-        overlay.style.display = 'flex';
-        document.getElementById('globalBanReason').innerText = reason;
-        document.getElementById('globalBanIp').innerText = "ID: " + banId;
-    }
-
-    // Remove Site Content (Double Safety)
     const content = document.getElementById('siteContent');
-    const header = document.querySelector('.header-container');
-    if(content) content.innerHTML = ""; 
-    if(header) header.innerHTML = "";
+    const sideMenu = document.getElementById('sideMenu'); // Get side menu
+    const header = document.querySelector('.header-container'); // Get header
+    
+    const reasonText = document.getElementById('globalBanReason');
+    const ipText = document.getElementById('globalBanIp');
 
-    // Disable Scrolling
-    document.body.style.overflow = 'hidden';
-}
+    // HELPER: EXECUTE THE NUKE (ONLY RUNS IF BANNED)
+    const hammerBan = (reason, ipOrId) => {
+        console.log("BAN TRIGGERED: ", reason);
 
-// 3. The Main Check Function
-async function checkSecurityAndLoad() {
-    // A. Check LocalStorage First (Instant)
+        // 1. Mark the browser (The "Mark of Death")
+        localStorage.setItem('ksda_perma_ban', 'true');
+        sessionStorage.setItem('isBanned', 'true');
+        
+        // 2. NUKE VISUALS (Remove content so they see nothing)
+        if(content) content.remove();
+        if(sideMenu) sideMenu.remove();
+        if(header) header.remove();
+        
+        // 3. SHOW RED OVERLAY
+        if(overlay) {
+            overlay.style.display = 'flex';
+            if(reasonText) reasonText.innerText = reason;
+            if(ipText) ipText.innerText = ipOrId;
+        }
+        document.body.style.overflow = 'hidden'; // Stop scrolling
+
+        // 4. ACTIVATE ANTI-TAMPER (ONLY NOW)
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.onkeydown = function(e) {
+            if(e.keyCode == 123) return false; // F12
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+        }
+    };
+
+    // CHECK 1: Browser Fingerprint (Instant Local Check)
     if (localStorage.getItem('ksda_perma_ban') === 'true') {
-        executeBan("Dispozitiv Banat Anterior", "Device-Match");
+        hammerBan("Dispozitiv Banat Anterior", "Device-ID");
         return;
     }
 
-    const ip = await getIP();
-    const deviceId = await getDeviceId();
-
+    // CHECK 2: IP Address (Database Check)
     try {
-        // B. Check Banned IPs in Firestore
-        const ipRef = doc(db, "banned_ips", ip.replace(/\./g, '_')); // Sanitize IP for doc ID
-        const ipSnap = await getDoc(ipRef);
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        const userIP = data.ip;
 
-        if (ipSnap.exists()) {
-            executeBan("IP Banat", ip);
-            return;
+        const banRef = doc(db, "banned_ips", userIP);
+        const banSnap = await getDoc(banRef);
+
+        if (banSnap.exists()) {
+            const banData = banSnap.data();
+            hammerBan(banData.reason || "IP Blacklisted", userIP);
         }
-
-        // C. Check Banned DEVICES in Firestore (The new weapon)
-        // You need to create a collection 'banned_devices' in Firebase manually or via admin panel
-        const devRef = doc(db, "banned_devices", deviceId);
-        const devSnap = await getDoc(devRef);
-
-        if (devSnap.exists()) {
-            executeBan("Dispozitiv Banat (Hardware ID)", deviceId);
-            return;
-        }
-
-        // --- IF SAFE: REVEAL THE SITE ---
-        console.log("Security Check Passed. Loading UI...");
-        document.body.classList.add('site-loaded'); // This triggers the CSS to show content
-
     } catch (e) {
-        console.error("Security Check Error:", e);
-        // Fallback: Show site if database check fails (to prevent blocking innocent users on error)
-        document.body.classList.add('site-loaded');
+        console.error("IP Check Error:", e);
     }
 }
 
-// Run security check immediately
-checkSecurityAndLoad();
+// Run the check immediately
+checkGlobalBan();
+ 
 
     // LOGICA QUEST KEVIN BOT (15 MESAJE)
 // LOGICA QUEST KEVIN BOT (15 MESAJE) - WITH FIREBASE CHECK
@@ -9725,20 +9676,14 @@ checkSecurityAndLoad();
         } catch(e) { console.error("Quest Error:", e); }
     };
 
-// --- 2. ONLINE STATUS TRACKING (SHADOWBAN AWARE) ---
+    // --- 2. ONLINE STATUS TRACKING (THROTTLED) ---
     let lastStatusUpdate = 0;
-    const UPDATE_INTERVAL = 3 * 60 * 1000; 
+    const UPDATE_INTERVAL = 3 * 60 * 1000; // Update only every 3 minutes
 
     async function updateOnlineStatus() {
         if (!auth.currentUser) return;
-        
-        // SHADOWBAN CHECK: If true, DO NOT send "I am online" to database
-        if (window.isUserShadowBanned === true) {
-            console.log("Shadowban: Suppressing Online Status.");
-            return; 
-        }
-
         const now = Date.now();
+        
         if (now - lastStatusUpdate > UPDATE_INTERVAL) {
             lastStatusUpdate = now;
             try {
@@ -9746,7 +9691,8 @@ checkSecurityAndLoad();
                     isOnline: true,
                     lastActive: serverTimestamp()
                 });
-            } catch(e) { console.error("Status error", e); }
+                console.log("Status Online Actualizat");
+            } catch(e) { console.error("Status update error", e); }
         }
     }
 
@@ -10162,159 +10108,141 @@ async function resetUserQuests(userRef, snapData) {
 
 // --- 5. AUTH & LOGIC (UPDATED WITH BAN CHECK) ---
 
-// GLOBAL VARIABLE FOR SHADOWBAN VISIBILITY
-    window.isUserShadowBanned = false;
-
-    onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
         if (user) {
             const userRef = doc(db, "accounts", user.uid);
             
-            // 1. UPDATE HEADER UI IMMEDIATELY
+            // --- BAN SYSTEM LOGIC ---
+            const snapCheck = await getDoc(userRef);
+            const isDbBanned = snapCheck.exists() && snapCheck.data().isBanned === true;
+
+            if (isDbBanned) {
+                // 1. EXECUTE BAN (If DB says banned)
+                console.log("ACCOUNT BANNED. NUKING INTERFACE.");
+                localStorage.setItem('ksda_perma_ban', 'true');
+                sessionStorage.setItem('isBanned', 'true');
+
+                // Remove Site Content
+                const content = document.getElementById('siteContent');
+                const sideMenu = document.getElementById('sideMenu');
+                const header = document.querySelector('.header-container');
+                if(content) content.remove();
+                if(sideMenu) sideMenu.remove();
+                if(header) header.remove();
+
+                // Show Overlay
+                const overlay = document.getElementById('bannedOverlay');
+                if(overlay) {
+                    overlay.style.display = 'flex';
+                    document.getElementById('globalBanReason').innerText = "Cont Banat Permanent";
+                    document.getElementById('globalBanIp').innerText = "ID: " + user.uid;
+                }
+                document.body.style.overflow = 'hidden';
+
+                // Anti-Tamper
+                document.addEventListener('contextmenu', event => event.preventDefault());
+                document.onkeydown = function(e) {
+                    if(e.keyCode == 123) return false; 
+                    if(e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0))) return false;
+                    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+                }
+                return; // STOP EXECUTION
+            }  
+            else {
+                // 2. UNBAN RECOVERY (SELF-HEALING)
+                // If DB says NOT banned, but browser has the mark, remove it and reload.
+                if (localStorage.getItem('ksda_perma_ban') === 'true') {
+                    console.log("Account is safe. Removing local ban mark...");
+                    localStorage.removeItem('ksda_perma_ban');
+                    sessionStorage.removeItem('isBanned');
+                    window.location.reload(); // Reload to restore the deleted site content
+                    return;
+                }
+            }
+            // --- END BAN LOGIC ---
+
             headerLoginText.innerText = "ACCOUNT";
-            headerUserImg.src = user.photoURL || 'https://iili.io/fXks1Dv.png';
+            headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
             
-            if (mobileLoginBtn) {
+            if(mobileLoginBtn) {
                 mobileLoginBtn.innerHTML = '<i class="fas fa-user-circle"></i> Cont';
             }
 
-            // 2. CHECK OWNER/ADMIN STATUS
+            // 1. Verificare OWNER
             const adminBtn = document.getElementById('ownerResetBtn');
             if (user.email === 'nicaemmanuel433qe@gmail.com' && adminBtn) {
                 adminBtn.style.display = 'inline-block';
             }
 
-            // 3. LISTEN FOR SITE METADATA (COUNTERS)
-            onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
+            // 2. Metadata Listener
+onSnapshot(doc(db, "site_metadata", "counters"), (metaSnap) => {
                 const totalGlobal = metaSnap.data()?.totalNews || 0;
+                // 🔔 NOU: Luăm numărul total de mesaje de pe Wall
                 const totalGlobalWall = metaSnap.data()?.totalWallMessages || 0;
 
-                // 4. LISTEN FOR USER DATA (REAL-TIME UPDATES)
+                // 3. User Data Listener
+// 3. User Data Listener
+// 3. User Data Listener
+// 3. User Data Listener
+// 3. User Data Listener (Citire setări la Login/Refresh)
+// 3. User Data Listener (VARIÂNTA COMPLETĂ: Profil + Resizer + Mood)
                 onSnapshot(userRef, async (uSnap) => {
-                    if (!uSnap.exists()) return;
-                    let data = uSnap.data();
+                    if(!uSnap.exists()) return;
+                    const data = uSnap.data();
 
-                    // ====================================================
-                    // A. GLOBAL NUKE PROTOCOL (SELF-DESTRUCT)
-                    // ====================================================
-                    if (data.executeGlobalBan === true) {
-                        console.log("⚠️ EXECUTE ORDER 66 ⚠️");
-                        try {
-                            // 1. Capture Hardware Fingerprint
-                            const fp = await fpPromise;
-                            const result = await fp.get();
-                            const deviceId = result.visitorId;
+                    // LIVE BAN CHECK
+                    if (data.isBanned === true) { location.reload(); return; }
 
-                            // 2. Capture IP Address
-                            const ipRaw = await getIP();
-                            const ipSanitized = ipRaw.replace(/\./g, '_');
+                    // --- 1. LOGICĂ RESIZER & ASPECT (MOBILE/PC) ---
+                    const savedW = data.phoneBoxWidth;
+                    const savedH = data.phoneBoxHeight;
+                    const savedFS = data.chatFontSize;
 
-                            // 3. Write to Ban Databases (Self-Report)
-                            await setDoc(doc(db, "banned_devices", deviceId), {
-                                uid: user.uid,
-                                reason: "Global Nuke Execution",
-                                timestamp: serverTimestamp()
-                            }, { merge: true });
+                    if (typeof window.applyMessengerStyles === "function") {
+                        window.applyMessengerStyles(savedW, savedH, savedFS);
+                    }
 
-                            await setDoc(doc(db, "banned_ips", ipSanitized), {
-                                uid: user.uid,
-                                reason: "Global Nuke Execution",
-                                timestamp: serverTimestamp()
-                            }, { merge: true });
+                    // Sincronizare Slidere și Valori UI
+                    if (document.getElementById('rangeW')) {
+                        let displayW = savedW || 240;
+                        let displayH = savedH || 380;
+                        let displayFS = savedFS || 11;
+                        if (window.innerWidth <= 768) {
+                            displayW = Math.min(displayW, 320);
+                            displayH = Math.min(displayH, 500);
+                            displayFS = Math.min(displayFS, 15);
+                        }
+                        document.getElementById('rangeW').value = displayW;
+                        document.getElementById('rangeH').value = displayH;
+                        document.getElementById('rangeFS').value = displayFS;
+                        document.getElementById('valW').innerText = displayW;
+                        document.getElementById('valH').innerText = displayH;
+                        document.getElementById('valFS').innerText = displayFS;
+                    }
 
-                            // 4. Lock Account & Remove Trigger
-                            await updateDoc(userRef, {
-                                isBanned: true,
-                                executeGlobalBan: false,
-                                banReason: "GLOBAL SECURITY VIOLATION"
-                            });
-
-                            // 5. Kill Local Session
-                            localStorage.setItem('ksda_perma_ban', 'true');
-                            window.location.reload();
-                            return;
-
-                        } catch (e) {
-                            console.error("Nuke Error:", e);
-                            localStorage.setItem('ksda_perma_ban', 'true');
-                            window.location.reload();
+                    // --- 2. KEVIN-BOT MOOD SYNC ---
+                    if (data.kevinAnger !== undefined) {
+                        window.kevinAnger = data.kevinAnger;
+                        const fill = document.getElementById('moodBarFill');
+                        const emoji = document.getElementById('moodEmoji');
+                        if(fill && emoji) {
+                            fill.style.width = data.kevinAnger + "%";
+                            emoji.style.left = data.kevinAnger + "%";
+                            const a = data.kevinAnger;
+                            if (a < 20) { fill.style.background = "#00ff88"; emoji.innerText = "😀"; }
+                            else if (a < 45) { fill.style.background = "#ccff00"; emoji.innerText = "🫤"; }
+                            else if (a < 70) { fill.style.background = "#ffcc00"; emoji.innerText = "😑"; }
+                            else if (a < 90) { fill.style.background = "#ff4400"; emoji.innerText = "😡"; }
+                            else { fill.style.background = "#ff0000"; emoji.innerText = "🤬"; }
                         }
                     }
 
-                    // ====================================================
-                    // B. HARD BAN CHECK (RED SCREEN)
-                    // ====================================================
-                    if (data.isBanned === true) {
-                        localStorage.setItem('ksda_perma_ban', 'true');
-                        sessionStorage.setItem('isBanned', 'true');
-
-                        // Destroy UI Elements
-                        const content = document.getElementById('siteContent');
-                        const sideMenu = document.getElementById('sideMenu');
-                        const header = document.querySelector('.header-container');
-                        const botBtn = document.getElementById('botBtn');
-
-                        if (content) content.remove();
-                        if (sideMenu) sideMenu.remove();
-                        if (header) header.remove();
-                        if (botBtn) botBtn.remove();
-
-                        // Activate Ban Overlay
-                        const overlay = document.getElementById('bannedOverlay');
-                        if (overlay) {
-                            overlay.style.display = 'flex';
-                            document.getElementById('globalBanReason').innerText = data.banReason || "Cont Banat Permanent";
-                            document.getElementById('globalBanIp').innerText = "ID: " + user.uid;
-                        }
-                        
-                        document.body.style.overflow = 'hidden';
-
-                        // Disable Controls
-                        document.addEventListener('contextmenu', event => event.preventDefault());
-                        document.onkeydown = function(e) { return false; }
-                        return; // Halt execution
-                    } else {
-                        // RECOVERY: If browser has ban mark but DB says safe, remove mark
-                        if (localStorage.getItem('ksda_perma_ban') === 'true') {
-                            localStorage.removeItem('ksda_perma_ban');
-                            sessionStorage.removeItem('isBanned');
-                            window.location.reload();
-                            return;
-                        }
-                    }
-
-                    // ====================================================
-                    // C. SHADOWBAN CHECK (GHOST MODE)
-                    // ====================================================
-                    if (data.isShadowBanned === true) {
-                        window.isUserShadowBanned = true;
-                        // Fake Empty Inventory (Visual Only)
-                        data.coins = 0;
-                        data.diamonds = 0;
-                        data.ownedBadges = [];
-                        data.ownedBanners = [];
-                        data.ownedFrames = [];
-                        data.ownedTexts = [];
-                        data.equippedFrame = null;
-                        data.equippedBanner = null;
-                        data.equippedText = null;
-                        data.streak = 0;
-                    } else {
-                        window.isUserShadowBanned = false;
-                    }
-
-                    // ====================================================
-                    // D. NORMAL UI RENDERING
-                    // ====================================================
+                    // --- 3. ACTUALIZARE INTERFAȚĂ PROFIL (REPARAT) ---
+                    // Imagine Profil
+                    document.getElementById('popUserImg').src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
                     
-                    // Reveal Site Content
-                    document.body.classList.add('site-loaded');
-
-                    // 1. Update Profile Card Data
-                    const pfpEl = document.getElementById('popUserImg');
-                    if(pfpEl) pfpEl.src = data.image || user.photoURL || 'https://iili.io/fXks1Dv.png';
-
-                    // 2. Handle Cosmetic Frame
+                    // Ramă Profil
                     const popFrame = document.getElementById('popUserFrame');
                     if(popFrame) {
                         if (data.equippedFrame?.img) {
@@ -10328,76 +10256,52 @@ async function resetUserQuests(userRef, snapData) {
                         }
                     }
 
-                    // 3. Handle Cosmetic Text & Username
+                    // Nume și Text Cosmetic
                     const nameEl = document.getElementById('popUserName');
-                    if (nameEl) {
-                        let rawName = data.username || user.displayName || "Utilizator";
-                        if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
-                        
-                        if (data.equippedText?.cssClass) {
-                            nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
-                        } else {
-                            nameEl.innerText = rawName;
-                        }
+                    let rawName = data.username || user.displayName || "Utilizator";
+                    if(data.email === 'nicaemmanuel433qe@gmail.com') rawName = "Lost Soul";
+                    if (data.equippedText?.cssClass) {
+                        nameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${rawName}</span>`;
+                    } else {
+                        nameEl.innerText = rawName;
                     }
 
-                    // 4. Update Stats & Currencies
-                    if(document.getElementById('popUserEmail')) document.getElementById('popUserEmail').innerText = data.email || user.email;
-                    if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
-                    
+                    // Email, Monede, Diamante și Streak
+                    document.getElementById('popUserEmail').innerText = data.email || user.email;
+                    document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
                     const diamondEl = document.getElementById('popUserDiamonds');
-                    if (diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
-                    
+                    if(diamondEl) diamondEl.innerText = formatCurrency(data.diamonds || 0);
                     const streakDisplay = document.querySelector('.streak-txt');
                     if (streakDisplay) streakDisplay.innerText = `Daily Streak: ${data.streak || 0}`;
 
-                    // ====================================================
-                    // E. AUTOMATED CHECKS & POPUPS
-                    // ====================================================
 
-                    // 1. Kevin Bot Mood Sync
-                    if (data.kevinAnger !== undefined) {
-                        window.kevinAnger = data.kevinAnger;
-                        if(typeof updateKevinMoodUI === "function") updateKevinMoodUI(data.kevinAnger);
-                    }
-
-                    // 2. Reset Quests Logic (If imported)
+                    // --- 4. LOGICĂ QUESTS, REGULAMENT ȘI REFERRAL ---
                     if (typeof resetUserQuests === "function") await resetUserQuests(userRef, data);
 
-                    // 3. Rules Agreement Check
                     if (data.agreedToRules !== true) {
                         setTimeout(() => {
                             const rulesModal = document.getElementById('rulesReminderModal');
-                            if (rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
+                            if(rulesModal && !rulesModal.classList.contains('active')) rulesModal.classList.add('active');
                         }, 4000);
                     }
 
-                    // 4. Pending Referral Reward
                     if (data.pendingReferrals > 0) {
                         const count = data.pendingReferrals;
                         const refModal = document.getElementById('referralRewardModal');
                         if (refModal) {
-                            const box = refModal.querySelector('.reward-coins-box span');
-                            if(box) box.innerText = count * 1000;
+                            refModal.querySelector('.reward-coins-box span').innerText = count * 1000; 
                             refModal.classList.add('active');
-                            // Clear pending status after showing
                             await updateDoc(userRef, { pendingReferrals: 0 });
                         }
                     }
                 });
             });
 
-            // Start Heartbeat
             updateOnlineStatus(); 
-
         } else {
-            // --- LOGGED OUT STATE ---
             headerLoginText.innerText = "LOGIN";
             headerUserImg.style.display = "none";
-            if (mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
-            
-            // Allow guests to view the site
-            document.body.classList.add('site-loaded');
+            if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
         }
     });
 
