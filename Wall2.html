@@ -2004,11 +2004,11 @@
     <div id="gameContainer" style="display: none; position: relative; width: 100%; max-width: 400px; margin: 0 auto; border-radius: 20px; overflow: hidden; border: 2px solid var(--primary); box-shadow: 0 0 30px rgba(41, 243, 255, 0.2);">
 
 
-    <div id="ingameStatsHUD">
-        <div class="hud-row trophy"><i class="fas fa-trophy"></i> <span id="hudBest">0</span>m</div>
-        <div class="hud-row shard"><i class="fas fa-gem"></i> <span id="hudShards">0</span></div>
-        <div class="hud-row star"><i class="fas fa-star"></i> <span id="hudStars">0</span></div>
-    </div>
+<div id="ingameStatsHUD">
+    <div class="hud-row trophy"><i class="fas fa-trophy"></i> <span id="hudBest">0</span>m</div>
+    <div class="hud-row shard"><img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/c3674029-0509-421b-9967-aeca3624a760%20(1).png?alt=media&token=5c14fd15-a82f-44c5-8193-b4b361028a32" style="width:16px;"> <span id="hudShards">0</span></div>
+    <div class="hud-row star"><img src="https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/All%20Mighty%20star.png?alt=media&token=86cf4882-a10e-482b-80c0-0e18e5f4ce11" style="width:16px;"> <span id="hudStars">0</span></div>
+</div>
 
 <!-- Put this INSIDE #gameContainer, above the canvas -->
     <button id="fsBtn" onclick="toggleFullScreen()"><i class="fas fa-expand"></i> FULLSCREEN</button>
@@ -3149,7 +3149,8 @@ const mobileHUD = document.getElementById('mobileHUD');
 
 // --- ASSETS ---
 const assets = {
-
+    void_shard: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/c3674029-0509-421b-9967-aeca3624a760%20(1).png?alt=media&token=5c14fd15-a82f-44c5-8193-b4b361028a32',
+    almighty_star: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/All%20Mighty%20star.png?alt=media&token=86cf4882-a10e-482b-80c0-0e18e5f4ce11',
 
    // NEW BUFFS
     buff_hp: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FHP%20BUFF.png?alt=media&token=04a00456-3e52-4343-84f3-d0087cb89eac',
@@ -3492,14 +3493,22 @@ if (this.activeBuffs.length > 0) {
             if(p.enemy && !p.enemy.dead) {
                 const ex = p.x + p.width/2 - 18; const ey = p.y - 35;
                 if(this.x + PLAYER_SIZE * 0.8 > ex && this.x + PLAYER_SIZE * 0.2 < ex + 36 && this.y + PLAYER_SIZE > ey && this.y < ey + 35) {
-                    if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
-                        let dmg = 1;
-                        if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; 
-                        p.enemy.hp -= dmg; 
-                        this.vy = JUMP_FORCE; 
-                        if (p.enemy.hp <= 0) p.enemy.dead = true;
-                        playSFX(sfx.kill);
-                    } 
+// Inside player.update() -> Enemy Collision logic
+if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
+    let dmg = 1;
+    if (this.hasBuff('BUFF_DAMAGE')) dmg = 2; 
+    p.enemy.hp -= dmg; 
+    this.vy = JUMP_FORCE; 
+    
+    if (p.enemy.hp <= 0) {
+        p.enemy.dead = true;
+        // --- NEW LOOT LOGIC ---
+        if (Math.random() < 0.10) { // 10% chance
+            window.collectItem('VOID_SHARD');
+        }
+    }
+    playSFX(sfx.kill);
+}
                     else if(this.invincibility <= 0) { 
                         if (!this.hasBuff('BUFF_SHIELD')) this.takeDamage(); 
                     }
@@ -3697,6 +3706,7 @@ function createPlatform(y, forceNormal = false) {
     let coinChance = 0.08; 
     let enemyChance = 0.15; // Raised chance, but restricted by the logic below
     let maxEnemyHp = 1;
+let lastShardMilestone = 0;
 
     if (score < 5000) {
         if (!forceNormal) {
@@ -3756,6 +3766,15 @@ function createPlatform(y, forceNormal = false) {
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random(); 
 
+
+    // Void Shards (15% chance after 5000m)
+    if (score > 5000 && rItem < 0.15) { 
+        item = 'VOID_SHARD'; 
+    }
+    // Buffs (adjusted slightly so they don't overlap too much)
+    else if (score > 3000 && rItem < 0.05) { 
+    }
+
         // Buffs (Rare)
         if (score > 3000 && rItem < 0.05) { 
             const buffRoll = Math.random();
@@ -3790,6 +3809,8 @@ window.collectItem = async (type) => {
     if (!auth.currentUser) return;
     const userRef = doc(db, "accounts", auth.currentUser.uid);
 
+
+
     if (type === 'COIN') {
         playSFX(sfx.coin);
         const amount = Math.floor(Math.random() * 250) + 25;
@@ -3802,11 +3823,11 @@ window.collectItem = async (type) => {
         await updateDoc(userRef, { diamonds: increment(1) });
     }
     // NEW CURRENCIES
-    else if (type === 'VOID_SHARD') {
-        playSFX(sfx.diamond); // Replace with unique sound if you have one
+    if (type === 'VOID_SHARD') {
+        playSFX(sfx.diamond);
+        flyRewardAnim('shard'); // Trigger animation
         await updateDoc(userRef, { voidShards: increment(1) });
-        window.showToast("+1 Void Shard! ✨");
-    }
+    } 
     else if (type === 'ALMIGHTY_STAR') {
         playSFX(sfx.diamond);
         await updateDoc(userRef, { almightyStars: increment(1) });
@@ -3815,7 +3836,9 @@ window.collectItem = async (type) => {
 };
 
 function flyRewardAnim(type) {
-    const flyer = type === 'coin' ? document.getElementById('flyingCoin') : document.getElementById('flyingDiamond');
+    const flyer = type === 'coin' ? document.getElementById('flyingCoin') : 
+
+document.getElementById('flyingDiamond');
     // Start from center of canvas approximately
     const canvasRect = canvas.getBoundingClientRect();
     const startTop = canvasRect.top + canvasRect.height / 2;
@@ -3949,6 +3972,14 @@ function gameLoop() {
     // --- 3. UPDATE & DRAW PLAYER ---
     player.update();
     player.draw();
+
+
+// --- NEW MILESTONE LOGIC ---
+if (score >= lastShardMilestone + 5000) {
+    lastShardMilestone += 5000;
+    window.collectItem('VOID_SHARD');
+    window.showToast(" Milestone Reached! +1 Void Shard");
+}
 
     // --- 4. PLATFORM LOGIC ---
     let highestY = canvas.height;
