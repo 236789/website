@@ -2989,109 +2989,76 @@ body {
     }
 }
 
-//* --- FIX FINAL: REPARAȚIE GAP MOBIL & POZIȚIONARE MENIU --- */
 
+/* Containerul principal al mesajului */
 .msg-row {
     display: flex;
-    gap: 10px; /* Spațiu controlat între avatar și restul mesajului */
+    gap: 8px; /* Spațiu mic între PFP și Bulă */
     align-items: flex-start;
     width: 100%;
-    margin-bottom: 8px;
-    position: relative;
+    margin-bottom: 5px;
 }
 
+/* Fix pentru coloana de conținut - elimină lățimea forțată */
 .msg-content-col {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    max-width: 82%; /* Împiedică mesajul să ocupe tot ecranul pe PC */
-    width: fit-content !important; /* CRUCIAL: Coloana se mulează pe text, elimină spațiul gol */
+    max-width: 85%; /* Limitează lățimea totală */
+    width: auto;
 }
 
-/* Mesajele tale se aliniază la dreapta corect */
-.msg-wrapper.mine .msg-content-col {
-    align-items: flex-end;
-    margin-left: auto;
+/* Eliminăm gap-ul vertical dintre bulă și timp */
+.msg-bubble {
+    width: fit-content !important; /* Bula se mulează pe text */
+    max-width: 100%;
+    margin-bottom: 2px; /* Spațiu minim între bulă și info */
 }
 
-.msg-author {
+/* Aliniere Info (Timp + Ochi) sub bulă */
+.msg-info {
     display: flex;
+    gap: 8px;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 2px;
-    position: relative; /* Necesar pentru a ancora meniul de puncte */
-    width: fit-content;
-    flex-wrap: wrap;
-    z-index: 5;
+    font-size: 9px;
+    opacity: 0.7;
+    margin-top: 0 !important; /* Scoate spațiul de deasupra timpului */
 }
 
-/* 3 DOTS VIZIBILITATE & CLICK */
-.msg-options {
+/* Când mesajul este al tău (partea dreaptă) */
+.msg-wrapper.mine .msg-row {
+    flex-direction: row-reverse;
+}
+.msg-wrapper.mine .msg-content-col {
+    align-items: flex-end; /* Împinge bula spre dreapta */
+}
+
+/* --- FIX RAMĂ ȘI AVATAR --- */
+.msg-pfp-wrap {
+    position: relative;
+    width: 38px; /* Puțin mai mic pentru a arăta mai bine pe chat */
+    height: 38px;
+    flex-shrink: 0;
     cursor: pointer;
-    padding: 2px 6px;
-    color: var(--text-muted);
-    opacity: 1 !important; /* Forțează să fie vizibil pe mobil (nu doar la hover) */
-    font-size: 14px;
-    display: inline-flex;
-    align-items: center;
-    transition: 0.2s;
+    z-index: 5;
+    margin-top: 2px;
 }
 
-.msg-options:hover {
-    color: var(--primary);
+.msg-pfp-img-chat {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(255,255,255,0.1);
 }
 
-/* --- REPARAȚIE MENIU (SĂ NU MAI FIE ASCUNS) --- */
-
-/* Mesajul care are meniul deschis trece peste absolut orice altceva */
-.msg-wrapper.menu-active {
-    z-index: 9999 !important;
-}
-
-.options-dropdown {
-    display: none; /* Ascuns implicit */
+.msg-frame-chat {
     position: absolute;
-    top: 22px; /* Poziționat sub autor */
-    background: #08101b;
-    border: 1px solid var(--primary);
-    border-radius: 12px;
-    width: 210px;
-    box-shadow: 0 10px 40px rgba(0,0,0,1);
-    z-index: 10000 !important;
-    overflow: hidden;
-}
-
-/* Meniul apare la stânga pentru mesajele tale (să nu iasă din ecran) */
-.msg-wrapper.mine .options-dropdown {
-    right: 0;
-    left: auto;
-}
-
-/* Meniul apare la dreapta pentru ceilalți */
-.msg-wrapper.theirs .options-dropdown {
-    left: 0;
-    right: auto;
-}
-
-.show-menu {
-    display: block !important; /* Activată de JavaScript */
-}
-
-/* Ajustări pentru ecrane mici */
-@media (max-width: 768px) {
-    .msg-row {
-        gap: 6px;
-    }
-    .msg-content-col {
-        max-width: 88%; /* Puțin mai mult spațiu pe mobil */
-    }
-    .msg-author {
-        font-size: 12px;
-    }
-    /* Asigură-te că meniul nu e prea lat pe telefoane mici */
-    .options-dropdown {
-        width: 180px;
-    }
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 6;
+    display: block !important; /* Forțează afișarea */
 }
   </style>
 
@@ -6486,7 +6453,7 @@ else if (data.type === 'vocal') {
             // SUB-SECTION: INTERACTION LAYERS (REACTIONS / MENU / SEEN)
             // -----------------------------------------------------------------
 
-         // --- 1. REACTION PILLS ---
+           // --- 1. REACTION PILLS ---
             let reactionsContainerHtml = "";
             if (data.reactions && Object.keys(data.reactions).length > 0) {
                 reactionsContainerHtml = `<div class="msg-reactions">`;
@@ -6810,31 +6777,7 @@ window.handleMuteAction = async (targetUid, targetName) => {
     }
 };
 
-window.toggleMenu = function(id) {
-    const menu = document.getElementById(`menu-${id}`);
-    const wrapper = document.querySelector(`[data-id="${id}"]`);
-    
-    // Dacă meniul e deja deschis, îl închidem
-    if (menu && menu.classList.contains('show-menu')) {
-        window.closeAllMenus();
-        return;
-    }
-
-    window.closeAllMenus(); // Închide orice alt meniu deschis anterior
-
-    if (menu) {
-        menu.classList.add('show-menu');
-        // Adăugăm o clasă pe wrapper ca să îi dăm z-index maxim cât timp e meniul deschis
-        if (wrapper) wrapper.classList.add('menu-active');
-    }
-}
-
-// Actualizează și closeAllMenus ca să reseteze z-index-ul
-window.closeAllMenus = function() {
-    document.querySelectorAll('.options-dropdown').forEach(el => el.classList.remove('show-menu'));
-    document.querySelectorAll('.msg-wrapper').forEach(el => el.classList.remove('menu-active'));
-    document.querySelectorAll('.emoji-picker-menu').forEach(el => el.style.display = 'none');
-}
+    window.toggleMenu = function(id) { closeAllMenus(); const menu = document.getElementById(`menu-${id}`); if(menu) menu.classList.toggle('show-menu'); }
 
 window.toggleEmojiPicker = function(id) { 
     const picker = document.getElementById(`emojis-${id}`); 
