@@ -3959,21 +3959,21 @@ window.togglePicker = async (type) => {
         } catch(e) { gifResults.innerHTML = 'Eroare.'; }
     }
 
-// --- BAZA DE DATE: REALITY SHIFTER (Hand-crafted + Generated) ---
+// --- DATABASE: REALITY SHIFTER V3 (Hand-crafted + Math Generated) ---
 const ATMOSPHERES_DB = [
-    { name: 'NEON BLUE', main: '#00f5ff', bg: '#050a12', inBg: 'rgba(10,20,40,0.95)', inText: '#fff' },
-    { name: 'MATRIX', main: '#00ff41', bg: '#000800', inBg: 'rgba(0,15,0,0.98)', inText: '#00ff41' },
-    { name: 'CRIMSON', main: '#ff0000', bg: '#0a0000', inBg: 'rgba(30,0,0,0.95)', inText: '#fff' },
-    { name: 'GOLDEN', main: '#ffd700', bg: '#0d0a05', inBg: 'rgba(30,25,10,0.95)', inText: '#ffd700' },
-    { name: 'VOID', main: '#ffffff', bg: '#000000', inBg: 'rgba(15,15,15,0.98)', inText: '#fff' },
-    { name: 'AMETHYST', main: '#bf55ec', bg: '#08000f', inBg: 'rgba(20,5,30,0.95)', inText: '#fff' },
-    { name: 'LAVA', main: '#ff4500', bg: '#0f0500', inBg: 'rgba(40,10,0,0.95)', inText: '#fff' },
-    { name: 'ICE', main: '#ffffff', bg: '#0a0f14', inBg: 'rgba(255,255,255,0.05)', inText: '#fff' },
-    { name: 'TOXIC', main: '#39ff14', bg: '#020a02', inBg: 'rgba(10,30,10,0.95)', inText: '#39ff14' },
-    { name: 'CHROME', main: '#eee', bg: '#111', inBg: '#fff', inText: '#000' }
+    { name: 'NEON BLUE', main: '#00f5ff', bg: '#050a12', inBg: 'rgba(10,20,40,0.95)', inText: '#fff', pCount: 40 },
+    { name: 'MATRIX', main: '#00ff41', bg: '#000800', inBg: 'rgba(0,15,0,0.98)', inText: '#00ff41', pCount: 70 },
+    { name: 'BLOOD RED', main: '#ff0000', bg: '#0a0000', inBg: 'rgba(30,0,0,0.95)', inText: '#fff', pCount: 35 },
+    { name: 'ROYAL GOLD', main: '#ffd700', bg: '#0d0a05', inBg: 'rgba(30,25,10,0.95)', inText: '#ffd700', pCount: 40 },
+    { name: 'AMETHYST', main: '#bf55ec', bg: '#08000f', inBg: 'rgba(20,5,30,0.95)', inText: '#fff', pCount: 45 },
+    { name: 'LAVA FLOW', main: '#ff4500', bg: '#100500', inBg: 'rgba(40,10,0,0.95)', inText: '#fff', pCount: 40 },
+    { name: 'CHROME', main: '#eee', bg: '#111', inBg: '#ffffff', inText: '#000', pCount: 30 },
+    { name: 'TOXIC', main: '#39ff14', bg: '#020a02', inBg: 'rgba(10,30,10,0.95)', inText: '#39ff14', pCount: 50 },
+    { name: 'OCEAN', main: '#00d4ff', bg: '#000810', inBg: 'rgba(0,20,40,0.95)', inText: '#fff', pCount: 50 },
+    { name: 'SNOW WHITE', main: '#ffffff', bg: '#0a0f14', inBg: 'rgba(255,255,255,0.1)', inText: '#fff', pCount: 100 }
 ];
 
-// Generăm restul până la 50 folosind Math
+// Generare automată până la 50 folosind Golden Ratio pentru culori unice
 for(let i = 11; i <= 50; i++) {
     const hue = (i * 137.5) % 360; 
     ATMOSPHERES_DB.push({
@@ -3981,11 +3981,15 @@ for(let i = 11; i <= 50; i++) {
         main: `hsl(${hue}, 80%, 50%)`,
         bg: `hsl(${hue}, 30%, 4%)`,
         inBg: `hsla(${hue}, 30%, 10%, 0.95)`,
-        inText: '#fff'
+        inText: '#fff',
+        pCount: 30 + (i % 30)
     });
 }
 
+let atmoCtx, atmoCanvas, particles = [], animationId;
+
 window.initAtmoEngine = () => {
+    // 1. Populăm Grila (Rows of 2)
     const grid = document.getElementById('atmoGridV3');
     if(!grid) return;
     
@@ -4000,94 +4004,16 @@ window.initAtmoEngine = () => {
         grid.appendChild(btn);
     });
 
-    // Adăugăm layer-ul de mesh gradient dacă nu există
+    // 2. Setup Canvas pentru Animație (The "SnapVibe" dynamic backgrounds)
     const card = document.querySelector('.wall-card');
-    if(!document.getElementById('atmoMesh')) {
-        const mesh = document.createElement('div');
-        mesh.id = 'atmoMesh';
-        mesh.className = 'atmo-mesh-layer';
-        card.prepend(mesh);
-    }
-};
-
-window.applyAtmosphere = (index) => {
-    const atmo = ATMOSPHERES_DB[index];
-    const root = document.documentElement;
-
-    // Actualizăm variabilele CSS care controlează TOTUL (Inclusiv Toolbar)
-    root.style.setProperty('--atmo-bg', atmo.bg);
-    root.style.setProperty('--atmo-border', atmo.main);
-    root.style.setProperty('--atmo-main', atmo.main); // Folosit de mesh gradient
-    root.style.setProperty('--atmo-input-bg', atmo.inBg);
-    root.style.setProperty('--atmo-input-text', atmo.inText);
-    root.style.setProperty('--atmo-glow', atmo.main + '44');
-
-    localStorage.setItem('saved_atmo_index', index);
-    showToast(`Realitate Shifter: ${atmo.name}`, "success");
-};
-
-window.setPersonalAccent = (p, d) => {
-    document.documentElement.style.setProperty('--my-acc', p);
-    document.documentElement.style.setProperty('--my-acc-dark', d);
-    localStorage.setItem('my_acc_p', p);
-    localStorage.setItem('my_acc_d', d);
-    showToast("Accent personal salvat!", "success");
-};
-
-// Pornim motorul la finalul onAuthStateChanged sau DOMContentLoaded
-document.addEventListener('DOMContentLoaded', () => {
-    window.initAtmoEngine();
-    const saved = localStorage.getItem('saved_atmo_index');
-    window.applyAtmosphere(saved !== null ? parseInt(saved) : 0);
-
-    const ap = localStorage.getItem('my_acc_p');
-    const ad = localStorage.getItem('my_acc_d');
-    if(ap && ad) {
-        document.documentElement.style.setProperty('--my-acc', ap);
-        document.documentElement.style.setProperty('--my-acc-dark', ad);
-    }
-});
-
-// Generare automată până la 50 folosind Golden Ratio pentru culori armonioase
-for(let i = 11; i <= 50; i++) {
-    const hue = (i * 137.5) % 360; // Unghiul Fibonacci pentru culori unice
-    ATMOSPHERES_DB.push({
-        name: `SHIFT ${i}`,
-        main: `hsl(${hue}, 80%, 50%)`,
-        bg: `hsl(${hue}, 30%, 4%)`,
-        inBg: `hsla(${hue}, 30%, 10%, 0.95)`,
-        inText: '#fff',
-        pCount: 30 + (i % 30)
-    });
-}
-
-let atmoCtx, atmoCanvas, particles = [], animationId;
-
-window.initAtmoEngine = () => {
-    const container = document.getElementById('atmoOptionsContainer'); // Folosește ID-ul din modalul tău
-    const grid = document.getElementById('atmoGridV3') || container; 
-    if(!grid) return;
-    
-    grid.innerHTML = '';
-    ATMOSPHERES_DB.forEach((atmo, index) => {
-        const btn = document.createElement('div');
-        btn.className = 'atmo-option-btn'; // Stilul tău de grid
-        btn.style.background = atmo.bg;
-        btn.style.borderColor = atmo.main;
-        btn.onclick = () => window.applyAtmosphere(index);
-        grid.appendChild(btn);
-    });
-
-    // Setup Canvas pentru Animație de fundal
-    const card = document.querySelector('.wall-card');
-    if(!document.getElementById('atmoCanvas')) {
+    if(card && !document.getElementById('atmoCanvas')) {
         atmoCanvas = document.createElement('canvas');
         atmoCanvas.id = 'atmoCanvas';
         atmoCanvas.style.position = 'absolute';
         atmoCanvas.style.inset = '0';
         atmoCanvas.style.zIndex = '0';
         atmoCanvas.style.pointerEvents = 'none';
-        atmoCanvas.style.opacity = '0.5';
+        atmoCanvas.style.opacity = '0.4';
         card.prepend(atmoCanvas);
         atmoCtx = atmoCanvas.getContext('2d');
         
@@ -4109,14 +4035,14 @@ window.applyAtmosphere = (index) => {
     const atmo = ATMOSPHERES_DB[index];
     const root = document.documentElement;
 
-    // 1. Schimbăm culorile globale (Inclusiv Toolbar-ul prin variabile)
+    // Actualizăm variabilele CSS (Colorăm Fundalul, Border-ul și TOOLBAR-ul)
     root.style.setProperty('--atmo-bg', atmo.bg);
     root.style.setProperty('--atmo-border', atmo.main);
     root.style.setProperty('--atmo-input-bg', atmo.inBg);
     root.style.setProperty('--atmo-input-text', atmo.inText);
     root.style.setProperty('--atmo-glow', atmo.main + '44');
 
-    // 2. Resetăm și generăm particule noi pentru tema aleasă
+    // Resetăm și generăm particule noi pentru tema aleasă
     particles = [];
     for(let i = 0; i < atmo.pCount; i++) {
         particles.push({
@@ -4129,7 +4055,7 @@ window.applyAtmosphere = (index) => {
     }
 
     localStorage.setItem('saved_atmo_index', index);
-    showToast(`Realitate: ${atmo.name}`, "success");
+    showToast(`Atmosferă: ${atmo.name}`, "success");
 };
 
 function animateAtmo() {
@@ -4159,9 +4085,10 @@ window.setPersonalAccent = (p, d) => {
     document.documentElement.style.setProperty('--my-acc-dark', d);
     localStorage.setItem('my_acc_p', p);
     localStorage.setItem('my_acc_d', d);
-    showToast("Accent salvat!", "success");
+    showToast("Accent personal salvat!", "success");
 };
 
+// Pornim motorul o singură dată
 document.addEventListener('DOMContentLoaded', () => {
     window.initAtmoEngine();
     const saved = localStorage.getItem('saved_atmo_index');
@@ -4174,7 +4101,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.style.setProperty('--my-acc-dark', ad);
     }
 });
-    // --- COSMETICS & BADGES DB ---
     const BADGES_DB = [
     { id: 'b_boss', text: 'BOSS DE BOSS', color: 'linear-gradient(45deg, #ffd700, #ffaa00)', price: 2000, icon: 'fa-crown' },
     
