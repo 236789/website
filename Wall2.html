@@ -3216,7 +3216,7 @@ let player, platforms, fireballs, score, gameRunning, keys = {};
 let isFallingBack = false;
 
 let lastShardMilestone = 0; // <--- MOVE IT TO THIS POSITION
-
+let lastStarMilestone = 0; // Pentru a urmări pragul de 10.000m
 
 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) mobileHUD.style.display = 'flex';
 window.addEventListener('keydown', e => { if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) e.preventDefault(); keys[e.key] = true; });
@@ -3509,6 +3509,10 @@ if(this.vy > 0 && this.y + PLAYER_SIZE < ey + 25) {
         if (Math.random() < 0.10) { // 10% chance
             window.collectItem('VOID_SHARD');
         }
+        if (Math.random() < 0.02) { 
+            window.collectItem('ALMIGHTY_STAR');
+            window.showToast("The enemy dropped an Almighty Star! ⭐");
+        } 
     }
     playSFX(sfx.kill);
 }
@@ -3705,9 +3709,9 @@ function createPlatform(y, forceNormal = false) {
     // Count active enemies
     let activeEnemies = platforms.filter(p => p.enemy && !p.enemy.dead).length;
 
-    // --- DIFFICULTY TIERS ---
+// --- 1. DIFFICULTY TIERS (Platform Types) ---
     let coinChance = 0.08; 
-    let enemyChance = 0.15; // Raised chance, but restricted by the logic below
+    let enemyChance = 0.15; 
     let maxEnemyHp = 1;
 
     if (score < 5000) {
@@ -3716,17 +3720,6 @@ function createPlatform(y, forceNormal = false) {
             else if (score > 500 && r > 0.85) type = 'FRAGILE'; 
             else if (r > 0.92) type = 'HEAL';
         }
-
-    // Almighty Stars (Extremely Rare - only after 20k meters)
-    else if (score > 20000 && rItem < 0.005) { 
-        item = 'ALMIGHTY_STAR'; 
-    }
-    // Void Shards (Very Rare - only after 10k meters)
-    else if (score > 10000 && rItem < 0.015) { 
-        item = 'VOID_SHARD'; 
-    }
-
-
     } else if (score < 15000) {
         maxEnemyHp = 2;
         coinChance = 0.10;
@@ -3745,9 +3738,8 @@ function createPlatform(y, forceNormal = false) {
         }
     }
 
-    // --- NEW ENEMY SPAWN LOGIC (FIXED) ---
-    // Rule 1: Max 2 enemies on screen.
-    // Rule 2: At least 12 platforms must exist between enemies.
+    // --- 2. ENEMY SPAWN LOGIC (Inamici) ---
+    let activeEnemies = platforms.filter(p => p.enemy && !p.enemy.dead).length;
     let canSpawnEnemy = (activeEnemies < 2) && 
                         (platformCounter - lastEnemyPlatform > 12) && 
                         (score > 1500);
@@ -3761,24 +3753,24 @@ function createPlatform(y, forceNormal = false) {
             hp: hp,
             maxHp: hp 
         };
-        lastEnemyPlatform = platformCounter; // Mark the platform index
+        lastEnemyPlatform = platformCounter;
     }
 
-    // --- ITEM SPAWN LOGIC ---
+    // --- 3. ITEM SPAWN LOGIC (Platforme) ---
+    // Punem iteme doar dacă nu e inamic, nu sunt țepi și nu e platformă de boost
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random(); 
 
-
-        // 1. ALMIGHTY STARS (Extrem de rare: 0.5% șansă după 20.000m)
-        if (score > 5000 && rItem < 0.005) {
+        // 1. ALMIGHTY STAR (3% șansă peste tot)
+        if (rItem < 0.03) {
             item = 'ALMIGHTY_STAR';
         }
-        // 2. VOID SHARDS (15% șansă după 5000m)
+        // 2. VOID SHARDS (15% șansă doar după 5000m)
         else if (score > 5000 && rItem < 0.15) { 
             item = 'VOID_SHARD'; 
         }
-        // Buffs (Rare)
-        if (score > 3000 && rItem < 0.05) { 
+        // 3. BUFF-URI (5% șansă după 3000m)
+        else if (score > 3000 && rItem < 0.05) { 
             const buffRoll = Math.random();
             if (buffRoll < 0.20)      item = 'BUFF_TIMESTOP'; 
             else if (buffRoll < 0.40) item = 'BUFF_HP';       
@@ -3786,16 +3778,15 @@ function createPlatform(y, forceNormal = false) {
             else if (buffRoll < 0.80) item = 'BUFF_FIRE';
             else                      item = 'BUFF_MAGNET';   
         }
-        // Diamonds (Very Rare)
+        // 4. DIAMANTE (După 8000m)
         else if (score > 8000 && rItem < 0.02) { 
             item = 'DIAMOND'; 
         } 
-        // Coins (Reduced frequency)
+        // 5. BANNI (COINS)
         else if (rItem < coinChance) { 
             item = 'COIN'; 
         }
     }
-
     return { 
         x: Math.random() * (canvas.width - PLATFORM_WIDTH), 
         y: y, startY: y, width: PLATFORM_WIDTH, 
@@ -3824,7 +3815,7 @@ window.collectItem = async (type) => {
         flyRewardAnim('diamond');
         await updateDoc(userRef, { diamonds: increment(1) });
     }
-    if (type === 'VOID_SHARD') {
+   else if (type === 'VOID_SHARD') {
         playSFX(sfx.diamond);
         flyRewardAnim('VOID_SHARD'); // <--- Aici trebuie să fie string-ul corect
         await updateDoc(userRef, { voidShards: increment(1) });
@@ -3989,13 +3980,25 @@ function gameLoop() {
     player.draw();
 
 
-// --- NEW MILESTONE LOGIC ---
-if (score >= lastShardMilestone + 5000) {
-    lastShardMilestone += 5000;
-    window.collectItem('VOID_SHARD');
-    window.showToast(" Milestone Reached! +1 Void Shard");
-}
+// --- MILESTONES ---
+    
+    // Void Shard: 1 garantat la fiecare 5000m
+    if (score >= lastShardMilestone + 5000) {
+        lastShardMilestone += 5000;
+        window.collectItem('VOID_SHARD');
+        window.showToast("💎 Milestone! +1 Void Shard");
+    }
 
+    // Almighty Star: 25% șansă la fiecare 10.000m
+    if (score >= lastStarMilestone + 10000) {
+        lastStarMilestone += 10000;
+        if (Math.random() < 0.25) { 
+            window.collectItem('ALMIGHTY_STAR');
+            window.showToast("⭐ Cosmic Luck! +1 Almighty Star");
+        } else {
+            window.showToast("Reached 10k! No star this time...");
+        }
+    }
     // --- 4. PLATFORM LOGIC ---
     let highestY = canvas.height;
     let lowestY = -1000;
