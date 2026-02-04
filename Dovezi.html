@@ -3872,9 +3872,10 @@ async function loadGallery() {
             const data = docSnap.data();
             const id = docSnap.id;
             
-            // Filtrare client-side pentru a suporta și postările vechi fără câmpul 'type'
-            if (currentMediaTypeFilter === 'image' && data.type === 'video') return; 
-            if (currentMediaTypeFilter === 'video' && data.type !== 'video') return;
+// TO THIS (More flexible):
+const isVideo = data.type === 'video';
+if (currentMediaTypeFilter === 'image' && isVideo) return;
+if (currentMediaTypeFilter === 'video' && !isVideo) return;
 
             const likesCount = data.likes ? Object.keys(data.likes).length : 0;
             const isLiked = user && data.likes && data.likes[user.uid];
@@ -4008,18 +4009,22 @@ window.savePostEdit = async () => {
 };
 document.getElementById('postBtn').onclick = async () => {
     if(filesToUpload.length === 0) return alert("Selectează fișiere!");
+
     const btn = document.getElementById('postBtn');
     btn.disabled = true; 
     btn.innerText = "SE ÎNCARCĂ...";
     
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const userData = userSnap.data() || {};
+
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue; 
 
         const item = filesToUpload[i];
-        // Dacă e imagine comprimată, blob-ul e în item.blob, dacă e video e item direct
-        const blob = item.blob || item; 
-        const fileName = item.name || item.name;
-        const isVideo = (item.type === 'video' || (item.type && item.type.startsWith('video/')));
+        // If it's an image, use the .blob property from CompressorJS
+        const blob = item.blob ? item.blob : item; 
+        const fileName = item.name || `file_${Date.now()}_${i}`;
+        const isVideo = (item.type === 'video' || (blob.type && blob.type.startsWith('video/')));
         
         const title = document.getElementById(`t-${i}`)?.value || "";
         const desc = document.getElementById(`d-${i}`)?.value || "";
@@ -4028,22 +4033,27 @@ document.getElementById('postBtn').onclick = async () => {
         const task = uploadBytesResumable(sRef, blob);
 
         await new Promise((resolve) => {
-            task.on('state_changed', null, null, async () => {
-                const url = await getDownloadURL(task.snapshot.ref);
-                await addDoc(collection(db, "dovezi_posts"), {
-                    img: url, 
-                    type: isVideo ? 'video' : 'image',
-                    title: title, desc: desc,
-                    likes: {}, createdAt: serverTimestamp(),
-                    authorName: auth.currentUser.displayName,
-                    authorPhoto: auth.currentUser.photoURL,
-                    authorUid: auth.currentUser.uid
-                });
-                resolve();
-            });
+            task.on('state_changed', null, 
+                (err) => { console.error(err); resolve(); }, 
+                async () => {
+                    const url = await getDownloadURL(task.snapshot.ref);
+                    await addDoc(collection(db, "dovezi_posts"), {
+                        img: url, 
+                        type: isVideo ? 'video' : 'image', // This saves the type correctly
+                        title: title, 
+                        desc: desc,
+                        likes: {}, 
+                        createdAt: serverTimestamp(),
+                        authorName: userData.username || auth.currentUser.displayName,
+                        authorPhoto: userData.image || auth.currentUser.photoURL,
+                        authorUid: auth.currentUser.uid
+                    });
+                    resolve();
+                }
+            );
         });
     }
-    alert("Postări urcate!");
+    alert("Postat cu succes!");
     location.reload();
 };
 
