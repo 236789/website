@@ -3053,6 +3053,23 @@ body {
 .msg-wrapper.theirs .msg-content-column {
     align-items: flex-start;
 }
+
+
+/* ICON BACKGROUND SYSTEM */
+.bg-icon-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: 0.2; /* Subtle visibility */
+}
+
+.floating-icon {
+    position: absolute;
+    transition: color 0.8s ease;
+    filter: drop-shadow(0 0 5px rgba(0,0,0,0.2));
+}
   </style>
 
 </head>
@@ -3493,6 +3510,8 @@ body {
     </p>
 
     <div class="wall-card">
+<div id="iconBgLayer" class="bg-icon-layer"></div>
+
         <!-- LOCKED STATE -->
         <div id="lockedView" class="locked-view">
             <i class="fas fa-lock lock-icon"></i>
@@ -4190,6 +4209,9 @@ window.applyAtmosphere = (index) => {
     if(visual) visual.style.opacity = "0.6";
 
     localStorage.setItem('saved_atmo_index', index);
+
+// Add this line at the very end of your applyAtmosphere function
+window.updateIconContrast();
 };
 
 // Start the engine
@@ -4198,6 +4220,77 @@ document.addEventListener('DOMContentLoaded', () => {
     const saved = localStorage.getItem('saved_atmo_index');
     window.applyAtmosphere(saved !== null ? parseInt(saved) : 0);
 });
+
+
+// 1. LIST OF 50 UNIQUE ICONS (Font Awesome)
+const AWESOME_ICONS = [
+    "fa-star", "fa-heart", "fa-fire", "fa-ghost", "fa-robot", "fa-bolt", "fa-crown", "fa-gem", 
+    "fa-rocket", "fa-skull", "fa-gamepad", "fa-moon", "fa-sun", "fa-cloud", "fa-music", 
+    "fa-bomb", "fa-eye", "fa-dragon", "fa-meteor", "fa-shield-alt", "fa-dna", "fa-atom",
+    "fa-user-astronaut", "fa-bacterium", "fa-brain", "fa-cat", "fa-dog", "fa-cookie",
+    "fa-pizza-slice", "fa-anchor", "fa-mountain", "fa-tree", "fa-leaf", "fa-feather",
+    "fa-hat-wizard", "fa-magic", "fa-mask", "fa-key", "fa-lock", "fa-bell", "fa-bug",
+    "fa-code", "fa-terminal", "fa-satellite", "fa-microchip", "fa-flask", "fa-glasses",
+    "fa-compass", "fa-map", "fa-paper-plane"
+];
+
+// 2. GENERATE THE BACKGROUND
+window.initIconBackground = () => {
+    const layer = document.getElementById('iconBgLayer');
+    if (!layer) return;
+    layer.innerHTML = ''; // Clear old icons
+
+    for (let i = 0; i < 50; i++) {
+        const iconName = AWESOME_ICONS[i % AWESOME_ICONS.length];
+        const iElem = document.createElement('i');
+        iElem.className = `fas ${iconName} floating-icon`;
+        
+        // Random Position & Appearance
+        const top = Math.random() * 100;
+        const left = Math.random() * 100;
+        const size = 15 + Math.random() * 30; // 15px to 45px
+        const rotation = Math.random() * 360;
+
+        iElem.style.top = `${top}%`;
+        iElem.style.left = `${left}%`;
+        iElem.style.fontSize = `${size}px`;
+        iElem.style.transform = `rotate(${rotation}deg)`;
+        
+        layer.appendChild(iElem);
+    }
+    // Update colors based on current theme
+    window.updateIconContrast();
+};
+
+// 3. CONTRAST LOGIC (Changes color based on background)
+window.updateIconContrast = () => {
+    // We look at the --atmo-bg variable to decide color
+    const bgHex = getComputedStyle(document.documentElement).getPropertyValue('--atmo-bg').trim();
+    
+    // Simple Brightness Check (If background is dark, use light icons and vice versa)
+    // Dark colors usually start with #0... or are very low numbers
+    // We also check for specific "Light" themes like Frozen or Carbon
+    const currentAtmoIdx = localStorage.getItem('saved_atmo_index');
+    
+    let iconColor = "#ffffff"; // Default for dark backgrounds
+    
+    // If theme is Frozen (8) or Carbon (9), use Black icons
+    if (currentAtmoIdx == 8 || currentAtmoIdx == 9) {
+        iconColor = "#000000";
+    }
+
+    // Apply color to all icons
+    document.querySelectorAll('.floating-icon').forEach(icon => {
+        icon.style.color = iconColor;
+    });
+};
+
+// Start the icons when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    window.initIconBackground();
+});
+
+
     const BADGES_DB = [
     { id: 'b_boss', text: 'BOSS DE BOSS', color: 'linear-gradient(45deg, #ffd700, #ffaa00)', price: 2000, icon: 'fa-crown' },
     
