@@ -10156,60 +10156,70 @@ async function resetUserQuests(userRef, snapData) {
     let isAwardingInProgress = false; // Previne dublarea ferestrelor
 
 // --- 5. AUTH & LOGIC (UPDATED WITH BAN CHECK) ---
-
-onAuthStateChanged(auth, async (user) => {
+    onAuthStateChanged(auth, async (user) => {
         if (user) {
             const userRef = doc(db, "accounts", user.uid);
-            
-            // --- BAN SYSTEM LOGIC ---
-            const snapCheck = await getDoc(userRef);
-            const isDbBanned = snapCheck.exists() && snapCheck.data().isBanned === true;
 
-            if (isDbBanned) {
-                // 1. EXECUTE BAN (If DB says banned)
-                console.log("ACCOUNT BANNED. NUKING INTERFACE.");
-                localStorage.setItem('ksda_perma_ban', 'true');
-                sessionStorage.setItem('isBanned', 'true');
+            // --- REAL-TIME BAN SYSTEM ---
+            // We use onSnapshot instead of getDoc so it triggers INSTANTLY if you ban them while they are online.
+            onSnapshot(userRef, (snapCheck) => {
+                // Ensure document exists before checking data
+                if (snapCheck.exists()) {
+                    const data = snapCheck.data();
+                    
+                    if (data.isBanned === true) {
+                        // 1. EXECUTE BAN (If DB says banned)
+                        console.log("ACCOUNT BANNED LIVE. NUKING INTERFACE.");
+                        localStorage.setItem('ksda_perma_ban', 'true');
+                        sessionStorage.setItem('isBanned', 'true');
 
-                // Remove Site Content
-                const content = document.getElementById('siteContent');
-                const sideMenu = document.getElementById('sideMenu');
-                const header = document.querySelector('.header-container');
-                if(content) content.remove();
-                if(sideMenu) sideMenu.remove();
-                if(header) header.remove();
+                        // Remove Site Content to prevent interaction
+                        const content = document.getElementById('siteContent');
+                        const sideMenu = document.getElementById('sideMenu');
+                        const header = document.querySelector('.header-container');
+                        const botBtn = document.getElementById('botBtn'); // Hide bot trigger
 
-                // Show Overlay
-                const overlay = document.getElementById('bannedOverlay');
-                if(overlay) {
-                    overlay.style.display = 'flex';
-                    document.getElementById('globalBanReason').innerText = "Cont Banat Permanent";
-                    document.getElementById('globalBanIp').innerText = "ID: " + user.uid;
+                        if (content) content.style.display = 'none';
+                        if (sideMenu) sideMenu.style.display = 'none';
+                        if (header) header.style.display = 'none';
+                        if (botBtn) botBtn.style.display = 'none';
+
+                        // Show Overlay
+                        const overlay = document.getElementById('bannedOverlay');
+                        if (overlay) {
+                            overlay.style.display = 'flex';
+                            document.getElementById('globalBanReason').innerText = data.banReason || "Cont Banat Permanent";
+                            document.getElementById('globalBanIp').innerText = "ID: " + user.uid;
+                        }
+                        
+                        document.body.style.overflow = 'hidden';
+
+                        // Optional: Force Sign Out so they can't use API keys
+                        // signOut(auth); 
+
+                        // Anti-Tamper
+                        document.addEventListener('contextmenu', event => event.preventDefault());
+                        document.onkeydown = function(e) {
+                            return false; // Block all keys
+                        }
+                    } 
+                    else {
+                        // 2. UNBAN RECOVERY (SELF-HEALING)
+                        // If DB says NOT banned, but browser has the mark:
+                        if (localStorage.getItem('ksda_perma_ban') === 'true') {
+                            console.log("Account is safe. Removing local ban mark...");
+                            localStorage.removeItem('ksda_perma_ban');
+                            sessionStorage.removeItem('isBanned');
+                            window.location.reload(); // Reload to restore the UI cleanly
+                        } else {
+                            // 3. SAFE TO LOAD - REVEAL SITE
+                            // Only now do we show the site content
+                            document.body.classList.add('site-loaded');
+                        }
+                    }
                 }
-                document.body.style.overflow = 'hidden';
-
-                // Anti-Tamper
-                document.addEventListener('contextmenu', event => event.preventDefault());
-                document.onkeydown = function(e) {
-                    if(e.keyCode == 123) return false; 
-                    if(e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0))) return false;
-                    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
-                }
-                return; // STOP EXECUTION
-            }  
-            else {
-                // 2. UNBAN RECOVERY (SELF-HEALING)
-                // If DB says NOT banned, but browser has the mark, remove it and reload.
-                if (localStorage.getItem('ksda_perma_ban') === 'true') {
-                    console.log("Account is safe. Removing local ban mark...");
-                    localStorage.removeItem('ksda_perma_ban');
-                    sessionStorage.removeItem('isBanned');
-                    window.location.reload(); // Reload to restore the deleted site content
-                    return;
-                }
-            }
-            // --- END BAN LOGIC ---
-
+            });
+            // --- END REAL-TIME BAN LOGIC --
             headerLoginText.innerText = "ACCOUNT";
             headerUserImg.src = user.photoURL;
             headerUserImg.style.display = "block";
