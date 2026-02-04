@@ -6486,181 +6486,96 @@ else if (data.type === 'vocal') {
             // SUB-SECTION: INTERACTION LAYERS (REACTIONS / MENU / SEEN)
             // -----------------------------------------------------------------
 
-            // Reaction Pill Generation:
+         // --- 1. REACTION PILLS ---
             let reactionsContainerHtml = "";
             if (data.reactions && Object.keys(data.reactions).length > 0) {
-                reactionsContainerHtml = `<div class="msg-reactions" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">`;
+                reactionsContainerHtml = `<div class="msg-reactions">`;
                 const reactionMap = {};
-                
-                Object.values(data.reactions).forEach(emoji => { 
-                    reactionMap[emoji] = (reactionMap[emoji] || 0) + 1; 
-                });
-                
+                Object.values(data.reactions).forEach(emoji => { reactionMap[emoji] = (reactionMap[emoji] || 0) + 1; });
                 for (let [emoji, count] of Object.entries(reactionMap)) { 
                     reactionsContainerHtml += `
-                        <span class="reaction-badge" 
-                              style="cursor:pointer; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:20px; font-size:11px; border:1px solid rgba(255,255,255,0.1);"
-                              onclick="window.openReactionList('${msgId}', '${emoji}')">
-                            ${emoji} <span style="font-weight:800; margin-left:2px;">${count}</span>
+                        <span class="reaction-badge" onclick="window.openReactionList('${msgId}', '${emoji}')">
+                            ${emoji} <span>${count}</span>
                         </span>`; 
                 }
                 reactionsContainerHtml += `</div>`;
             }
 
-            // Seen Indicator logic:
-            const totalSeen = (data.seenBy || []).length;
-            const seenIndicatorHtml = `
-                <button class="seen-btn ${totalSeen > 0 ? 'active' : ''}" 
-                        style="background:none; border:none; color:var(--dim); font-size:10px; cursor:pointer;"
-                        onclick="window.openSeenByList('${msgId}')">
-                    <i class="fas fa-eye"></i> ${totalSeen}
-                </button>`;
-
-            // Dropdown Menu Construction:
-            let dropdownMenuHtml = "";
+            // --- 2. DROPDOWN MENU BUTTONS (ONLY THE BUTTONS) ---
             const isSystemOrBot = (data.uid === 'system-alert' || data.isBot === true);
             const canManage = (isMine || isAdmin || isOwner || isMod);
+            let menuButtonsHtml = "";
 
             if (!isSystemOrBot || isAdmin || isOwner) {
+                // Pinning logic
                 let pinningOption = "";
                 if (isAdmin || isOwner || isMod || isHelper) {
-                    if (data.isPinned) {
-                        pinningOption = `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-thumbtack"></i> Dezfixează</button>`;
-                    } else {
-                        pinningOption = `<button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>`;
-                    }
+                    pinningOption = data.isPinned 
+                        ? `<button onclick="window.unpinMsg('${msgId}')" style="color:#ff4757;"><i class="fas fa-thumbtack"></i> Dezfixează</button>`
+                        : `<button onclick="window.pinMsg('${msgId}')"><i class="fas fa-thumbtack"></i> Fixează</button>`;
                 }
 
-                dropdownMenuHtml = `
-<div class="msg-options" onclick="toggleMenu('${msgId}')" style="cursor:pointer; opacity:0.6; padding:5px;">
-    <i class="fas fa-ellipsis-v"></i>
-</div>
-                    <div id="menu-${msgId}" class="options-dropdown">
-                        ${!isSystemOrBot ? `
-                            <button onclick="startReply('${msgId}', '${(data.name || "User")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')">
-                                <i class="fas fa-reply"></i> Răspunde
-                            </button>
-                            <button onclick="toggleEmojiPicker('${msgId}')">
-                                <i class="far fa-heart"></i> Reacționează
-                            </button>
-                            <button onclick="window.openUserProfile('${data.uid}')">
-                                <i class="fas fa-user"></i> Profil
-                            </button>` : ''}
-
-                        ${pinningOption}
-
-                        ${canManage ? `
-                            <button class="delete-btn" onclick="deleteMsg('${msgId}')">
-                                <i class="fas fa-trash"></i> Șterge
-                            </button>` : ''}
-                        
-                        ${(isAdmin || isOwner || isMod || isHelper) && !isSystemOrBot ? `
-                            <button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')">
-                                <i class="fas fa-microphone-slash"></i> Mute / Unmute
-                            </button>` : ''}
-                        
-                        ${isOwner && !isSystemOrBot ? `
-                            <button style="color:#ff4757; font-weight:900;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')">
-                                <i class="fas fa-gavel"></i> BAN IP
-                            </button>` : ''}
-                        
-                        <div id="emojis-${msgId}" class="emoji-picker-menu">
-      <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤬')">🤬</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙂')">🙂</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😒')">😒</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥱')">🥱</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😘')">😘</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '💩')">💩</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🗣️')">🗣️</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '👌')">👌</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤣')">🤣</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😑')">😑</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙄')">🙄</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤪')">🤪</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥺')">🥺</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤡')">🤡</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤑')">🤑</div>
-                            <div class="emoji-btn" onclick="reactMsg('${msgId}', '😟')">😟</div>
-                        </div>
+                menuButtonsHtml = `
+                    ${!isSystemOrBot ? `
+                        <button onclick="startReply('${msgId}', '${(data.name || "User").replace(/'/g, "\\'")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')">
+                            <i class="fas fa-reply"></i> Răspunde
+                        </button>
+                        <button onclick="toggleEmojiPicker('${msgId}')">
+                            <i class="far fa-heart"></i> Reacționează
+                        </button>
+                        <button onclick="window.openUserProfile('${data.uid}')">
+                            <i class="fas fa-user"></i> Profil
+                        </button>` : ''}
+                    ${pinningOption}
+                    ${canManage ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                    ${(isAdmin || isOwner || isMod || isHelper) && !isSystemOrBot ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}
+                    ${isOwner && !isSystemOrBot ? `<button style="color:#ff4757; font-weight:900;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+                    
+                    <div id="emojis-${msgId}" class="emoji-picker-menu" style="display:none;">
+                        ${['❤️','😂','🔥','👍','😡','🤬','🙂','😒','🥱','😘','💩','😭','🗣️','👌','🤣','😎','🤩','😍','😑','🙄','😱','🤪','🥺','🤡','🤑','😟'].map(e => `<div class="emoji-btn" onclick="reactMsg('${msgId}', '${e}')">${e}</div>`).join('')}
                     </div>
                 `;
             }
 
-            // =================================================================
-            // STAGE 5: FINAL ASSEMBLY & DOM INJECTION (UPDATED)
-            // =================================================================
+            // --- 3. FINAL ASSEMBLY ---
+            let frameHtml = "";
+            if (data.equippedFrame && data.equippedFrame.img) {
+                const scale = data.equippedFrame.scale || 1.45;
+                frameHtml = `<img src="${data.equippedFrame.img}" class="msg-frame-chat" style="width:${scale * 105}%; height:${scale * 105}%;">`;
+            }
+
+            const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
             
-            // 1. Build the PFP + Frame HTML
-            // Build the PFP + Frame HTML
-// =================================================================
-// STAGE 5: FINAL ASSEMBLY (FIXED GAP & MENU POSITION)
-// =================================================================
-
-// 1. Build PFP + Frame
-let frameHtml = "";
-if (data.equippedFrame && data.equippedFrame.img) {
-    const scale = data.equippedFrame.scale || 1.45;
-    frameHtml = `<img src="${data.equippedFrame.img}" class="msg-frame-chat" style="width:${scale * 105}%; height:${scale * 105}%;">`;
-}
-
-const userPfp = data.photo || "https://iili.io/fXks1Dv.png";
-const pfpContainer = `
-    <div class="msg-pfp-wrap" onclick="window.openUserProfile('${data.uid}')">
-        <img src="${userPfp}" class="msg-pfp-img-chat">
-        ${frameHtml}
-    </div>
-`;
-const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
-
-// --- UPDATED STAGE 5 ASSEMBLY ---
-
-const menuDotsBtn = `
-    <div class="msg-options" onclick="event.stopPropagation(); window.toggleMenu('${msgId}')">
-        <i class="fas fa-ellipsis-v"></i>
-    </div>
-`;
-
-// Re-defining the wrapper content
-wrapper.innerHTML = `
-    <div class="msg-row">
-        ${pfpContainer}
-        <div class="msg-content-col">
-            <div class="msg-author">
-                ${fullAuthorHeader}
-                ${menuDotsBtn}
-                
-                <!-- THE MENU IS NOW ANCHORED HERE -->
-                <div id="menu-${msgId}" class="options-dropdown">
-                    ${dropdownMenuHtml} 
+            wrapper.innerHTML = `
+                <div class="msg-row">
+                    <div class="msg-pfp-wrap" onclick="window.openUserProfile('${data.uid}')">
+                        <img src="${data.photo || 'https://iili.io/fXks1Dv.png'}" class="msg-pfp-img-chat">
+                        ${frameHtml}
+                    </div>
+                    <div class="msg-content-col">
+                        <div class="msg-author">
+                            ${fullAuthorHeader}
+                            <div class="msg-options" onclick="toggleMenu('${msgId}')">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </div>
+                        </div>
+                        <div class="${bubbleClass}" onclick="window.tagUser('${cleanNameForTag}')">
+                            ${bubbleContent}
+                        </div>
+                        ${reactionsContainerHtml}
+                        <div class="msg-info">
+                            <span class="msg-time">${time}</span> 
+                            <button class="seen-btn ${(data.seenBy || []).length > 0 ? 'active' : ''}" onclick="window.openSeenByList('${msgId}')">
+                                <i class="fas fa-eye"></i> ${(data.seenBy || []).length}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="${bubbleClass}" onclick="window.tagUser('${cleanNameForTag}')">
-                ${bubbleContent}
-            </div>
-            ${reactionsContainerHtml}
-            <div class="msg-info">
-                <span>${time}</span> ${seenIndicatorHtml}
-            </div>
-        </div>
-    </div>
-
-    
-    <!-- The Menu remains absolute, but the button above triggers it -->
-    <div id="menu-${msgId}" class="options-dropdown">
-        ${dropdownMenuHtml} 
-    </div>
-`;
+                <div id="menu-${msgId}" class="options-dropdown">
+                    ${menuButtonsHtml}
+                </div>
+            `;
+            feed.appendChild(wrapper);
 // Notă: am scos dropdownMenuHtml din fluxul vizual și l-am lăsat ascuns, 
 // dar butonul care îl deschide (menuDotsBtn) e acum lângă nume.
 
