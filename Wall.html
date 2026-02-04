@@ -7,6 +7,8 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
+
+<script src='https://8x8.vc/external_api.js' async></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
@@ -3076,6 +3078,48 @@ body {
 .floating-icon svg {
     fill: none !important;
 }
+
+
+#callBtn {
+    color: #2ecc71;
+    border: 1px solid rgba(46, 204, 113, 0.3);
+}
+#callBtn:hover {
+    background: rgba(46, 204, 113, 0.1);
+    box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
+}
+
+
+
+/* Stil Bulă Exclusivă Kevin-Bot */
+.bubble-bot-exclusive {
+    background: linear-gradient(135deg, #050b14 0%, #0044ff 50%, #050b14 100%) !important;
+    border: 2px solid #29f3ff !important;
+    box-shadow: 0 0 25px rgba(41, 243, 255, 0.4), inset 0 0 15px rgba(0, 242, 234, 0.2) !important;
+    color: #fff !important;
+}
+
+/* Insigna Unică "BOT" */
+.bot-badge-exclusive {
+    background: #fff;
+    color: #000;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 10px #fff;
+    text-transform: uppercase;
+}
+
+/* Textul special al botului */
+.t-bot-exclusive {
+    color: #fff !important;
+    font-weight: 800 !important;
+    text-shadow: 0 0 8px rgba(41, 243, 255, 0.8) !important;
+}
   </style>
 
 </head>
@@ -3237,6 +3281,34 @@ body {
 </div>
 
 <div id="toastBox"></div>
+
+
+
+<!-- CALL INVITATION MODAL -->
+<div id="callInviteModal" class="account-modal-overlay">
+    <div class="account-card pop-fire" style="max-width: 320px;">
+        <div class="profile-frame-wrapper">
+            <img id="callerImg" src="" class="pop-img-inner">
+            <img id="callerFrame" src="" class="pop-frame-overlay" style="display: none;">
+        </div>
+        <h3 id="callerName" class="pop-user">User</h3>
+        <p style="font-family:'Orbitron'; font-size:10px; color:var(--primary); margin-top:5px; animation: pulse 1s infinite;">A PORNIT UN APEL VOCAL...</p>
+        
+        <div class="alert-btns" style="margin-top:20px; width: 100%;">
+            <button class="alert-btn btn-no" onclick="rejectCall()" style="flex:1;">IGNORĂ</button>
+            <button class="alert-btn btn-yes" onclick="joinCall()" style="flex:1; background:#00ff88;">INTRĂ</button>
+        </div>
+    </div>
+</div>
+
+<!-- FLOATING CALL CONTAINER -->
+<div id="activeCallContainer" style="display:none; position: fixed; bottom: 80px; right: 20px; z-index: 15000; width: 300px; height: 400px; background: rgba(8,16,27,0.9); border: 2px solid var(--primary); border-radius: 20px; overflow: hidden; box-shadow: 0 0 30px rgba(0,0,0,0.8);">
+    <div style="background: var(--primary); color: #000; padding: 5px 15px; font-family: 'Orbitron'; font-size: 10px; font-weight: 900; display: flex; justify-content: space-between; align-items: center;">
+        <span>KSDA LIVE CALL</span>
+        <button onclick="closeCallUI()" style="background:none; border:none; cursor:pointer; font-weight:900;">X</button>
+    </div>
+    <div id="jitsi-container" style="width: 100%; height: calc(100% - 25px);"></div>
+</div>
 
 <!-- MODAL ACCOUNT -->
 <div id="accountModal" class="account-modal-overlay">
@@ -3618,6 +3690,10 @@ body {
     <i class="fas fa-palette"></i>
 </button>
 
+<button id="callBtn" class="tool-btn" onclick="initiateCallChoice()">
+    <i class="fas fa-phone-alt"></i>
+</button>
+
         <!-- Vote/Poll Button (Staff Only) -->
         <button id="pollBtn" class="tool-btn" style="display:none;" onclick="openPollCreator()">
             <i class="fas fa-poll"></i>
@@ -3800,6 +3876,143 @@ if (openNotifBtn) {
         notifModal.classList.add('active');
     };
 }
+
+
+
+// --- QUANTUM CALL SYSTEM ---
+let currentJitsiApi = null;
+let activeCallId = null;
+let rejectedCalls = new Set();
+
+// 1. Start the process
+window.initiateCallChoice = async () => {
+    const confirmed = await showCustomConfirm("START APEL", "Vrei să pornești un apel cu toată comunitatea?");
+    if (confirmed) {
+        startKSDACall();
+    }
+};
+
+// 2. Create the call in Firestore
+async function startKSDACall() {
+    if (!auth.currentUser) return;
+
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const userData = userSnap.data();
+
+    // Create a unique room ID
+    const roomName = "KSDA_Wall_" + Math.random().toString(36).substring(7);
+    
+    const callData = {
+        callerUid: auth.currentUser.uid,
+        callerName: userData.username || auth.currentUser.displayName,
+        callerImg: userData.image || auth.currentUser.photoURL,
+        callerFrame: userData.equippedFrame || null,
+        roomName: roomName,
+        startedAt: Date.now(),
+        isActive: true
+    };
+
+    activeCallId = roomName;
+    await setDoc(doc(db, "active_calls", "current_call"), callData);
+    
+    // Auto-join the creator
+    launchJitsi(roomName);
+    sendBotMessage(`📞 ${callData.callerName} a pornit un apel vocal! Intrați să vorbiți.`);
+}
+
+// 3. Listen for incoming calls
+function listenForCalls() {
+    onSnapshot(doc(db, "active_calls", "current_call"), (snap) => {
+        if (snap.exists()) {
+            const data = snap.data();
+            
+            // If the call is older than 2 hours, ignore
+            if (Date.now() - data.startedAt > 7200000) return;
+
+            // Don't show if I am the caller or I already rejected it
+            if (data.callerUid === currentUid || rejectedCalls.has(data.roomName)) return;
+
+            // Show invitation popup
+            showCallInvite(data);
+        } else {
+            document.getElementById('callInviteModal').classList.remove('active');
+        }
+    });
+}
+
+function showCallInvite(data) {
+    const modal = document.getElementById('callInviteModal');
+    document.getElementById('callerName').innerText = data.callerName;
+    document.getElementById('callerImg').src = data.callerImg;
+    
+    const frame = document.getElementById('callerFrame');
+    if (data.callerFrame) {
+        frame.src = data.callerFrame.img;
+        frame.style.display = 'block';
+    } else {
+        frame.style.display = 'none';
+    }
+
+    activeCallId = data.roomName;
+    modal.classList.add('active');
+}
+
+window.rejectCall = () => {
+    rejectedCalls.add(activeCallId);
+    document.getElementById('callInviteModal').classList.remove('active');
+};
+
+window.joinCall = () => {
+    document.getElementById('callInviteModal').classList.remove('active');
+    launchJitsi(activeCallId);
+};
+
+// 4. Launch the Media Interface
+function launchJitsi(roomName) {
+    document.getElementById('activeCallContainer').style.display = 'block';
+    
+    const domain = "meet.jit.si";
+    const options = {
+        roomName: roomName,
+        width: '100%',
+        height: '100%',
+        parentNode: document.querySelector('#jitsi-container'),
+        userInfo: {
+            displayName: auth.currentUser.displayName
+        },
+        configOverwrite: {
+            startWithAudioMuted: false,
+            startWithVideoMuted: true, // Start as Audio call by default
+            prejoinPageEnabled: false,
+            toolbarButtons: ['microphone', 'camera', 'hangup', 'chat']
+        },
+        interfaceConfigOverwrite: {
+            TILE_VIEW_MAX_COLUMNS: 2
+        }
+    };
+
+    if (currentJitsiApi) currentJitsiApi.dispose();
+    currentJitsiApi = new JitsiMeetExternalAPI(domain, options);
+
+    currentJitsiApi.addEventListener('videoConferenceLeft', () => {
+        closeCallUI();
+    });
+}
+
+window.closeCallUI = () => {
+    if (currentJitsiApi) currentJitsiApi.dispose();
+    document.getElementById('activeCallContainer').style.display = 'none';
+    
+    // If I was the caller, I might want to end it for everyone (optional)
+    // For a group chat, we usually just let the call exist until everyone leaves.
+};
+
+// Start listener when logged in
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        listenForCalls();
+    }
+});
 
 window.openPalette = () => {
     // Deschidem modalul de personalizare (asigură-te că ID-ul coincide cu cel din HTML)
@@ -6055,14 +6268,12 @@ async function wipeAllMessages() {
 
 // --- 4. CONFIGURARE BOT ---
 
-// --- BOT MESSAGE SENDER (UPDATED) ---
-async function sendBotMessage(text, customClass = null) {
+async function sendBotMessage(text, customClass = 'bubble-bot-exclusive', replyData = null) {
     try {
-        await addDoc(collection(db, "wall_messages"), {
+        const payload = {
             text: text,
             uid: 'kevin-bot',
             name: 'Kevin-Bot',
-            // Kevin Bot's avatar
             photo: 'https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w',
             ip: 'server',
             isBot: true,
@@ -6072,14 +6283,96 @@ async function sendBotMessage(text, customClass = null) {
             isDeleted: false,
             reactions: {},
             seenBy: [],
-            
-            // --- NEW: Apply Custom Class if provided ---
-            equippedBanner: customClass ? { cssClass: customClass } : null
-        });
+            equippedBanner: { cssClass: customClass },
+            equippedText: { cssClass: 't-bot-exclusive' }
+        };
+
+        // Dacă avem date de reply, le adăugăm în mesaj
+        if (replyData) {
+            payload.replyToId = replyData.id;
+            payload.replyToName = replyData.name;
+            payload.replyToText = replyData.text;
+            payload.replyToUid = replyData.uid;
+        }
+
+        await addDoc(collection(db, "wall_messages"), payload);
     } catch(e) { 
         console.error("Bot fail", e); 
     }
 }
+
+
+// --- KEVIN BOT AUTO-REPLY ENGINE ---
+function initBotListener() {
+    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(1));
+    
+    // Verificăm doar mesajele NOI (după ce s-a încărcat pagina)
+    let isInitialLoad = true;
+
+    onSnapshot(q, (snapshot) => {
+        if (isInitialLoad) {
+            isInitialLoad = false;
+            return;
+        }
+
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const data = change.doc.data();
+                const msgId = change.doc.id;
+
+                // NU răspundem la propriile mesaje ale botului (prevenim loop-ul)
+                if (data.uid === 'kevin-bot' || data.uid === 'system-alert') return;
+
+                const text = data.text ? data.text.toLowerCase() : "";
+                let botResponse = "";
+
+                // --- LOGICA DE RĂSPUNS (KEYWORDS) ---
+                if (text.includes("portret") || text.includes("desen")) {
+                    botResponse = "Vrei un portret? Kevin face magie! 🎨 Verifică secțiunea 'Kevin' pentru prețuri și detalii. ✨";
+                } 
+                else if (text.includes("unde este chatul") || text.includes("community wall")) {
+                    botResponse = "Ești deja pe Community Wall! Aici vorbim, glumim și ne simțim bine. 🗣️💎";
+                }
+                else if (text.includes("top") || text.includes("clasament")) {
+                    botResponse = "Vrei să vezi cine e șeful? 🏆 Verifică secțiunea 'Clasamente' să vezi legendele KSDA!";
+                }
+                else if (text.includes("recenzie") || text.includes("părere")) {
+                    botResponse = "Părerea ta contează! Lasă o recenzie în secțiunea dedicată să știe lumea cât de cool ești! ⭐";
+                }
+                else if (text.includes("feedback") || text.includes("bug")) {
+                    botResponse = "Ai găsit o eroare? 🐛 Raportează-l în secțiunea Feedback și Lost Soul îl va rezolva imediat!";
+                }
+                // --- ADDED: RĂSPUNSURI LA ÎNJURĂTURI (Inspirat din index.html) ---
+                else if (text.match(/(pula|pizda|coaie|muie|futu)/)) {
+                    botResponse = "Educația e gratis, dar văd că tu n-ai vrut nici varianta free. 😑 Ai grijă la limbaj înainte să chem moderatorii! 🚔";
+                }
+                else if (text.includes("kevin")) {
+                    botResponse = "M-a strigat cineva? Sunt aici, mereu la datorie! 😎 Ce pot să fac pentru tine?";
+                }
+
+                // Dacă s-a găsit un răspuns, botul dă Reply
+                if (botResponse !== "") {
+                    // Adăugăm o mică întârziere să pară că "scrie"
+                    setTimeout(() => {
+                        sendBotMessage(botResponse, 'bubble-bot-exclusive', {
+                            id: msgId,
+                            name: data.name,
+                            text: data.text,
+                            uid: data.uid
+                        });
+                    }, 1500);
+                }
+            }
+        });
+    });
+}
+
+// Lansează motorul botului
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        initBotListener();
+    }
+});
 
 
     const seenObserver = new IntersectionObserver((entries) => {
@@ -6415,7 +6708,10 @@ docs.forEach(data => {
             if (isBot) finalDisplayName = `🤖 ${finalDisplayName}`;
             if (textStyleClass) finalDisplayName = `<span class="${textStyleClass}">${(data.name || "Anonim")}</span>`;
 
-            let staffBadgeHtml = "";
+let staffBadgeHtml = "";
+if (isBot) staffBadgeHtml = ` <span class="bot-badge-exclusive">BOT</span>`; // NOU
+else if (userIsOwner) staffBadgeHtml = ` <span class="owner-badge">OWNER</span>`;
+
             if (userIsOwner) staffBadgeHtml = ` <span class="owner-badge">OWNER</span>`;
             else if (userIsAdmin) staffBadgeHtml = ` <span class="admin-badge">ADMIN</span>`;
             else if (userIsMod) staffBadgeHtml = ` <span class="mod-badge">MOD</span>`;
