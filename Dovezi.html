@@ -3846,35 +3846,25 @@ window.setMediaTypeFilter = (type) => {
 
 
 
-// --- 4. LOAD GALLERY (Filters & Renders Video) ---
+// --- 4. LOAD GALLERY (Actualizat cu Error Handling) ---
 async function loadGallery() {
     const cont = document.getElementById('galleryContainer');
+    if (!cont) return;
+    
     cont.innerHTML = '<p style="text-align:center; width:100%; color:#aaa;">Se încarcă...</p>';
 
-    // Query Filters based on the button selected
-    let q;
+    // Construim query-ul de bază
+    let q = query(collection(db, "dovezi_posts"), orderBy("createdAt", "desc"));
     
-    if (currentMediaTypeFilter === 'video') {
-        q = query(
-            collection(db, "dovezi_posts"), 
-            where("type", "==", "video"), 
-            orderBy("createdAt", "desc")
-        );
-    } else {
-        // For images, we get items that are 'image' OR don't have a type (old posts)
-        // Since Firestore doesn't support OR queries easily here, we just filter logic client-side for old posts or rely on standard query
-        q = query(collection(db, "dovezi_posts"), orderBy("createdAt", "desc"));
-    }
-    
-    // Check Admin Status
     const user = auth.currentUser;
     const isAdmin = user && (user.email === 'nicaemmanuel433qe@gmail.com' || user.email === 'kevin.trinity2020@gmail.com');
 
+    // Snapshot listener cu gestionare erori
     onSnapshot(q, (snap) => {
         cont.innerHTML = '';
         
         if (snap.empty) {
-            cont.innerHTML = '<p style="text-align:center; width:100%; color:#aaa;">Nu există postări de acest tip.</p>';
+            cont.innerHTML = '<p style="text-align:center; width:100%; color:#aaa;">Nu există postări încă.</p>';
             return;
         }
 
@@ -3882,17 +3872,17 @@ async function loadGallery() {
             const data = docSnap.data();
             const id = docSnap.id;
             
-            // CLIENT SIDE FILTERING FOR OLD POSTS (Assume no type = image)
+            // Filtrare client-side pentru a suporta și postările vechi fără câmpul 'type'
             if (currentMediaTypeFilter === 'image' && data.type === 'video') return; 
             if (currentMediaTypeFilter === 'video' && data.type !== 'video') return;
 
-            const likesCount = Object.keys(data.likes || {}).length;
+            const likesCount = data.likes ? Object.keys(data.likes).length : 0;
             const isLiked = user && data.likes && data.likes[user.uid];
 
+            // Protecție caractere speciale pentru atributele onclick
             const safeTitle = (data.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const safeDesc = (data.desc || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
 
-            // --- RENDER LOGIC (Video vs Image) ---
             let mediaHtml = '';
             if (data.type === 'video') {
                 mediaHtml = `
@@ -3905,7 +3895,6 @@ async function loadGallery() {
 
             cont.innerHTML += `
             <div class="gallery-card" data-id="${id}">
-                
                 ${isAdmin ? `
                 <div class="admin-actions-wrapper">
                     <button class="admin-icon-btn btn-edit" onclick="openEditPost('${id}', '${safeTitle}', '${safeDesc}')">
@@ -3922,7 +3911,6 @@ async function loadGallery() {
                     <div class="card-user-name">${data.authorName || 'Membru KSDA'}</div>
                 </div>
 
-                <!-- IMAGE/VIDEO WRAPPER -->
                 <div class="img-wrapper">
                     ${mediaHtml}
                 </div>
@@ -3941,7 +3929,7 @@ async function loadGallery() {
                                 <i class="far fa-comment-dots"></i>
                             </button>
                         </div>
-                        <button class="action-btn-pill" onclick="sharePost('${data.img}')" style="padding: 8px 12px;">
+                        <button class="action-btn-pill" onclick="sharePost('${data.img}')">
                             <i class="fas fa-share-nodes"></i>
                         </button>
                     </div>
@@ -3949,15 +3937,20 @@ async function loadGallery() {
 
                 <div class="card-comments-section" id="com-sec-${id}" style="display:none;">
                     <div class="card-comments-list" id="list-${id}"></div>
-                    <div class="card-input-area" style="display:flex; gap:10px; margin-top:10px; padding:10px;">
-                        <input class="modern-input" id="inp-${id}" placeholder="Scrie un comentariu..." style="margin:0; flex:1; padding:10px;">
-                        <button class="card-send-btn" onclick="postComment('${id}')" style="background:var(--primary); border:none; border-radius:12px; width:45px; height:45px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
-                            <i class="fas fa-paper-plane" style="color:#000; font-size:16px;"></i>
+                    <div class="card-input-area" style="display:flex; gap:10px; padding:10px;">
+                        <input class="modern-input" id="inp-${id}" placeholder="Scrie..." style="margin:0; flex:1;">
+                        <button class="card-send-btn" onclick="postComment('${id}')">
+                            <i class="fas fa-paper-plane" style="color:#000;"></i>
                         </button>
                     </div>
                 </div>
             </div>`;
         });
+    }, (error) => {
+        // REZOLVARE EROARE PERMISIUNI: 
+        // Dacă utilizatorul nu are voie să citească, afișăm un mesaj în loc să dăm crash.
+        console.error("Eroare permisiuni Firestore:", error);
+        cont.innerHTML = '<p style="text-align:center; color:#ff4757; padding:20px;">Trebuie să fii logat pentru a vedea arhiva sau permisiunile sunt insuficiente.</p>';
     });
 }
 
@@ -4013,62 +4006,44 @@ window.savePostEdit = async () => {
         alert("Eroare la editare: " + e.message);
     }
 };
-// --- 3. UPLOAD FUNCTION (Saves 'type' to database) ---
 document.getElementById('postBtn').onclick = async () => {
     if(filesToUpload.length === 0) return alert("Selectează fișiere!");
-
     const btn = document.getElementById('postBtn');
     btn.disabled = true; 
     btn.innerText = "SE ÎNCARCĂ...";
     
-    document.getElementById('uploadProgress').style.display = 'block';
-    
-    // Get User Data
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const userData = userSnap.data();
-
-    let completedCount = 0;
-
     for (let i = 0; i < filesToUpload.length; i++) {
         if(!filesToUpload[i]) continue; 
 
-        const file = filesToUpload[i];
-        const isVideo = file.type.startsWith('video/'); // Detect type
+        const item = filesToUpload[i];
+        // Dacă e imagine comprimată, blob-ul e în item.blob, dacă e video e item direct
+        const blob = item.blob || item; 
+        const fileName = item.name || item.name;
+        const isVideo = (item.type === 'video' || (item.type && item.type.startsWith('video/')));
         
-        const title = document.getElementById(`t-${i}`) ? document.getElementById(`t-${i}`).value : "";
-        const desc = document.getElementById(`d-${i}`) ? document.getElementById(`d-${i}`).value : "";
+        const title = document.getElementById(`t-${i}`)?.value || "";
+        const desc = document.getElementById(`d-${i}`)?.value || "";
         
-        const sRef = ref(storage, `pisici/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
+        const sRef = ref(storage, `dovezi/${Date.now()}_${fileName}`);
+        const task = uploadBytesResumable(sRef, blob);
 
         await new Promise((resolve) => {
-            task.on('state_changed', 
-                (s) => { document.getElementById('progressBar').style.width = ((s.bytesTransferred/s.totalBytes)*100) + '%'; },
-                null,
-                async () => {
-                    const url = await getDownloadURL(task.snapshot.ref);
-                    
-                    // SAVE TO FIRESTORE
-                    await addDoc(collection(db, "dovezi_posts"), {
-                        img: url, 
-                        type: isVideo ? 'video' : 'image', // SAVE THE TYPE
-                        title: title, 
-                        desc: desc,
-                        likes: {}, 
-                        createdAt: serverTimestamp(),
-                        authorName: userData.username || auth.currentUser.displayName,
-                        authorPhoto: userData.image || auth.currentUser.photoURL,
-                        authorUid: auth.currentUser.uid
-                    });
-                    
-                    completedCount++;
-                    resolve();
-                }
-            );
+            task.on('state_changed', null, null, async () => {
+                const url = await getDownloadURL(task.snapshot.ref);
+                await addDoc(collection(db, "dovezi_posts"), {
+                    img: url, 
+                    type: isVideo ? 'video' : 'image',
+                    title: title, desc: desc,
+                    likes: {}, createdAt: serverTimestamp(),
+                    authorName: auth.currentUser.displayName,
+                    authorPhoto: auth.currentUser.photoURL,
+                    authorUid: auth.currentUser.uid
+                });
+                resolve();
+            });
         });
     }
-    
-    alert("Postat cu succes!");
+    alert("Postări urcate!");
     location.reload();
 };
 
@@ -4130,23 +4105,32 @@ document.getElementById('files').onchange = (e) => {
             new Compressor(file, {
                 quality: 0.6,
                 maxWidth: 1000,
-                success(result) {
-                    result.name = file.name;
-                    filesToUpload[i] = result;
-                    
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        area.innerHTML += `
-                            <div class="preview-card" style="order:${i}">
-                                <img src="${ev.target.result}">
-                                <div class="preview-inputs">
-                                    <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
-                                    <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
-                                </div>
-                            </div>`;
-                    };
-                    reader.readAsDataURL(result);
-                }
+success(result) {
+    // REZOLVARE EROARE: Nu modificăm obiectul 'result' direct, 
+    // ci creăm un obiect nou în array-ul de upload.
+    filesToUpload[i] = { 
+        blob: result, 
+        name: file.name, 
+        type: 'image' 
+    }; 
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const div = document.createElement('div');
+        div.className = 'preview-card';
+        div.style.order = i;
+        div.innerHTML = `
+            <img src="${ev.target.result}">
+            <div class="preview-inputs">
+                <input type="text" id="t-${i}" class="modern-input" placeholder="Titlu..." style="font-size:10px; padding:5px;">
+                <textarea id="d-${i}" class="modern-input" placeholder="Descriere..." style="font-size:10px; padding:5px; height:40px;"></textarea>
+            </div>
+        `;
+        area.appendChild(div);
+    };
+    reader.readAsDataURL(result);
+},
+                 
             });
         }
     });
