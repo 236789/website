@@ -10924,11 +10924,13 @@ window.handleGoogleLogin = async () => {
     } catch (e) { console.error(e); }
 };
 
+
+
 // --- GLOBAL VARIABLES FOR SIGNUP FLOW ---
 let generatedOTP = null;
 let tempSignupData = {};
 
-// 1. VALIDATE & SEND CODE
+// 1. VALIDATE, FILTER PROFANITY & SEND CODE
 window.initiateSignUp = function() {
     const user = document.getElementById('signUser').value.trim();
     const email = document.getElementById('signEmail').value.trim();
@@ -10938,10 +10940,10 @@ window.initiateSignUp = function() {
     if(!user || !email || !pass) return alert("Completează toate câmpurile!");
     if(pass.length < 6) return alert("Parola trebuie să aibă minim 6 caractere.");
 
-    // B. PROFANITY FILTER (Stop "DICK 123")
-    const badNameRegex = /(dick|pula|muie|pizda|admin|owner|hitler|nazi|coaie|sex|sugi)/i;
+    // B. PROFANITY FILTER (Blocks Bad Names)
+    const badNameRegex = /(dick|pula|muie|pizda|admin|owner|hitler|nazi|coaie|sex|sugi|fut)/i;
     if (badNameRegex.test(user)) {
-        return alert("Numele ales nu este permis. Alege un nume decent.");
+        return alert("Numele ales nu este permis. Te rugăm să alegi un nume decent.");
     }
 
     // C. Generate 6-digit OTP
@@ -10957,16 +10959,18 @@ window.initiateSignUp = function() {
     btn.disabled = true;
 
     // E. Send Email via EmailJS
-    // Using keys from your screenshot
+    // NOTE: Sending "code" because your template uses {{code}}
     emailjs.send("service_3aati3e", "template_m5qu7lw", {
-        to_email: email,
         to_name: user,
-        otp_code: generatedOTP
+        code: generatedOTP, // <--- THIS MATCHES YOUR TEMPLATE
+        to_email: email     // (EmailJS usually handles recipient automatically if configured, but sending mostly just parameters)
     }).then(() => {
-        // Success: Switch to Step 2
+        // Success
         document.getElementById('stepOneSignup').style.display = 'none';
         document.getElementById('stepTwoOTP').style.display = 'block';
-        alert(`Codul a fost trimis la ${email}. Verifică și Spam!`);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        alert(`Codul a fost trimis! Verifică și Spam.`);
     }).catch((err) => {
         console.error('EmailJS Error:', err);
         alert("Eroare la trimiterea emailului. Verifică adresa.");
@@ -10979,28 +10983,28 @@ window.initiateSignUp = function() {
 window.verifyAndCreateUser = async function() {
     const inputOtp = document.getElementById('otpInput').value;
 
+    // Check if code matches
     if (parseInt(inputOtp) === generatedOTP) {
         try {
-            // FIREBASE CREATION
+            // Import needed functions if not globally available
             const { createUserWithEmailAndPassword, updateProfile } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
             
+            // Create User in Firebase
             const result = await createUserWithEmailAndPassword(window.auth, tempSignupData.email, tempSignupData.pass);
             
             // Set Display Name
             await updateProfile(result.user, { displayName: tempSignupData.user });
             
-            // Run your existing finalize setup logic
-            // Note: Assuming finalizeUserSetup is available in scope or attached to window
+            // Run your existing database setup (Coins, etc.)
             if (typeof finalizeUserSetup === "function") {
                 await finalizeUserSetup(result.user, tempSignupData.user);
             } else {
-                // Fallback if finalizeUserSetup isn't global
                 location.reload(); 
             }
 
             // Cleanup UI
             document.getElementById('authModal').style.display = 'none';
-            cancelSignUp(); // Reset form
+            cancelSignUp(); 
 
         } catch (e) {
             alert("Eroare Firebase: " + e.message);
@@ -11015,9 +11019,6 @@ window.cancelSignUp = function() {
     document.getElementById('stepOneSignup').style.display = 'block';
     document.getElementById('stepTwoOTP').style.display = 'none';
     document.getElementById('otpInput').value = '';
-    const btn = document.querySelector('#stepOneSignup button');
-    btn.innerHTML = '<span>SEND VERIFICATION CODE</span>';
-    btn.disabled = false;
     tempSignupData = {};
     generatedOTP = null;
 };
