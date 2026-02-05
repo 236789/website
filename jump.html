@@ -3632,7 +3632,8 @@ const assets = {
     void_shard: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/c3674029-0509-421b-9967-aeca3624a760%20(1).png?alt=media&token=5c14fd15-a82f-44c5-8193-b4b361028a32',
     almighty_star: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/All%20Mighty%20star.png?alt=media&token=86cf4882-a10e-482b-80c0-0e18e5f4ce11',
 
-
+    // --- NEW: JUMP BOOST (15s) ---
+    buff_jump_boost: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FJump%20boost.png?alt=media&token=c147b8a5-0f33-43f5-9a5f-47f160bfdaaf',
     // --- NEW BUFF ---
     buff_jump: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FJUMP%20UP.png?alt=media&token=1e56ab8f-9299-439c-865f-710a6a1df6f1',
 
@@ -3810,6 +3811,15 @@ else if (type === 'BUFF_GHOST') {
     imgUrl = assets.buff_ghost;
 }
 
+
+
+        // --- NEW: JUMP BOOST LOGIC ---
+        else if (type === 'BUFF_JUMP_BOOST') {
+            duration = 900; // 15 Seconds (60fps * 15)
+            label = "Jump Boost: x1.5 Power";
+            imgUrl = assets.buff_jump_boost;
+        }
+
         else if (type === 'BUFF_SHIELD') { 
             duration = 600; 
             label = "Shield: Invincible"; 
@@ -3956,6 +3966,12 @@ if (this.activeBuffs.length > 0) {
                     
                     isFallingBack = false;
                     let jumpPower = JUMP_FORCE;
+
+                   // --- NEW: APPLY 1.5x MULTIPLIER ---
+                    if (this.hasBuff('BUFF_JUMP_BOOST')) {
+                        jumpPower *= 1.5; // Becomes -13.5
+                    }
+
 
                     if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
                         jumpPower *= 1.8;
@@ -4230,6 +4246,11 @@ function createPlatform(y, forceNormal = false) {
             else if (score > 500 && r > 0.85) type = 'FRAGILE'; 
             else if (r > 0.92) type = 'HEAL';
         }
+
+            else if (buffRoll < 0.35) {
+                item = 'BUFF_JUMP_BOOST';
+            }
+
     } else if (score < 15000) {
         maxEnemyHp = 2;
         coinChance = 0.10;
@@ -4265,38 +4286,53 @@ function createPlatform(y, forceNormal = false) {
         };
         lastEnemyPlatform = platformCounter;
     }
-
-// --- ITEM SPAWN LOGIC NERFED (Platforme) ---
+// --- ITEM SPAWN LOGIC (Updated) ---
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random(); 
 
-
-        if (score > 5000 && Math.random() < 0.25) {
-             item = 'BUFF_JUMP';
-        }
-
-        // 1. ALMIGHTY STAR (1% REAL: de la 0.00 la 0.01)
-        else if (score > 15000 && rItem < 0.01) {
+        // 1. ALMIGHTY STAR (1% REAL)
+        if (score > 15000 && rItem < 0.01) {
             item = 'ALMIGHTY_STAR';
         }
-        // 2. VOID SHARDS (3% REAL: de la 0.01 la 0.04 [0.01 + 0.03])
+        // 2. VOID SHARDS (3% REAL)
         else if (score > 5000 && rItem < 0.04) { 
             item = 'VOID_SHARD'; 
         }
-        // 3. DIAMANTE (2% REAL: de la 0.04 la 0.06 [0.04 + 0.02])
+        // 3. DIAMONDS (2% REAL)
         else if (score > 8000 && rItem < 0.06) { 
             item = 'DIAMOND'; 
         } 
-        // 4. BUFF-URI (5% REAL: de la 0.06 la 0.11 [0.06 + 0.05])
+        // 4. BUFFS (5% TOTAL CHANCE to spawn ANY buff)
         else if (score > 3000 && rItem < 0.11) { 
             const buffRoll = Math.random();
-            if (buffRoll < 0.20)      item = 'BUFF_TIMESTOP'; 
-            else if (buffRoll < 0.40) item = 'BUFF_HP';       
-            else if (buffRoll < 0.60) item = 'BUFF_SHIELD';   
-            else if (buffRoll < 0.80) item = 'BUFF_FIRE';
+            
+            // --- A. JUMP UP (Rare - 10%) ---
+            // Threshold: 0.10
+            if (score > 5000 && buffRoll < 0.10) {
+                 item = 'BUFF_JUMP';
+            }
+            // --- B. JUMP BOOST (Common - 25%) ---
+            // Threshold: 0.10 + 0.25 = 0.35
+            else if (buffRoll < 0.35) {
+                item = 'BUFF_JUMP_BOOST';
+            }
+            // --- C. THE REST (13% Each) ---
+            // 0.35 + 0.13 = 0.48
+            else if (buffRoll < 0.48) item = 'BUFF_TIMESTOP'; 
+            
+            // 0.48 + 0.13 = 0.61
+            else if (buffRoll < 0.61) item = 'BUFF_HP';       
+            
+            // 0.61 + 0.13 = 0.74
+            else if (buffRoll < 0.74) item = 'BUFF_SHIELD';   
+            
+            // 0.74 + 0.13 = 0.87
+            else if (buffRoll < 0.87) item = 'BUFF_FIRE';
+            
+            // The rest (1.00 - 0.87 = 0.13)
             else                      item = 'BUFF_MAGNET';   
         }
-        // 5. BANNI / COINS (10% REAL: de la 0.11 la 0.21 [0.11 + 0.10])
+        // 5. COINS (10% REAL)
         else if (rItem < 0.21) { 
             item = 'COIN'; 
         }
@@ -4565,6 +4601,9 @@ if (p.item) {
             else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 32; }
 else if (p.item === 'BUFF_GHOST') { itemImg = imgs.buff_ghost; size = 32; }
     else if (p.item === 'BUFF_JUMP') { itemImg = imgs.buff_jump; size = 35; } // NEW IMAGE MAPPING
+
+    else if (p.item === 'BUFF_JUMP_BOOST') { itemImg = imgs.buff_jump_boost; size = 32; }
+
             else if (p.item === 'BUFF_TIMESTOP') { itemImg = imgs.buff_timestop; size = 32; } // ADD THIS
             else if (p.item === 'BUFF_LUCK') { itemImg = imgs.buff_luck; size = 32; } // ADD THIS LINE
             else if (p.item === 'BUFF_FIRE') { itemImg = imgs.buff_fire; size = 32; } // IMPORTANT LINE
