@@ -3623,21 +3623,9 @@ body {
         <button id="pollBtn" class="tool-btn" style="display:none;" onclick="openPollCreator()">
             <i class="fas fa-poll"></i>
         </button>
-
-<div style="display: flex; align-items: center; gap: 8px;">
-    <button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()" style="display: flex; align-items: center; gap: 6px; transition: 0.3s;">
-        <i class="fas fa-volume-up"></i>
-        <span style="font-family: 'Orbitron'; font-size: 10px; font-weight: 900; letter-spacing: 1px;">AUTO</span>
-    </button>
-
-    <select id="voiceVibe" style="background: rgba(0,0,0,0.6); color: var(--primary); border: 1px solid var(--primary); font-family: 'Orbitron'; font-size: 8px; border-radius: 5px; padding: 4px; cursor: pointer; outline: none;">
-        <option value="normal">NORMAL</option>
-        <option value="deep">VOID / DEEP</option>
-        <option value="cyber">FAST / CYBER</option>
-        <option value="high">HIGH / CHIPMUNK</option>
-    </select>
-</div>
-
+<button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()" style="transition: 0.3s;">
+    <i class="fas fa-volume-up"></i>
+</button>
         <!-- Reset Chat Button (Owner/Admin Only - Pushed to Right) -->
         <button id="resetChatBtn" class="tool-btn" style="display:none; margin-left:auto; color:#ff4757;">
             <i class="fas fa-trash"></i>
@@ -4734,32 +4722,42 @@ function getCosmeticBadge(equippedBadge) {
     let toastTimeout;
 
 
-
 let autoReadEnabled = false;
-let lastProcessedMessageId = null; // To avoid reading the whole history on turn-on
+let lastProcessedMessageId = null; 
 
 window.toggleAutoRead = () => {
     autoReadEnabled = !autoReadEnabled;
     const btn = document.getElementById('autoReadBtn');
     
     if (autoReadEnabled) {
-        // TURN ON: Change to Cyan
+        // ON: Glowing Cyan
         btn.style.color = "var(--primary)";
-        btn.style.textShadow = "0 0 10px var(--atmo-glow)";
+        btn.style.filter = "drop-shadow(0 0 8px var(--primary))";
         showToast("Auto-Read: ACTIVAT", "success");
         
-        // Skip current history so it doesn't read 50 messages at once
         const currentMsgs = document.querySelectorAll('.msg-row');
         if (currentMsgs.length > 0) {
             lastProcessedMessageId = currentMsgs[currentMsgs.length - 1].dataset.id;
         }
     } else {
-        // TURN OFF: Back to Muted Gray
+        // OFF: Normal Gray
         btn.style.color = "#a5b1c2";
-        btn.style.textShadow = "none";
-        window.speechSynthesis.cancel(); // Stop talking immediately
+        btn.style.filter = "none";
+        window.speechSynthesis.cancel(); 
         showToast("Auto-Read: DEZACTIVAT");
     }
+};
+
+// Simplified Voice Engine
+window.speakMessage = (text) => {
+    window.speechSynthesis.cancel(); 
+    if (!text || text.trim() === "") return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ro-RO';
+    utterance.pitch = 1.0; // Normal pitch
+    utterance.rate = 1.0;  // Normal speed
+    window.speechSynthesis.speak(utterance);
 };
 
     // --- LOCAL QUEST TRACKING TO PREVENT DOUBLE LOOPS ---
@@ -5865,32 +5863,7 @@ async function sendVoiceToFirestore(audioUrl) {
 
 
 
-// --- UPDATED VOICE ENGINE WITH VIBES ---
-window.speakMessage = (text) => {
-    window.speechSynthesis.cancel(); // Stop any current talking
-    if (!text || text.trim() === "") return;
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    const vibe = document.getElementById('voiceVibe').value;
-
-    // --- LOGIC FOR THE VOICE SOUND (THE VOID) ---
-    if (vibe === 'deep') {
-        utterance.pitch = 0.1; // Deep Demon
-        utterance.rate = 0.8;  
-    } else if (vibe === 'cyber') {
-        utterance.pitch = 1.2; // Robot
-        utterance.rate = 1.6;  
-    } else if (vibe === 'high') {
-        utterance.pitch = 2.0; // Chipmunk
-        utterance.rate = 1.1;
-    } else {
-        utterance.pitch = 1.0; // Normal
-        utterance.rate = 1.0;
-    }
-
-    utterance.lang = 'ro-RO'; 
-    window.speechSynthesis.speak(utterance);
-};
 
 async function sendMessage() {
     if(isSending) return;
