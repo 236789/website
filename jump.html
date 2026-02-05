@@ -4102,7 +4102,8 @@ class Player {
 
 activateBuff(type) {
     playSFX(sfx.buff); 
-    
+            let duration = 600; 
+
     // Durata de bază este 600 (10 secunde)
     
     // Adăugăm secundele din upgrade-uri (1 secundă = 60 frame-uri)
@@ -4160,7 +4161,6 @@ if (type === 'BUFF_CHEST') {
             return; // Return early because it has no duration
         }
 
-        let duration = 0;
         let label = "";
         let imgUrl = "";
         
@@ -4260,18 +4260,16 @@ update() {
 // Add this to your Player's constructor:
 // this.regenTimer = 0;
 
-// În interiorul player.update()
-let regenLvl = userUpgrades.regen || 0;
-// Regenerează doar dacă ai nivel și viața e sub o anumită limită bazată pe nivel (max 3 HP)
-let maxRegenPossible = Math.min(3, regenLvl * 0.5); 
-
-if (regenLvl > 0 && this.hp < maxRegenPossible) {
-    this.regenTimer += timeSlow;
-    if (this.regenTimer >= 120) { // La fiecare 2 secunde (60 fps * 2)
-        this.hp = Math.min(this.maxHp, this.hp + 0.5);
-        this.regenTimer = 0;
-    }
-}
+        let regenLvl = userUpgrades.regen || 0;
+        // Poți regenera până la un maxim de (nivel / 2). Ex: Lvl 10 = regen până la 5 HP.
+        let maxRegenLimit = regenLvl * 0.5; 
+        if (regenLvl > 0 && this.hp < maxRegenLimit && this.hp < this.maxHp) {
+            this.regenTimer += timeSlow;
+            if (this.regenTimer >= 120) { // La fiecare 2 secunde
+                this.hp = Math.min(this.maxHp, this.hp + 0.5);
+                this.regenTimer = 0;
+            }
+        }
 
         // --- STICKY LOGIC ---
         if (this.stuckTimer > 0) {
@@ -4365,32 +4363,32 @@ if (this.hasBuff('BUFF_MAGNET')) {
         this.y += this.vy * timeSlow;
 
         if(this.invincibility > 0) this.invincibility--;
+        // --- ELEVATOR COLLISION FIX ---
+        if (this.vy > 0) {
+            platforms.forEach((p, i) => {
+                if (this.x + PLAYER_SIZE * 0.7 > p.x && 
+                    this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
+                    this.y + PLAYER_SIZE > p.y && 
+                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
+                    
+                    isFallingBack = false;
+                    
+                    // Putere săritură bazată pe upgrade Jump Power
+                    let jumpUpgradeBonus = (userUpgrades.jump_power || 0) * 0.05;
+                    let jumpPower = JUMP_FORCE - jumpUpgradeBonus;
 
-if (this.vy > 0) {
-    platforms.forEach((p, i) => {
-        if (this.x + PLAYER_SIZE * 0.7 > p.x && 
-            this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
-            this.y + PLAYER_SIZE > p.y && 
-            this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
-            
-            isFallingBack = false;
-            
-            // 1. Upgrade Jump Power (Tiny tiny bit higher per level)
-            let jumpUpgradeBonus = (userUpgrades.jump_power || 0) * 0.05;
-            let jumpPower = JUMP_FORCE - jumpUpgradeBonus; // JUMP_FORCE e negativ, deci scădem ca să sărim mai sus
+                    if (this.hasBuff('BUFF_JUMP_BOOST')) jumpPower *= 1.5;
 
-            if (this.hasBuff('BUFF_JUMP_BOOST')) jumpPower *= 1.5;
+                    if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
+                        // Putere Elevator bazată pe upgrade Jump Pad
+                        let padBonus = 1 + ((userUpgrades.jump_pad || 0) * 0.02);
+                        jumpPower *= (1.8 * padBonus);
+                        playSFX(sfx.elevator);
+                    } else {
+                        playSFX(sfx.jump);
+                    }
 
-            // 2. Upgrade Jump Pad Power (+2% per level)
-            if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
-                let padBonus = 1 + ((userUpgrades.jump_pad || 0) * 0.02);
-                jumpPower *= (1.8 * padBonus);
-                playSFX(sfx.elevator);
-            } else {
-                playSFX(sfx.jump);
-            }
-
-            this.vy = jumpPower;
+                    this.vy = jumpPower;
 
 
 
