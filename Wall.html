@@ -4,6 +4,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -3591,7 +3592,7 @@ body {
     <!-- 1. TOOLBAR (Blue Line) -->
 <!-- 1. TOOLBAR (Blue Line) -->
 <!-- 1. TOOLBAR (Blue Line) -->
-    <div class="chat-tools-bar">
+    <div class="chat-tools-bar"> 
 
         
         <!-- GIF Button -->
@@ -3622,6 +3623,12 @@ body {
         <button id="pollBtn" class="tool-btn" style="display:none;" onclick="openPollCreator()">
             <i class="fas fa-poll"></i>
         </button>
+
+<!-- Inside <div class="chat-tools-bar"> -->
+<button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()" title="Auto-Read Messages">
+    <i class="fas fa-volume-up"></i>
+    <span style="font-size: 8px; font-family: 'Orbitron'; margin-left: -5px; margin-top: 10px;">AUTO</span>
+</button>
 
         <!-- Reset Chat Button (Owner/Admin Only - Pushed to Right) -->
         <button id="resetChatBtn" class="tool-btn" style="display:none; margin-left:auto; color:#ff4757;">
@@ -4717,6 +4724,34 @@ function getCosmeticBadge(equippedBadge) {
     // WIPE TIMER INTERVAL
     let wipeCheckInterval = null;
     let toastTimeout;
+
+
+
+let autoReadEnabled = false;
+let lastReadMessageId = null; // Prevents reading the whole history on load
+
+window.toggleAutoRead = () => {
+    autoReadEnabled = !autoReadEnabled;
+    const btn = document.getElementById('autoReadBtn');
+    
+    if (autoReadEnabled) {
+        btn.classList.add('active');
+        btn.style.color = "var(--primary)";
+        showToast("Auto-Read: PORNIT", "success");
+        
+        // Grab the ID of the very last message currently in chat 
+        // so we don't start reading old messages immediately 
+        const allMsgs = document.querySelectorAll('.msg-row');
+        if (allMsgs.length > 0) {
+            lastReadMessageId = allMsgs[allMsgs.length - 1].dataset.id;
+        }
+    } else {
+        btn.classList.remove('active');
+        btn.style.color = "#a5b1c2";
+        window.speechSynthesis.cancel(); // Stop talking immediately
+        showToast("Auto-Read: OPRIT");
+    }
+};
 
     // --- LOCAL QUEST TRACKING TO PREVENT DOUBLE LOOPS ---
     const localProcessedQuests = new Set();
@@ -6489,7 +6524,29 @@ if (data.text && data.type !== 'vocal') {
             `;
             feed.appendChild(wrapper);
             if (typeof seenObserver !== 'undefined') seenObserver.observe(wrapper);
-        });
+
+
+
+// --- AUTO-READ LOGIC ---
+if (autoReadEnabled && data.id !== lastReadMessageId) {
+    // 1. Only read if it's a text message and not a bot/system alert
+    if (data.text && !data.isBot && data.uid !== 'system-alert') {
+        
+        // 2. Check if the message is actually "new" (sent in the last 10 seconds)
+        // to prevent reading the whole history when the page refreshes
+        const msgTime = data.createdAt ? data.createdAt.toMillis() : Date.now();
+        const isFresh = (Date.now() - msgTime) < 10000;
+
+        if (isFresh) {
+            const speakerName = data.name || "Cineva";
+            const cleanText = data.text.replace(/<br>/g, " ");
+            window.speakMessage(`${speakerName} a spus: ${cleanText}`);
+        }
+    }
+    // Update the last read ID so we don't repeat
+    lastReadMessageId = data.id;
+}
+        }); 
         
         /**
          * =====================================================================
