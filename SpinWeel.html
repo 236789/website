@@ -3091,7 +3091,9 @@ async function runNextAutoSpin() {
             }
         });
     } else {
-        await startSpin(); 
+        // FIX: Setăm ID-ul pentru a permite primirea recompenselor în finalizeSpin
+        currentSpinAdminId = auth.currentUser.uid;
+        startSpin(pickRewardIndex(), speed); 
     }
 
     // --- AJUSTARE TIMP AȘTEPTARE ---
@@ -3658,7 +3660,7 @@ async function attemptSpin(isFreeAttempt) {
     if (isFreeAttempt) await updateDoc(userRef, { freeSpinStack: increment(-1) });
     else await updateDoc(userRef, { diamonds: increment(-1) });
 
-    // Set self as the spinner so finalizeSpin knows to award the prize
+    // FIX: Set self as the spinner so finalizeSpin knows to award the prize
     currentSpinAdminId = auth.currentUser.uid;
     
     // Start spin locally for this user only
@@ -4023,14 +4025,15 @@ onAuthStateChanged(auth, user => {
 if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
     lastProcessedSpinTime = spinAction.timestamp;
     
-    // Check if this is an Event Spin or a Private Spin that leaked
-    const isAdminSpin = ADMIN_EMAILS.includes(user.email); // Check if the CURRENT client is an admin
-    
+    // Check if this is an Event Spin
     // Only trigger the wheel for everyone IF Event Mode is on
     if (isEventModeActive) {
+        // FIX: Sync currentSpinAdminId so finalizeSpin works for everyone watching
         currentSpinAdminId = spinAction.adminId;
+        
         if (Date.now() - spinAction.timestamp < 10000) {
             isSpinning = false; 
+            const isMuted = localStorage.getItem('siteMuted') === 'true';
             if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
             startSpin(spinAction.index, spinAction.speed || 1); 
         }
