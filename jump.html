@@ -4073,16 +4073,20 @@ class Fireball {
 }
 
 class Player {
-    constructor() {
-        this.hp = 5.0;
+        const extraHP = userUpgrades.hp || 0;
+        this.maxHp = 5 + extraHP; 
+        
+        this.hp = this.maxHp; // Începe cu viața maximă upgradată
         this.invincibility = 0;
         this.activeBuffs = []; 
+        this.regenTimer = 0; // Pentru upgrade-ul de regenerare
         this.reset();
 
-this.burnTimer = 0;
+        this.burnTimer = 0;
         this.stuckTimer = 0;
         this.isIcy = false;
     }
+
 
     reset() {
         this.x = canvas.width / 2 - PLAYER_SIZE / 2;
@@ -4248,12 +4252,15 @@ update() {
 // Add this to your Player's constructor:
 // this.regenTimer = 0;
 
-// Add this inside Player.update():
+// În interiorul player.update()
 let regenLvl = userUpgrades.regen || 0;
-if (regenLvl > 0 && this.hp < regenLvl / 3) { // Caps regen based on lvl
+// Regenerează doar dacă ai nivel și viața e sub o anumită limită bazată pe nivel (max 3 HP)
+let maxRegenPossible = Math.min(3, regenLvl * 0.5); 
+
+if (regenLvl > 0 && this.hp < maxRegenPossible) {
     this.regenTimer += timeSlow;
-    if (this.regenTimer >= 120) { // Every 2 seconds
-        this.hp = Math.min(5, this.hp + 0.5);
+    if (this.regenTimer >= 120) { // La fiecare 2 secunde (60 fps * 2)
+        this.hp = Math.min(this.maxHp, this.hp + 0.5);
         this.regenTimer = 0;
     }
 }
@@ -4566,32 +4573,40 @@ renderBuffs() {
 
     drawHP() {
         const heartSize = 25;
-        for (let i = 0; i < 5; i++) {
-            const hx = 20 + (i * 32); const hy = 20;
+        // Modificăm aici: i < this.maxHp în loc de i < 5
+        for (let i = 0; i < this.maxHp; i++) {
+            const hx = 20 + (i * 32); 
+            const hy = 20;
             if (this.hp > i) {
                 ctx.save();
-                if (this.hp < i + 1) { ctx.beginPath(); ctx.rect(hx, hy, heartSize / 2, heartSize); ctx.clip(); }
-                ctx.drawImage(imgs.hp, hx, hy, heartSize, heartSize); ctx.restore();
+                if (this.hp < i + 1) { 
+                    ctx.beginPath(); 
+                    ctx.rect(hx, hy, heartSize / 2, heartSize); 
+                    ctx.clip(); 
+                }
+                ctx.drawImage(imgs.hp, hx, hy, heartSize, heartSize); 
+                ctx.restore();
             }
         }
     }
-takeDamage() { 
-    screenShakeTimer = 15;
-    // Lowered the multiplier from score/8000 to score/15000
-    const diffMult = Math.min(2.5, 1 + score / 15000); 
-
-    let armorLvl = userUpgrades.armor || 0;
-    let reduction = 1 - (armorLvl * 0.01); // 1% per level
-    
-    let baseDmg = 0.5 * diffMult;
-    
-    if (this.hasBuff('BUFF_ARMOR')) {
-        baseDmg *= 0.35; 
+   takeDamage() { 
+        screenShakeTimer = 15;
+        const diffMult = Math.min(2.5, 1 + score / 15000); 
+        
+        // Citim upgrade-ul de armură (1% reducere pe nivel)
+        let armorLvl = userUpgrades.armor || 0;
+        let reduction = 1 - (armorLvl * 0.01); 
+        
+        let baseDmg = (0.5 * diffMult) * reduction; // Aplicăm reducerea permanentă
+        
+        if (this.hasBuff('BUFF_ARMOR')) {
+            baseDmg *= 0.35; 
+        }
+        
+        this.hp -= baseDmg;
+        this.invincibility = 60;
+        if(this.hp <= 0) { this.hp = 0; gameOver(); }
     }
-    
-    this.hp -= baseDmg;
-    this.invincibility = 60; // 1 second of invincibility
-    if(this.hp <= 0) { this.hp = 0; gameOver(); }
 }
 }
 
@@ -4839,19 +4854,30 @@ window.collectItem = async (type) => {
 
     if (type === 'COIN') {
         playSFX(sfx.coin);
-    let coinLvl = userUpgrades.coins || 0;
-    let bonus = 1 + (coinLvl * 0.05); // 5% per level
-        const amount = Math.floor(Math.random() * 16) + 10; 
+        
+        // Upgrade Coins: +5% pe nivel
+        let coinLvl = userUpgrades.coins || 0;
+        let bonus = 1 + (coinLvl * 0.05);
+        
+        const baseAmount = Math.floor(Math.random() * 16) + 10; 
+        const finalAmount = Math.floor(baseAmount * bonus); // Aplicăm bonusul
+        
         flyRewardAnim('COIN');
-        await updateDoc(userRef, { coins: increment(amount) });
-        window.showToast(`+${amount} KSDA Coins!`); // ADĂUGAT ÎNAPOI
+        await updateDoc(userRef, { coins: increment(finalAmount) });
+        window.showToast(`+${finalAmount} KSDA Coins!`);
     } 
     else if (type === 'DIAMOND') {
-    let diaLvl = userUpgrades.diamonds || 0;
         playSFX(sfx.diamond);
         flyRewardAnim('DIAMOND');
-        await updateDoc(userRef, { diamonds: increment(1) });
-        window.showToast("+1 Diamond! 💎"); // ADĂUGAT ÎNAPOI
+        
+        // Upgrade Diamonds: lvl 1-2 = 1, lvl 3-4 = 2, lvl 5 = 3
+        let diaLvl = userUpgrades.diamonds || 0;
+        let count = 1;
+        if (diaLvl >= 3) count = 2;
+        if (diaLvl >= 5) count = 3;
+
+        await updateDoc(userRef, { diamonds: increment(count) });
+        window.showToast(`+${count} Diamonds! 💎`);
     }
     else if (type === 'VOID_SHARD') {
         playSFX(sfx.diamond);
