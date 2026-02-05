@@ -3357,6 +3357,9 @@
     width: 100%;
     display: block;
 }
+
+
+
   </style>
 </head>
 <body>
@@ -5362,28 +5365,39 @@ let currentTxnSource = 'ALL';
 let txnLimit = 100; // Aceasta este linia care lipsea sau era prost plasată
 
 
-// --- MANAGE USERS TABLE RENDER ---
 window.renderManageUsersTable = () => {
     const tableBody = document.getElementById('manageUsersTableBody');
     if (!tableBody) return;
 
-    const searchVal = document.getElementById('manageSearchInput').value.toLowerCase();
+    // Verificăm dacă avem date în cache
+    if (!cachedUsers || cachedUsers.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center;">Se încarcă datele din baza de date...</td></tr>';
+        return;
+    }
 
-    // Filter by search
+    const searchInput = document.getElementById('manageSearchInput');
+    const searchVal = searchInput ? searchInput.value.toLowerCase() : "";
+
+    // Filtrare
     const filtered = cachedUsers.filter(u => 
-        u.username.toLowerCase().includes(searchVal) || 
-        u.email.toLowerCase().includes(searchVal)
+        (u.username && u.username.toLowerCase().includes(searchVal)) || 
+        (u.email && u.email.toLowerCase().includes(searchVal))
     );
+
+    if (filtered.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center;">Nu a fost găsit niciun utilizator.</td></tr>';
+        return;
+    }
 
     tableBody.innerHTML = filtered.map(u => {
         return `
         <tr>
             <td class="sticky-left">
                 <div class="td-user">
-                    <img src="${u.pfp}" class="td-pfp" style="border-color:#ff4757;">
+                    <img src="${u.pfp || 'https://i.ibb.co/XyqWk9N/def-user.png'}" class="td-pfp" style="border-color:#ff4757;">
                     <div style="text-align:left;">
-                        <div class="td-name">${u.username}</div>
-                        <div class="td-email">${u.email}</div>
+                        <div class="td-name">${u.username || 'Anonim'}</div>
+                        <div class="td-email">${u.email || 'Fără email'}</div>
                     </div>
                 </div>
             </td>
@@ -5393,27 +5407,23 @@ window.renderManageUsersTable = () => {
                     <span style="color:#00ffcc; font-size:11px; font-weight:bold;">${formatCurrency(u.diamonds)} D</span>
                 </div>
             </td>
-            <td style="font-family:monospace; font-size:11px; opacity:0.7;">${u.ip}</td>
+            <td style="font-family:monospace; font-size:11px; opacity:0.7;">${u.ip || '0.0.0.0'}</td>
             <td>
                 <div style="display:flex; gap:8px; justify-content:center;">
-                    <!-- MUTE -->
-                    <button class="btn-ap-action" style="border-color:#ff9f43; color:#ff9f43;" 
-                            onclick="adminMuteUser('${u.uid}', '${u.username.replace(/'/g, "\\'")}')" title="Mute pe Wall">
+                    <button class="btn-action-staff" style="border-color:#ff9f43; color:#ff9f43;" 
+                            onclick="adminMuteUser('${u.uid}', '${(u.username || 'User').replace(/'/g, "\\'")}')" title="Mute">
                         <i class="fas fa-microphone-slash"></i>
                     </button>
-                    <!-- RESET -->
-                    <button class="btn-ap-action" style="border-color:#ffd700; color:#ffd700;" 
-                            onclick="adminResetAccount('${u.uid}', '${u.username.replace(/'/g, "\\'")}')" title="Resetare Completă">
+                    <button class="btn-action-staff" style="border-color:#ffd700; color:#ffd700;" 
+                            onclick="adminResetAccount('${u.uid}', '${(u.username || 'User').replace(/'/g, "\\'")}')" title="Reset">
                         <i class="fas fa-undo"></i>
                     </button>
-                    <!-- BAN IP -->
-                    <button class="btn-ap-action" style="border-color:#ff4757; color:#ff4757;" 
-                            onclick="adminBanIP('${u.ip}', '${u.username.replace(/'/g, "\\'")}', '${u.uid}')" title="Ban IP">
+                    <button class="btn-action-staff" style="border-color:#ff4757; color:#ff4757;" 
+                            onclick="adminBanIP('${u.ip}', '${(u.username || 'User').replace(/'/g, "\\'")}', '${u.uid}')" title="Ban IP">
                         <i class="fas fa-user-slash"></i>
                     </button>
-                    <!-- DELETE -->
-                    <button class="btn-ap-action btn-ap-delete" 
-                            onclick="adminDeleteAccount('${u.uid}', '${u.username.replace(/'/g, "\\'")}')" title="Șterge Cont">
+                     <button class="btn-action-staff delete" 
+                            onclick="adminDeleteAccount('${u.uid}', '${(u.username || 'User').replace(/'/g, "\\'")}')" title="Șterge">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -7337,7 +7347,9 @@ window.switchSection = (sectionId, btnElement) => {
         'wheel-winners-view',
         'wheel-losers-view',
         'admin-manage-view',
-         'news-manager-view' // <--- ADD THIS
+         'news-manager-view', // <--- ADD THIS
+    'manage-users-view' // <--- ADAUGĂ ACEASTĂ LINIE AICI
+
 
     ]; 
 
