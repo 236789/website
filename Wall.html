@@ -5817,6 +5817,29 @@ async function sendVoiceToFirestore(audioUrl) {
     });
 }
 
+
+
+
+
+// --- TEXT TO SPEECH ENGINE ---
+window.speakMessage = (text) => {
+    // 1. Cancel any currently playing speech so they don't overlap
+    window.speechSynthesis.cancel();
+
+    if (!text || text.trim() === "") return;
+
+    // 2. Create the speech request
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // 3. Set language (ro-RO for Romanian, as your site is in Romanian)
+    utterance.lang = 'ro-RO'; 
+    utterance.pitch = 1.0;
+    utterance.rate = 1.0; // Speed (1.0 is normal)
+
+    // 4. Speak!
+    window.speechSynthesis.speak(utterance);
+};
+
 async function sendMessage() {
     if(isSending) return;
 
@@ -6397,9 +6420,16 @@ docs.forEach(data => {
                 reactionsContainerHtml += `</div>`;
             }
 
-            // --- SEEN INDICATOR ---
-            const totalSeen = (data.seenBy || []).length;
-            const seenIndicatorHtml = `<button class="seen-btn ${totalSeen > 0 ? 'active' : ''}" style="background:none; border:none; color:inherit; font-size:10px; cursor:pointer;" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${totalSeen}</button>`;
+const totalSeen = (data.seenBy || []).length;
+const seenIndicatorHtml = `<button class="seen-btn ${totalSeen > 0 ? 'active' : ''}" style="background:none; border:none; color:inherit; font-size:10px; cursor:pointer;" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${totalSeen}</button>`;
+
+// NEW SPEAKER BUTTON
+let ttsBtnHtml = "";
+if (data.text && data.type !== 'vocal') {
+    // We clean the text to make sure quotes don't break the Javascript
+    const safeText = data.text.replace(/'/g, "\\'").replace(/\n/g, " ");
+    ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}')"><i class="fas fa-volume-up"></i></button>`;
+}
 
             // --- DROPDOWN MENU ---
             let dropdownMenuHtml = "";
@@ -6438,7 +6468,7 @@ docs.forEach(data => {
 
             const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
 
-            // --- FINAL ASSEMBLY ---
+// --- FINAL ASSEMBLY ---
             wrapper.innerHTML = `
                 ${avatarHtml}
                 <div class="msg-content-column">
@@ -6452,11 +6482,11 @@ docs.forEach(data => {
                     <div class="msg-info" style="display:flex; gap:10px; margin-top:4px; align-items:center; opacity:0.7; font-size:9px;">
                         <span class="msg-time">${time}</span> 
                         ${seenIndicatorHtml}
+                        ${ttsBtnHtml} 
                     </div>
                 </div>
                 ${dropdownMenuHtml}
             `;
-            
             feed.appendChild(wrapper);
             if (typeof seenObserver !== 'undefined') seenObserver.observe(wrapper);
         });
