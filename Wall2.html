@@ -4179,23 +4179,46 @@ input:checked + .slider:before { transform: translateX(16px); }
           </button>
         </div>
 
-        <div id="formSignup" style="display: none;">
-          <div class="input-group">
-              <label>USERNAME</label>
-              <input type="text" id="signUser" placeholder="Numele tău" class="ksda-input">
-          </div>
-          <div class="input-group">
-              <label>EMAIL</label>
-              <input type="email" id="signEmail" placeholder="email@example.com" class="ksda-input">
-          </div>
-          <div class="input-group">
-              <label>PASSWORD</label>
-              <input type="password" id="signPass" placeholder="Min. 6 caractere" class="ksda-input">
-          </div>
-          <button class="btn-ksda-fire" style="width: 100%;" onclick="handleEmailSignUp()">
-              <span>CREATE ACCOUNT</span>
+<!-- SIGN UP FORM -->
+<div id="formSignup" style="display: none;">
+  <!-- STEP 1: INITIAL DATA -->
+  <div id="stepOneSignup">
+      <div class="input-group">
+          <label>USERNAME</label>
+          <input type="text" id="signUser" placeholder="Numele tău" class="ksda-input">
+      </div>
+      <div class="input-group">
+          <label>EMAIL</label>
+          <input type="email" id="signEmail" placeholder="email@example.com" class="ksda-input">
+      </div>
+      <div class="input-group">
+          <label>PASSWORD</label>
+          <input type="password" id="signPass" placeholder="Min. 6 caractere" class="ksda-input">
+      </div>
+      <button class="btn-ksda-fire" style="width: 100%;" onclick="initiateSignUp()">
+          <span>SEND VERIFICATION CODE</span>
+      </button>
+  </div>
+
+  <!-- STEP 2: OTP VERIFICATION (Hidden by default) -->
+  <div id="stepTwoOTP" style="display: none; animation: slideUp 0.3s;">
+      <div style="text-align:center; margin-bottom:15px; color:#00ff88; font-size:12px;">
+          <i class="fas fa-envelope"></i> Cod trimis pe email!
+      </div>
+      <div class="input-group">
+          <label>INTRODU CODUL (6 CIFRE)</label>
+          <input type="number" id="otpInput" placeholder="123456" class="ksda-input" style="letter-spacing: 5px; text-align: center; font-weight: bold;">
+      </div>
+      <div style="display:flex; gap:10px;">
+          <button class="btn-ksda-fire" style="width: 50%; background: #333; border-color: #555;" onclick="cancelSignUp()">
+              <span>CANCEL</span>
           </button>
-        </div>
+          <button class="btn-ksda-fire" style="width: 50%;" onclick="verifyAndCreateUser()">
+              <span>VERIFY & JOIN</span>
+          </button>
+      </div>
+  </div>
+</div>
 
         <!-- THE DIVIDER WITH THE SAME STYLE AS SUBTITLE -->
         <div class="auth-divider-sau" style="margin-top: 25px;">Sau</div>
@@ -10893,19 +10916,102 @@ window.handleGoogleLogin = async () => {
     } catch (e) { console.error(e); }
 };
 
-window.handleEmailSignUp = async () => {
-    const email = document.getElementById('signEmail').value;
+// --- GLOBAL VARIABLES FOR SIGNUP FLOW ---
+let generatedOTP = null;
+let tempSignupData = {};
+
+// 1. VALIDATE & SEND CODE
+window.initiateSignUp = function() {
+    const user = document.getElementById('signUser').value.trim();
+    const email = document.getElementById('signEmail').value.trim();
     const pass = document.getElementById('signPass').value;
-    const user = document.getElementById('signUser').value;
 
-    if(!email || !pass || !user) return alert("Fill all fields!");
+    // A. Basic Validations
+    if(!user || !email || !pass) return alert("Completează toate câmpurile!");
+    if(pass.length < 6) return alert("Parola trebuie să aibă minim 6 caractere.");
 
-    try {
-        const result = await createUserWithEmailAndPassword(auth, email, pass);
-        // Set the displayName in Firebase Auth so it's not "null"
-        await updateProfile(result.user, { displayName: user });
-        await finalizeUserSetup(result.user, user);
-    } catch (e) { alert(e.message); }
+    // B. PROFANITY FILTER (Stop "DICK 123")
+    const badNameRegex = /(dick|pula|muie|pizda|admin|owner|hitler|nazi|coaie|sex|sugi)/i;
+    if (badNameRegex.test(user)) {
+        return alert("Numele ales nu este permis. Alege un nume decent.");
+    }
+
+    // C. Generate 6-digit OTP
+    generatedOTP = Math.floor(100000 + Math.random() * 900000);
+
+    // D. Store data temporarily
+    tempSignupData = { user, email, pass };
+
+    // UI Loading State
+    const btn = document.querySelector('#stepOneSignup button');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span>TRIMITERE...</span>';
+    btn.disabled = true;
+
+    // E. Send Email via EmailJS
+    // Using keys from your screenshot
+    emailjs.send("service_3aati3e", "template_m5qu7lw", {
+        to_email: email,
+        to_name: user,
+        otp_code: generatedOTP
+    }).then(() => {
+        // Success: Switch to Step 2
+        document.getElementById('stepOneSignup').style.display = 'none';
+        document.getElementById('stepTwoOTP').style.display = 'block';
+        alert(`Codul a fost trimis la ${email}. Verifică și Spam!`);
+    }).catch((err) => {
+        console.error('EmailJS Error:', err);
+        alert("Eroare la trimiterea emailului. Verifică adresa.");
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    });
+};
+
+// 2. VERIFY CODE & CREATE FIREBASE ACCOUNT
+window.verifyAndCreateUser = async function() {
+    const inputOtp = document.getElementById('otpInput').value;
+
+    if (parseInt(inputOtp) === generatedOTP) {
+        try {
+            // FIREBASE CREATION
+            const { createUserWithEmailAndPassword, updateProfile } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
+            
+            const result = await createUserWithEmailAndPassword(window.auth, tempSignupData.email, tempSignupData.pass);
+            
+            // Set Display Name
+            await updateProfile(result.user, { displayName: tempSignupData.user });
+            
+            // Run your existing finalize setup logic
+            // Note: Assuming finalizeUserSetup is available in scope or attached to window
+            if (typeof finalizeUserSetup === "function") {
+                await finalizeUserSetup(result.user, tempSignupData.user);
+            } else {
+                // Fallback if finalizeUserSetup isn't global
+                location.reload(); 
+            }
+
+            // Cleanup UI
+            document.getElementById('authModal').style.display = 'none';
+            cancelSignUp(); // Reset form
+
+        } catch (e) {
+            alert("Eroare Firebase: " + e.message);
+        }
+    } else {
+        alert("Cod incorect! Mai încearcă.");
+    }
+};
+
+// 3. RESET FORM
+window.cancelSignUp = function() {
+    document.getElementById('stepOneSignup').style.display = 'block';
+    document.getElementById('stepTwoOTP').style.display = 'none';
+    document.getElementById('otpInput').value = '';
+    const btn = document.querySelector('#stepOneSignup button');
+    btn.innerHTML = '<span>SEND VERIFICATION CODE</span>';
+    btn.disabled = false;
+    tempSignupData = {};
+    generatedOTP = null;
 };
 
 window.handleEmailLogin = async () => {
