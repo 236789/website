@@ -4100,9 +4100,15 @@ class Player {
 
 
 
-    // Apply a buff
-    activateBuff(type) {
+activateBuff(type) {
     playSFX(sfx.buff); 
+    
+    // Durata de bază este 600 (10 secunde)
+    
+    // Adăugăm secundele din upgrade-uri (1 secundă = 60 frame-uri)
+    if (type === 'BUFF_FIRE') duration += (userUpgrades.fire || 0) * 60;
+    if (type === 'BUFF_MAGNET') duration += (userUpgrades.mag_dur || 0) * 60;
+    if (type === 'BUFF_SHIELD') duration += (userUpgrades.shield || 0) * 60;
 
 
         if (type === 'BUFF_HP') {
@@ -4314,16 +4320,21 @@ if (this.activeBuffs.length > 0) {
 }
 
 // --- MAGNET LOGIC ---
-        if (this.hasBuff('BUFF_MAGNET')) {
-            platforms.forEach(p => {
-                if (p.item) {
-                    const itemRealX = p.x + p.width/2 + p.itemOffsetX;
-                    const itemRealY = p.y - 30 + p.itemOffsetY;
-                    const centerPx = this.x + PLAYER_SIZE/2;
-                    const centerPy = this.y + PLAYER_SIZE/2;
-                    const dx = centerPx - itemRealX;
-                    const dy = centerPy - itemRealY;
-                    const dist = Math.hypot(dx, dy);
+// --- MAGNET LOGIC ---
+if (this.hasBuff('BUFF_MAGNET')) {
+    platforms.forEach(p => {
+        if (p.item) {
+            // Raza de bază 125 + 2% per nivel de upgrade
+            let magnetRangeBonus = 1 + ((userUpgrades.mag_range || 0) * 0.02);
+            let activeRange = 125 * magnetRangeBonus;
+
+            const itemRealX = p.x + p.width/2 + p.itemOffsetX;
+            const itemRealY = p.y - 30 + p.itemOffsetY;
+            const dx = (this.x + PLAYER_SIZE/2) - itemRealX;
+            const dy = (this.y + PLAYER_SIZE/2) - itemRealY;
+            const dist = Math.hypot(dx, dy);
+            
+            if (dist < activeRange)  
                     
                     // --- NERF: Reduced range from 300 to 125 ---
                     if (dist < 125) { 
@@ -4355,16 +4366,31 @@ if (this.activeBuffs.length > 0) {
 
         if(this.invincibility > 0) this.invincibility--;
 
-        // Collision logic
-        if (this.vy > 0) {
-            platforms.forEach((p, i) => {
-                if (this.x + PLAYER_SIZE * 0.7 > p.x && 
-                    this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
-                    this.y + PLAYER_SIZE > p.y && 
-                    this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
-                    
-                    isFallingBack = false;
-                    let jumpPower = JUMP_FORCE;
+if (this.vy > 0) {
+    platforms.forEach((p, i) => {
+        if (this.x + PLAYER_SIZE * 0.7 > p.x && 
+            this.x + PLAYER_SIZE * 0.3 < p.x + p.width && 
+            this.y + PLAYER_SIZE > p.y && 
+            this.y + PLAYER_SIZE < p.y + PLATFORM_HEIGHT + (this.vy * timeSlow)) {
+            
+            isFallingBack = false;
+            
+            // 1. Upgrade Jump Power (Tiny tiny bit higher per level)
+            let jumpUpgradeBonus = (userUpgrades.jump_power || 0) * 0.05;
+            let jumpPower = JUMP_FORCE - jumpUpgradeBonus; // JUMP_FORCE e negativ, deci scădem ca să sărim mai sus
+
+            if (this.hasBuff('BUFF_JUMP_BOOST')) jumpPower *= 1.5;
+
+            // 2. Upgrade Jump Pad Power (+2% per level)
+            if (p.type === 'BOOST' || p.type === 'ELEVATOR') {
+                let padBonus = 1 + ((userUpgrades.jump_pad || 0) * 0.02);
+                jumpPower *= (1.8 * padBonus);
+                playSFX(sfx.elevator);
+            } else {
+                playSFX(sfx.jump);
+            }
+
+            this.vy = jumpPower;
 
 
 
@@ -4580,8 +4606,12 @@ renderBuffs() {
         const spacingY = 28;    // Distanța verticală între rânduri
         // Modificăm aici: i < this.maxHp în loc de i < 5
         for (let i = 0; i < this.maxHp; i++) {
-            const hx = 20 + (i * 32); 
-            const hy = 20;
+            // Calculăm rândul și coloana pentru fiecare inimă
+            const row = Math.floor(i / heartsPerRow);
+            const col = i % heartsPerRow;
+
+            const hx = 20 + (col * spacingX);
+            const hy = 20 + (row * spacingY); // Hy se schimbă acum în funcție de rând
             if (this.hp > i) {
                 ctx.save();
                 if (this.hp < i + 1) { 
