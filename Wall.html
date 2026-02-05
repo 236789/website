@@ -4128,95 +4128,78 @@ window.togglePicker = async (type) => {
         });
     }
 
-    async function searchStickers(query) {
-        if (!stickerResults) return;
-        stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Căutare...</div>';
-        try {
-            const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=200&rating=g`);
-            const data = await res.json();
-            stickerResults.innerHTML = '';
-            data.data.forEach(s => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item';
-                img.src = s.images.fixed_height_small.url;
-                img.onclick = () => window.sendSticker(s.images.original.url);
-                stickerResults.appendChild(img);
-            });
-        } catch (e) { stickerResults.innerHTML = 'Eroare.'; }
-    }
 
-    async function loadStickers() {
-        if (!stickerResults) return;
-        stickerResults.innerHTML = '';
 
-        // Exclusive KSDA
-        const h = document.createElement('div');
-        h.className = 'sticker-section-title'; h.innerText = "KSDA EXCLUSIVE";
-        stickerResults.appendChild(h);
+// --- FUNCȚIA PENTRU STICKERE (TRANSPARENTE) ---
+async function loadStickers() {
+    if (!stickerResults) return;
+    stickerResults.innerHTML = '';
 
-        if (typeof CUSTOM_STICKERS !== 'undefined') {
-            CUSTOM_STICKERS.forEach(url => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item'; img.src = url;
-                img.onclick = () => window.sendSticker(url);
-                stickerResults.appendChild(img);
-            });
-        }
+    // 1. Adaugă titlu Giphy Trending
+    const gh = document.createElement('div');
+    gh.className = 'sticker-section-title'; gh.innerText = "GIPHY STICKERS";
+    stickerResults.appendChild(gh);
 
-        // Giphy Trending
-        const gh = document.createElement('div');
-        gh.className = 'sticker-section-title'; gh.innerText = "GIPHY TRENDING";
-        stickerResults.appendChild(gh);
-
-        try {
-            const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=200&rating=g`);
-            const data = await res.json();
-            data.data.forEach(s => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item';
-                img.src = s.images.fixed_height_small.url;
-                img.onclick = () => window.sendSticker(s.images.original.url);
-                stickerResults.appendChild(img);
-            });
-        } catch (e) {}
-    }
-
-    // --- 4. GIF LOGIC ---
-    if(gifSearchInput) {
-        let gifDebounce;
-        gifSearchInput.addEventListener('input', (e) => {
-            clearTimeout(gifDebounce);
-            const q = e.target.value;
-            gifDebounce = setTimeout(() => {
-                if(q.length>2) loadGifs(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${q}&limit200&rating=g`);
-                else loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=200&rating=g`);
-            }, 800);
+    try {
+        // ENDPOINT SPECIAL: /v1/stickers/trending
+        const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
+        const data = await res.json();
+        data.data.forEach(s => {
+            const img = document.createElement('img');
+            img.className = 'sticker-item';
+            img.src = s.images.fixed_height.url; // Calitate mai bună pentru pătrat
+            img.onclick = () => window.sendSticker(s.images.original.url);
+            stickerResults.appendChild(img);
         });
-    }
+    } catch (e) { console.error("Eroare stickere", e); }
+} 
 
-    async function loadGifs(url) {
-        const gifResults = document.getElementById('gifResults');
-        if(!gifResults) return;
-        gifResults.innerHTML = '<div style="color:#aaa; grid-column:span 3; text-align:center;">Se încarcă...</div>';
-        try {
-            const res = await fetch(url); 
-            const data = await res.json();
-            gifResults.innerHTML = '';
-            data.data.forEach(gif => {
-                const img = document.createElement('img'); 
-                img.className = 'gif-item';
-                img.src = gif.images.fixed_height_small.url; 
-                img.onclick = () => {
-                    document.getElementById('pickerDrawer').classList.remove('open'); 
-                    document.getElementById('gifBtn').classList.remove('active');
-                    selectedImgBase64 = gif.images.original.url; 
-                    sendMessage(); 
-                };
-                gifResults.appendChild(img);
-            });
-        } catch(e) { gifResults.innerHTML = 'Eroare.'; }
-    }
+async function searchStickers(query) {
+    if (!stickerResults) return;
+    stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Căutare...</div>';
+    try {
+        // ENDPOINT SPECIAL: /v1/stickers/search
+        const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=100&rating=g`);
+        const data = await res.json();
+        stickerResults.innerHTML = '';
+        data.data.forEach(s => {
+            const img = document.createElement('img');
+            img.className = 'sticker-item';
+            img.src = s.images.fixed_height.url;
+            img.onclick = () => window.sendSticker(s.images.original.url);
+            stickerResults.appendChild(img);
+        });
+    } catch (e) { stickerResults.innerHTML = 'Eroare.'; }
+}
 
+// --- FUNCȚIA PENTRU GIF-URI ---
+async function loadGifs(url) {
+    const gifResults = document.getElementById('gifResults');
+    if(!gifResults) return;
+    gifResults.innerHTML = '<div style="color:#aaa; grid-column:1/-1; text-align:center;">Se încarcă...</div>';
+    try {
+        // URL-ul primit trebuie să aibă limit=100
+        const res = await fetch(url); 
+        const data = await res.json();
+        gifResults.innerHTML = '';
+        data.data.forEach(gif => {
+            const img = document.createElement('img'); 
+            img.className = 'gif-item';
+            img.src = gif.images.fixed_height.url; 
+            img.onclick = () => {
+                document.getElementById('pickerDrawer').classList.remove('open'); 
+                document.getElementById('gifBtn').classList.remove('active');
+                selectedImgBase64 = gif.images.original.url; 
+                sendMessage(); 
+            };
+            gifResults.appendChild(img);
+        });
+    } catch(e) { gifResults.innerHTML = 'Eroare.'; }
+}
+
+// --- ACTUALIZEAZĂ APELURILE ÎN TOGGLEPICKER ---
+// În funcția togglePicker, caută unde se apelează loadGifs și pune limita 100:
+// loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
 const ATMOSPHERES_DB = [
     { name: 'Cyber Blue', main: '#00f5ff', bg: '#050a12', inBg: 'rgba(5,15,30,0.95)' },
     { name: 'Matrix Rain', main: '#00ff41', bg: '#000800', inBg: 'rgba(0,20,5,0.98)' },
