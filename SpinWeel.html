@@ -3631,6 +3631,7 @@ async function attemptSpin(isFreeAttempt) {
 
     let rewardIdx = pickRewardIndex(); // Default random
 
+    // CASE 1: ADMIN IS SPINNING FOR AN EVENT
     if (isEventModeActive && isAdmin) {
         if (!eventSelectedUser) return alert("Alege un participant din listă mai întâi!");
         
@@ -3641,6 +3642,7 @@ async function attemptSpin(isFreeAttempt) {
         if (isFreeAttempt) await updateDoc(userRef, { freeSpinStack: increment(-1) });
         else await updateDoc(userRef, { diamonds: increment(-1) });
 
+        // Broadcast global spin
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
             spinAction: {
                 index: rewardIdx,
@@ -3652,18 +3654,16 @@ async function attemptSpin(isFreeAttempt) {
         return; 
     }
 
-    // Spin privat
+    // CASE 2: PRIVATE SPIN (Normal players)
+    // Deduct currency
     if (isFreeAttempt) await updateDoc(userRef, { freeSpinStack: increment(-1) });
     else await updateDoc(userRef, { diamonds: increment(-1) });
 
-    await updateDoc(doc(db, "site_metadata", "wheel_event"), {
-        spinAction: {
-            index: pickRewardIndex(),
-            timestamp: Date.now(),
-            adminId: auth.currentUser.uid,
-            speed: parseFloat(document.getElementById('multiSpinSpeed')?.value || 1)
-        }
-    });
+    // Set self as the spinner so finalizeSpin knows to award the prize
+    currentSpinAdminId = auth.currentUser.uid;
+    
+    // Start spin locally for this user only
+    startSpin(rewardIdx, parseFloat(document.getElementById('multiSpinSpeed')?.value || 1));
 }
 
 document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
@@ -3707,9 +3707,11 @@ async function finalizeSpin(idx) {
     let reward = { ...REWARDS[idx] }; 
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
+    // Determine who receives the prize
     let targetUid = auth.currentUser.uid;
     if (isEventModeActive && eventSelectedUser) targetUid = eventSelectedUser.uid;
 
+    // Check if the current client is the one authorized to write to DB
     const iAmTheSpinner = (auth.currentUser.uid === currentSpinAdminId);
 
     const targetRef = doc(db, "accounts", targetUid);
@@ -3778,24 +3780,33 @@ async function finalizeSpin(idx) {
         modal.classList.add('active');
     }
 
-    // --- 3. DATABASE UPDATES (Neschimbat, rămâne logica ta funcțională) ---
+    // --- 3. DATABASE UPDATES ---
     if (iAmTheSpinner) {
         if (reward.type === "xp" && !isEventModeActive) {
             let nextXP = (targetData.wheelXP || 0) + 15;
             await updateDoc(targetRef, { "wheelStats.xpLandings": increment(1) });
             if (nextXP >= 100) {
                 await updateDoc(targetRef, { wheelXP: 0, diamonds: increment(5) });
-                // Logica pentru modal special de 100% XP poate fi adăugată aici
             } else {
                 await updateDoc(targetRef, { wheelXP: nextXP });
             }
         } 
         else if (reward.type !== "xp") {
             let updateData = {};
-            if (reward.type === "coins") { updateData.coins = increment(reward.val); updateData["wheelStats.coins"] = increment(reward.val); }
-            else if (reward.type === "diamonds") { updateData.diamonds = increment(reward.val); updateData["wheelStats.diamonds"] = increment(reward.val); }
-            else if (reward.type === "badge") { updateData.ownedBadges = arrayUnion(reward.val); }
-            else if (reward.type === "banner") { updateData.ownedBanners = arrayUnion(reward.val); }
+            if (reward.type === "coins") { 
+                updateData.coins = increment(reward.val); 
+                updateData["wheelStats.coins"] = increment(reward.val); 
+            }
+            else if (reward.type === "diamonds") { 
+                updateData.diamonds = increment(reward.val); 
+                updateData["wheelStats.diamonds"] = increment(reward.val); 
+            }
+            else if (reward.type === "badge") { 
+                updateData.ownedBadges = arrayUnion(reward.val); 
+            }
+            else if (reward.type === "banner") { 
+                updateData.ownedBanners = arrayUnion(reward.val); 
+            }
 
             await updateDoc(targetRef, updateData);
 
@@ -3804,8 +3815,11 @@ async function finalizeSpin(idx) {
             
             if (isJackpot) {
                 await addDoc(collection(db, "wheel_jackpot_history"), {
-                    username: targetName, userPhoto: targetPhoto,
-                    rewardLabel: reward.label, rewardType: reward.type, timestamp: serverTimestamp()
+                    username: targetName, 
+                    userPhoto: targetPhoto,
+                    rewardLabel: reward.label, 
+                    rewardType: reward.type, 
+                    timestamp: serverTimestamp()
                 });
 
                 await addDoc(collection(db, "wall_messages"), {
@@ -4006,20 +4020,21 @@ onAuthStateChanged(auth, user => {
             }
 
             // Sync Spin
-// Inside your onSnapshot for "wheel_event"
+// Inside onSnapshot(doc(db, "site_metadata", "wheel_event")...
 if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
     lastProcessedSpinTime = spinAction.timestamp;
-    currentSpinAdminId = spinAction.adminId; // Very important for finalizeSpin
     
-    // Check if the spin is recent (last 10 seconds)
-    if (Date.now() - spinAction.timestamp < 10000) {
-        // RESET isSpinning to false just in case a previous one stuck
-        isSpinning = false; 
-        
-        if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
-        
-        // Start the actual animation
-        startSpin(spinAction.index, spinAction.speed || 1); 
+    // Check if this is an Event Spin or a Private Spin that leaked
+    const isAdminSpin = ADMIN_EMAILS.includes(user.email); // Check if the CURRENT client is an admin
+    
+    // Only trigger the wheel for everyone IF Event Mode is on
+    if (isEventModeActive) {
+        currentSpinAdminId = spinAction.adminId;
+        if (Date.now() - spinAction.timestamp < 10000) {
+            isSpinning = false; 
+            if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
+            startSpin(spinAction.index, spinAction.speed || 1); 
+        }
     }
 }
         });
