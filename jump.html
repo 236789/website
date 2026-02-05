@@ -3632,6 +3632,10 @@ const assets = {
     void_shard: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/c3674029-0509-421b-9967-aeca3624a760%20(1).png?alt=media&token=5c14fd15-a82f-44c5-8193-b4b361028a32',
     almighty_star: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/All%20Mighty%20star.png?alt=media&token=86cf4882-a10e-482b-80c0-0e18e5f4ce11',
 
+
+    // --- NEW BUFF ---
+    buff_jump: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FJUMP%20UP.png?alt=media&token=1e56ab8f-9299-439c-865f-710a6a1df6f1',
+
    // NEW BUFFS
     buff_hp: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FHP%20BUFF.png?alt=media&token=04a00456-3e52-4343-84f3-d0087cb89eac',
     buff_magnet: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FMagnet%20Buff%20.png?alt=media&token=bd764b55-f191-4970-8496-309e5ac799f2',
@@ -3771,6 +3775,23 @@ class Player {
             return;
         }
 
+
+   // --- NEW JUMP UP LOGIC ---
+        if (type === 'BUFF_JUMP') {
+            // Standard jump is -9.0. Elevator is ~ -16.0.
+            // We set this to -24.0 for a MASSIVE boost.
+            this.vy = -24.0; 
+            playSFX(sfx.elevator); // Uses the spring sound
+            window.showToast("SUPER JUMP! 🚀");
+            
+            // Visual effect
+            ctx.save();
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = "#00ffff";
+            ctx.restore();
+            return; // Return early because it has no duration
+        }
+
         let duration = 0;
         let label = "";
         let imgUrl = "";
@@ -3883,7 +3904,7 @@ if (this.activeBuffs.length > 0) {
     }
 }
 
-        // --- MAGNET LOGIC ---
+// --- MAGNET LOGIC ---
         if (this.hasBuff('BUFF_MAGNET')) {
             platforms.forEach(p => {
                 if (p.item) {
@@ -3895,10 +3916,12 @@ if (this.activeBuffs.length > 0) {
                     const dy = centerPy - itemRealY;
                     const dist = Math.hypot(dx, dy);
                     
-                    if (dist < 300) { 
-                        p.itemOffsetX += dx * 0.10 * timeSlow;
-                        p.itemOffsetY += dy * 0.10 * timeSlow;
+                    // --- NERF: Reduced range from 300 to 125 ---
+                    if (dist < 125) { 
+                        p.itemOffsetX += dx * 0.12 * timeSlow; // Slight speed increase so they don't lag behind
+                        p.itemOffsetY += dy * 0.12 * timeSlow;
 
+                        // Collection radius (keep small)
                         if (dist < 50) {
                             if (p.item.startsWith('BUFF_')) this.activateBuff(p.item);
                             else collectItem(p.item);
@@ -4247,8 +4270,13 @@ function createPlatform(y, forceNormal = false) {
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random(); 
 
+
+        if (score > 5000 && Math.random() < 0.25) {
+             item = 'BUFF_JUMP';
+        }
+
         // 1. ALMIGHTY STAR (1% REAL: de la 0.00 la 0.01)
-        if (score > 15000 && rItem < 0.01) {
+        else if (score > 15000 && rItem < 0.01) {
             item = 'ALMIGHTY_STAR';
         }
         // 2. VOID SHARDS (3% REAL: de la 0.01 la 0.04 [0.01 + 0.03])
@@ -4536,6 +4564,7 @@ if (p.item) {
             else if (p.item === 'BUFF_SHIELD') { itemImg = imgs.buff_shield; size = 32; }
             else if (p.item === 'BUFF_DAMAGE') { itemImg = imgs.buff_damage; size = 32; }
 else if (p.item === 'BUFF_GHOST') { itemImg = imgs.buff_ghost; size = 32; }
+    else if (p.item === 'BUFF_JUMP') { itemImg = imgs.buff_jump; size = 35; } // NEW IMAGE MAPPING
             else if (p.item === 'BUFF_TIMESTOP') { itemImg = imgs.buff_timestop; size = 32; } // ADD THIS
             else if (p.item === 'BUFF_LUCK') { itemImg = imgs.buff_luck; size = 32; } // ADD THIS LINE
             else if (p.item === 'BUFF_FIRE') { itemImg = imgs.buff_fire; size = 32; } // IMPORTANT LINE
@@ -4563,7 +4592,7 @@ if(p.enemy && !p.enemy.dead) {
                 const distToPlayer = Math.sqrt(dx*dx + dy*dy);
 
                 if (distToPlayer < 300) { 
-                    p.enemy.hp -= 0.04; // Increased damage speed
+        p.enemy.hp -= 0.015; 
                     
                     // Visual "On Fire" Effect
                     ctx.save();
