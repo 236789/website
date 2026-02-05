@@ -4233,9 +4233,7 @@ function createPlatform(y, forceNormal = false) {
     let item = null;
     const r = Math.random();
 
-    // Count active enemies
-
-// --- 1. DIFFICULTY TIERS (Platform Types) ---
+    // --- 1. DIFFICULTY TIERS ---
     let coinChance = 0.08; 
     let enemyChance = 0.15; 
     let maxEnemyHp = 1;
@@ -4246,11 +4244,6 @@ function createPlatform(y, forceNormal = false) {
             else if (score > 500 && r > 0.85) type = 'FRAGILE'; 
             else if (r > 0.92) type = 'HEAL';
         }
-
-            else if (buffRoll < 0.35) {
-                item = 'BUFF_JUMP_BOOST';
-            }
-
     } else if (score < 15000) {
         maxEnemyHp = 2;
         coinChance = 0.10;
@@ -4269,7 +4262,7 @@ function createPlatform(y, forceNormal = false) {
         }
     }
 
-    // --- 2. ENEMY SPAWN LOGIC (Inamici) ---
+    // --- 2. ENEMY SPAWN LOGIC ---
     let activeEnemies = platforms.filter(p => p.enemy && !p.enemy.dead).length;
     let canSpawnEnemy = (activeEnemies < 2) && 
                         (platformCounter - lastEnemyPlatform > 12) && 
@@ -4286,7 +4279,8 @@ function createPlatform(y, forceNormal = false) {
         };
         lastEnemyPlatform = platformCounter;
     }
-// --- ITEM SPAWN LOGIC (Updated) ---
+
+    // --- 3. ITEM SPAWN LOGIC (ALL BUFFS INCLUDED) ---
     if (!enemy && !type.includes('SPIKES') && type !== 'BOOST') {
         let rItem = Math.random(); 
 
@@ -4304,32 +4298,29 @@ function createPlatform(y, forceNormal = false) {
         } 
         // 4. BUFFS (5% TOTAL CHANCE to spawn ANY buff)
         else if (score > 3000 && rItem < 0.11) { 
-            const buffRoll = Math.random();
+            const buffRoll = Math.random(); 
             
-            // --- A. JUMP UP (Rare - 10%) ---
-            // Threshold: 0.10
-            if (score > 5000 && buffRoll < 0.10) {
+            // --- A. JUMP UP (5%) ---
+            if (score > 5000 && buffRoll < 0.05) {
                  item = 'BUFF_JUMP';
             }
-            // --- B. JUMP BOOST (Common - 25%) ---
-            // Threshold: 0.10 + 0.25 = 0.35
-            else if (buffRoll < 0.35) {
+            // --- B. JUMP BOOST (15%) ---
+            else if (buffRoll < 0.20) {
                 item = 'BUFF_JUMP_BOOST';
             }
-            // --- C. THE REST (13% Each) ---
-            // 0.35 + 0.13 = 0.48
-            else if (buffRoll < 0.48) item = 'BUFF_TIMESTOP'; 
+            // --- C. REST OF BUFFS (~9% Each) ---
+            else if (buffRoll < 0.29) item = 'BUFF_TIMESTOP'; 
+            else if (buffRoll < 0.38) item = 'BUFF_HP';       
+            else if (buffRoll < 0.47) item = 'BUFF_SHIELD';   
+            else if (buffRoll < 0.56) item = 'BUFF_FIRE';
             
-            // 0.48 + 0.13 = 0.61
-            else if (buffRoll < 0.61) item = 'BUFF_HP';       
-            
-            // 0.61 + 0.13 = 0.74
-            else if (buffRoll < 0.74) item = 'BUFF_SHIELD';   
-            
-            // 0.74 + 0.13 = 0.87
-            else if (buffRoll < 0.87) item = 'BUFF_FIRE';
-            
-            // The rest (1.00 - 0.87 = 0.13)
+            // --- RESTORED MISSING BUFFS ---
+            else if (buffRoll < 0.65) item = 'BUFF_DAMAGE';
+            else if (buffRoll < 0.74) item = 'BUFF_ARMOR';
+            else if (buffRoll < 0.83) item = 'BUFF_LUCK';
+            else if (buffRoll < 0.92) item = 'BUFF_GHOST';
+
+            // --- MAGNET (Remaining 8%) ---
             else                      item = 'BUFF_MAGNET';   
         }
         // 5. COINS (10% REAL)
@@ -4337,6 +4328,7 @@ function createPlatform(y, forceNormal = false) {
             item = 'COIN'; 
         }
     }
+
     return { 
         x: Math.random() * (canvas.width - PLATFORM_WIDTH), 
         y: y, startY: y, width: PLATFORM_WIDTH, 
