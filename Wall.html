@@ -3624,10 +3624,19 @@ body {
             <i class="fas fa-poll"></i>
         </button>
 
-<button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()" style="display: flex; align-items: center; gap: 6px; transition: 0.3s;">
-    <i class="fas fa-volume-up"></i>
-    <span style="font-family: 'Orbitron'; font-size: 10px; font-weight: 900; letter-spacing: 1px;">AUTO</span>
-</button>
+<div style="display: flex; align-items: center; gap: 8px;">
+    <button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()" style="display: flex; align-items: center; gap: 6px; transition: 0.3s;">
+        <i class="fas fa-volume-up"></i>
+        <span style="font-family: 'Orbitron'; font-size: 10px; font-weight: 900; letter-spacing: 1px;">AUTO</span>
+    </button>
+
+    <select id="voiceVibe" style="background: rgba(0,0,0,0.6); color: var(--primary); border: 1px solid var(--primary); font-family: 'Orbitron'; font-size: 8px; border-radius: 5px; padding: 4px; cursor: pointer; outline: none;">
+        <option value="normal">NORMAL</option>
+        <option value="deep">VOID / DEEP</option>
+        <option value="cyber">FAST / CYBER</option>
+        <option value="high">HIGH / CHIPMUNK</option>
+    </select>
+</div>
 
         <!-- Reset Chat Button (Owner/Admin Only - Pushed to Right) -->
         <button id="resetChatBtn" class="tool-btn" style="display:none; margin-left:auto; color:#ff4757;">
@@ -5856,22 +5865,30 @@ async function sendVoiceToFirestore(audioUrl) {
 
 
 
-// --- TEXT TO SPEECH ENGINE ---
+// --- UPDATED VOICE ENGINE WITH VIBES ---
 window.speakMessage = (text) => {
-    // 1. Cancel any currently playing speech so they don't overlap
-    window.speechSynthesis.cancel();
-
+    window.speechSynthesis.cancel(); // Stop any current talking
     if (!text || text.trim() === "") return;
 
-    // 2. Create the speech request
     const utterance = new SpeechSynthesisUtterance(text);
-    
-    // 3. Set language (ro-RO for Romanian, as your site is in Romanian)
-    utterance.lang = 'ro-RO'; 
-    utterance.pitch = 1.0;
-    utterance.rate = 1.0; // Speed (1.0 is normal)
+    const vibe = document.getElementById('voiceVibe').value;
 
-    // 4. Speak!
+    // --- LOGIC FOR THE VOICE SOUND (THE VOID) ---
+    if (vibe === 'deep') {
+        utterance.pitch = 0.1; // Deep Demon
+        utterance.rate = 0.8;  
+    } else if (vibe === 'cyber') {
+        utterance.pitch = 1.2; // Robot
+        utterance.rate = 1.6;  
+    } else if (vibe === 'high') {
+        utterance.pitch = 2.0; // Chipmunk
+        utterance.rate = 1.1;
+    } else {
+        utterance.pitch = 1.0; // Normal
+        utterance.rate = 1.0;
+    }
+
+    utterance.lang = 'ro-RO'; 
     window.speechSynthesis.speak(utterance);
 };
 
@@ -6527,24 +6544,21 @@ if (data.text && data.type !== 'vocal') {
 
 
 
-// --- AUTO-READ LOGIC ---
-if (autoReadEnabled && data.id !== lastReadMessageId) {
-    // 1. Only read if it's a text message and not a bot/system alert
+// --- CORRECTION: Changed lastReadMessageId to lastProcessedMessageId ---
+if (autoReadEnabled && data.id !== lastProcessedMessageId) {
     if (data.text && !data.isBot && data.uid !== 'system-alert') {
         
-        // 2. Check if the message is actually "new" (sent in the last 10 seconds)
-        // to prevent reading the whole history when the page refreshes
         const msgTime = data.createdAt ? data.createdAt.toMillis() : Date.now();
         const isFresh = (Date.now() - msgTime) < 10000;
 
         if (isFresh) {
             const speakerName = data.name || "Cineva";
             const cleanText = data.text.replace(/<br>/g, " ");
+            // This now calls the updated speakMessage below
             window.speakMessage(`${speakerName} a spus: ${cleanText}`);
         }
     }
-    // Update the last read ID so we don't repeat
-    lastReadMessageId = data.id;
+    lastProcessedMessageId = data.id;
 }
         }); 
         
