@@ -3633,6 +3633,14 @@ const assets = {
     almighty_star: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/All%20Mighty%20star.png?alt=media&token=86cf4882-a10e-482b-80c0-0e18e5f4ce11',
 
 
+firePlat: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatforms%2FFire%20Platform.png?alt=media&token=df3415e1-ebcb-455d-a4ce-ba07296eb475',
+    fragile3: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatforms%2FFragile%20platrform%203.png?alt=media&token=937f9c55-63a8-41ec-a1a6-228b4e93416c',
+    icyPlat: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatforms%2FIcy%20PLatform.png?alt=media&token=2f62bb9d-e148-4802-b50f-101bec411340',
+    overheatPlat: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatforms%2FOverheat%20Platforms%20.png?alt=media&token=abe5aa9b-913c-40c0-90d8-634f55ebaa31',
+    stickyPlat: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatforms%2FStickky%20platform%20.png?alt=media&token=5b5a661a-f28a-481c-98d9-3ec29622b09d',
+    magnetPlat: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fplatforms%2Fmagnet%20platforms.png?alt=media&token=0f05b873-4962-419f-bb5e-7f428cccc8bf',
+
+
 buff_chest: 'https://firebasestorage.googleapis.com/v0/b/ksda-7546f.firebasestorage.app/o/doodle%20jump%2Fbufs%2FTreasure%20chest.png?alt=media&token=297f39af-088b-4d5d-b345-4e4adb6ba942',
 
     // --- NEW: JUMP BOOST (15s) ---
@@ -3758,6 +3766,10 @@ class Player {
         this.invincibility = 0;
         this.activeBuffs = []; 
         this.reset();
+
+this.burnTimer = 0;
+        this.stuckTimer = 0;
+        this.isIcy = false;
     }
 
     reset() {
@@ -3767,6 +3779,8 @@ class Player {
         this.activeBuffs = [];
         this.renderBuffs(); // Clear UI
     }
+
+
 
     // Apply a buff
     activateBuff(type) {
@@ -3917,8 +3931,36 @@ else if (type === 'BUFF_FIRE') {
     }
 
 update() {
-        // --- 1. DEFINE SLOW MOTION FACTOR ---
         let timeSlow = this.hasBuff('BUFF_TIMESTOP') ? 0.35 : 1.0;
+
+        // --- STICKY LOGIC ---
+        if (this.stuckTimer > 0) {
+            this.stuckTimer -= timeSlow;
+            this.vx = 0; 
+            // If stuck, we don't apply gravity/jump until time is up
+        } else {
+            // --- ICY LOGIC (Friction) ---
+            let friction = this.isIcy ? 0.98 : 0.85; 
+            let accel = this.isIcy ? 0.2 : 0.8;
+
+            if (keys['ArrowLeft'] || keys['a']) this.vx -= accel * timeSlow;
+            if (keys['ArrowRight'] || keys['d']) this.vx += accel * timeSlow;
+            this.vx *= friction; 
+            this.x += this.vx;
+            
+            this.vy += GRAVITY * timeSlow;
+            this.y += this.vy * timeSlow;
+        }
+
+        // --- BURN LOGIC ---
+        if (this.burnTimer > 0) {
+            this.burnTimer -= timeSlow;
+            if (Math.floor(this.burnTimer) % 60 === 0 && this.burnTimer > 0) {
+    this.takeDamage(); // Let the function handle the damage amount
+            }
+        }
+        // Reset icy state every frame, collision will re-enable it
+        this.isIcy = false; 
 
         // --- BUFF TIMERS ---
 if (this.activeBuffs.length > 0) {
@@ -3995,6 +4037,47 @@ if (this.activeBuffs.length > 0) {
                     
                     isFallingBack = false;
                     let jumpPower = JUMP_FORCE;
+
+
+
+// --- FIRE / OVERHEAT ---
+    if (p.type === 'FIRE' || p.type === 'OVERHEAT') {
+        this.burnTimer = 120; // 2 seconds
+    }
+
+    // --- ICY ---
+    if (p.type === 'ICY') {
+        this.isIcy = true;
+    }
+
+    // --- STICKY ---
+    if (p.type === 'STICKY') {
+        this.stuckTimer = 180; // 3 seconds
+        this.vy = 0;
+        this.y = p.y - PLAYER_SIZE; // Lock to top
+        playSFX(sfx.crack); // reuse crack sound for stick
+    }
+
+    // --- PHASE ---
+    // In gameLoop, we calculate if Phase is solid
+    let isSolid = (Date.now() % 4000 < 2000); 
+    if (p.type === 'PHASE' && !isSolid) return; // Ignore collision if transparent
+
+    // --- MAGNET ---
+    // We add this OUTSIDE the "falling" check so it pulls you while you jump
+    platforms.forEach(p => {
+        if (p.type === 'MAGNET') {
+            let dx = (p.x + p.width/2) - (this.x + PLAYER_SIZE/2);
+            if (Math.abs(dx) < 200) {
+                this.vx += dx * 0.01; // Pull towards center
+            }
+        }
+    });
+
+    // --- FRAGILE V3 ---
+    if (p.type === 'FRAGILE_V3') {
+        p.cracks = 3; // Breaks immediately
+    }
 
                    // --- NEW: APPLY 1.5x MULTIPLIER ---
                     if (this.hasBuff('BUFF_JUMP_BOOST')) {
@@ -4255,18 +4338,16 @@ let platformCounter = 0;
 let lastEnemyPlatform = 0;
 
 function createPlatform(y, forceNormal = false) {
-
     const isLucky = player && player.hasBuff('BUFF_LUCK'); 
-
-
     platformCounter++;
+    
     let type = 'NORMAL';
     let cracks = 0; 
     let enemy = null; 
     let item = null;
     const r = Math.random();
 
-    // --- 1. DIFFICULTY TIERS ---
+    // --- 1. DIFFICULTY TIERS (PLATFORM TYPES) ---
     let coinChance = 0.08; 
     let enemyChance = 0.15; 
     let maxEnemyHp = 1;
@@ -4277,23 +4358,45 @@ function createPlatform(y, forceNormal = false) {
             else if (score > 500 && r > 0.85) type = 'FRAGILE'; 
             else if (r > 0.92) type = 'HEAL';
         }
-    } else if (score < 15000) {
+    } 
+    // --- 5k to 15k TIER (Includes the 10k Hardcore unlock) ---
+    else if (score < 15000) {
         maxEnemyHp = 2;
         coinChance = 0.10;
         if (!forceNormal) {
-            if (r > 0.93) type = 'BOOST';
-            else if (r > 0.80) type = 'FRAGILE';
-            else if (r > 0.75) type = 'ELEVATOR';
+            // New 10k+ Hardcore Platforms
+            if (score > 10000) {
+                if (r > 0.96) type = 'FIRE';
+                else if (r > 0.92) type = 'ICY';
+                else if (r > 0.88) type = 'STICKY';
+                else if (r > 0.84) type = 'PHASE';
+                else if (r > 0.80) type = 'MAGNET';
+                else if (r > 0.76) type = 'OVERHEAT';
+                else if (r > 0.72) type = 'FRAGILE_V3';
+                else if (r > 0.68) type = 'ELEVATOR';
+                else if (r > 0.64) type = 'BOOST';
+            } else {
+                if (r > 0.93) type = 'BOOST';
+                else if (r > 0.80) type = 'FRAGILE';
+                else if (r > 0.75) type = 'ELEVATOR';
+            }
         }
-    } else {
-        // 15k+ HARDCORE
+    } 
+    // --- 15k+ HARDCORE TIER ---
+    else {
         maxEnemyHp = 3;
         coinChance = 0.12;
         if (!forceNormal) {
-            if (r > 0.90) type = 'SPIKES_BLUE';
-            else if (r > 0.80) type = 'FRAGILE';
+            if (r > 0.92) type = 'SPIKES_BLUE';
+            else if (r > 0.88) type = 'FIRE';
+            else if (r > 0.84) type = 'ICY';
+            else if (r > 0.80) type = 'PHASE';
+            else if (r > 0.70) type = 'FRAGILE'; // Regular fragile
+            else if (r > 0.65) type = 'FRAGILE_V3'; // Instant break
         }
     }
+
+
 
     // --- 2. ENEMY SPAWN LOGIC ---
     let activeEnemies = platforms.filter(p => p.enemy && !p.enemy.dead).length;
@@ -4634,13 +4737,31 @@ platforms.forEach((p, i) => {
         }
 
         let asset = imgs.normal1;
+        ctx.globalAlpha = 1.0; // Reset transparency
+
         if (p.type === 'NORMAL') asset = p.variant === 1 ? imgs.normal1 : imgs.normal2;
         else if (p.type === 'BOOST') asset = imgs.boost;
-        else if (p.type === 'HEAL') asset = imgs.healPlat;
-        else if (p.type === 'FRAGILE') asset = p.cracks === 0 ? imgs.normal1 : (p.cracks === 1 ? imgs.fragile1 : imgs.fragile2);
+// Fixes height for all "tall" structure platforms
+if (['HEAL', 'FIRE', 'OVERHEAT'].includes(p.type)) {
+    drawHeight = 48;        
+    drawY = p.y - 32;       
+}        else if (p.type === 'FRAGILE') asset = p.cracks === 0 ? imgs.normal1 : (p.cracks === 1 ? imgs.fragile1 : imgs.fragile2);
         else if (p.type === 'SPIKES_PURPLE') asset = imgs.spikesPurple;
         else if (p.type === 'SPIKES_BLUE') asset = imgs.spikesBlue;
         else if (p.type === 'ELEVATOR') asset = imgs.elevator;
+
+
+        else if (p.type === 'FIRE') asset = imgs.firePlat;
+        else if (p.type === 'OVERHEAT') asset = imgs.overheatPlat;
+        else if (p.type === 'ICY') asset = imgs.icyPlat;
+        else if (p.type === 'STICKY') asset = imgs.stickyPlat;
+        else if (p.type === 'MAGNET') asset = imgs.magnetPlat;
+        else if (p.type === 'FRAGILE_V3') asset = imgs.fragile3;
+        else if (p.type === 'PHASE') {
+            asset = imgs.normal2;
+            let phaseTimer = Date.now() % 4000;
+            if (phaseTimer > 2000) ctx.globalAlpha = 0.3; // Transparent phase
+        }
 
         // --- FIXED DRAWING LOGIC ---
         let drawHeight = PLATFORM_HEIGHT;
