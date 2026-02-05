@@ -4771,44 +4771,83 @@ function getCosmeticBadge(equippedBadge) {
     let wipeCheckInterval = null;
     let toastTimeout;
 
-
+// --- QUANTUM SPEECH ENGINE V2 (QUEUED & DEDUPLICATED) ---
 let autoReadEnabled = false;
-let lastProcessedMessageId = null; 
+let speechQueue = [];
+let isProcessingQueue = false;
+let alreadyReadMessages = new Set(); // Tracks ALL read IDs to prevent duplicates on reactions
+let autoReadStartTime = 0;
 
 window.toggleAutoRead = () => {
     autoReadEnabled = !autoReadEnabled;
     const btn = document.getElementById('autoReadBtn');
     
     if (autoReadEnabled) {
-        // ON: Glowing Cyan
+        autoReadStartTime = Date.now(); // Only read messages sent AFTER turning this on
+        speechQueue = [];
+        // Mark all currently visible messages as "already read" so it doesn't read the whole history
+        document.querySelectorAll('.msg-row').forEach(msg => {
+            alreadyReadMessages.add(msg.dataset.id);
+        });
+
         btn.style.color = "var(--primary)";
         btn.style.filter = "drop-shadow(0 0 8px var(--primary))";
         showToast("Auto-Read: ACTIVAT", "success");
-        
-        const currentMsgs = document.querySelectorAll('.msg-row');
-        if (currentMsgs.length > 0) {
-            lastProcessedMessageId = currentMsgs[currentMsgs.length - 1].dataset.id;
-        }
     } else {
-        // OFF: Normal Gray
         btn.style.color = "#a5b1c2";
         btn.style.filter = "none";
+        speechQueue = [];
+        alreadyReadMessages.clear();
         window.speechSynthesis.cancel(); 
+        isProcessingQueue = false;
         showToast("Auto-Read: DEZACTIVAT");
     }
 };
 
-// Simplified Voice Engine
-window.speakMessage = (text) => {
-    window.speechSynthesis.cancel(); 
-    if (!text || text.trim() === "") return;
+// The function that actually manages the "Robot's Voice"
+window.speakMessage = (text, msgId) => {
+    // 1. Prevent duplicates (the main bug fix)
+    if (alreadyReadMessages.has(msgId)) return;
+    alreadyReadMessages.add(msgId);
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ro-RO';
-    utterance.pitch = 1.0; // Normal pitch
-    utterance.rate = 1.0;  // Normal speed
-    window.speechSynthesis.speak(utterance);
+    // 2. Add to the waiting list (Queue)
+    speechQueue.push(text);
+
+    // 3. Start processing if the robot is idle
+    if (!isProcessingQueue) {
+        processSpeechQueue();
+    }
 };
+
+async function processSpeechQueue() {
+    if (speechQueue.length === 0) {
+        isProcessingQueue = false;
+        return;
+    }
+
+    isProcessingQueue = true;
+    const nextText = speechQueue.shift();
+
+    const utterance = new SpeechSynthesisUtterance(nextText);
+    utterance.lang = 'ro-RO';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    // Wait for the robot to finish speaking before moving to the next message
+    utterance.onend = () => {
+        // Small 500ms cooldown gap between messages so they don't blend together
+        setTimeout(() => {
+            processSpeechQueue();
+        }, 500);
+    };
+
+    utterance.onerror = () => {
+        isProcessingQueue = false;
+        processSpeechQueue();
+    };
+
+    window.speechSynthesis.speak(utterance);
+}
 
     // --- LOCAL QUEST TRACKING TO PREVENT DOUBLE LOOPS ---
     const localProcessedQuests = new Set();
@@ -6567,21 +6606,24 @@ if (data.text && data.type !== 'vocal') {
 
 
 
-// --- CORRECTION: Changed lastReadMessageId to lastProcessedMessageId ---
-if (autoReadEnabled && data.id !== lastProcessedMessageId) {
-    if (data.text && !data.isBot && data.uid !== 'system-alert') {
+// --- AUTO-READ LOGIC (REPAIRED) ---
+if (autoReadEnabled) {
+    // Check if message is a standard text message and not from a bot/system
+    if (data.text && !data.isBot && data.uid !== 'system-alert' && data.type !== 'vocal') {
         
+        // Check if the message is actually NEW (sent after toggle was clicked)
         const msgTime = data.createdAt ? data.createdAt.toMillis() : Date.now();
-        const isFresh = (Date.now() - msgTime) < 10000;
+        const isFresh = msgTime > (autoReadStartTime - 5000); // 5 sec buffer
 
-        if (isFresh) {
+        // If it's fresh and we haven't read this specific ID yet
+        if (isFresh && !alreadyReadMessages.has(data.id)) {
             const speakerName = data.name || "Cineva";
-            const cleanText = data.text.replace(/<br>/g, " ");
-            // This now calls the updated speakMessage below
-            window.speakMessage(`${speakerName} a spus: ${cleanText}`);
+            const cleanText = data.text.replace(/<br>/g, " ").replace(/@\w+/g, ""); // Remove @mentions for cleaner speech
+            
+            // Queue it up!
+            window.speakMessage(`${speakerName} a spus: ${cleanText}`, data.id);
         }
     }
-    lastProcessedMessageId = data.id;
 }
         }); 
         
