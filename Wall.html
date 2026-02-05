@@ -3144,6 +3144,25 @@ body {
 .floating-icon svg {
     fill: none !important;
 }
+
+
+/* Fix for sticker results visibility */
+#stickerResults {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    overflow-y: auto !important;
+    padding-bottom: 20px;
+}
+
+.sticker-item {
+    width: 100% !important;
+    aspect-ratio: 1/1 !important;
+    object-fit: contain !important; /* Important for transparent stickers */
+    cursor: pointer;
+    transition: transform 0.2s;
+}
   </style>
 
 </head>
@@ -4130,63 +4149,34 @@ window.togglePicker = async (type) => {
 
 
 
-// --- FUNCȚIA PENTRU STICKERE (TRANSPARENTE) ---
-async function loadStickers() {
-    if (!stickerResults) return;
-    stickerResults.innerHTML = '';
+// --- 2. REPAIRED GIPHY ENGINE ---
 
-    // 1. Adaugă titlu Giphy Trending
-    const gh = document.createElement('div');
-    gh.className = 'sticker-section-title'; gh.innerText = "GIPHY STICKERS";
-    stickerResults.appendChild(gh);
-
-    try {
-        // ENDPOINT SPECIAL: /v1/stickers/trending
-        const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
-        const data = await res.json();
-        data.data.forEach(s => {
-            const img = document.createElement('img');
-            img.className = 'sticker-item';
-            img.src = s.images.fixed_height.url; // Calitate mai bună pentru pătrat
-            img.onclick = () => window.sendSticker(s.images.original.url);
-            stickerResults.appendChild(img);
-        });
-    } catch (e) { console.error("Eroare stickere", e); }
-} 
-
-async function searchStickers(query) {
-    if (!stickerResults) return;
-    stickerResults.innerHTML = '<div style="grid-column:1/-1; color:#aaa; text-align:center;">Căutare...</div>';
-    try {
-        // ENDPOINT SPECIAL: /v1/stickers/search
-        const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=100&rating=g`);
-        const data = await res.json();
-        stickerResults.innerHTML = '';
-        data.data.forEach(s => {
-            const img = document.createElement('img');
-            img.className = 'sticker-item';
-            img.src = s.images.fixed_height.url;
-            img.onclick = () => window.sendSticker(s.images.original.url);
-            stickerResults.appendChild(img);
-        });
-    } catch (e) { stickerResults.innerHTML = 'Eroare.'; }
-}
-
-// --- FUNCȚIA PENTRU GIF-URI ---
+// LOAD GIFs
 async function loadGifs(url) {
     const gifResults = document.getElementById('gifResults');
-    if(!gifResults) return;
-    gifResults.innerHTML = '<div style="color:#aaa; grid-column:1/-1; text-align:center;">Se încarcă...</div>';
+    if (!gifResults) return;
+    
+    // Show loading state
+    gifResults.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Căutare GIF-uri...</div>';
+
     try {
-        // URL-ul primit trebuie să aibă limit=100
-const res = await fetch(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
+        const res = await fetch(url);
         const data = await res.json();
-        gifResults.innerHTML = '';
+        
+        gifResults.innerHTML = ''; // Clear loading
+        
+        if (!data.data || data.data.length === 0) {
+            gifResults.innerHTML = '<div style="color:#888; grid-column:1/-1; text-align:center; padding:20px;">Niciun GIF găsit.</div>';
+            return;
+        }
+
         data.data.forEach(gif => {
             const img = document.createElement('img'); 
             img.className = 'gif-item';
             img.src = gif.images.fixed_height.url; 
+            img.loading = "lazy";
             img.onclick = () => {
+                // Close drawer and send
                 document.getElementById('pickerDrawer').classList.remove('open'); 
                 document.getElementById('gifBtn').classList.remove('active');
                 selectedImgBase64 = gif.images.original.url; 
@@ -4194,8 +4184,70 @@ const res = await fetch(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_
             };
             gifResults.appendChild(img);
         });
-    } catch(e) { gifResults.innerHTML = 'Eroare.'; }
+    } catch (e) { 
+        console.error("Giphy Error:", e);
+        gifResults.innerHTML = '<div style="color:#ff4757; grid-column:1/-1; text-align:center;">Eroare API Giphy.</div>'; 
+    }
 }
+
+// LOAD TRENDING STICKERS
+async function loadStickers() {
+    const stickerResults = document.getElementById('stickerResults');
+    if (!stickerResults) return;
+
+    stickerResults.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Se încarcă stickere...</div>';
+
+    try {
+        const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
+        const data = await res.json();
+        
+        stickerResults.innerHTML = ''; // Clear loading
+
+        data.data.forEach(s => {
+            const img = document.createElement('img');
+            img.className = 'sticker-item';
+            img.src = s.images.fixed_height.url; 
+            img.loading = "lazy";
+            img.onclick = () => window.sendSticker(s.images.original.url);
+            stickerResults.appendChild(img);
+        });
+    } catch (e) { 
+        console.error("Sticker Error:", e);
+        stickerResults.innerHTML = '<div style="color:#ff4757; grid-column:1/-1; text-align:center;">Eroare Stickere.</div>';
+    }
+}
+
+// SEARCH STICKERS
+async function searchStickers(query) {
+    const stickerResults = document.getElementById('stickerResults');
+    if (!stickerResults) return;
+
+    stickerResults.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Căutare stickere...</div>';
+
+    try {
+        const res = await fetch(`https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=100&rating=g`);
+        const data = await res.json();
+        
+        stickerResults.innerHTML = '';
+        
+        if (data.data.length === 0) {
+            stickerResults.innerHTML = '<div style="color:#888; grid-column:1/-1; text-align:center;">Niciun sticker găsit.</div>';
+            return;
+        }
+
+        data.data.forEach(s => {
+            const img = document.createElement('img');
+            img.className = 'sticker-item';
+            img.src = s.images.fixed_height.url;
+            img.onclick = () => window.sendSticker(s.images.original.url);
+            stickerResults.appendChild(img);
+        });
+    } catch (e) { 
+        stickerResults.innerHTML = 'Eroare.'; 
+    }
+}
+
+
 
 // --- ACTUALIZEAZĂ APELURILE ÎN TOGGLEPICKER ---
 // În funcția togglePicker, caută unde se apelează loadGifs și pune limita 100:
@@ -7383,6 +7435,44 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         // sendMessage() cleans it up, but we null it here after the call stack clears
         setTimeout(() => { selectedImgBase64 = null; }, 500); 
     };
+
+
+// --- 1. SEARCH INPUT LISTENERS ---
+// GIF Search Listener
+const gifSearchInput = document.getElementById('gifSearchInput');
+if (gifSearchInput) {
+    let gifDebounce;
+    gifSearchInput.addEventListener('input', (e) => {
+        clearTimeout(gifDebounce);
+        const query = e.target.value.trim();
+        gifDebounce = setTimeout(() => {
+            if (query.length > 2) {
+                // Search Mode
+                loadGifs(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${query}&limit=100&rating=g`);
+            } else {
+                // Reset to Trending if empty
+                loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
+            }
+        }, 800);
+    });
+}
+
+// Sticker Search Listener
+const stickerSearchInput = document.getElementById('stickerSearchInput');
+if (stickerSearchInput) {
+    let stickDebounce;
+    stickerSearchInput.addEventListener('input', (e) => {
+        clearTimeout(stickDebounce);
+        const query = e.target.value.trim();
+        stickDebounce = setTimeout(() => {
+            if (query.length > 2) {
+                searchStickers(query);
+            } else {
+                loadStickers();
+            }
+        }, 800);
+    });
+}
   </script>
 
 </body>
