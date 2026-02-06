@@ -6618,14 +6618,25 @@ if (autoReadEnabled) {
         const msgTime = data.createdAt ? data.createdAt.toMillis() : Date.now();
         const isFresh = msgTime > (autoReadStartTime - 5000); // 5 sec buffer
 
-        // If it's fresh and we haven't read this specific ID yet
-        if (isFresh && !alreadyReadMessages.has(data.id)) {
-            const speakerName = data.name || "Cineva";
-            const cleanText = data.text.replace(/<br>/g, " ").replace(/@\w+/g, ""); // Remove @mentions for cleaner speech
-            
-            // Queue it up!
-            window.speakMessage(`${speakerName} a spus: ${cleanText}`, data.id);
-        }
+// If it's fresh and we haven't read this specific ID yet
+if (isFresh && !alreadyReadMessages.has(data.id)) {
+    const speakerName = data.name || "Cineva";
+    
+    // THE FIX: Added the Regex line below to remove emojis
+    const cleanText = data.text
+        .replace(/<br>/g, " ") // Remove line breaks
+        .replace(/@\w+/g, "")  // Remove mentions
+        .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '') // REMOVES EMOJIS
+        .trim(); // Removes extra spaces left behind
+    
+    // Only speak if there is text left (prevents it from saying "User said: " followed by silence)
+    if(cleanText.length > 0) {
+        window.speakMessage(`${speakerName} a spus: ${cleanText}`, data.id);
+    } else {
+        // Optional: If the message was ONLY emojis, just mark it as read so it doesn't loop
+        alreadyReadMessages.add(data.id); 
+    }
+}
     }
 }
         }); 
