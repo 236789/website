@@ -6622,18 +6622,27 @@ if (autoReadEnabled) {
 if (isFresh && !alreadyReadMessages.has(data.id)) {
     const speakerName = data.name || "Cineva";
     
-    // THE FIX: Added the Regex line below to remove emojis
-    const cleanText = data.text
-        .replace(/<br>/g, " ") // Remove line breaks
-        .replace(/@\w+/g, "")  // Remove mentions
-        .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '') // REMOVES EMOJIS
-        .trim(); // Removes extra spaces left behind
+    // 1. Remove HTML tags and Mentions
+    let cleanText = data.text
+        .replace(/<br>/g, " ") 
+        .replace(/@\w+/g, "");
+
+    // 2. THE FIX: Remove Emojis using Modern Unicode Detection
+    // This removes generic emojis, symbols, and pictographs
+    cleanText = cleanText.replace(/\p{Extended_Pictographic}/gu, "");
+
+    // 3. Extra Cleanup: Remove leftover weird symbols that aren't text
+    // Keeps: Letters (including Romanian), Numbers, Punctuation (.,?!'-), and Spaces
+    cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, "");
+
+    // 4. Final trim
+    cleanText = cleanText.trim();
     
-    // Only speak if there is text left (prevents it from saying "User said: " followed by silence)
-    if(cleanText.length > 0) {
+    // 5. Only speak if there are actual words left
+    if(cleanText.length > 1) { // Must be at least 2 characters (avoids reading a single dot)
         window.speakMessage(`${speakerName} a spus: ${cleanText}`, data.id);
     } else {
-        // Optional: If the message was ONLY emojis, just mark it as read so it doesn't loop
+        // If the message was ONLY emojis, mark as read so it doesn't loop
         alreadyReadMessages.add(data.id); 
     }
 }
@@ -6712,7 +6721,7 @@ window.toggleWaAudio = (id) => {
         btn.innerHTML = '<i class="fas fa-play"></i>';
     }
 };
-
+ 
 window.seekWaAudio = (e, id) => {
     const audio = document.getElementById(`aud-${id}`);
     const rect = e.currentTarget.getBoundingClientRect();
