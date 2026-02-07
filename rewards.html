@@ -1843,12 +1843,59 @@ window.logTransaction = logTransaction;
 
 const OFFERS = [
     { id: 'off_1', type: 'COINS', amount: 50, adsNeeded: 1, icon: 'https://iili.io/fhc1SKQ.png' },
-    { id: 'off_2', type: 'COINS', amount: 150, adsNeeded: 2, icon: 'https://iili.io/fhc1SKQ.png' },
-    { id: 'off_3', type: 'DIAMONDS', amount: 1, adsNeeded: 1, icon: 'https://iili.io/fv5bmtj.png' },
-    { id: 'off_4', type: 'DIAMONDS', amount: 3, adsNeeded: 2, icon: 'https://iili.io/fv5bmtj.png' }
+    { id: 'off_2', type: 'COINS', amount: 100, adsNeeded: 2, icon: 'https://iili.io/fhc1SKQ.png' },
+    { id: 'off_3', type: 'COINS', amount: 200, adsNeeded: 3, icon: 'https://iili.io/fhc1SKQ.png' },
+    { id: 'off_4', type: 'DIAMONDS', amount: 1, adsNeeded: 1, icon: 'https://iili.io/fv5bmtj.png' },
+    { id: 'off_5', type: 'DIAMONDS', amount: 2, adsNeeded: 2, icon: 'https://iili.io/fv5bmtj.png' },
+    { id: 'off_6', type: 'DIAMONDS', amount: 5, adsNeeded: 4, icon: 'https://iili.io/fv5bmtj.png' }
 ];
-let userProgress = {}; // Tracks ads watched locally
-let activeOffer = null;
+
+
+function renderOffers() {
+    const grid = document.getElementById('rewardsGrid');
+    grid.innerHTML = '';
+    OFFERS.forEach(off => {
+        const watched = userProgress[off.id] || 0;
+        const card = document.createElement('div');
+        card.className = 'quest-card'; // Reusing your existing CSS class
+        card.innerHTML = `
+            <div class="quest-header">
+                <span class="quest-title">${off.amount} ${off.type}</span>
+                <img src="${off.icon}" class="reward-icon">
+            </div>
+            <p style="font-size:10px; color:#888;">Progress: ${watched}/${off.adsNeeded} Ads</p>
+            <button class="quest-btn" onclick="window.startAd('${off.id}')">Watch Ad</button>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+
+window.startAd = (id) => {
+    activeOffer = OFFERS.find(o => o.id === id);
+    invokeApplixirVideoUnit({
+        zoneId: 2050, // Get this from AppLixir
+        accountId: auth.currentUser.uid,
+        siteId: 4500, // Get this from AppLixir
+        adStatusCb: (status) => {
+            if (status === "completed") {
+                userProgress[id] = (userProgress[id] || 0) + 1;
+                if (userProgress[id] >= activeOffer.adsNeeded) {
+                    giveReward(activeOffer);
+                    userProgress[id] = 0; // Reset after claim
+                }
+                renderOffers();
+            }
+        }
+    });
+};
+
+async function giveReward(off) {
+    const ref = doc(db, "accounts", auth.currentUser.uid);
+    const field = off.type === 'COINS' ? 'coins' : 'diamonds';
+    await updateDoc(ref, { [field]: increment(off.amount) });
+    alert(`Success! Added ${off.amount} ${off.type}`);
+}
 
 
     // --- BADGE DATABASE (Reused for Inventory Display) ---
@@ -2483,9 +2530,6 @@ window.equipFrame = async (id, imgUrl, scale = 1.45) => {
 
 
 
-
-
-
 onAuthStateChanged(auth, user => {
     if (user) {
         const userRef = doc(db, "accounts", user.uid);
@@ -2638,51 +2682,6 @@ onAuthStateChanged(auth, user => {
 });
 
 
-function renderOffers() {
-    const grid = document.getElementById('rewardsGrid');
-    grid.innerHTML = '';
-    OFFERS.forEach(off => {
-        const watched = userProgress[off.id] || 0;
-        const card = document.createElement('div');
-        card.className = 'quest-card'; // Reusing your existing CSS class
-        card.innerHTML = `
-            <div class="quest-header">
-                <span class="quest-title">${off.amount} ${off.type}</span>
-                <img src="${off.icon}" class="reward-icon">
-            </div>
-            <p style="font-size:10px; color:#888;">Progress: ${watched}/${off.adsNeeded} Ads</p>
-            <button class="quest-btn" onclick="window.startAd('${off.id}')">Watch Ad</button>
-        `;
-        grid.appendChild(card);
-    });
-}
-
-window.startAd = (id) => {
-    activeOffer = OFFERS.find(o => o.id === id);
-    invokeApplixirVideoUnit({
-        zoneId: 2050, // Get this from AppLixir
-        accountId: auth.currentUser.uid,
-        siteId: 4500, // Get this from AppLixir
-        adStatusCb: (status) => {
-            if (status === "completed") {
-                userProgress[id] = (userProgress[id] || 0) + 1;
-                if (userProgress[id] >= activeOffer.adsNeeded) {
-                    giveReward(activeOffer);
-                    userProgress[id] = 0; // Reset after claim
-                }
-                renderOffers();
-            }
-        }
-    });
-};
-
-async function giveReward(off) {
-    const ref = doc(db, "accounts", auth.currentUser.uid);
-    const field = off.type === 'COINS' ? 'coins' : 'diamonds';
-    await updateDoc(ref, { [field]: increment(off.amount) });
-    alert(`Success! Added ${off.amount} ${off.type}`);
-}
-
 function formatCurrency(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
@@ -2747,7 +2746,8 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
-
+// Call this at the very bottom of your script
+renderOffers();
   </script>
 </body>
 </html>
