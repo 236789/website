@@ -3196,42 +3196,7 @@ body {
 }
 
 
-/* --- HYBRID FIX: MANUAL STICKERS + API GIFS --- */
 
-/* Force Sticker Container Size */
-#stickerSection {
-    display: none;
-    flex-direction: column !important;
-    height: 350px !important;
-    min-height: 300px !important;
-    padding: 10px !important;
-}
-
-/* Force Sticker Grid */
-#stickerResults {
-    display: grid !important;
-    grid-template-columns: repeat(4, 1fr) !important; /* 4 per row looks better for stickers */
-    gap: 10px !important;
-    width: 100% !important;
-    height: 100% !important;
-    overflow-y: auto !important;
-    padding-bottom: 20px;
-}
-
-/* Sticker Images */
-.manual-sticker-img {
-    width: 100%;
-    aspect-ratio: 1/1;
-    object-fit: contain; /* Keeps transparency nice */
-    cursor: pointer;
-    transition: transform 0.2s;
-    background: rgba(255,255,255,0.05);
-    border-radius: 8px;
-}
-.manual-sticker-img:hover {
-    transform: scale(1.1);
-    background: rgba(255,255,255,0.1);
-}
   </style>
 
 </head>
@@ -3760,10 +3725,7 @@ body {
             <span class="gif-text-icon">GIF</span>
         </button>
 
-       <!-- NEW: STICKER BUTTON -->
-        <button id="stickerBtn" class="tool-btn" onclick="togglePicker('sticker')">
-            <i class="fas fa-sticky-note"></i>
-        </button>
+
 
         <!-- Image Button (Staff Only) -->
         <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
@@ -3804,15 +3766,7 @@ body {
         <div id="gifResults" class="gif-results"></div>
     </div>
 
-    <!-- STICKER SECTION -->
-    <div id="stickerSection" class="sticker-grid-container" style="display:none;">
-        <input type="text" id="stickerSearchInput" class="gif-search-bar" style="grid-column: 1 / -1; width: 100%; margin-bottom: 10px;" placeholder="Caută Stickere...">
-        
-        <!-- Result Container -->
-        <div id="stickerResults" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%;">
-            <!-- Stickers injected by JS -->
-        </div>
-    </div>
+
 
 </div>
     </div>
@@ -4141,80 +4095,42 @@ async function logTransaction(amount, type, desc) {
     const gifBtn = document.getElementById('gifBtn');
     
     // --- YOUR NEW API KEY ---
-// --- 1. EMOJI LIST & POPULATION ---
-
+// 2. OVERRIDE TOGGLE PICKER (Cleaned - No Stickers)
 window.togglePicker = async (type) => {
-    const pickerDrawer = document.getElementById('pickerDrawer');
-    const gifSection = document.getElementById('gifSection');
-    const stickerSection = document.getElementById('stickerSection');
+    const drawer = document.getElementById('pickerDrawer');
+    const gifSec = document.getElementById('gifSection');
     const gifBtn = document.getElementById('gifBtn');
-    const stickerBtn = document.getElementById('stickerBtn');
-    
-    // 1. Access Check (Keep existing logic)
-    const modal = document.getElementById('rewardModal');
-    const btn = modal.querySelector('.reward-btn');
-    modal.classList.remove('locked-state');
-    btn.innerText = "SUPER!";
-    btn.onclick = () => modal.classList.remove('active');
 
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const data = userSnap.data();
-    const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
+    // Reset Button visual state
+    if(gifBtn) gifBtn.classList.remove('active');
 
-    if (!hasAccess) {
-        pickerDrawer.classList.remove('open');
-        if(gifBtn) gifBtn.classList.remove('active');
-        if(stickerBtn) stickerBtn.classList.remove('active');
-        
-        modal.classList.add('locked-state');
-        modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> ACCES RESTRICȚIONAT";
-        document.getElementById('rewardText').innerText = `Nu ai deblocat pachetul de ${type.toUpperCase()}.`;
-        document.getElementById('rewardAmount').innerText = "Vizitează magazinul pentru a cumpăra permisul de utilizare.";
-        btn.innerText = "MERGI SPRE SHOP";
-        btn.onclick = () => window.location.href = 'shop.html';
-        modal.classList.add('active');
+    // If clicking the button that is already active, CLOSE the drawer
+    const targetBtn = document.getElementById(type + 'Btn');
+    if (drawer.classList.contains('open') && targetBtn && targetBtn.classList.contains('active')) {
+        drawer.classList.remove('open');
+        setTimeout(() => {
+            gifSec.style.display = 'none';
+        }, 300); // Wait for animation
         return;
     }
 
-    const targetBtn = document.getElementById(type + 'Btn');
+    // Hide Section First (Reset)
+    gifSec.style.display = 'none';
 
-    // 2. LOGIC: If closing active tab
-    if (pickerDrawer.classList.contains('open') && targetBtn.classList.contains('active')) {
-        pickerDrawer.classList.remove('open');
-        targetBtn.classList.remove('active');
-        // Hide both immediately to prevent visual glitches
-        setTimeout(() => {
-            gifSection.style.display = 'none';
-            stickerSection.style.display = 'none';
-        }, 300);
-        return; 
-    }
-
-    // 3. LOGIC: Switching Tabs
-    // Reset Everything First
-    if(gifBtn) gifBtn.classList.remove('active');
-    if(stickerBtn) stickerBtn.classList.remove('active');
-    
-    gifSection.style.display = 'none';
-    stickerSection.style.display = 'none';
-
-    // Activate Selected
+    // OPEN REQUESTED SECTION (Only GIF allowed now)
     if (type === 'gif') {
-        gifSection.style.display = 'flex';
-        // Only load if empty to save data
-        if(document.getElementById('gifResults').children.length === 0) {
-            loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=50&rating=g`);
+        gifSec.style.display = 'flex';
+        if(gifBtn) gifBtn.classList.add('active');
+        
+        // Load GIFs if empty
+        const resBox = document.getElementById('gifResults');
+        if(resBox.children.length === 0) {
+            window.loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${window.GIPHY_API_KEY_FINAL}&limit=50&rating=g`);
         }
-    } else if (type === 'sticker') {
-        stickerSection.style.display = 'grid';
-        // Only load if empty
-        if(document.getElementById('stickerResults').children.length === 0) {
-            loadStickers();
-        }
+        
+        // Open the drawer
+        drawer.classList.add('open');
     }
-
-    pickerDrawer.classList.add('open');
-    targetBtn.classList.add('active');
 };
 
 
@@ -7775,141 +7691,6 @@ setTimeout(() => {
         console.log("GIF Search Bar Successfully Connected.");
     }
 }, 1000); // Wait 1 second after load to ensure HTML is ready
-
-
-
-/* ==========================================
-   --- HYBRID SYSTEM: API GIFS + MANUAL STICKERS ---
-   ========================================== */
-
-// 1. YOUR MANUAL STICKER LIST (Add your image links here)
-const MANUAL_STICKERS = [
-    "https://media.giphy.com/media/l0HlHJGHe3yAMhdQY/giphy.gif",
-    "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
-    "https://iili.io/fS2w9jf.jpg", 
-    "https://iili.io/fS2jyTG.jpg",
-    "https://iili.io/fS2jmps.jpg",
-    "https://media.giphy.com/media/l41lFj8afMrkzeX84/giphy.gif",
-    "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
-    // COPY PASTE LINES ABOVE TO ADD MORE
-];
-
-// 2. STICKER LOADER (MANUAL)
-window.loadStickers = function(filter = "") {
-    const box = document.getElementById('stickerResults');
-    if(!box) return;
-    box.innerHTML = ""; // Clear
-
-    // Filter list if user types in search bar
-    const list = filter 
-        ? MANUAL_STICKERS.filter(url => url.includes(filter)) 
-        : MANUAL_STICKERS;
-
-    if(list.length === 0) {
-        box.innerHTML = '<div style="color:#aaa; padding:10px; grid-column:1/-1; text-align:center;">Niciun sticker găsit.</div>';
-        return;
-    }
-
-    list.forEach(url => {
-        const img = document.createElement('img');
-        img.src = url;
-        img.className = 'manual-sticker-img';
-        img.onclick = () => window.sendMediaFinal(url);
-        box.appendChild(img);
-    });
-};
-
-// 3. GIF LOADER (GIPHY API - RESTORED)
-window.GIPHY_API_KEY_FINAL = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
-
-window.loadGifs = async function(url) {
-    const box = document.getElementById('gifResults');
-    if(!box) return;
-    
-    // Default URL if none provided (Trending)
-    if(!url) url = `https://api.giphy.com/v1/gifs/trending?api_key=${window.GIPHY_API_KEY_FINAL}&limit=50&rating=g`;
-
-    try {
-        const req = await fetch(url);
-        const res = await req.json();
-        box.innerHTML = ''; 
-        
-        if(!res.data || res.data.length === 0) {
-             box.innerHTML = '<div style="color:#aaa; padding:10px;">Nimic găsit.</div>';
-             return;
-        }
-
-        res.data.forEach(item => {
-            const img = document.createElement('img');
-            img.className = 'gif-item'; // Uses your existing css for gifs
-            img.src = item.images.fixed_height.url;
-            img.style.cursor = "pointer";
-            img.onclick = () => window.sendMediaFinal(item.images.original.url);
-            box.appendChild(img);
-        });
-    } catch (e) { 
-        console.error(e);
-        box.innerHTML = '<div style="color:red; padding:10px;">Eroare API Giphy.</div>';
-    }
-};
-
-// 4. THE TOGGLE LOGIC (ROUTES TO CORRECT LOADER)
-window.togglePicker = function(type) {
-    const drawer = document.getElementById('pickerDrawer');
-    const gifSec = document.getElementById('gifSection');
-    const stickSec = document.getElementById('stickerSection');
-    const gifBtn = document.getElementById('gifBtn');
-    const stickBtn = document.getElementById('stickerBtn');
-
-    // Close if clicking active button
-    if(drawer.classList.contains('open') && document.getElementById(type+'Btn').classList.contains('active')) {
-        drawer.classList.remove('open');
-        if(gifBtn) gifBtn.classList.remove('active');
-        if(stickBtn) stickBtn.classList.remove('active');
-        return;
-    }
-
-    // Reset UI
-    if(gifBtn) gifBtn.classList.remove('active');
-    if(stickBtn) stickBtn.classList.remove('active');
-    gifSec.style.display = 'none';
-    stickSec.style.display = 'none';
-
-    // Activate Requested
-    document.getElementById(type+'Btn').classList.add('active');
-
-    if(type === 'gif') {
-        gifSec.style.display = 'flex';
-        // Load GIFs via API
-        const box = document.getElementById('gifResults');
-        if(box.children.length === 0) window.loadGifs(); 
-    } else {
-        stickSec.style.display = 'flex'; // Uses CSS fix from Step 1
-        // Load Stickers via Manual List
-        window.loadStickers(); 
-    }
-
-    drawer.classList.add('open');
-};
-
-// 5. HELPER: SEND MEDIA
-window.sendMediaFinal = function(url) {
-    const imgPreview = document.getElementById('imgPreview');
-    const previewCont = document.getElementById('imgPreviewContainer');
-    
-    if(imgPreview && previewCont) {
-        imgPreview.src = url;
-        previewCont.style.display = 'block';
-        
-        if(typeof selectedImgBase64 !== 'undefined') selectedImgBase64 = url;
-        else window.selectedImgBase64 = url;
-    }
-    
-    // Close Drawer
-    document.getElementById('pickerDrawer').classList.remove('open');
-    if(document.getElementById('gifBtn')) document.getElementById('gifBtn').classList.remove('active');
-    if(document.getElementById('stickerBtn')) document.getElementById('stickerBtn').classList.remove('active');
-};
   </script>
 </body>
 </html>
