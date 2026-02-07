@@ -3757,26 +3757,26 @@ body {
 
     <div id="typingIndicator" class="typing-indicator"></div>
 
+<!-- CORRECTED PICKER DRAWER -->
 <div id="pickerDrawer" class="picker-drawer">
-        
-        <div id="gifSection" class="gif-container" style="display:none;">
-            <input type="text" id="gifSearchInput" class="gif-search-bar" placeholder="Caută GIF...">
-            <div id="gifResults" class="gif-results"></div>
-        </div>
+    
+    <!-- GIF SECTION -->
+    <div id="gifSection" class="gif-container" style="display:none;">
+        <input type="text" id="gifSearchInput" class="gif-search-bar" placeholder="Caută GIF...">
+        <div id="gifResults" class="gif-results"></div>
+    </div>
 
-        <!-- NEW: STICKER SECTION -->
-<!-- STICKER SECTION -->
-        <div id="stickerSection" class="sticker-grid-container" style="display:none;">
-            <!-- Sticker Search Bar (New) -->
-            <input type="text" id="stickerSearchInput" class="gif-search-bar" style="grid-column: 1 / -1; width: 100%; margin-bottom: 10px;" placeholder="Caută Stickere...">
-            
-            <!-- Results Container (Stickers load here) -->
-<div id="stickerResults">
-                <!-- Stickers injected by JS -->
-            </div>
+    <!-- STICKER SECTION -->
+    <div id="stickerSection" class="sticker-grid-container" style="display:none;">
+        <input type="text" id="stickerSearchInput" class="gif-search-bar" style="grid-column: 1 / -1; width: 100%; margin-bottom: 10px;" placeholder="Caută Stickere...">
+        
+        <!-- Result Container -->
+        <div id="stickerResults" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%;">
+            <!-- Stickers injected by JS -->
         </div>
-            <!-- Stickers will load here -->
-        </div>
+    </div>
+
+</div>
     </div>
 
 
@@ -4110,60 +4110,49 @@ window.togglePicker = async (type) => {
     const pickerDrawer = document.getElementById('pickerDrawer');
     const gifSection = document.getElementById('gifSection');
     const stickerSection = document.getElementById('stickerSection');
-    const modal = document.getElementById('rewardModal');
-    const btn = modal.querySelector('.reward-btn');
-
-    // --- FIX: Definim butoanele AICI, la începutul funcției ---
     const gifBtn = document.getElementById('gifBtn');
     const stickerBtn = document.getElementById('stickerBtn');
-    const allBtns = [gifBtn, stickerBtn]; 
-    // ---------------------------------------------------------
-
-    modal.classList.remove('locked-state');
-    btn.innerText = "SUPER!";
-    btn.onclick = () => modal.classList.remove('active');
-
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const data = userSnap.data();
-    const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
-
-    if (!hasAccess) {
-        pickerDrawer.classList.remove('open');
-        allBtns.forEach(b => b?.classList.remove('active')); // Acum va funcționa!
-        
-        modal.classList.add('locked-state');
-        modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> ACCES RESTRICȚIONAT";
-        document.getElementById('rewardText').innerText = `Nu ai deblocat pachetul de ${type.toUpperCase()}.`;
-        document.getElementById('rewardAmount').innerText = "Vizitează magazinul pentru a cumpăra permisul de utilizare.";
-        
-        btn.innerText = "MERGI SPRE SHOP";
-        btn.onclick = () => window.location.href = 'shop.html';
-        
-        modal.classList.add('active');
-        return;
-    }
+    
+    // 1. Feature Access Check (Keep your existing logic here)
+    // ... (Keep your existing Auth/Access check logic if you have it) ...
 
     const targetBtn = document.getElementById(type + 'Btn');
 
+    // 2. LOGIC: If clicking the active button, close everything
     if (pickerDrawer.classList.contains('open') && targetBtn.classList.contains('active')) {
         pickerDrawer.classList.remove('open');
         targetBtn.classList.remove('active');
-    } else {
         gifSection.style.display = 'none';
         stickerSection.style.display = 'none';
-        allBtns.forEach(b => b?.classList.remove('active'));
+        return; 
+    }
 
-        if (type === 'gif') {
-            gifSection.style.display = 'flex';
-            loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=200&rating=g`);
-        } else if (type === 'sticker') {
-            stickerSection.style.display = 'grid';
+    // 3. LOGIC: Switch Tabs
+    // First, hide everything and remove active class from all buttons
+    pickerDrawer.classList.remove('open'); // Briefly remove to reset height animation if needed
+    gifSection.style.display = 'none';
+    stickerSection.style.display = 'none';
+    if(gifBtn) gifBtn.classList.remove('active');
+    if(stickerBtn) stickerBtn.classList.remove('active');
+
+    // Now open the correct one
+    if (type === 'gif') {
+        gifSection.style.display = 'flex'; // GIFs need Flex
+        // Load GIFs if empty
+        if(document.getElementById('gifResults').children.length === 0) {
+            loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=50&rating=g`);
+        }
+    } else if (type === 'sticker') {
+        stickerSection.style.display = 'grid'; // Stickers need Grid
+        // Load Stickers if empty
+        if(document.getElementById('stickerResults').children.length === 0) {
             loadStickers();
         }
-
-        pickerDrawer.classList.add('open');
-        targetBtn.classList.add('active');
     }
+
+    // Open drawer and highlight button
+    pickerDrawer.classList.add('open');
+    targetBtn.classList.add('active');
 };
 
 
@@ -5953,7 +5942,23 @@ async function sendVoiceToFirestore(audioUrl) {
 
 
 
+// --- FIX: SEND STICKER / GIF FUNCTION ---
+window.sendSticker = function(url) {
+    console.log("Sending Sticker/GIF:", url); // Debugging
 
+    // 1. Set the global image variable used by sendMessage()
+    selectedImgBase64 = url; 
+
+    // 2. Trigger the message send
+    sendMessage();
+
+    // 3. Close the drawer and reset buttons
+    document.getElementById('pickerDrawer').classList.remove('open');
+    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // 4. Clear the variable after a short delay to prevent double sends
+    setTimeout(() => { selectedImgBase64 = null; }, 1000);
+};
 
 
 
@@ -7483,7 +7488,8 @@ async function loadStickers() {
             img.className = 'sticker-item';
             img.src = s.images.fixed_height.url; 
             img.loading = "lazy";
-            img.onclick = () => window.sendSticker(s.images.original.url);
+img.onclick = () => window.sendSticker(gif.images.original.url); 
+// We use sendSticker here too because it handles the logic perfectly​
             stickerResults.appendChild(img);
         });
     } catch (e) { 
@@ -7509,12 +7515,12 @@ async function searchStickers(query) {
             return;
         }
 
-        data.data.forEach(s => {
+        data.data.forEach(s => { 
             const img = document.createElement('img');
             img.className = 'sticker-item';
             img.src = s.images.fixed_height.url;
-            img.onclick = () => window.sendSticker(s.images.original.url);
-            stickerResults.appendChild(img);
+img.onclick = () => window.sendSticker(s.images.original.url); 
+           stickerResults.appendChild(img);
         });
     } catch (e) { 
         console.error(e);
