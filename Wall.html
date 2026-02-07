@@ -5673,54 +5673,70 @@ if (isOwner || isAdmin || isMod || isHelper) {
     }
 });
 
-    function checkMuteStatus() {
-        if(!currentUid) return;
-        const muteRef = doc(db, "muted_users", currentUid);
-        
-        onSnapshot(muteRef, (snapshot) => {
-            if(snapshot.exists()) {
-                const data = snapshot.data();
-                
-                if(data.unmuteAt && Date.now() > data.unmuteAt) {
-                    deleteDoc(muteRef);
-                    return;
-                }
+function checkMuteStatus() {
+    if(!currentUid) return;
+    const muteRef = doc(db, "muted_users", currentUid);
+    
+    onSnapshot(muteRef, (snapshot) => {
+        // Select the Toolbar
+        const toolbar = document.querySelector('.chat-tools-bar');
+        const drawer = document.getElementById('pickerDrawer');
 
-                inputControls.style.display = 'none';
-                muteBanner.style.display = 'block';
-                muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Staff'}. Motiv: ${data.reason || 'Nespecificat'}`;
-                
-                if(muteInterval) clearInterval(muteInterval);
-                
-                if(data.unmuteAt) {
-                    muteInterval = setInterval(() => {
-                        const now = Date.now();
-                        const diff = data.unmuteAt - now;
-                        
-                        if(diff <= 0) {
-                            clearInterval(muteInterval);
-                            deleteDoc(muteRef); 
-                        } else {
-                            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                            const s = Math.floor((diff % (1000 * 60)) / 1000);
-                            muteTimer.innerText = 
-                                (h < 10 ? "0"+h : h) + ":" + 
-                                (m < 10 ? "0"+m : m) + ":" + 
-                                (s < 10 ? "0"+s : s);
-                        }
-                    }, 1000);
-                } else {
-                    muteTimer.innerText = "PERMANENT";
-                }
-
-            } else {
-                inputControls.style.display = 'block';
-                muteBanner.style.display = 'none';
-                if(muteInterval) clearInterval(muteInterval);
+        if(snapshot.exists()) {
+            const data = snapshot.data();
+            
+            // Check if mute expired
+            if(data.unmuteAt && Date.now() > data.unmuteAt) {
+                deleteDoc(muteRef);
+                return;
             }
-        });
-    }
+
+            // --- HIDE INTERFACE ---
+            if (inputControls) inputControls.style.display = 'none'; // Hides text input
+            if (toolbar) toolbar.style.display = 'none';             // Hides Mic/GIF/Stickers
+            
+            // Force close sticker drawer if it was open
+            if (drawer) drawer.classList.remove('open');
+
+            // Show Mute Banner
+            muteBanner.style.display = 'block';
+            muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Staff'}. Motiv: ${data.reason || 'Nespecificat'}`;
+            
+            // Timer Logic
+            if(muteInterval) clearInterval(muteInterval);
+            
+            if(data.unmuteAt) {
+                muteInterval = setInterval(() => {
+                    const now = Date.now();
+                    const diff = data.unmuteAt - now;
+                    
+                    if(diff <= 0) {
+                        clearInterval(muteInterval);
+                        deleteDoc(muteRef); 
+                    } else {
+                        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        const s = Math.floor((diff % (1000 * 60)) / 1000);
+                        muteTimer.innerText = 
+                            (h < 10 ? "0"+h : h) + ":" + 
+                            (m < 10 ? "0"+m : m) + ":" + 
+                            (s < 10 ? "0"+s : s);
+                    }
+                }, 1000);
+            } else {
+                muteTimer.innerText = "PERMANENT";
+            }
+
+        } else {
+            // --- RESTORE INTERFACE ---
+            if (inputControls) inputControls.style.display = 'block';
+            if (toolbar) toolbar.style.display = 'flex'; // Restore toolbar
+            muteBanner.style.display = 'none';
+            
+            if(muteInterval) clearInterval(muteInterval);
+        }
+    });
+}
 
     msgInput.addEventListener('input', () => {
         const len = msgInput.value.length;
