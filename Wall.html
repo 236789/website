@@ -5927,6 +5927,7 @@ async function sendVoiceToFirestore(audioUrl) {
         name: userData.username || auth.currentUser.displayName,
         photo: auth.currentUser.photoURL, // Salvează poza
         audioUrl: audioUrl,
+        isShadowMuted: isShadowed, // ADD THIS
         type: 'vocal',
         createdAt: serverTimestamp(),
         isAdmin: isAdmin,
@@ -6012,6 +6013,10 @@ async function sendMessage() {
         const currentBadge = userData.equippedBadge || null;
         const currentBanner = userData.equippedBanner || null;
 
+// Check Shadow Mute Status
+const shadowSnap = await getDoc(doc(db, "shadow_mutes", auth.currentUser.uid));
+const isShadowed = shadowSnap.exists();
+
         // 4. Construct Payload
         const payload = {
             text: text,
@@ -6030,6 +6035,7 @@ async function sendMessage() {
             equippedFrame: userData.equippedFrame || null,
             createdAt: serverTimestamp(),
             isDeleted: false,
+isShadowMuted: isShadowed,
             reactions: {},
             seenBy: [auth.currentUser.uid]
         };
@@ -6244,7 +6250,7 @@ async function sendBotMessage(text, customClass = null) {
                         }
                     }
                 } catch(e) {}
-            }
+            } 
         });
     }, { threshold: 0.5 });
 
@@ -6461,7 +6467,19 @@ function loadMessages() {
          * We iterate through every individual message document retrieved.
          */
 docs.forEach(data => {
-            // SECURITY CHECK: Skip rendering if the message is soft-deleted.
+    if (data.isDeleted) return;
+
+    // --- SHADOW MUTE FILTER ---
+    // If message is shadow muted:
+    // Show only to: The author OR Admins/Owner (so they can monitor)
+    if (data.isShadowMuted === true) {
+        const amIAuthor = (data.uid === currentUid);
+        const amIStaff = (isAdmin || isOwner);
+        
+        if (!amIAuthor && !amIStaff) {
+            return; // Skip rendering for regular users
+        }
+    }            // SECURITY CHECK: Skip rendering if the message is soft-deleted.
             if (data.isDeleted) return;
 
             // IDENTITY MAPPING:
@@ -6557,13 +6575,69 @@ if ((data.text || data.uid === 'system-alert') && data.type !== 'vocal') {
     ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}', null, true)"><i class="fas fa-volume-up"></i></button>`;
 }
 
-            // --- DROPDOWN MENU ---
+// --- DROPDOWN MENU ---
             let dropdownMenuHtml = "";
             const isSystemOrBot = (data.uid === 'system-alert' || data.isBot === true);
             const canManage = (isMine || isAdmin || isOwner || isMod);
             if (!isSystemOrBot || isAdmin || isOwner) {
                 let pinningOption = (isAdmin || isOwner || isMod || isHelper) ? `<button onclick="window.${data.isPinned ? 'unpinMsg' : 'pinMsg'}('${msgId}')"><i class="fas fa-thumbtack"></i> ${data.isPinned ? 'Dezfixează' : 'Fixează'}</button>` : "";
-                dropdownMenuHtml = `<div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div><div id="menu-${msgId}" class="options-dropdown">${!isSystemOrBot ? `<button onclick="startReply('${msgId}', '${(data.name || "User")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')"><i class="fas fa-reply"></i> Răspunde</button><button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button><button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>` : ''}${pinningOption}${canManage ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}${(isAdmin || isOwner || isMod || isHelper) && !isSystemOrBot ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}${isOwner && !isSystemOrBot ? `<button style="color:#ff4757;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}<div id="emojis-${msgId}" class="emoji-picker-menu"><div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div></div></div>`;
+                
+                // Moderation Buttons
+                let modButtons = "";
+                if ((isAdmin || isOwner || isMod || isHelper) && !isSystemOrBot) {
+                    modButtons = `
+                        <button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')">
+                            <i class="fas fa-microphone-slash"></i> Mute / Unmute
+                        </button>
+                        <button class="mute-btn" style="color:#ffa500;" onclick="handleShadowMute('${data.uid}', '${data.name}')">
+                            <i class="fas fa-ghost"></i> Shadow Mute
+                        </button>
+                    `;
+                }
+
+                dropdownMenuHtml = `
+                    <div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div>
+                    <div id="menu-${msgId}" class="options-dropdown">
+                        ${!isSystemOrBot ? `
+                            <button onclick="startReply('${msgId}', '${(data.name || "User")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')"><i class="fas fa-reply"></i> Răspunde</button>
+                            <button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button>
+                            <button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>
+                        ` : ''}
+                        ${pinningOption}
+                        ${canManage ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}
+                        ${modButtons}
+                        ${isOwner && !isSystemOrBot ? `<button style="color:#ff4757;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}
+                        
+<div id="emojis-${msgId}" class="emoji-picker-menu">
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
+
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😍')">😍</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😎')">😎</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😭')">😭</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🥹')">🥹</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😅')">😅</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😮')">😮</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😱')">😱</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙌')">🙌</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👏')">👏</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '💯')">💯</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '✨')">✨</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '💀')">💀</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤔')">🤔</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '😴')">😴</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '👀')">👀</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🙏')">🙏</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '💔')">💔</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🎉')">🎉</div>
+    <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤯')">🤯</div>
+</div>
+
+                    </div>`;
             }
 
             // --- AVATAR & IDENTITY ASSEMBLY ---
@@ -6892,6 +6966,33 @@ window.handleMuteAction = async (targetUid, targetName) => {
 
         const timeLabel = durationMs ? `${durationChoice} MIN` : "PERMANENT";
         sendBotMessage(`🚨 🚔 ${targetName} A PRIMIT MUTE (${timeLabel})! MOTIV: ${reason}`, 'bubble-police-alert');
+    }
+};
+
+window.handleShadowMute = async (targetUid, targetName) => {
+    closeAllMenus();
+    if(!isOwner && !isAdmin && !isMod && !isHelper) return showToast("Fără permisiuni!");
+
+    const ref = doc(db, "shadow_mutes", targetUid);
+    const snap = await getDoc(ref);
+
+    if(snap.exists()) {
+        const yes = await showCustomConfirm("UN-SHADOW MUTE", `Scoți Shadow Mute pentru ${targetName}? Mesajele lui vor deveni din nou vizibile pentru toți.`);
+        if(yes) {
+            await deleteDoc(ref);
+            showToast(`${targetName} a fost scos din Shadow Mute.`, "success");
+        }
+    } else {
+        const yes = await showCustomConfirm("SHADOW MUTE", `Ești sigur? ${targetName} va putea scrie, dar mesajele lui vor fi vizibile DOAR pentru el.`, true);
+        if(yes) {
+            await setDoc(ref, {
+                uid: targetUid,
+                name: targetName,
+                shadowMutedBy: auth.currentUser.displayName,
+                timestamp: serverTimestamp()
+            });
+            showToast(`${targetName} a primit Shadow Mute.`, "success");
+        }
     }
 };
 
