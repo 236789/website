@@ -6701,40 +6701,45 @@ if ((data.text || data.uid === 'system-alert') && data.type !== 'vocal') {
 
 
 
-// --- AUTO-READ LOGIC (UPDATED: BOTS + IMAGES) ---
+// --- AUTO-READ LOGIC (UPDATED: BOTS + IMAGES + VOCALS) ---
 if (autoReadEnabled) {
-    // 1. Check if it's a valid message type (Text or Image) AND not a vocal recording
-    // We REMOVED !data.isBot so it now reads bots.
-    if ((data.text || data.image) && data.type !== 'vocal') {
+    // 1. Check if it's content we care about (Text OR Image OR Vocal)
+    if (data.text || data.image || data.type === 'vocal') {
         
-        // 2. Check if fresh
+        // 2. Check if fresh (sent after enabling auto-read)
         const msgTime = data.createdAt ? data.createdAt.toMillis() : Date.now();
         const isFresh = msgTime > (autoReadStartTime - 2000); // 2 sec buffer
 
         if (isFresh && !alreadyReadMessages.has(data.id)) {
             const speakerName = data.name || "Sistem";
-            
-            // --- BUILD THE SPEECH STRING ---
             let textToRead = "";
 
-            // A. Check for Image
-            if (data.image) {
-                textToRead += `${speakerName} a trimis o imagine. `;
-            } else {
-                // Only say name for text if it's NOT a system/jackpot alert (reads better)
+            // --- CASE A: VOCAL MESSAGE ---
+            if (data.type === 'vocal') {
+                textToRead = `${speakerName} a trimis un mesaj vocal.`;
+            } 
+            // --- CASE B: IMAGE MESSAGE ---
+            else if (data.image) {
+                textToRead = `${speakerName} a trimis o imagine. `;
+                // If the image also has a caption, add a connector
+                if (data.text) textToRead += "și a scris: ";
+            } 
+            // --- CASE C: TEXT MESSAGE ---
+            else {
+                // Only announce name if it's not the System Alert (Jackpot/Admin)
                 if (data.uid !== 'system-alert') {
-                    textToRead += `${speakerName} a spus: `;
+                    textToRead = `${speakerName} a spus: `;
                 }
             }
 
-            // B. Add the text content (if exists)
-            if (data.text) {
+            // --- APPEND TEXT CONTENT (If applicable and not just a raw vocal) ---
+            if (data.text && data.type !== 'vocal') {
                 let cleanText = data.text
                     .replace(/<br>/g, " ") 
                     .replace(/@\w+/g, "") // Remove mentions
                     .replace(/\p{Extended_Pictographic}/gu, ""); // Remove emojis
                 
-                // Cleanup symbols but keep punctuation
+                // Cleanup symbols but keep Romanian letters & punctuation
                 cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, "").trim();
                 
                 textToRead += cleanText;
@@ -6744,7 +6749,7 @@ if (autoReadEnabled) {
             if (textToRead.trim().length > 1) {
                 window.speakMessage(textToRead, data.id);
             } else {
-                alreadyReadMessages.add(data.id); // Mark as read even if silent
+                alreadyReadMessages.add(data.id); // Mark read to prevent loops
             }
         }
     }
