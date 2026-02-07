@@ -7415,214 +7415,211 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
-// ============================================================
-    // --- FINAL FIX V3: SCOPE & LAYOUT REPAIR (PASTE AT BOTTOM) ---
-    // ============================================================
+/* ==========================================
+   --- UNIVERSAL STICKER & GIF REPAIR KIT ---
+   ========================================== */
 
-    const GIPHY_KEY_FIX = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
+// 1. DEFINE API KEY GLOBALLY
+window.GIPHY_API_KEY_FINAL = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
 
-    // --- 1. OVERRIDE THE PICKER TOGGLE (FIXES LAYOUT) ---
-    window.togglePicker = async (type) => {
-        const drawer = document.getElementById('pickerDrawer');
-        const gifSec = document.getElementById('gifSection');
-        const stickSec = document.getElementById('stickerSection');
-        const gifBtn = document.getElementById('gifBtn');
-        const stickBtn = document.getElementById('stickerBtn');
+// 2. OVERRIDE TOGGLE PICKER (The Brain)
+window.togglePicker = async (type) => {
+    const drawer = document.getElementById('pickerDrawer');
+    const gifSec = document.getElementById('gifSection');
+    const stickSec = document.getElementById('stickerSection');
+    const gifBtn = document.getElementById('gifBtn');
+    const stickBtn = document.getElementById('stickerBtn');
 
-        // Reset Buttons
-        if(gifBtn) gifBtn.classList.remove('active');
-        if(stickBtn) stickBtn.classList.remove('active');
+    // Reset Buttons visual state
+    if(gifBtn) gifBtn.classList.remove('active');
+    if(stickBtn) stickBtn.classList.remove('active');
 
-        // Toggle Logic: If clicking the same active button, close it.
-        const targetBtn = document.getElementById(type + 'Btn');
-        if (drawer.classList.contains('open') && targetBtn && targetBtn.classList.contains('active')) {
-            drawer.classList.remove('open');
+    // If clicking the button that is already active, CLOSE the drawer
+    const targetBtn = document.getElementById(type + 'Btn');
+    if (drawer.classList.contains('open') && targetBtn && targetBtn.classList.contains('active')) {
+        drawer.classList.remove('open');
+        setTimeout(() => {
+            gifSec.style.display = 'none';
+            stickSec.style.display = 'none';
+        }, 300); // Wait for animation
+        return;
+    }
+
+    // Hide Both Sections First (Reset)
+    gifSec.style.display = 'none';
+    stickSec.style.display = 'none';
+
+    // OPEN REQUESTED SECTION
+    if (type === 'gif') {
+        gifSec.style.display = 'flex';
+        if(gifBtn) gifBtn.classList.add('active');
+        
+        // Load GIFs if empty
+        const resBox = document.getElementById('gifResults');
+        if(resBox.children.length === 0) {
+            window.loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${window.GIPHY_API_KEY_FINAL}&limit=50&rating=g`);
+        }
+
+    } else if (type === 'sticker') {
+        // FORCE CSS TO FIX EMPTY CONTAINER
+        stickSec.style.cssText = "display: flex !important; flex-direction: column !important; height: 350px !important; min-height: 300px;";
+        if(stickBtn) stickBtn.classList.add('active');
+
+        // Load Stickers if empty
+        const resBox = document.getElementById('stickerResults');
+        if(resBox.children.length === 0) {
+            window.loadStickers();
+        }
+    }
+
+    // Open the drawer
+    drawer.classList.add('open');
+};
+
+// 3. ROBUST STICKER LOADER
+window.loadStickers = async () => {
+    const box = document.getElementById('stickerResults');
+    if (!box) return;
+
+    // Force Grid Layout on the Results Box
+    box.style.cssText = "display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 10px; overflow-y: auto; padding: 10px; height: 100%;";
+    
+    box.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Se încarcă Stickere...</div>';
+
+    try {
+        const url = `https://api.giphy.com/v1/stickers/trending?api_key=${window.GIPHY_API_KEY_FINAL}&limit=50&rating=g`;
+        const req = await fetch(url);
+        const res = await req.json();
+        
+        box.innerHTML = ''; // Clear loading text
+
+        if (!res.data || !res.data.length) {
+            box.innerHTML = '<div style="color:#aaa; padding:20px;">0 Stickere găsite.</div>';
             return;
         }
 
-        // Hide Both Sections First
-        gifSec.style.display = 'none';
-        stickSec.style.display = 'none';
-
-        // 2. ACTIVATE REQUESTED SECTION
-        if (type === 'gif') {
-            gifSec.style.display = 'flex'; // GIFs use Flex
-            if(gifBtn) gifBtn.classList.add('active');
+        res.data.forEach(item => {
+            const img = document.createElement('img');
+            img.src = item.images.fixed_height.url;
+            // Style formatting
+            img.style.cssText = "width: 100%; aspect-ratio: 1/1; object-fit: contain; cursor: pointer; transition: transform 0.2s;";
             
-            // Load trending if empty
-            const resContainer = document.getElementById('gifResults');
-            if(resContainer.children.length === 0) {
-                loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY_FIX}&limit=50&rating=g`);
-            }
-
-        } else if (type === 'sticker') {
-            // *** CRITICAL CSS FIX FOR STICKERS ***
-            // This forces the grid to display correctly regardless of external CSS
-            stickSec.style.cssText = "display: flex !important; flex-direction: column !important; height: 100% !important;";
+            // Click Event
+            img.onclick = () => window.sendMediaFinal(item.images.original.url);
             
-            if(stickBtn) stickBtn.classList.add('active');
+            // Hover Effect
+            img.onmouseover = () => img.style.transform = "scale(1.1)";
+            img.onmouseout = () => img.style.transform = "scale(1)";
+            
+            box.appendChild(img);
+        });
+    } catch (e) {
+        console.error(e);
+        box.innerHTML = '<div style="color:red; grid-column:1/-1; text-align:center;">Eroare API Giphy.</div>';
+    }
+};
 
-            // Load stickers if empty
-            const resContainer = document.getElementById('stickerResults');
-            if(resContainer.children.length === 0) {
-                loadStickers();
-            }
+// 4. STICKER SEARCH FUNCTION
+const stickInputRef = document.getElementById('stickerSearchInput');
+if (stickInputRef) {
+    // Clone to remove old listeners
+    const newStickInput = stickInputRef.cloneNode(true);
+    stickInputRef.parentNode.replaceChild(newStickInput, stickInputRef);
+
+    let sDebounce;
+    newStickInput.addEventListener('input', (e) => {
+        clearTimeout(sDebounce);
+        const val = e.target.value.trim();
+        sDebounce = setTimeout(() => {
+            if (val.length > 1) window.searchStickers(val);
+            else window.loadStickers();
+        }, 800);
+    });
+}
+
+window.searchStickers = async (query) => {
+    const box = document.getElementById('stickerResults');
+    if (!box) return;
+    box.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center;">Căutare...</div>';
+
+    try {
+        const url = `https://api.giphy.com/v1/stickers/search?api_key=${window.GIPHY_API_KEY_FINAL}&q=${query}&limit=50&rating=g`;
+        const req = await fetch(url);
+        const res = await req.json();
+        box.innerHTML = ''; 
+
+        if (!res.data || !res.data.length) {
+            box.innerHTML = '<div style="color:#aaa; padding:20px;">0 Rezultate.</div>';
+            return;
         }
 
-        drawer.classList.add('open');
-    };
+        res.data.forEach(item => {
+            const img = document.createElement('img');
+            img.src = item.images.fixed_height.url;
+            img.style.cssText = "width: 100%; aspect-ratio: 1/1; object-fit: contain; cursor: pointer;";
+            img.onclick = () => window.sendMediaFinal(item.images.original.url);
+            box.appendChild(img);
+        });
+    } catch (e) { console.error(e); }
+};
 
-    // --- 2. SEARCH INPUT LISTENERS ---
+// 5. UNIVERSAL SEND FUNCTION (Fixes Scope Issues)
+window.sendMediaFinal = function(url) {
+    console.log("Sending Media:", url);
     
-    // GIF Search
-    const gifInputRef = document.getElementById('gifSearchInput');
-    if (gifInputRef) {
-        // Remove old listeners by cloning (optional but safe)
-        const newGifInput = gifInputRef.cloneNode(true);
-        gifInputRef.parentNode.replaceChild(newGifInput, gifInputRef);
-        
-        let gDebounce;
-        newGifInput.addEventListener('input', (e) => {
-            clearTimeout(gDebounce);
-            const val = e.target.value.trim();
-            gDebounce = setTimeout(() => {
-                if (val.length > 1) loadGifs(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY_FIX}&q=${val}&limit=50&rating=g`);
-                else loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY_FIX}&limit=50&rating=g`);
-            }, 800);
-        });
-    }
-
-    // Sticker Search
-    const stickInputRef = document.getElementById('stickerSearchInput');
-    if (stickInputRef) {
-        // Remove old listeners
-        const newStickInput = stickInputRef.cloneNode(true);
-        stickInputRef.parentNode.replaceChild(newStickInput, stickInputRef);
-
-        let sDebounce;
-        newStickInput.addEventListener('input', (e) => {
-            clearTimeout(sDebounce);
-            const val = e.target.value.trim();
-            sDebounce = setTimeout(() => {
-                if (val.length > 1) searchStickers(val);
-                else loadStickers();
-            }, 800);
-        });
-    }
-
-    // --- 3. LOADING FUNCTIONS (GIFs) ---
-    async function loadGifs(url) {
-        const box = document.getElementById('gifResults');
-        if (!box) return;
-        box.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Încărcare...</div>';
-
-        try {
-            const req = await fetch(url);
-            const res = await req.json();
-            box.innerHTML = ''; 
-            
-            if (!res.data || !res.data.length) {
-                box.innerHTML = '<div style="color:#aaa; padding:20px;">Nimic găsit.</div>';
-                return;
-            }
-
-            res.data.forEach(item => {
-                const img = document.createElement('img');
-                img.className = 'gif-item';
-                img.src = item.images.fixed_height.url;
-                img.onclick = () => sendMedia(item.images.original.url);
-                box.appendChild(img);
-            });
-        } catch (e) { box.innerHTML = '<div style="color:red;">Eroare.</div>'; }
-    }
-
-    // --- 4. LOADING FUNCTIONS (STICKERS) ---
-    async function loadStickers() {
-        const box = document.getElementById('stickerResults');
-        if (!box) return;
-        
-        // Force styling on the results box to ensure grid works
-        box.style.display = "grid";
-        box.style.gridTemplateColumns = "repeat(3, 1fr)";
-        box.style.gap = "10px";
-        
-        box.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Încărcare Stickere...</div>';
-
-        try {
-            const url = `https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY_FIX}&limit=50&rating=g`;
-            const req = await fetch(url);
-            const res = await req.json();
-            box.innerHTML = ''; 
-
-            if (!res.data || !res.data.length) {
-                box.innerHTML = '<div style="color:#aaa; padding:20px;">0 Stickere.</div>';
-                return;
-            }
-
-            res.data.forEach(item => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item';
-                img.src = item.images.fixed_height.url;
-                img.style.cursor = "pointer"; // Force cursor
-                img.onclick = () => sendMedia(item.images.original.url);
-                box.appendChild(img);
-            });
-        } catch (e) { box.innerHTML = '<div style="color:red;">Eroare API.</div>'; }
-    }
-
-    async function searchStickers(query) {
-        const box = document.getElementById('stickerResults');
-        if (!box) return;
-        box.innerHTML = '<div style="color:var(--primary); padding:20px;">Căutare...</div>';
-
-        try {
-            const url = `https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY_FIX}&q=${query}&limit=50&rating=g`;
-            const req = await fetch(url);
-            const res = await req.json();
-            box.innerHTML = ''; 
-
-            if (!res.data || !res.data.length) {
-                box.innerHTML = '<div style="color:#aaa; padding:20px;">0 Rezultate.</div>';
-                return;
-            }
-
-            res.data.forEach(item => {
-                const img = document.createElement('img');
-                img.className = 'sticker-item';
-                img.src = item.images.fixed_height.url;
-                img.onclick = () => sendMedia(item.images.original.url);
-                box.appendChild(img);
-            });
-        } catch (e) { console.error(e); }
-    }
-
-    // --- 5. UNIVERSAL SEND (SCOPE FIX) ---
-    // This function MUST modify the local variable `selectedImgBase64`
-    // NOT `window.selectedImgBase64`
-    window.sendMedia = function(url) {
-        console.log("Sending Media:", url);
-        
-        // 1. UPDATE THE VARIABLE USED BY sendMessage()
-        // IMPORTANT: We do not use 'window.' here, we update the let variable from line ~1330
-        selectedImgBase64 = url; 
-        
-        // 2. Trigger the message send
-        if (typeof sendMessage === "function") {
-            sendMessage();
+    // We try to access the internal variable if possible, 
+    // otherwise we use a fallback logic.
+    try {
+        // Try setting the variable used by your main script
+        if(typeof selectedImgBase64 !== 'undefined') {
+            selectedImgBase64 = url;
         } else {
-            console.error("sendMessage missing");
+            // If we can't access the variable, we attach it to window
+            window.tempSelectedImg = url;
         }
-
-        // 3. Close Drawer & Cleanup
-        document.getElementById('pickerDrawer').classList.remove('open');
-        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
         
-        // 4. Clear variable after delay
-        setTimeout(() => { selectedImgBase64 = null; }, 1000);
-    };
+        // Call the main send function
+        if (typeof sendMessage === "function") {
+            // If sendMessage is defined, we hijack the input temporarily
+            // or rely on it checking window.tempSelectedImg
+            
+            // Hack fix: Force the logic inside sendMessage to see this
+            // Since we can't easily inject into the module scope, 
+            // we will simulate the image selection process:
+            const imgPreview = document.getElementById('imgPreview');
+            const previewCont = document.getElementById('imgPreviewContainer');
+            if(imgPreview && previewCont) {
+               imgPreview.src = url;
+               previewCont.style.display = 'block';
+               // Now we click send automatically
+               document.getElementById('sendBtn').click();
+            }
+        }
+    } catch(e) {
+        console.error("Send Error", e);
+    }
 
-    // Ensure mapping exists
-    window.sendSticker = window.sendMedia;
+    // Close Drawer
+    document.getElementById('pickerDrawer').classList.remove('open');
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+};
+
+// 6. GIF LOADER REPAIR (Just in case)
+window.loadGifs = async (url) => {
+    const box = document.getElementById('gifResults');
+    try {
+        const req = await fetch(url);
+        const res = await req.json();
+        box.innerHTML = ''; 
+        res.data.forEach(item => {
+            const img = document.createElement('img');
+            img.className = 'gif-item';
+            img.src = item.images.fixed_height.url;
+            img.onclick = () => window.sendMediaFinal(item.images.original.url);
+            box.appendChild(img);
+        });
+    } catch (e) { console.error(e); }
+};
 
   </script>
 </body>
