@@ -5756,66 +5756,99 @@ function checkMuteStatus() {
         }
     });
 
-    async function updateTypingStatus(status) {
-        if (!currentUid) return;
-        const typingRef = doc(db, "typing_status", currentUid);
-        try {
-            if (status) {
-                const displayName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
-                await setDoc(typingRef, { 
-                    name: displayName, 
-                    isAdmin: isAdmin,
-                    isOwner: isOwner,
-                    isMod: isMod,
-                    isHelper: isHelper,
-                    timestamp: serverTimestamp() 
-                });
-            } else {
-                await deleteDoc(typingRef);
-            }
-        } catch (e) { console.error("Typing status error:", e); }
-    }
-
-function listenForTypers() {
-        const q = query(collection(db, "typing_status"));
-        
-        onSnapshot(q, (snapshot) => {
-            const typers = [];
-            const now = Date.now();
-
-            snapshot.forEach((doc) => {
-                if (doc.id !== currentUid) { 
-                    const data = doc.data();
-                    
-                    // --- FIX: IGNORE STUCK USERS ---
-                    // If timestamp is older than 10 seconds, ignore them
-                    if (data.timestamp) {
-                        const timeDiff = now - data.timestamp.toMillis();
-                        if (timeDiff > 10000) return; 
-                    }
-
-                    if (data.name) {
-                        let nameHtml = `<span class="typing-name">${data.name}</span>`;
-                        if(data.isOwner) nameHtml += `<span class="owner-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">WEBSITE OWNER</span>`;
-                        else if(data.isAdmin) nameHtml += `<span class="admin-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
-                        else if(data.isMod) nameHtml += `<span class="mod-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">MODERATOR</span>`;
-                        else if(data.isHelper) nameHtml += `<span class="helper-badge" style="font-size:8px; padding:1px 4px; margin-right:4px;">HELPER</span>`;
-                        typers.push(nameHtml);
-                    }
-                }
+// --- UPDATED TYPING STATUS (SUPPORTS AUDIO & TEXT) ---
+async function updateTypingStatus(status, type = 'text') {
+    if (!currentUid) return;
+    const typingRef = doc(db, "typing_status", currentUid);
+    
+    try {
+        if (status) {
+            // Get proper display name
+            const displayName = isOwner ? "Lost Soul" : auth.currentUser.displayName;
+            
+            await setDoc(typingRef, { 
+                name: displayName, 
+                // Save roles to show badges in the status
+                isAdmin: isAdmin,
+                isOwner: isOwner,
+                isMod: isMod,
+                isHelper: isHelper,
+                // Save the action type (text or audio)
+                actionType: type, 
+                timestamp: serverTimestamp() 
             });
+        } else {
+            await deleteDoc(typingRef);
+        }
+    } catch (e) { console.error("Typing status error:", e); }
+}
 
-            if (typers.length > 0) {
-                if (typers.length === 1) typingIndicator.innerHTML = `${typers[0]} scrie...`;
-                else if (typers.length === 2) typingIndicator.innerHTML = `${typers[0]} și ${typers[1]} scriu...`;
-                else typingIndicator.innerHTML = `<span class="typing-name">Mai multe persoane</span> scriu...`;
-                typingIndicator.style.opacity = "1";
-            } else {
-                typingIndicator.innerHTML = "";
-                typingIndicator.style.opacity = "0";
+// --- UPDATED LISTENER: SHOWS BADGES & RECORDING STATUS ---
+function listenForTypers() {
+    const q = query(collection(db, "typing_status"));
+    
+    onSnapshot(q, (snapshot) => {
+        const typers = [];
+        const now = Date.now();
+
+        snapshot.forEach((docSnap) => {
+            if (docSnap.id !== currentUid) { 
+                const data = docSnap.data();
+                
+                // Ignore stale status (> 10 seconds old)
+                if (data.timestamp) {
+                    const timeDiff = now - data.timestamp.toMillis();
+                    if (timeDiff > 10000) return; 
+                }
+
+                if (data.name) {
+                    // 1. GENERATE BADGE HTML
+                    let badgeHtml = "";
+                    if (data.isOwner) badgeHtml = `<span class="owner-badge" style="font-size:9px; padding:1px 4px; margin-right:4px;">OWNER</span>`;
+                    else if (data.isAdmin) badgeHtml = `<span class="admin-badge" style="font-size:9px; padding:1px 4px; margin-right:4px;">ADMIN</span>`;
+                    else if (data.isMod) badgeHtml = `<span class="mod-badge" style="font-size:9px; padding:1px 4px; margin-right:4px;">MOD</span>`;
+                    else if (data.isHelper) badgeHtml = `<span class="helper-badge" style="font-size:9px; padding:1px 4px; margin-right:4px;">HELPER</span>`;
+
+                    // 2. DETERMINE ACTION TEXT
+                    let actionText = "scrie...";
+                    let actionIcon = '<i class="fas fa-pen-nib" style="font-size:10px; margin-left:3px;"></i>';
+                    
+                    if (data.actionType === 'audio') {
+                        actionText = "înregistrează un vocal...";
+                        actionIcon = '<i class="fas fa-microphone" style="color:#ff4757; animation: pulseRed 1s infinite; font-size:10px; margin-left:3px;"></i>';
+                    }
+
+                    // 3. COMBINE
+                    typers.push(`
+                        <div style="display:flex; align-items:center;">
+                            ${badgeHtml}
+                            <span class="typing-name" style="margin-right:4px;">${data.name}</span>
+                            <span style="opacity:0.7; font-size:10px;">${actionText}</span>
+                            ${actionIcon}
+                        </div>
+                    `);
+                }
             }
         });
-    }
+
+        // 4. DISPLAY
+        const indicator = document.getElementById('typingIndicator');
+        if (typers.length > 0) {
+            // If multiple people, just stack them vertically or show a summary
+            if (typers.length > 2) {
+                indicator.innerHTML = `<span class="typing-name" style="color:var(--primary);">Mai multe persoane</span> sunt active...`;
+            } else {
+                // Join with a comma if 2 people
+                indicator.innerHTML = typers.join('<span style="margin:0 5px;">&</span>');
+            }
+            indicator.style.opacity = "1";
+            indicator.style.padding = "5px 15px"; // Give it some breathing room
+        } else {
+            indicator.innerHTML = "";
+            indicator.style.opacity = "0";
+        }
+    });
+}
 
 
 window.tagUser = function(name) {
@@ -5898,6 +5931,9 @@ window.toggleRecording = async () => {
             
             micBtn.classList.remove('recording');
             micBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+
+            updateTypingStatus(false); 
+
             
             // Combine chunks into a final Blob
             const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
@@ -5914,7 +5950,10 @@ window.toggleRecording = async () => {
 
         // START RECORDING (Use 100ms slices like SnapVibe to prevent "empty" blobs)
         mediaRecorder.start(100);
-        
+
+
+                updateTypingStatus(true, 'audio'); 
+
         // UI Updates
         micBtn.classList.add('recording');
         showToast("Înregistrare pornită...", "success");
