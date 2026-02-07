@@ -4103,7 +4103,6 @@ async function logTransaction(amount, type, desc) {
     const gifBtn = document.getElementById('gifBtn');
     
     // --- YOUR NEW API KEY ---
-    const GIPHY_KEY_FIX = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
 // --- 1. EMOJI LIST & POPULATION ---
 
 window.togglePicker = async (type) => {
@@ -7417,13 +7416,12 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 // ============================================================
-    // --- GIPHY & STICKER ENGINE FIX (REPLACE BOTTOM CODE) ---
+    // --- FINAL FIX V3: SCOPE & LAYOUT REPAIR (PASTE AT BOTTOM) ---
     // ============================================================
 
+    const GIPHY_KEY_FIX = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
 
-    // --- 1. SEARCH LISTENERS ---
-    
- // --- 1. OVERRIDE THE PICKER TOGGLE (FIXES LAYOUT) ---
+    // --- 1. OVERRIDE THE PICKER TOGGLE (FIXES LAYOUT) ---
     window.togglePicker = async (type) => {
         const drawer = document.getElementById('pickerDrawer');
         const gifSec = document.getElementById('gifSection');
@@ -7435,8 +7433,7 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         if(gifBtn) gifBtn.classList.remove('active');
         if(stickBtn) stickBtn.classList.remove('active');
 
-        // 1. Toggle Logic
-        // If clicking the same active button, close it.
+        // Toggle Logic: If clicking the same active button, close it.
         const targetBtn = document.getElementById(type + 'Btn');
         if (drawer.classList.contains('open') && targetBtn && targetBtn.classList.contains('active')) {
             drawer.classList.remove('open');
@@ -7460,9 +7457,8 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
         } else if (type === 'sticker') {
             // *** CRITICAL CSS FIX FOR STICKERS ***
-            stickSec.style.display = 'flex'; 
-            stickSec.style.flexDirection = 'column'; // Stack Search on top of Results
-            stickSec.style.height = '100%'; 
+            // This forces the grid to display correctly regardless of external CSS
+            stickSec.style.cssText = "display: flex !important; flex-direction: column !important; height: 100% !important;";
             
             if(stickBtn) stickBtn.classList.add('active');
 
@@ -7481,8 +7477,12 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
     // GIF Search
     const gifInputRef = document.getElementById('gifSearchInput');
     if (gifInputRef) {
+        // Remove old listeners by cloning (optional but safe)
+        const newGifInput = gifInputRef.cloneNode(true);
+        gifInputRef.parentNode.replaceChild(newGifInput, gifInputRef);
+        
         let gDebounce;
-        gifInputRef.addEventListener('input', (e) => {
+        newGifInput.addEventListener('input', (e) => {
             clearTimeout(gDebounce);
             const val = e.target.value.trim();
             gDebounce = setTimeout(() => {
@@ -7495,8 +7495,12 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
     // Sticker Search
     const stickInputRef = document.getElementById('stickerSearchInput');
     if (stickInputRef) {
+        // Remove old listeners
+        const newStickInput = stickInputRef.cloneNode(true);
+        stickInputRef.parentNode.replaceChild(newStickInput, stickInputRef);
+
         let sDebounce;
-        stickInputRef.addEventListener('input', (e) => {
+        newStickInput.addEventListener('input', (e) => {
             clearTimeout(sDebounce);
             const val = e.target.value.trim();
             sDebounce = setTimeout(() => {
@@ -7536,6 +7540,12 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
     async function loadStickers() {
         const box = document.getElementById('stickerResults');
         if (!box) return;
+        
+        // Force styling on the results box to ensure grid works
+        box.style.display = "grid";
+        box.style.gridTemplateColumns = "repeat(3, 1fr)";
+        box.style.gap = "10px";
+        
         box.innerHTML = '<div style="color:var(--primary); grid-column:1/-1; text-align:center; padding:20px;">Încărcare Stickere...</div>';
 
         try {
@@ -7553,6 +7563,7 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
                 const img = document.createElement('img');
                 img.className = 'sticker-item';
                 img.src = item.images.fixed_height.url;
+                img.style.cursor = "pointer"; // Force cursor
                 img.onclick = () => sendMedia(item.images.original.url);
                 box.appendChild(img);
             });
@@ -7585,25 +7596,29 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         } catch (e) { console.error(e); }
     }
 
-    // --- 5. UNIVERSAL SEND ---
+    // --- 5. UNIVERSAL SEND (SCOPE FIX) ---
+    // This function MUST modify the local variable `selectedImgBase64`
+    // NOT `window.selectedImgBase64`
     window.sendMedia = function(url) {
-        console.log("Sending:", url);
-        // Set global variable used by main sendMessage()
-        window.selectedImgBase64 = url; 
+        console.log("Sending Media:", url);
         
-        // Call main send function
+        // 1. UPDATE THE VARIABLE USED BY sendMessage()
+        // IMPORTANT: We do not use 'window.' here, we update the let variable from line ~1330
+        selectedImgBase64 = url; 
+        
+        // 2. Trigger the message send
         if (typeof sendMessage === "function") {
             sendMessage();
         } else {
             console.error("sendMessage missing");
         }
 
-        // Close Drawer
+        // 3. Close Drawer & Cleanup
         document.getElementById('pickerDrawer').classList.remove('open');
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
         
-        // Reset after delay
-        setTimeout(() => { window.selectedImgBase64 = null; }, 1000);
+        // 4. Clear variable after delay
+        setTimeout(() => { selectedImgBase64 = null; }, 1000);
     };
 
     // Ensure mapping exists
