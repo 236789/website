@@ -3196,39 +3196,41 @@ body {
 }
 
 
-/* --- EMERGENCY STICKER FIX --- */
-/* 1. Force the parent container to have height */
+/* --- HYBRID FIX: MANUAL STICKERS + API GIFS --- */
+
+/* Force Sticker Container Size */
 #stickerSection {
-    height: 400px !important;       /* Forces the box open */
-    min-height: 300px !important;   /* Prevents it from collapsing */
-    display: none;                  /* Hidden by default */
+    display: none;
     flex-direction: column !important;
-    width: 100% !important;
+    height: 350px !important;
+    min-height: 300px !important;
+    padding: 10px !important;
 }
 
-/* 2. When the drawer is open, force it visible */
-#pickerDrawer.open #stickerSection {
-    display: flex !important;
-}
-
-/* 3. Force the results grid to behave */
+/* Force Sticker Grid */
 #stickerResults {
     display: grid !important;
-    grid-template-columns: repeat(3, 1fr) !important; /* 3 stickers per row */
+    grid-template-columns: repeat(4, 1fr) !important; /* 4 per row looks better for stickers */
     gap: 10px !important;
     width: 100% !important;
     height: 100% !important;
-    overflow-y: auto !important; /* Allow scrolling */
-    padding-bottom: 50px !important;
+    overflow-y: auto !important;
+    padding-bottom: 20px;
 }
 
-/* 4. Ensure the images themselves aren't hidden */
-#stickerResults img {
-    width: 100% !important;
-    height: auto !important;
-    aspect-ratio: 1/1 !important;
-    display: block !important;
-    background: rgba(255,255,255,0.05); /* See empty slots if images fail to load */
+/* Sticker Images */
+.manual-sticker-img {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: contain; /* Keeps transparency nice */
+    cursor: pointer;
+    transition: transform 0.2s;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+}
+.manual-sticker-img:hover {
+    transform: scale(1.1);
+    background: rgba(255,255,255,0.1);
 }
   </style>
 
@@ -7773,6 +7775,141 @@ setTimeout(() => {
         console.log("GIF Search Bar Successfully Connected.");
     }
 }, 1000); // Wait 1 second after load to ensure HTML is ready
+
+
+
+/* ==========================================
+   --- HYBRID SYSTEM: API GIFS + MANUAL STICKERS ---
+   ========================================== */
+
+// 1. YOUR MANUAL STICKER LIST (Add your image links here)
+const MANUAL_STICKERS = [
+    "https://media.giphy.com/media/l0HlHJGHe3yAMhdQY/giphy.gif",
+    "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
+    "https://iili.io/fS2w9jf.jpg", 
+    "https://iili.io/fS2jyTG.jpg",
+    "https://iili.io/fS2jmps.jpg",
+    "https://media.giphy.com/media/l41lFj8afMrkzeX84/giphy.gif",
+    "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
+    // COPY PASTE LINES ABOVE TO ADD MORE
+];
+
+// 2. STICKER LOADER (MANUAL)
+window.loadStickers = function(filter = "") {
+    const box = document.getElementById('stickerResults');
+    if(!box) return;
+    box.innerHTML = ""; // Clear
+
+    // Filter list if user types in search bar
+    const list = filter 
+        ? MANUAL_STICKERS.filter(url => url.includes(filter)) 
+        : MANUAL_STICKERS;
+
+    if(list.length === 0) {
+        box.innerHTML = '<div style="color:#aaa; padding:10px; grid-column:1/-1; text-align:center;">Niciun sticker găsit.</div>';
+        return;
+    }
+
+    list.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = 'manual-sticker-img';
+        img.onclick = () => window.sendMediaFinal(url);
+        box.appendChild(img);
+    });
+};
+
+// 3. GIF LOADER (GIPHY API - RESTORED)
+window.GIPHY_API_KEY_FINAL = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
+
+window.loadGifs = async function(url) {
+    const box = document.getElementById('gifResults');
+    if(!box) return;
+    
+    // Default URL if none provided (Trending)
+    if(!url) url = `https://api.giphy.com/v1/gifs/trending?api_key=${window.GIPHY_API_KEY_FINAL}&limit=50&rating=g`;
+
+    try {
+        const req = await fetch(url);
+        const res = await req.json();
+        box.innerHTML = ''; 
+        
+        if(!res.data || res.data.length === 0) {
+             box.innerHTML = '<div style="color:#aaa; padding:10px;">Nimic găsit.</div>';
+             return;
+        }
+
+        res.data.forEach(item => {
+            const img = document.createElement('img');
+            img.className = 'gif-item'; // Uses your existing css for gifs
+            img.src = item.images.fixed_height.url;
+            img.style.cursor = "pointer";
+            img.onclick = () => window.sendMediaFinal(item.images.original.url);
+            box.appendChild(img);
+        });
+    } catch (e) { 
+        console.error(e);
+        box.innerHTML = '<div style="color:red; padding:10px;">Eroare API Giphy.</div>';
+    }
+};
+
+// 4. THE TOGGLE LOGIC (ROUTES TO CORRECT LOADER)
+window.togglePicker = function(type) {
+    const drawer = document.getElementById('pickerDrawer');
+    const gifSec = document.getElementById('gifSection');
+    const stickSec = document.getElementById('stickerSection');
+    const gifBtn = document.getElementById('gifBtn');
+    const stickBtn = document.getElementById('stickerBtn');
+
+    // Close if clicking active button
+    if(drawer.classList.contains('open') && document.getElementById(type+'Btn').classList.contains('active')) {
+        drawer.classList.remove('open');
+        if(gifBtn) gifBtn.classList.remove('active');
+        if(stickBtn) stickBtn.classList.remove('active');
+        return;
+    }
+
+    // Reset UI
+    if(gifBtn) gifBtn.classList.remove('active');
+    if(stickBtn) stickBtn.classList.remove('active');
+    gifSec.style.display = 'none';
+    stickSec.style.display = 'none';
+
+    // Activate Requested
+    document.getElementById(type+'Btn').classList.add('active');
+
+    if(type === 'gif') {
+        gifSec.style.display = 'flex';
+        // Load GIFs via API
+        const box = document.getElementById('gifResults');
+        if(box.children.length === 0) window.loadGifs(); 
+    } else {
+        stickSec.style.display = 'flex'; // Uses CSS fix from Step 1
+        // Load Stickers via Manual List
+        window.loadStickers(); 
+    }
+
+    drawer.classList.add('open');
+};
+
+// 5. HELPER: SEND MEDIA
+window.sendMediaFinal = function(url) {
+    const imgPreview = document.getElementById('imgPreview');
+    const previewCont = document.getElementById('imgPreviewContainer');
+    
+    if(imgPreview && previewCont) {
+        imgPreview.src = url;
+        previewCont.style.display = 'block';
+        
+        if(typeof selectedImgBase64 !== 'undefined') selectedImgBase64 = url;
+        else window.selectedImgBase64 = url;
+    }
+    
+    // Close Drawer
+    document.getElementById('pickerDrawer').classList.remove('open');
+    if(document.getElementById('gifBtn')) document.getElementById('gifBtn').classList.remove('active');
+    if(document.getElementById('stickerBtn')) document.getElementById('stickerBtn').classList.remove('active');
+};
   </script>
 </body>
 </html>
