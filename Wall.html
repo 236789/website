@@ -4113,44 +4113,69 @@ window.togglePicker = async (type) => {
     const gifBtn = document.getElementById('gifBtn');
     const stickerBtn = document.getElementById('stickerBtn');
     
-    // 1. Feature Access Check (Keep your existing logic here)
-    // ... (Keep your existing Auth/Access check logic if you have it) ...
+    // 1. Access Check (Keep existing logic)
+    const modal = document.getElementById('rewardModal');
+    const btn = modal.querySelector('.reward-btn');
+    modal.classList.remove('locked-state');
+    btn.innerText = "SUPER!";
+    btn.onclick = () => modal.classList.remove('active');
+
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
+    const hasAccess = (type === 'gif') ? data.hasGifAccess === true : data.hasStickerAccess === true;
+
+    if (!hasAccess) {
+        pickerDrawer.classList.remove('open');
+        if(gifBtn) gifBtn.classList.remove('active');
+        if(stickerBtn) stickerBtn.classList.remove('active');
+        
+        modal.classList.add('locked-state');
+        modal.querySelector('.reward-title').innerHTML = "<span>🔒</span> ACCES RESTRICȚIONAT";
+        document.getElementById('rewardText').innerText = `Nu ai deblocat pachetul de ${type.toUpperCase()}.`;
+        document.getElementById('rewardAmount').innerText = "Vizitează magazinul pentru a cumpăra permisul de utilizare.";
+        btn.innerText = "MERGI SPRE SHOP";
+        btn.onclick = () => window.location.href = 'shop.html';
+        modal.classList.add('active');
+        return;
+    }
 
     const targetBtn = document.getElementById(type + 'Btn');
 
-    // 2. LOGIC: If clicking the active button, close everything
+    // 2. LOGIC: If closing active tab
     if (pickerDrawer.classList.contains('open') && targetBtn.classList.contains('active')) {
         pickerDrawer.classList.remove('open');
         targetBtn.classList.remove('active');
-        gifSection.style.display = 'none';
-        stickerSection.style.display = 'none';
+        // Hide both immediately to prevent visual glitches
+        setTimeout(() => {
+            gifSection.style.display = 'none';
+            stickerSection.style.display = 'none';
+        }, 300);
         return; 
     }
 
-    // 3. LOGIC: Switch Tabs
-    // First, hide everything and remove active class from all buttons
-    pickerDrawer.classList.remove('open'); // Briefly remove to reset height animation if needed
-    gifSection.style.display = 'none';
-    stickerSection.style.display = 'none';
+    // 3. LOGIC: Switching Tabs
+    // Reset Everything First
     if(gifBtn) gifBtn.classList.remove('active');
     if(stickerBtn) stickerBtn.classList.remove('active');
+    
+    gifSection.style.display = 'none';
+    stickerSection.style.display = 'none';
 
-    // Now open the correct one
+    // Activate Selected
     if (type === 'gif') {
-        gifSection.style.display = 'flex'; // GIFs need Flex
-        // Load GIFs if empty
+        gifSection.style.display = 'flex';
+        // Only load if empty to save data
         if(document.getElementById('gifResults').children.length === 0) {
             loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=50&rating=g`);
         }
     } else if (type === 'sticker') {
-        stickerSection.style.display = 'grid'; // Stickers need Grid
-        // Load Stickers if empty
+        stickerSection.style.display = 'grid';
+        // Only load if empty
         if(document.getElementById('stickerResults').children.length === 0) {
             loadStickers();
         }
     }
 
-    // Open drawer and highlight button
     pickerDrawer.classList.add('open');
     targetBtn.classList.add('active');
 };
@@ -7466,6 +7491,7 @@ async function loadGifs(url) {
 }
 
 // LOAD TRENDING STICKERS
+// LOAD TRENDING STICKERS (FIXED)
 async function loadStickers() {
     const stickerResults = document.getElementById('stickerResults');
     if (!stickerResults) return;
@@ -7474,7 +7500,7 @@ async function loadStickers() {
 
     try {
         // Correct endpoint for Stickers (v1/stickers)
-        const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
+        const res = await fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=50&rating=g`);
         const data = await res.json();
         stickerResults.innerHTML = ''; 
 
@@ -7488,8 +7514,10 @@ async function loadStickers() {
             img.className = 'sticker-item';
             img.src = s.images.fixed_height.url; 
             img.loading = "lazy";
-img.onclick = () => window.sendSticker(gif.images.original.url); 
-// We use sendSticker here too because it handles the logic perfectly​
+            
+            // --- FIX IS HERE: Changed 'gif' to 's' ---
+            img.onclick = () => window.sendSticker(s.images.original.url); 
+            
             stickerResults.appendChild(img);
         });
     } catch (e) { 
@@ -7530,23 +7558,26 @@ img.onclick = () => window.sendSticker(s.images.original.url);
 
 
 
-  // Add this inside the main script module
 window.sendSticker = function(url) {
-    // We treat the sticker URL exactly like an uploaded image
-    // Pass it to the global variable used by sendMessage
+    // 1. Set the global image variable used by sendMessage
     selectedImgBase64 = url; 
     
-    // Determine if it's a GIF or a Static image for preview purposes
-    // (Optional: You can skip preview and send immediately if you prefer)
-    imgPreview.src = selectedImgBase64;
-    imgPreviewContainer.style.display = 'block';
+    // 2. IMPORTANT: Send immediately
+    if (typeof sendMessage === "function") {
+        sendMessage();
+    } else {
+        console.error("sendMessage function not found");
+    }
     
-    // Close the drawer
-    document.getElementById('pickerDrawer').classList.remove('open');
-    document.getElementById('stickerBtn').classList.remove('active');
+    // 3. Close the drawer
+    const drawer = document.getElementById('pickerDrawer');
+    if(drawer) drawer.classList.remove('open');
     
-    // Optional: Send immediately without waiting for user to press send
-    // sendMessage(); 
+    const btn = document.getElementById('stickerBtn');
+    if(btn) btn.classList.remove('active');
+
+    // 4. Clear variable after delay to prevent duplicates
+    setTimeout(() => { selectedImgBase64 = null; }, 1000);
 };
   </script>
 
