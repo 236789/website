@@ -4792,16 +4792,23 @@ window.toggleAutoRead = () => {
     }
 };
 
-// The function that actually manages the "Robot's Voice"
-window.speakMessage = (text, msgId) => {
-    // 1. Prevent duplicates (the main bug fix)
-    if (alreadyReadMessages.has(msgId)) return;
-    alreadyReadMessages.add(msgId);
+// --- ROBUST SPEECH ENGINE ---
+window.speakMessage = (text, msgId = null, force = false) => {
+    // 1. If this is a MANUAL click (Force), stop everything and speak NOW.
+    if (force) {
+        window.speechSynthesis.cancel(); // Stop current speech
+        speechQueue = []; // Clear backlog
+        isProcessingQueue = false;
+    }
 
-    // 2. Add to the waiting list (Queue)
+    // 2. Prevent duplicates for Auto-Read (ignored if Force is true)
+    if (!force && msgId && alreadyReadMessages.has(msgId)) return;
+    if (msgId) alreadyReadMessages.add(msgId);
+
+    // 3. Add to queue
     speechQueue.push(text);
 
-    // 3. Start processing if the robot is idle
+    // 4. Start processor if idle
     if (!isProcessingQueue) {
         processSpeechQueue();
     }
@@ -4817,19 +4824,18 @@ async function processSpeechQueue() {
     const nextText = speechQueue.shift();
 
     const utterance = new SpeechSynthesisUtterance(nextText);
-    utterance.lang = 'ro-RO';
-    utterance.rate = 1.0;
+    utterance.lang = 'ro-RO'; 
+    utterance.rate = 1.0; 
     utterance.pitch = 1.0;
 
-    // Wait for the robot to finish speaking before moving to the next message
     utterance.onend = () => {
-        // Small 500ms cooldown gap between messages so they don't blend together
-        setTimeout(() => {
-            processSpeechQueue();
-        }, 500);
+        // Small delay to separate messages naturally
+        setTimeout(() => { processSpeechQueue(); }, 300);
     };
 
+    // If it errors or gets stuck, force move to next
     utterance.onerror = () => {
+        console.warn("TTS Error, skipping...");
         isProcessingQueue = false;
         processSpeechQueue();
     };
@@ -6624,12 +6630,14 @@ docs.forEach(data => {
 const totalSeen = (data.seenBy || []).length;
 const seenIndicatorHtml = `<button class="seen-btn ${totalSeen > 0 ? 'active' : ''}" style="background:none; border:none; color:inherit; font-size:10px; cursor:pointer;" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${totalSeen}</button>`;
 
-// NEW SPEAKER BUTTON
+// NEW SPEAKER BUTTON (FIXED)
 let ttsBtnHtml = "";
-if (data.text && data.type !== 'vocal') {
-    // We clean the text to make sure quotes don't break the Javascript
-    const safeText = data.text.replace(/'/g, "\\'").replace(/\n/g, " ");
-    ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}')"><i class="fas fa-volume-up"></i></button>`;
+// Allow reading text messages AND system messages
+if ((data.text || data.uid === 'system-alert') && data.type !== 'vocal') {
+    // Escape quotes to prevent HTML breaking
+    const safeText = (data.text || "").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/\n/g, " ");
+    // The 'true' at the end forces immediate playback
+    ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}', null, true)"><i class="fas fa-volume-up"></i></button>`;
 }
 
             // --- DROPDOWN MENU ---
@@ -6693,43 +6701,52 @@ if (data.text && data.type !== 'vocal') {
 
 
 
-// --- AUTO-READ LOGIC (REPAIRED) ---
+// --- AUTO-READ LOGIC (UPDATED: BOTS + IMAGES) ---
 if (autoReadEnabled) {
-    // Check if message is a standard text message and not from a bot/system
-    if (data.text && !data.isBot && data.uid !== 'system-alert' && data.type !== 'vocal') {
+    // 1. Check if it's a valid message type (Text or Image) AND not a vocal recording
+    // We REMOVED !data.isBot so it now reads bots.
+    if ((data.text || data.image) && data.type !== 'vocal') {
         
-        // Check if the message is actually NEW (sent after toggle was clicked)
+        // 2. Check if fresh
         const msgTime = data.createdAt ? data.createdAt.toMillis() : Date.now();
-        const isFresh = msgTime > (autoReadStartTime - 5000); // 5 sec buffer
+        const isFresh = msgTime > (autoReadStartTime - 2000); // 2 sec buffer
 
-// If it's fresh and we haven't read this specific ID yet
-if (isFresh && !alreadyReadMessages.has(data.id)) {
-    const speakerName = data.name || "Cineva";
-    
-    // 1. Remove HTML tags and Mentions
-    let cleanText = data.text
-        .replace(/<br>/g, " ") 
-        .replace(/@\w+/g, "");
+        if (isFresh && !alreadyReadMessages.has(data.id)) {
+            const speakerName = data.name || "Sistem";
+            
+            // --- BUILD THE SPEECH STRING ---
+            let textToRead = "";
 
-    // 2. THE FIX: Remove Emojis using Modern Unicode Detection
-    // This removes generic emojis, symbols, and pictographs
-    cleanText = cleanText.replace(/\p{Extended_Pictographic}/gu, "");
+            // A. Check for Image
+            if (data.image) {
+                textToRead += `${speakerName} a trimis o imagine. `;
+            } else {
+                // Only say name for text if it's NOT a system/jackpot alert (reads better)
+                if (data.uid !== 'system-alert') {
+                    textToRead += `${speakerName} a spus: `;
+                }
+            }
 
-    // 3. Extra Cleanup: Remove leftover weird symbols that aren't text
-    // Keeps: Letters (including Romanian), Numbers, Punctuation (.,?!'-), and Spaces
-    cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, "");
+            // B. Add the text content (if exists)
+            if (data.text) {
+                let cleanText = data.text
+                    .replace(/<br>/g, " ") 
+                    .replace(/@\w+/g, "") // Remove mentions
+                    .replace(/\p{Extended_Pictographic}/gu, ""); // Remove emojis
+                
+                // Cleanup symbols but keep punctuation
+                cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, "").trim();
+                
+                textToRead += cleanText;
+            }
 
-    // 4. Final trim
-    cleanText = cleanText.trim();
-    
-    // 5. Only speak if there are actual words left
-    if(cleanText.length > 1) { // Must be at least 2 characters (avoids reading a single dot)
-        window.speakMessage(`${speakerName} a spus: ${cleanText}`, data.id);
-    } else {
-        // If the message was ONLY emojis, mark as read so it doesn't loop
-        alreadyReadMessages.add(data.id); 
-    }
-}
+            // 3. Queue it up!
+            if (textToRead.trim().length > 1) {
+                window.speakMessage(textToRead, data.id);
+            } else {
+                alreadyReadMessages.add(data.id); // Mark as read even if silent
+            }
+        }
     }
 }
         }); 
