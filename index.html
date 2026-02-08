@@ -11917,6 +11917,7 @@ window.selectGender = (val, el) => {
     selectedOnbGender = val;
 };
 // Photo Upload Preview
+// Preview Poză
 window.previewOnbPfp = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -11929,24 +11930,51 @@ window.previewOnbPfp = (event) => {
     reader.readAsDataURL(file);
 };
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        onboardingPhotoBase64 = e.target.result;
-        document.getElementById('onbStep2Preview').src = onboardingPhotoBase64;
+// SALVARE FINALĂ
+window.finishOnboarding = async () => {
+    if (!auth.currentUser) return;
+    
+    const btn = document.getElementById('onbFinishBtn');
+    btn.innerHTML = "<span>SALVARE...</span>";
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    
+    const updateData = {
+        bio: document.getElementById('onbBio').value.trim(),
+        birthDate: document.getElementById('onbBirth').value,
+        location: document.getElementById('onbLocation').value.trim(),
+        gender: selectedOnbGender,
+        socialLinks: {
+            tiktok: document.getElementById('onbTikTok').value.trim(),
+            insta: document.getElementById('onbInsta').value.trim(),
+            fb: document.getElementById('onbFB').value.trim(),
+            discord: document.getElementById('onbDiscord').value.trim()
+        },
+        onboardingComplete: true
     };
-    reader.readAsDataURL(file);
+
+    // Actualizăm poza în Firestore și în Profilul Global Auth
+    if (uploadedPfpBase64) {
+        updateData.image = uploadedPfpBase64;
+        try {
+            const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
+            await updateProfile(auth.currentUser, { photoURL: uploadedPfpBase64 });
+        } catch (e) { console.error("Auth update fail", e); }
+    }
+
+    try {
+        await updateDoc(userRef, updateData);
+        window.nextOnbStep(5);
+    } catch (e) {
+        console.error(e);
+        window.showToast("Eroare la salvare!");
+        btn.innerHTML = "<span>FINALIZEAZĂ</span>";
+    }
 };
 
-window.previewOnbPfp = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        uploadedPfpBase64 = e.target.result; // Salvăm în variabila corectă
-        document.getElementById('onbStep2Preview').src = uploadedPfpBase64;
-    };
-    reader.readAsDataURL(file);
+window.closeOnboarding = () => {
+    document.getElementById('onboardingModal').classList.remove('active');
+    window.location.reload(); 
 };
   </script>
 </body>
