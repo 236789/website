@@ -4642,28 +4642,30 @@ input:checked + .slider:before { transform: translateX(16px); }
                 <button class="btn-ksda-fire" style="width:100%;" onclick="nextOnbStep(2)"><span>PASUL URMĂTOR</span></button>
             </div>
 
-            <!-- STEP 2: PHOTO & BIO -->
-            <div class="onb-step" id="onbStep2">
-                <h2 class="welcome-title">PROFILUL TĂU</h2>
-                <div class="profile-frame-wrapper" style="width: 100px; height: 100px;">
-                    <img id="onbStep2Preview" src="https://iili.io/fXks1Dv.png" class="pop-img-inner">
-                </div>
+<!-- STEP 3: PERSONAL INFO (OPTIONAL) -->
+            <div class="onb-step" id="onbStep3">
+                <!-- Updated Title: Removed parentheses -->
+                <h2 class="welcome-title">DETALII <span style="font-size:12px; color:var(--text-muted);">OPȚIONAL</span></h2>
                 
-                <input type="file" id="onbFileInput" style="display:none" accept="image/*" onchange="previewOnbPfp(event)">
-                <button class="btn-util-v5 btn-edit-v5" style="margin: 15px 0;" onclick="document.getElementById('onbFileInput').click()">
-                    <i class="fas fa-camera"></i> ÎNCARCĂ POZĂ
-                </button>
-
                 <div class="input-group" style="width:100%;">
-                    <label>DESPRE TINE (BIO)</label>
-                    <textarea id="onbBio" class="ksda-input" placeholder="Salut! Sunt un artist pasionat..." rows="3"></textarea>
+                    <label>DATA NAȘTERII</label>
+                    <input type="date" id="onbBirth" class="ksda-input">
                 </div>
-                <button class="btn-ksda-fire" style="width:100%; margin-top:20px;" onclick="nextOnbStep(3)"><span>CONTINUĂ</span></button>
+                <div class="input-group" style="width:100%;">
+                    <label>LOCAȚIE (ORAȘ)</label>
+                    <input type="text" id="onbLocation" class="ksda-input" placeholder="Ex: București, RO">
+                </div>
+                <label class="edit-label" style="display:block; margin-bottom:10px;">GEN / SEX</label>
+                <div class="onb-gender-grid">
+                    <div class="gender-opt g-male" onclick="selectGender('Masculin', this)"><i class="fas fa-mars"></i><span>MASCULIN</span></div>
+                    <div class="gender-opt g-female" onclick="selectGender('Feminin', this)"><i class="fas fa-venus"></i><span>FEMININ</span></div>
+                    <div class="gender-opt g-dino" onclick="selectGender('Dinozaur', this)"><i class="fas fa-dragon"></i><span>DINO</span></div>
+                </div>
+                <button class="btn-ksda-fire" style="width:100%; margin-top:20px;" onclick="nextOnbStep(4)"><span>PASUL URMĂTOR</span></button>
             </div>
 
             <!-- STEP 3: PERSONAL INFO (OPTIONAL) -->
             <div class="onb-step" id="onbStep3">
-                <h2 class="welcome-title">DETALII <span style="font-size:12px; color:var(--text-muted);">(OPȚIONAL)</span></h2>
                 <div class="input-group" style="width:100%;">
                     <label>DATA NAȘTERII</label>
                     <input type="date" id="onbBirth" class="ksda-input">
@@ -11893,7 +11895,6 @@ document.getElementById('popLogoutBtn').onclick = () => {
 
 
 let selectedOnbGender = "";
-let uploadedPfpBase64 = null; // Numele trebuie să fie identic peste tot
 
 // Navigare pași
 window.nextOnbStep = (step) => {
@@ -11930,7 +11931,7 @@ window.previewOnbPfp = (event) => {
     reader.readAsDataURL(file);
 };
 
-// SALVARE FINALĂ
+// SALVARE FINALĂ (Updated: Saves only text, keeps original photo)
 window.finishOnboarding = async () => {
     if (!auth.currentUser) return;
     
@@ -11939,6 +11940,8 @@ window.finishOnboarding = async () => {
 
     const userRef = doc(db, "accounts", auth.currentUser.uid);
     
+    // Only updating text fields (Bio, Socials, etc.)
+    // The image remains whatever came from Google/Login
     const updateData = {
         bio: document.getElementById('onbBio').value.trim(),
         birthDate: document.getElementById('onbBirth').value,
@@ -11953,21 +11956,14 @@ window.finishOnboarding = async () => {
         onboardingComplete: true
     };
 
-    // Actualizăm poza în Firestore și în Profilul Global Auth
-    if (uploadedPfpBase64) {
-        updateData.image = uploadedPfpBase64;
-        try {
-            const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
-            await updateProfile(auth.currentUser, { photoURL: uploadedPfpBase64 });
-        } catch (e) { console.error("Auth update fail", e); }
-    }
-
     try {
         await updateDoc(userRef, updateData);
         window.nextOnbStep(5);
     } catch (e) {
         console.error(e);
-        window.showToast("Eroare la salvare!");
+        if(typeof window.showToast === "function") window.showToast("Eroare la salvare!");
+        else alert("Eroare la salvare!");
+        
         btn.innerHTML = "<span>FINALIZEAZĂ</span>";
     }
 };
