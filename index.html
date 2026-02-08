@@ -10171,7 +10171,7 @@ if (saveNotifBtn) {
 
     const accountModal = document.getElementById('accountModal');
     const closeAccountPop = document.getElementById('closeAccountPop');
-    const rewardModal = document.getElementById('onboardingModal').classList.add('active');
+    const rewardModal = document.getElementById('rewardModal');
     const questRewardModal = document.getElementById('questRewardModal');
 
     // --- NEW EDIT MODAL LOGIC ---
@@ -11575,13 +11575,15 @@ window.switchAuthTab = (type) => {
     document.getElementById('tabSignup').style.opacity = type === 'signup' ? '1' : '0.5';
 };
 
-// --- CENTRALIZED NEW USER LOGIC ---
-// This ensures Google AND Email users get the exact same treatment
 async function finalizeUserSetup(user, customUsername = null) {
     const userRef = doc(db, "accounts", user.uid);
     const snap = await getDoc(userRef);
 
+    // ONLY RUNS IF THE USER DOES NOT EXIST IN THE DATABASE (Strictly New Users)
     if (!snap.exists()) {
+        console.log("New User Detected: Starting Onboarding...");
+
+        // 1. Get User Number
         const countSnap = await getCountFromServer(collection(db, "accounts"));
         const userNumber = countSnap.data().count + 1;
         const ip = await getIP();
@@ -11589,7 +11591,7 @@ async function finalizeUserSetup(user, customUsername = null) {
         const finalName = customUsername || user.displayName || "Membru Nou";
         const finalPfp = user.photoURL || "https://iili.io/fXks1Dv.png";
 
-        // Rewards logic
+        // 2. Rewards logic
         let startingCoins = 500;
         let referrerId = localStorage.getItem('referrerUid');
         if (referrerId && referrerId !== user.uid) {
@@ -11598,7 +11600,7 @@ async function finalizeUserSetup(user, customUsername = null) {
             await updateDoc(inviterRef, { coins: increment(1000), pendingReferrals: increment(1), totalReferrals: increment(1) });
         }
 
-        // Create Database Entry
+        // 3. Create Database Entry (Add the 500 coins and 10 diamonds here)
         await setDoc(userRef, {
             uid: user.uid,
             username: finalName,
@@ -11606,9 +11608,10 @@ async function finalizeUserSetup(user, customUsername = null) {
             email: user.email,
             image: finalPfp,
             coins: startingCoins,
-            diamonds: 10,
+            diamonds: 10, // GRANT 10 DIAMONDS
             streak: 0,
             joinedAt: serverTimestamp(),
+            memberNumber: userNumber, // Store the # user number
             totalReferrals: 0,
             pendingReferrals: 0,
             ip: ip,
@@ -11617,7 +11620,7 @@ async function finalizeUserSetup(user, customUsername = null) {
             onboardingComplete: false
         });
 
-        // Logs and Wall Message
+        // 4. Logs and Wall Message
         await logTransaction(500, "COINS", "Welcome Bonus", "Acasă", user.uid);
         await logTransaction(10, "DIAMONDS", "Welcome Bonus", "Acasă", user.uid);
         
@@ -11626,15 +11629,18 @@ async function finalizeUserSetup(user, customUsername = null) {
             text: welcomeMsg, uid: 'kevin-bot', name: 'Kevin-Bot', photo: 'https://i.makeagif.com/media/3-03-2021/otrneG.gif', isBot: true, createdAt: serverTimestamp()
         });
 
-        // --- POPULARE MODAL ONBOARDING (AICI ESTE LOCUL CORECT) ---
-        document.getElementById('onbStep1Pfp').src = finalPfp;
+        // 5. Populate the Modal UI for Step 1
+        document.getElementById('onbStep1Pfp').src = finalPfp; // Original Google PFP
+        document.getElementById('onbStep2Preview').src = finalPfp; // Set preview for Step 2 too
         document.getElementById('onbStep1Name').innerText = finalName;
-        document.getElementById('onbMemberCount').innerText = "#" + userNumber;
+        document.getElementById('onbMemberCount').innerText = "#" + userNumber; // SHOW # USER NUMBER
         
-        // Resetăm progresul la pasul 1 și afișăm modalul
+        // 6. SHOW THE MODAL (Only for this new user)
         window.nextOnbStep(1); 
         document.getElementById('onboardingModal').classList.add('active');
     }
+    
+    // Close the Login/Signup box
     document.getElementById('authModal').style.display = 'none';
 }
 
@@ -11643,10 +11649,13 @@ async function finalizeUserSetup(user, customUsername = null) {
 window.handleGoogleLogin = async () => {
     try {
         const result = await signInWithPopup(auth, provider);
+        // This triggers the setup above
         await finalizeUserSetup(result.user);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e); 
+        window.showToast("Eroare la autentificare!");
+    }
 };
-
 
 
 // --- GLOBAL VARIABLES FOR SIGNUP FLOW ---
