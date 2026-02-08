@@ -11895,12 +11895,11 @@ document.getElementById('popLogoutBtn').onclick = () => {
 let selectedOnbGender = "";
 let uploadedPfpBase64 = null; // Numele trebuie să fie identic peste tot
 
-// Navigation logic
+// Navigare pași
 window.nextOnbStep = (step) => {
     document.querySelectorAll('.onb-step').forEach(s => s.classList.remove('active'));
     document.getElementById(`onbStep${step}`).classList.add('active');
     
-    // Progress UI
     const progress = (step / 5) * 100;
     document.getElementById('onbProgressBar').style.width = progress + "%";
     
@@ -11911,22 +11910,24 @@ window.nextOnbStep = (step) => {
     });
 };
 
-// Selection Logic
+// Selectie Gen
 window.selectGender = (val, el) => {
     document.querySelectorAll('.gender-opt').forEach(opt => opt.classList.remove('selected'));
     el.classList.add('selected');
     selectedOnbGender = val;
 };
-
 // Photo Upload Preview
 window.previewOnbPfp = (event) => {
     const file = event.target.files[0];
     if (!file) return;
     
-    if (file.size > 1048576) { // 1MB Limit
-        window.showToast("Imaginea este prea mare! (Max 1MB)");
-        return;
-    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        uploadedPfpBase64 = e.target.result; // Salvăm în variabila corectă
+        document.getElementById('onbStep2Preview').src = uploadedPfpBase64;
+    };
+    reader.readAsDataURL(file);
+};
 
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -11936,45 +11937,16 @@ window.previewOnbPfp = (event) => {
     reader.readAsDataURL(file);
 };
 
-window.finishOnboarding = async () => {
-    if (!auth.currentUser) return;
-    const btn = document.getElementById('onbFinishBtn');
-    btn.innerHTML = "<span>SALVARE...</span>";
+window.previewOnbPfp = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
     
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const updateData = {
-        // ... (restul datelor tale: bio, birthDate, etc.)
-        onboardingComplete: true
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        uploadedPfpBase64 = e.target.result; // Salvăm în variabila corectă
+        document.getElementById('onbStep2Preview').src = uploadedPfpBase64;
     };
-
-    if (uploadedPfpBase64) {
-        updateData.image = uploadedPfpBase64;
-        
-        // --- ACEASTA ESTE LINIA MAGICĂ ---
-        // Actualizează poza în obiectul de Auth, astfel încât user.photoURL 
-        // să fie noua poză pe TOATE paginile site-ului.
-        try {
-            await updateProfile(auth.currentUser, {
-                photoURL: uploadedPfpBase64
-            });
-            console.log("Profilul Auth a fost actualizat global!");
-        } catch (authErr) {
-            console.error("Eroare la update Auth photo:", authErr);
-        }
-    }
-
-    try {
-        await updateDoc(userRef, updateData);
-        window.nextOnbStep(5);
-    } catch (e) {
-        window.showToast("Eroare la salvare!");
-        btn.innerHTML = "<span>FINALIZEAZĂ</span>";
-    }
-};
-
-window.closeOnboarding = () => {
-    document.getElementById('onboardingModal').classList.remove('active');
-    window.location.reload(); // Refresh to update all UI PFPs site-wide
+    reader.readAsDataURL(file);
 };
   </script>
 </body>
