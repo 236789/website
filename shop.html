@@ -3216,78 +3216,7 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-/* --- OWNED ITEMS SHOWCASE (SHOP PAGE) --- */
-.owned-showcase-container {
-    width: 100%;
-    max-width: 500px;
-    height: 180px;
-    background: rgba(5, 11, 20, 0.6);
-    border: 2px solid #d63384; /* Rozul de la Cosmetics */
-    border-radius: 25px;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    box-shadow: 0 0 30px rgba(214, 51, 132, 0.15), inset 0 0 20px rgba(0,0,0,0.5);
-    animation: fadeIn 0.5s ease;
-}
 
-/* Efect de rețea în fundal */
-.hologram-grid-bg {
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(rgba(214, 51, 132, 0.1) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(214, 51, 132, 0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
-    z-index: 1;
-}
-
-#owned-display-target {
-    z-index: 5;
-    height: 100px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.showcase-label {
-    position: absolute;
-    bottom: 15px;
-    background: rgba(214, 51, 132, 0.2);
-    padding: 3px 15px;
-    border-radius: 50px;
-    border: 1px solid #d63384;
-    z-index: 10;
-}
-
-#owned-item-name-label {
-    font-family: 'Orbitron';
-    font-size: 10px;
-    font-weight: 900;
-    color: #fff;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-}
-
-.showcase-laser {
-    position: absolute;
-    width: 100%;
-    height: 3px;
-    background: #d63384;
-    box-shadow: 0 0 15px #d63384;
-    z-index: 6;
-    animation: laserScan 4s infinite linear;
-}
-
-@keyframes laserScan {
-    0% { top: 0%; opacity: 0; }
-    5% { opacity: 1; }
-    95% { opacity: 1; }
-    100% { top: 100%; opacity: 0; }
-}
   </style>
 </head>
 <body>
@@ -3487,11 +3416,12 @@ input:checked + .slider:before { transform: translateX(16px); }
         <h1 class="metallic-title" style="font-size: 32px; color: #d63384;">COSMETICS SHOP</h1>
         <p class="shop-desc">Cheltuiește KSDA Coins pe cosmetice exclusive pentru profilul tău.</p>
 
-<div style="display:flex; flex-direction:column; align-items:center; gap:15px; margin-bottom: 40px;">
-    <!-- Butonul Achizițiile Mele -->
-    <button class="btn-ksda-fire" id="toggleOwnedShowcase" style="padding: 10px 40px; min-width: 250px;">
+<!-- Butonul Simplu -->
+<div style="text-align: center; margin-bottom: 40px;">
+    <button class="btn-ksda-fire" onclick="document.getElementById('inventoryModal').classList.add('active'); openInventory('badges');" style="padding: 12px 40px; min-width: 250px;">
         <span><i class="fas fa-box-open"></i> ACHIZIȚIILE MELE</span>
     </button>
+</div>
 
     <!-- Vitrina de Inventar (Ascunsă inițial) -->
     <div class="owned-showcase-container" id="ownedItemsShowcase" style="display: none;">
@@ -6025,9 +5955,6 @@ onAuthStateChanged(auth, async user => {
 
                 const streakLabel = document.querySelector('.streak-txt');
                 if(streakLabel) streakLabel.innerText = `Daily Streak: ${d.streak || 0}`;
-
-        window.initOwnedItemsShowcase(data);
-
             }
         });
 
@@ -6431,79 +6358,6 @@ function showHijackToast(amount, type, name) {
     new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3").play().catch(e=>{});
     setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = '0.5s'; setTimeout(() => toast.remove(), 500); }, 5000);
 }
-
-
-
-let ownedLoopInterval = null;
-
-window.initOwnedItemsShowcase = (userData) => {
-    const btn = document.getElementById('toggleOwnedShowcase');
-    const showcase = document.getElementById('ownedItemsShowcase');
-    const target = document.getElementById('owned-display-target');
-    const label = document.getElementById('owned-item-name-label');
-
-    if (!btn || !showcase || !userData) return;
-
-    // 1. COLECTARE DATE (FĂRĂ RAME)
-    const myItems = [
-        ...(userData.ownedBadges || []).map(id => ({ id, cat: 'badge', db: BADGES_DB.find(b => b.id === id) })),
-        ...(userData.ownedBanners || []).map(id => ({ id, cat: 'banner', db: BANNERS_DB.find(b => b.id === id) })),
-        ...(userData.ownedTexts || []).map(id => ({ id, cat: 'text', db: TEXTS_DB.find(b => b.id === id) }))
-    ].filter(item => item.db); // Filtrează doar dacă există în baza de date
-
-    // 2. LOGICA BUTONULUI TOGGLE
-    btn.onclick = () => {
-        if (myItems.length === 0) {
-            return showCustomAlert("Nu ai cumpărat încă nicio cosmetică!", "SEIF GOL");
-        }
-
-        if (showcase.style.display === 'none') {
-            showcase.style.display = 'flex';
-            startRotation();
-        } else {
-            showcase.style.display = 'none';
-            clearInterval(ownedLoopInterval);
-        }
-    };
-
-    // 3. MOTORUL DE ROTAȚIE
-    let index = 0;
-    function startRotation() {
-        if (ownedLoopInterval) clearInterval(ownedLoopInterval);
-
-        function next() {
-            const item = myItems[index];
-            target.style.opacity = '0';
-            target.style.transform = 'scale(0.5) rotateY(90deg)';
-
-            setTimeout(() => {
-                let html = "";
-                let name = item.db.name || item.db.text || "Item";
-
-                switch(item.cat) {
-                    case 'badge':
-                        html = `<span class="shop-badge-preview" style="background:${item.db.color}; color:#000; padding:10px 20px; font-size:12px; border:none; box-shadow:0 0 20px ${item.db.color}">
-                                    <i class="fas ${item.db.icon}"></i> ${item.db.text}
-                                </span>`;
-                        break;
-                    case 'banner':
-                        html = `<div class="${item.db.cssClass}" style="padding:15px 30px; border-radius:12px; font-size:11px; font-weight:900; border:1px solid #fff; min-width:180px; text-align:center;">
-                                    BANNER DEȚINUT
-                                </div>`;
-                        break;
-                    case 'text':
-                        html = `<div class="${item.db.cssClass}" style="font-size:24px; font-weight:900; text-align:center;">
-                                    ${userData.username}
-                                </div>`;
-                        break;
-                }
-
-                target.innerHTML = html;
-                label.innerText = name;
-                target.style.opacity = '1';
-                target.style.transform = 'scale(1) rotateY(0deg)';
-                index = (index + 1) % myItems.length;
-            }, 500);
 </script>
 </body>
 </html>
