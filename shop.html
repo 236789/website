@@ -1491,10 +1491,107 @@ input:checked + .slider:before { transform: translateX(16px); }
 .metallic-title {
     font-family: 'Orbitron', 'Montserrat', sans-serif;
 }
+
+
+
+/* --- BLACK MARKET STYLES --- */
+.text-toxic-green {
+    background: linear-gradient(135deg, #00ff88 0%, #adff2f 50%, #00ff88 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    animation: toxicPulse 3s infinite;
+}
+
+@keyframes toxicPulse {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.3) drop-shadow(0 0 10px #00ff88); }
+    100% { filter: brightness(1); }
+}
+
+.black-market-card {
+    border: 1px solid #00ff88 !important;
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.15) !important;
+    background: linear-gradient(180deg, #050b14 0%, #001a0f 100%) !important;
+}
+
+.btn-rain {
+    background: linear-gradient(90deg, #00ff88, #00cc6a);
+    color: #000;
+    font-family: 'Orbitron';
+    font-weight: 900;
+    font-size: 14px;
+    padding: 15px;
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+    transition: 0.3s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+
+.btn-rain:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 40px rgba(0, 255, 136, 0.8);
+}
+
+.btn-rain:disabled {
+    background: #333;
+    color: #777;
+    cursor: not-allowed;
+    box-shadow: none;
+}
   </style>
 </head>
 <body>
 
+
+
+<!-- BLACK MARKET MODAL -->
+<div id="blackMarketModal" class="modal-overlay">
+    <div class="shop-modal-card black-market-card" style="max-width: 500px;">
+        <button class="close-modal-btn" onclick="closeModal('blackMarketModal')">✕</button>
+        
+        <!-- SICK GREEN GRADIENT TITLE -->
+        <h2 class="text-toxic-green" style="font-size: 28px; margin-bottom: 10px;">BLACK MARKET</h2>
+        <p style="color: #a5b1c2; font-size: 12px; margin-bottom: 30px;">
+            Servicii ilegale pentru VIP-uri. Folosește cu grijă.
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            
+            <!-- MAKE IT RAIN OPTION -->
+            <div style="background: rgba(0, 255, 136, 0.05); border: 1px solid rgba(0, 255, 136, 0.2); border-radius: 20px; padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="text-align: left;">
+                        <div style="font-family: Orbitron; font-weight: 900; font-size: 18px; color: #fff;">
+                            MAKE IT RAIN 💸
+                        </div>
+                        <div style="font-size: 11px; color: #aaa; margin-top: 5px;">
+                            Oferă <b>5,000 COINS</b> tuturor jucătorilor online.
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 18px; font-weight: 900; color: #00ffcc;">50 💎</span>
+                    </div>
+                </div>
+
+                <div id="rainCooldownMsg" style="display: none; color: #ff4757; font-size: 11px; font-weight: 700; margin-bottom: 10px; text-align: center;">
+                    ⏳ COOLDOWN: <span id="rainTimer">00:00:00</span>
+                </div>
+
+                <button id="btnMakeItRain" class="btn-rain" onclick="triggerRain()">
+                    <i class="fas fa-cloud-showers-heavy"></i> MAKE IT RAIN
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
 
 
 <!-- BANNED OVERLAY -->
@@ -1626,6 +1723,13 @@ input:checked + .slider:before { transform: translateX(16px); }
                 <span class="cat-title">ALTE</span>
             </div>
         </div>
+
+
+<!-- BLACK MARKET BUTTON -->
+<div id="btn-blackmarket" class="cosmetic-cat-btn" onclick="openBlackMarket()" style="border-color: #00ff88;">
+    <i class="fas fa-skull" style="color: #00ff88;"></i>
+    <span class="cat-title" style="color: #00ff88;">BLACK MARKET</span>
+</div>
 
     </main>
 
@@ -3933,6 +4037,149 @@ onAuthStateChanged(auth, async user => {
     closeMenu.onclick = () => sideMenu.classList.remove('open');
 
     renderShop();
+
+
+
+// --- BLACK MARKET LOGIC ---
+
+// 1. Open Modal
+window.openBlackMarket = () => {
+    if(!auth.currentUser) return alert("Trebuie să fii logat!");
+    document.getElementById('blackMarketModal').classList.add('active');
+    checkRainCooldown();
+};
+
+// 2. Check Cooldown (2 Hours)
+let rainInterval;
+async function checkRainCooldown() {
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
+    const btn = document.getElementById('btnMakeItRain');
+    const msg = document.getElementById('rainCooldownMsg');
+    const timerSpan = document.getElementById('rainTimer');
+
+    if (data.lastRainTime) {
+        const lastTime = data.lastRainTime.toMillis();
+        const twoHours = 2 * 60 * 60 * 1000; // 2 Hours in ms
+        
+        clearInterval(rainInterval);
+        
+        rainInterval = setInterval(() => {
+            const now = Date.now();
+            const diff = now - lastTime;
+            const remaining = twoHours - diff;
+
+            if (remaining > 0) {
+                btn.disabled = true;
+                btn.style.opacity = "0.5";
+                btn.innerText = "COOLDOWN ACTIV";
+                msg.style.display = "block";
+                
+                // Format Time
+                const h = Math.floor(remaining / (1000 * 60 * 60));
+                const m = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+                const s = Math.floor((remaining % (1000 * 60)) / 1000);
+                timerSpan.innerText = `${h}h ${m}m ${s}s`;
+            } else {
+                btn.disabled = false;
+                btn.style.opacity = "1";
+                btn.innerHTML = '<i class="fas fa-cloud-showers-heavy"></i> MAKE IT RAIN';
+                msg.style.display = "none";
+                clearInterval(rainInterval);
+            }
+        }, 1000);
+    }
+}
+
+// 3. Trigger The Rain
+window.triggerRain = async () => {
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, "accounts", uid);
+    const userSnap = await getDoc(userRef);
+    const data = userSnap.data();
+
+    // A. Check Balance
+    if ((data.diamonds || 0) < 50) {
+        return showCustomAlert("Nu ai destule diamante (50)!", "SĂRĂCIE");
+    }
+
+    // B. Confirm Action
+    const confirm = await showCustomConfirm("Ești sigur? Vei cheltui 50 Diamante pentru a da 5000 Coins tuturor celor online!", "CONFIRMĂ PLOAIA");
+    if (!confirm) return;
+
+    try {
+        // C. Deduct Diamonds & Set Cooldown
+        await updateDoc(userRef, {
+            diamonds: increment(-50),
+            lastRainTime: serverTimestamp()
+        });
+
+        // D. Log Transaction
+        await logTransaction(-50, "DIAMONDS", "Black Market", "Used Make It Rain");
+
+        // E. Find Online Users (Limit to 50 to prevent crash, works for "everybody" in small/med communities)
+        // We look for users active in the last 10 minutes
+        const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
+        const q = query(
+            collection(db, "accounts"), 
+            where("lastActive", ">", tenMinsAgo), 
+            limit(50) 
+        );
+        
+        const onlineSnaps = await getDocs(q);
+        const batch = writeBatch(db); // Use batch for efficiency
+        
+        let count = 0;
+        onlineSnaps.forEach((docUser) => {
+            // Don't give coins to self (optional, remove check if you want self to get it too)
+            if (docUser.id !== uid) {
+                const ref = doc(db, "accounts", docUser.id);
+                batch.update(ref, { 
+                    coins: increment(5000),
+                    // Optional: Add a notification field if you have a notif system
+                });
+                count++;
+            }
+        });
+
+        // Commit the batch money transfer
+        if (count > 0) await batch.commit();
+
+        // F. Send The SICK Message to Wall
+        const rainMessage = `
+            <div style="text-align: center; border: 2px solid #00ff88; padding: 10px; border-radius: 10px; background: rgba(0, 255, 136, 0.1);">
+                <div style="font-size: 24px;">💸 <span class="t-toxic">MAKE IT RAIN</span> 💸</div>
+                <div style="margin-top: 5px; color: #fff;">
+                    BO$$UL <strong>${data.username}</strong> a plătit 50 <img src="https://iili.io/fv5bmtj.png" width="12">
+                </div>
+                <div style="font-size: 16px; font-weight: 900; color: #ffd700; margin-top: 5px;">
+                    TOATĂ LUMEA A PRIMIT 5,000 COINS!
+                </div>
+            </div>
+        `;
+
+        await addDoc(collection(db, "wall_messages"), {
+            text: rainMessage, // This HTML will render in your chat if innerHTML is enabled
+            uid: "system-rain",
+            name: "SYSTEM ALERT",
+            photo: "https://cdn-icons-png.flaticon.com/512/2454/2454269.png", // Money cloud icon
+            isSpecial: true,
+            isBot: true,
+            equippedBanner: { cssClass: "bubble-toxic" }, // Uses your Toxic banner style
+            createdAt: serverTimestamp(),
+            reactions: {},
+            seenBy: []
+        });
+
+        // Success UI
+        closeModal('blackMarketModal');
+        showCustomAlert(`Ai făcut ploaie de bani! ${count} jucători au primit coins.`, "RESPECT +100");
+
+    } catch (e) {
+        console.error(e);
+        showCustomAlert("A apărut o eroare.", "EROARE");
+    }
+};
 </script>
 </body>
 </html>
