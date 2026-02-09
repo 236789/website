@@ -4664,34 +4664,45 @@ onAuthStateChanged(auth, async user => {
 
         const userRef = doc(db, "accounts", user.uid);
         
-        // Header Default
-        document.getElementById('headerUserImg').src = d.image || user.photoURL;
-        document.getElementById('headerUserImg').style.display = "block";
+        // --- 1. SETĂRI INIȚIALE (Până se încarcă baza de date) ---
+        const headerImg = document.getElementById('headerUserImg');
+        if(headerImg) {
+            // Folosim poza din contul Google/Firebase până vine cea din baza de date
+            headerImg.src = user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+            headerImg.style.display = "block";
+        }
 
+        // --- 2. ASCULTĂTOR REAL-TIME (Baza de date) ---
         onSnapshot(userRef, async (snap) => {
             if(snap.exists()) {
                 const d = snap.data();
-                window.currentUserData = d; // Global save for currency switching
+                window.currentUserData = d; 
                 
                 await resetUserQuests(userRef, d);
 
-                // --- UPDATE SHOP HERO BUBBLE (FIXED) ---
+                // --- UPDATE IMAGINI (Peste tot) ---
+                const finalPhoto = d.image || user.photoURL; // Prioritate baza de date, apoi cont Auth
+                
+                if(headerImg) headerImg.src = finalPhoto;
+
+                const shopImg = document.getElementById('shopUserImg');
+                if(shopImg) shopImg.src = finalPhoto;
+
+                const popImg = document.getElementById('popUserImg');
+                if(popImg) popImg.src = finalPhoto;
+
+                // --- UPDATE SHOP HERO BUBBLE ---
                 const shopCard = document.getElementById('shopUserCard');
                 const shopName = document.getElementById('shopUserName');
-                const shopImg = document.getElementById('shopUserImg');
                 const shopFrame = document.getElementById('shopHeroFrame');
 
-                // Apply Banner CSS to the bubble
                 if(shopCard) shopCard.className = 'user-stats-card ' + (d.equippedBanner?.cssClass || '');
                 
-                // Apply Custom Text CSS to name
                 if(shopName) {
                     shopName.innerText = d.username || user.displayName;
                     shopName.className = (d.equippedText?.cssClass || '');
                 }
 
-                // Update Photo & Frame
-                if(shopImg) shopImg.src = d.image || user.photoURL;
                 if(shopFrame) {
                     if (d.equippedFrame?.img) {
                         shopFrame.src = d.equippedFrame.img;
@@ -4699,7 +4710,6 @@ onAuthStateChanged(auth, async user => {
                     } else { shopFrame.style.display = "none"; }
                 }
 
-                // Trigger currency display
                 refreshShopHeroCurrency();
 
                 // --- Modal & Header Sync ---
@@ -4709,10 +4719,12 @@ onAuthStateChanged(auth, async user => {
                     headerText.className = 'login-btn-header ' + (d.equippedText?.cssClass || '');
                 }
 
-                document.getElementById('popUserImg').src = d.image || user.photoURL;
                 const popName = document.getElementById('popUserName');
-                popName.innerText = d.username;
-                popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
+                if(popName) {
+                    popName.innerText = d.username;
+                    popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
+                }
+
                 document.getElementById('popUserCoins').innerText = formatCurrency(d.coins || 0);
                 document.getElementById('popUserDiamonds').innerText = formatCurrency(d.diamonds || 0);
                 
@@ -4725,7 +4737,6 @@ onAuthStateChanged(auth, async user => {
         });
     }
 });
-
     document.getElementById('headerLoginBtn').onclick = () => document.getElementById('accountModal').classList.add('active');
     document.getElementById('closeAccountPop').onclick = () => document.getElementById('accountModal').classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
