@@ -2157,6 +2157,18 @@ input:checked + .slider:before { transform: translateX(16px); }
     0% { transform: scale(0.8); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
 }
+
+
+.hijack-toast {
+    position: fixed; top: 100px; right: 20px;
+    background: rgba(255, 71, 87, 0.9); border: 2px solid #fff;
+    color: white; padding: 15px 25px; border-radius: 15px;
+    z-index: 40000; font-family: 'Orbitron', sans-serif;
+    font-size: 12px; box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex; align-items: center; gap: 10px;
+}
+@keyframes slideInLeft { from { transform: translateX(120%); } to { transform: translateX(0); } }
   </style>
 </head>
 <body>
@@ -3348,7 +3360,6 @@ async function checkShopQuest(actionType, donationAmount = 0) {
     const uid = auth.currentUser.uid;
     
     let questId = ''; let reward = 0; let field = '';
-
     if(actionType === 'badge') { questId='buy_badge'; reward=1000; field='shopBadgeBought'; }
     if(actionType === 'banner') { questId='buy_banner'; reward=1500; field='shopBannerBought'; }
     if(actionType === 'frame') { questId='buy_frame'; reward=1250; field='shopFrameBought'; }
@@ -3367,18 +3378,44 @@ async function checkShopQuest(actionType, donationAmount = 0) {
         if(actionType === 'donate') isDone = (data[field] >= 100);
 
         if(active.includes(questId) && !completed.includes(questId) && isDone) {
+            
+            // --- LOGICA HIJACK ---
+            const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+            let finalReward = reward;
+            let siphoned = 0;
+            let hijackActive = false;
+            let hName = "";
+
+            if (sysSnap.exists()) {
+                const sysData = sysSnap.data();
+                if (sysData.active && Date.now() < sysData.expiresAt && sysData.buyerUid !== uid) {
+                    siphoned = Math.floor(reward * 0.35);
+                    if (siphoned >= 1) {
+                        hijackActive = true;
+                        hName = sysData.buyerName;
+                        finalReward = reward - siphoned;
+                        await updateDoc(doc(db, "accounts", sysData.buyerUid), { coins: increment(siphoned) });
+                    }
+                }
+            }
+
             await updateDoc(doc(db, "accounts", uid), {
-                coins: increment(reward),
+                coins: increment(finalReward),
                 completedQuests: arrayUnion(questId)
             });
             
-            // --- LOG TRANSACTION ---
-            await logTransaction(reward, "COINS", "Daily", "Quest Reward: " + questId);
+            await logTransaction(finalReward, "COINS", "Daily", `Quest Reward: ${questId} ${hijackActive ? '(Taxat)' : ''}`);
 
             const modal = document.getElementById('rewardModal');
-            modal.querySelector('h2').innerText = "🛍️ SHOP QUEST!";
-            modal.querySelector('p').innerText = "Ai completat misiunea!";
-            modal.querySelector('.reward-coins-box span').innerText = reward;
+            if (hijackActive) {
+                modal.querySelector('h2').innerText = "⚠️ HIJACK DETECTAT!";
+                modal.querySelector('p').innerText = `Ai completat misiunea, dar ${siphoned} au fost furați de ${hName}!`;
+                showHijackToast(siphoned, "COINS", hName);
+            } else {
+                modal.querySelector('h2').innerText = "🛍️ SHOP QUEST!";
+                modal.querySelector('p').innerText = "Ai completat misiunea!";
+            }
+            modal.querySelector('.reward-coins-box span').innerText = finalReward;
             modal.classList.add('active');
         }
     } catch(e) { console.error("Quest Error:", e); }
@@ -3894,7 +3931,35 @@ window.processDonation = async () => {
     if (!confirmed) return;
 
     try {
-        // 1. Deduct from Sender
+        // ============================================================
+        // ⚡ LOGICA NEURAL HIJACK (TAXARE DONAȚIE) ⚡
+        // ============================================================
+        const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+        let hijackActive = false;
+        let hijackerUid = "";
+        let hijackerName = "";
+        let siphonedAmount = 0;
+        let finalReceiverAmount = amount;
+
+        if (sysSnap.exists()) {
+            const sysData = sysSnap.data();
+            const now = Date.now();
+            
+            // Verificăm dacă atacul e activ și niciunul din noi nu este atacatorul (ca să nu fure de la el însuși)
+            if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== auth.currentUser.uid && sysData.buyerUid !== donationTarget.id) {
+                siphonedAmount = Math.floor(amount * 0.35);
+                
+                // Aplicăm furtul doar dacă suma e >= 1 (regula numerelor mici)
+                if (siphonedAmount >= 1) {
+                    hijackActive = true;
+                    hijackerUid = sysData.buyerUid;
+                    hijackerName = sysData.buyerName;
+                    finalReceiverAmount = amount - siphonedAmount;
+                }
+            }
+        }
+
+        // 1. Scădem suma TOTALĂ de la TINE
         await updateDoc(myRef, { 
             coins: increment(-amount),
             lastDonationTime: serverTimestamp(),
@@ -3907,64 +3972,61 @@ window.processDonation = async () => {
             })
         });
         
-        // 2. Add to Receiver
-        await updateDoc(doc(db, "accounts", donationTarget.id), { coins: increment(amount) });
+        // 2. Trimitem suma (posibil taxată) la DESTINATAR
+        await updateDoc(doc(db, "accounts", donationTarget.id), { coins: increment(finalReceiverAmount) });
+
+        // 3. Trimitem prada la ATACATOR
+        if (hijackActive && hijackerUid) {
+            await updateDoc(doc(db, "accounts", hijackerUid), { coins: increment(siphonedAmount) });
+            
+            // Log tranzacție pentru atacator
+            await logTransaction(siphonedAmount, "COINS", "Black Market", `Interceptat de la ${myData.username}`, hijackerUid);
+            
+            // Toast de alertă pentru tine (victima)
+            if (typeof showHijackToast === "function") {
+                showHijackToast(siphonedAmount, "COINS", hijackerName);
+            }
+        }
         
-        // --- LOG TRANSACTIONS ---
+        // --- LOG TRANSACTIONS PENTRU TINE ȘI DESTINATAR ---
         await logTransaction(-amount, "COINS", "Donation", `Sent to ${donationTarget.name}`);
-        await logTransaction(amount, "COINS", "Donation", `Received from ${myData.username}`, donationTarget.id);
+        await logTransaction(finalReceiverAmount, "COINS", "Donation", `Received from ${myData.username}`, donationTarget.id);
 
 
        // ============================================================
-        // 🔥 RICH ALERT LOGIC (KEVIN BOT) - STYLED 🔥
+        // 🔥 RICH ALERT LOGIC (KEVIN BOT) 🔥
         // ============================================================
         if (amount >= 5000) {
             try {
-                // We use HTML inside the text to apply the Golden Text Animation
-                // AND we set the cssClass to the Sparkle Banner
-                const richMessage = `🚨 <span class="t-gold-anim">ALERTĂ BOGĂTAȘ DETECTAT!</span> 🚨<br><br>Utilizatorul <strong>${myData.username}</strong> a donat <span class="t-gold-anim" style="font-size:1.2em;">${amount}</span> coins către <strong>${donationTarget.name}</strong>! 💸<br>RESPECT MAXIM!`;
+                // Dacă a fost furat, Kevin Bot anunță și asta
+                const botMessage = hijackActive 
+                    ? `🚨 <span class="t-gold-anim">DONAȚIE INTERCEPTATĂ!</span> 🚨<br><br>Utilizatorul <b>${myData.username}</b> a încercat să doneze <b>${amount}</b> monede către <b>${donationTarget.name}</b>, dar <b class="t-toxic">${hijackerName}</b> a interceptat <b>${siphonedAmount}</b> prin Neural Hijack! 😈`
+                    : `🚨 <span class="t-gold-anim">ALERTĂ BOGĂTAȘ DETECTAT!</span> 🚨<br><br>Utilizatorul <strong>${myData.username}</strong> a donat <span class="t-gold-anim" style="font-size:1.2em;">${amount}</span> coins către <strong>${donationTarget.name}</strong>! 💸<br>RESPECT MAXIM!`;
 
                 await addDoc(collection(db, "wall_messages"), {
-                    // Content with HTML for the Gold Text
-                    text: richMessage,
-                    
-                    // Identity
+                    text: botMessage,
                     uid: "kevin-bot-official",
                     name: "Kevin Bot",          
                     photo: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
-                    
-                    // Sorting
                     createdAt: serverTimestamp(),
-                    
-                    // Flags
                     isSpecial: true,
                     isBot: true,
-                    
-                    // --- STYLE CONFIGURATION ---
-                    // 1. Set the Banner to "Stardust" (bubble-anim-sparkle)
-                    equippedBanner: { 
-                        id: "anim_sparkle", 
-                        cssClass: "bubble-anim-sparkle" 
-                    },
-                    
-                    // Defaults
-                    isAdmin: false, 
-                    isOwner: false, 
-                    isMod: false, 
-                    isHelper: false,
-                    isDeleted: false,
-                    reactions: {},
-                    seenBy: []
+                    equippedBanner: { id: "anim_sparkle", cssClass: "bubble-anim-sparkle" },
+                    isAdmin: false, isOwner: false, isMod: false, isHelper: false, isDeleted: false, reactions: {}, seenBy: []
                 });
-                console.log("Kevin Bot Alert Sent Successfully!");
-            } catch (botError) {
-                console.error("Failed to send bot alert:", botError);
-            }
+            } catch (botError) { console.error(botError); }
         }
-        // ============================================================
 
+        // 4. MODAL DE SUCCES DINAMIC
+        let successTitle = hijackActive ? "⚠️ SISTEM COMPROMIS" : "SUCCES";
+        let successBody = `Ai trimis <b>${amount.toLocaleString()} coins</b> către ${donationTarget.name}.`;
+        
+        if (hijackActive) {
+            successBody += `<br><br><span style="color:#ff4757; font-weight:bold;">Neural Hijack activat de ${hijackerName}: -${siphonedAmount} monede redirecționate către atacator!</span>`;
+        }
 
-        await showCustomAlert("Donație trimisă cu succes!", "SUCCES");
+        await showCustomAlert(successBody, successTitle);
+        
         checkShopQuest('donate', amount);
         closeModal('donationAmountModal');
         amountInput.value = ''; 
@@ -3974,7 +4036,10 @@ window.processDonation = async () => {
         console.error(e); 
         await showCustomAlert("Eroare la procesare.", "EROARE");
     }
-}; 
+};
+
+
+
 window.openBadgeShop = async () => {
     if(!auth.currentUser) return alert("Loghează-te!");
     const modal = document.getElementById('badgeShopModal');
@@ -5086,6 +5151,19 @@ window.activateHijack = async () => {
         showCustomAlert("Eroare la injectarea codului.", "EROARE");
     }
 };
+
+
+
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `<i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div><div style="font-weight: 900;">35% INTERCEPTATE!</div>
+        <div style="font-size: 10px; opacity: 0.8;">${amount} ${type} redirecționate către ${name}</div></div>`;
+    document.body.appendChild(toast);
+    new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3").play().catch(e=>{});
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = '0.5s'; setTimeout(() => toast.remove(), 500); }, 5000);
+}
 </script>
 </body>
 </html>
