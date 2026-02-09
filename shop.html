@@ -4096,97 +4096,83 @@ async function checkRainCooldown() {
 }
 
 window.triggerRain = async () => {
-    if(!auth.currentUser) return; // Safety check
+    if(!auth.currentUser) return;
     const uid = auth.currentUser.uid;
     const userRef = doc(db, "accounts", uid);
     const userSnap = await getDoc(userRef);
     const data = userSnap.data();
 
-    // A. Check Balance
+    // 1. Check Balance
     if ((data.diamonds || 0) < 50) {
         return showCustomAlert("Nu ai destule diamante (50)!", "SĂRĂCIE");
     }
 
-    // B. Confirm Action
-    const confirm = await showCustomConfirm("Ești sigur? Vei cheltui 50 Diamante pentru a da 5000 Coins tuturor celor online!", "CONFIRMĂ PLOAIA");
+    // 2. Confirm
+    const confirm = await showCustomConfirm("Cheltui 50 Diamante pentru a da 5000 Coins tuturor celor online?", "MAKE IT RAIN");
     if (!confirm) return;
 
     try {
-        // C. Deduct Diamonds & Set Cooldown
+        // 3. Deduct Diamonds from YOU
         await updateDoc(userRef, {
             diamonds: increment(-50),
             lastRainTime: serverTimestamp()
         });
 
-        // D. Log Transaction
-        await logTransaction(-50, "DIAMONDS", "Black Market", "Used Make It Rain");
-
-        // E. Find Online Users
-        // We look for users active in the last 10 minutes
+        // 4. Give Coins to OTHERS
+        // Query users active in last 10 mins (limit 50 to be safe)
         const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
-        
-        const q = query(
-            collection(db, "accounts"), 
-            where("lastActive", ">", tenMinsAgo), 
-            limit(50) 
-        );
-        
+        const q = query(collection(db, "accounts"), where("lastActive", ">", tenMinsAgo), limit(50));
         const onlineSnaps = await getDocs(q);
         
-        // --- FIX: USE writeBatch (Now Imported) ---
-        const batch = writeBatch(db); 
-        
+        const batch = writeBatch(db);
         let count = 0;
+
         onlineSnaps.forEach((docUser) => {
-            // Give coins to everyone (including self, why not?)
+            // Give to everyone (including yourself)
             const ref = doc(db, "accounts", docUser.id);
-            batch.update(ref, { 
-                coins: increment(5000)
-            });
+            batch.update(ref, { coins: increment(5000) });
             count++;
         });
 
-        // Commit the batch money transfer
         if (count > 0) await batch.commit();
 
-        // F. Send The SICK Message to Wall
-        const rainMessage = `
-            <div style="text-align: center; border: 2px solid #00ff88; padding: 10px; border-radius: 10px; background: rgba(0, 255, 136, 0.1);">
-                <div style="font-size: 24px;">💸 <span class="t-toxic">MAKE IT RAIN</span> 💸</div>
-                <div style="margin-top: 5px; color: #fff;">
-                    BO$$UL <strong>${data.username}</strong> a plătit 50 <img src="https://iili.io/fv5bmtj.png" width="12">
+        // 5. Kevin Bot Announcement
+        // We use 'kevin-bot-official' because your rules likely allow it for special alerts
+        const rainHtml = `
+            <div style="text-align: center;">
+                <div style="font-size: 22px; font-weight:900; color:#ffd700; margin-bottom:5px;">💸 MAKE IT RAIN 💸</div>
+                <div style="font-size: 14px; color:#fff;">
+                    <span style="color:#29f3ff; font-weight:bold;">${data.username}</span> a plătit 50 💎!
                 </div>
-                <div style="font-size: 16px; font-weight: 900; color: #ffd700; margin-top: 5px;">
-                    TOATĂ LUMEA A PRIMIT 5,000 COINS!
+                <div style="font-size: 12px; color:#aaa; margin-top:5px;">
+                    Toată lumea online a primit <span style="color:#ffd700;">5,000 COINS</span>!
                 </div>
             </div>
         `;
 
         await addDoc(collection(db, "wall_messages"), {
-            text: rainMessage, 
-            uid: "system-rain",
-            name: "SYSTEM ALERT",
-            photo: "https://cdn-icons-png.flaticon.com/512/2454/2454269.png",
-            isSpecial: true,
+            text: rainHtml,
+            uid: "kevin-bot-official", // Using the official bot ID
+            name: "Kevin Bot",
+            photo: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
+            isSpecial: true, // Needed for permission
             isBot: true,
-            equippedBanner: { cssClass: "bubble-toxic" },
+            // Uses the Gold animation banner
+            equippedBanner: { cssClass: "bubble-anim-gold" }, 
             createdAt: serverTimestamp(),
             reactions: {},
             seenBy: []
         });
 
-        // Success UI
+        // 6. Success
         closeModal('blackMarketModal');
-        showCustomAlert(`Ai făcut ploaie de bani! ${count} jucători au primit coins.`, "RESPECT +100");
+        showCustomAlert(`Ai făcut ploaie de bani! ${count} jucători au primit coins.`, "LEGENDĂ");
 
     } catch (e) {
         console.error(e);
-        // Specifically check if it's an index error
-        if(e.message.includes("index")) {
-            alert("ADMIN: You need to create a Firestore Index link shown in the console (F12)!");
-        } else {
-            showCustomAlert("A apărut o eroare: " + e.message, "EROARE");
-        }
+        // If it's the index error, warn the admin
+        if(e.message.includes("index")) alert("ADMIN: Deschide consola (F12) și dă click pe link-ul de index!");
+        else showCustomAlert("Eroare: " + e.message, "EROARE");
     }
 };
 </script>
