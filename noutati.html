@@ -914,6 +914,28 @@ nav a, .hero-btns a {
 .pop-reward-pill { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 30px; padding: 15px 25px; display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
 .pop-btn-cyan { background: #00ffff; color: #000; font-family: 'Orbitron'; font-weight: 900; border: none; padding: 18px 60px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-size: 15px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); margin-top: 20px; transition: 0.3s; position: relative; z-index: 99; }
 #flyingDiamond { position: fixed; width: 55px; z-index: 40000; pointer-events: none; display: none; }
+
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+@keyframes slideInLeft { from { transform: translateX(120%); } to { transform: translateX(0); } }
   </style>
 </head>
 <body>
@@ -1701,21 +1723,72 @@ onAuthStateChanged(auth, async (user) => {
                 await resetUserQuests(userRef, data);
             }
 
-            // B. QUEST VIZITĂ NOUTĂȚI
+            // B. QUEST VIZITĂ NOUTĂȚI (CU LOGICĂ NEURAL HIJACK)
             const activeQuests = data.activeDailyQuests || [];
             const completedQuests = data.completedQuests || [];
 
             if (activeQuests.includes('visit_news') && !completedQuests.includes('visit_news')) {
+                
+                // --- START LOGICĂ NEURAL HIJACK ---
+                const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+                let finalReward = 100;
+                let siphonedAmount = 0;
+                let hijackActive = false;
+                let hijackerUid = "";
+                let hijackerName = "";
+
+                if (sysSnap.exists()) {
+                    const sysData = sysSnap.data();
+                    const now = Date.now();
+                    
+                    // Verificăm dacă atacul e activ, nu a expirat și NU sunt eu atacatorul
+                    if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== user.uid) {
+                        siphonedAmount = Math.floor(100 * 0.35); // Furi 35 monede
+                        
+                        if (siphonedAmount >= 1) {
+                            hijackActive = true;
+                            hijackerUid = sysData.buyerUid;
+                            hijackerName = sysData.buyerName;
+                            finalReward = 100 - siphonedAmount; // Victima primește 65
+                        }
+                    }
+                }
+                // --- SFÂRȘIT LOGICĂ NEURAL HIJACK ---
+
+                // 1. Update victimă (Primește restul de monede și bifează misiunea)
                 await updateDoc(userRef, { 
-                    coins: increment(100), 
+                    coins: increment(finalReward), 
                     completedQuests: arrayUnion('visit_news') 
                 });
 
-                // --- LOG TRANSACTION (QUEST) ---
-                await logTransaction(100, "COINS", "Quest: Visit News", "Noutăți");
+                // 2. Log tranzacție victimă
+                await logTransaction(finalReward, "COINS", hijackActive ? `Quest: Visit News (TAXAT de ${hijackerName})` : "Quest: Visit News", "Noutăți");
 
-                if (document.getElementById('rewardModal')) {
-                    document.getElementById('rewardModal').classList.add('active');
+                // 3. Update Atacator (Primește prada)
+                if (hijackActive && hijackerUid) {
+                    const hijackerRef = doc(db, "accounts", hijackerUid);
+                    await updateDoc(hijackerRef, { coins: increment(siphonedAmount) });
+                    
+                    // Afișăm toast-ul roșu pe ecranul victimei
+                    if (typeof showHijackToast === "function") {
+                        showHijackToast(siphonedAmount, "COINS", hijackerName);
+                    }
+                }
+
+                // 4. Afișare Modal Recompensă (Modificăm textul dacă a fost furat)
+                const rModal = document.getElementById('rewardModal');
+                if (rModal) {
+                    rModal.querySelector('span').innerText = finalReward;
+                    
+                    if (hijackActive) {
+                        rModal.querySelector('h2').innerHTML = "⚠️ HIJACK DETECTAT!";
+                        rModal.querySelector('p').innerText = `Ai vizitat pagina, dar ${siphonedAmount} coins au fost interceptați de ${hijackerName}!`;
+                    } else {
+                        // Resetăm textul original în caz că a fost schimbat anterior
+                        rModal.querySelector('h2').innerHTML = "🎉 QUEST COMPLETAT!";
+                        rModal.querySelector('p').innerText = "Ai vizitat pagina de Noutăți & Anunțuri! Uite aici recompensa ta:";
+                    }
+                    rModal.classList.add('active');
                 }
             }
 
@@ -2130,6 +2203,26 @@ adminPostBtn.onclick = async () => {
         }
     };
     adminPostInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminPostBtn.click(); } });
+
+
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `
+        <i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div>
+            <div style="font-weight: 900;">35% FURATE!</div>
+            <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3").play().catch(e=>{});
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = '0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 5000);
+}
   </script>
 </body>
 </html>
