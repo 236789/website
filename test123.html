@@ -5634,8 +5634,6 @@ window.selectDonationSort = function(criteria, element) {
 };
 
 // --- FIXED ADMIN PANEL LOGIC ---
-let selectedAdminTargetUid = null;
-let selectedAdminCurrency = 'coins';
 
 // 1. Toggle Dropdown & Auto-Populate
 window.toggleAdminUserList = () => {
@@ -6013,70 +6011,92 @@ window.selectUserForAdmin = (user) => {
     panel.style.pointerEvents = 'all';
 };
 
-// 5. Select Currency
+// --- ADMIN MANAGE BALANCE LOGIC (FIXED) ---
+let selectedAdminTargetUid = null;
+let selectedAdminCurrency = 'coins'; // Valoare default
+
+// 1. Selectare Monedă (Coins / Diamonds)
 window.selectAdminCurrency = (type) => {
-    selectedAdminCurrency = type;
+    selectedAdminCurrency = type; // Actualizăm variabila
     const btnC = document.getElementById('btnSelCoin');
     const btnD = document.getElementById('btnSelDiamond');
-    if(type === 'coins') { btnC.classList.add('active'); btnD.classList.remove('active'); } 
-    else { btnD.classList.add('active'); btnC.classList.remove('active'); }
+    
+    if(type === 'coins') { 
+        btnC.classList.add('active'); 
+        btnD.classList.remove('active'); 
+    } else { 
+        btnD.classList.add('active'); 
+        btnC.classList.remove('active'); 
+    }
 };
 
-// 6. Execute Action (With correct Log Data)
+// 2. Executare Acțiune (Add / Remove)
 window.executeAdminAction = async (action) => {
-    if(!selectedAdminTargetUid) return alert("Selectează un utilizator!");
+    if(!selectedAdminTargetUid) return alert("Selectează un utilizator mai întâi!");
     
-    // Find latest data in cache
-    const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
-    const targetName = targetUser ? targetUser.username : "Utilizator";
-    const targetImg = targetUser ? targetUser.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
-    const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
+    const amountInput = document.getElementById('adminAmount');
+    const reasonInput = document.getElementById('adminReason');
+    const amountVal = amountInput.value.trim();
 
-    const amountVal = document.getElementById('adminAmount').value;
-    const reasonVal = document.getElementById('adminReason').value;
-
-    if(!amountVal || amountVal <= 0) return alert("Introdu o sumă validă!");
+    // Verificăm dacă suma este un număr valid
+    if(!amountVal || isNaN(amountVal) || Number(amountVal) <= 0) {
+        return alert("Introdu o sumă validă (număr pozitiv)!");
+    }
 
     const amount = parseInt(amountVal);
     const finalAmount = action === 'add' ? amount : -amount;
     
+    // Blocăm panelul pentru a preveni dublu-click
     const panel = document.getElementById('adminActionPanel');
     panel.style.opacity = '0.5';
     panel.style.pointerEvents = 'none';
 
     try {
         const userRef = doc(db, "accounts", selectedAdminTargetUid);
+        const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
         
-        // Update Balance
+        const targetName = targetUser ? targetUser.username : "Utilizator";
+        const targetImg = targetUser ? targetUser.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
+        const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
+
+        // IMPORTANT: Verificăm că avem cheia corectă (coins sau diamonds)
+        const dbField = selectedAdminCurrency; 
+
+        // Update în Firebase
         await updateDoc(userRef, {
-            [selectedAdminCurrency]: increment(finalAmount)
+            [dbField]: increment(finalAmount)
         });
 
-        // Add Log with EXPLICIT User Data
+        // Adăugare în Istoric Tranzacții
         await addDoc(collection(db, "transactions"), {
             userId: selectedAdminTargetUid,
-            username: targetName,   // Saved for the "Utilizator" column
-            userImage: targetImg,   // Saved for the "Utilizator" column
+            username: targetName,
+            userImage: targetImg,
             amount: finalAmount,
             type: selectedAdminCurrency === 'coins' ? 'COINS' : 'DIAMONDS',
             source: "System", 
-            description: `Admin (${adminName}): ${reasonVal || (action === 'add' ? 'Bonus' : 'Sancțiune')}`,
+            description: `Admin (${adminName}): ${reasonInput.value || (action === 'add' ? 'Bonus' : 'Sancțiune')}`,
             timestamp: serverTimestamp()
         });
 
-        alert("Tranzacție reușită!");
-        document.getElementById('adminAmount').value = '';
+        alert(`Succes! Am ${action === 'add' ? 'adăugat' : 'scăzut'} ${amount} ${selectedAdminCurrency}.`);
         
-        // Visual Update
+        // Resetăm inputul
+        amountInput.value = '';
+        reasonInput.value = '';
+        
+        // Actualizăm vizual cardul utilizatorului selectat dacă e în cache
         if(targetUser) {
              if(selectedAdminCurrency === 'coins') targetUser.coins += finalAmount;
              else targetUser.diamonds += finalAmount;
+             
              document.getElementById('selUserCoins').innerText = formatCurrency(targetUser.coins);
              document.getElementById('selUserDiamonds').innerText = formatCurrency(targetUser.diamonds);
         }
 
     } catch(e) {
-        alert("Eroare: " + e.message);
+        console.error("Eroare Admin Balance:", e);
+        alert("Eroare la procesare: " + e.message);
     } finally {
         panel.style.opacity = '1';
         panel.style.pointerEvents = 'all';
