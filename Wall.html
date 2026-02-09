@@ -3252,34 +3252,6 @@ body {
     to { background-position: 200% center; }
 }
 
-
-/* --- SILENCE TOAST --- */
-.silence-toast {
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-100px);
-    background: rgba(15, 0, 0, 0.95);
-    border: 1px solid #ff4757;
-    box-shadow: 0 0 30px rgba(255, 71, 87, 0.5);
-    color: #ff4757;
-    padding: 18px 35px;
-    border-radius: 15px;
-    z-index: 99999;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    pointer-events: none;
-    text-transform: uppercase;
-    font-weight: 900;
-    letter-spacing: 1px;
-}
-.silence-toast.active { transform: translateX(-50%) translateY(0); }
-.silence-toast i { font-size: 20px; color: #ff4757; animation: pulseRed 1s infinite; }
-
   </style>
 
 </head>
@@ -5678,32 +5650,65 @@ if (isOwner || isAdmin || isMod || isHelper) {
 
 function checkMuteStatus() {
     if(!currentUid) return;
-    const userRef = doc(db, "accounts", currentUid);
+    const muteRef = doc(db, "muted_users", currentUid);
     
-    onSnapshot(userRef, (snapshot) => {
-        const data = snapshot.data();
-        const inputWrapper = document.querySelector('.input-area-wrapper');
+    onSnapshot(muteRef, (snapshot) => {
+        // Select the Toolbar
         const toolbar = document.querySelector('.chat-tools-bar');
-        const banner = document.getElementById('muteBanner');
+        const drawer = document.getElementById('pickerDrawer');
 
-        // Check if mutedUntil exists and is in the future
-        if (data.mutedUntil && Date.now() < data.mutedUntil) {
-            // HIDE UI
-            if (inputWrapper) inputWrapper.style.opacity = '0.2';
-            if (inputWrapper) inputWrapper.style.pointerEvents = 'none';
-            if (toolbar) toolbar.style.visibility = 'hidden';
+        if(snapshot.exists()) {
+            const data = snapshot.data();
             
-            // Show the standard red banner if you have one
-            if (banner) banner.style.display = 'block';
+            // Check if mute expired
+            if(data.unmuteAt && Date.now() > data.unmuteAt) {
+                deleteDoc(muteRef);
+                return;
+            }
+
+            // --- HIDE INTERFACE ---
+            if (inputControls) inputControls.style.display = 'none'; // Hides text input
+            if (toolbar) toolbar.style.display = 'none';             // Hides Mic/GIF/Stickers
             
-            // Clear any typing status
-            updateTypingStatus(false);
+            // Force close sticker drawer if it was open
+            if (drawer) drawer.classList.remove('open');
+
+            // Show Mute Banner
+            muteBanner.style.display = 'block';
+            muteReasonDisplay.innerText = `Ai fost pus pe Mute de ${data.mutedBy || 'Staff'}. Motiv: ${data.reason || 'Nespecificat'}`;
+            
+            // Timer Logic
+            if(muteInterval) clearInterval(muteInterval);
+            
+            if(data.unmuteAt) {
+                muteInterval = setInterval(() => {
+                    const now = Date.now();
+                    const diff = data.unmuteAt - now;
+                    
+                    if(diff <= 0) {
+                        clearInterval(muteInterval);
+                        deleteDoc(muteRef); 
+                    } else {
+                        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        const s = Math.floor((diff % (1000 * 60)) / 1000);
+                        muteTimer.innerText = 
+                            (h < 10 ? "0"+h : h) + ":" + 
+                            (m < 10 ? "0"+m : m) + ":" + 
+                            (s < 10 ? "0"+s : s);
+                    }
+                }, 1000);
+            } else {
+                muteTimer.innerText = "PERMANENT";
+            }
+
         } else {
-            // SHOW UI
-            if (inputWrapper) inputWrapper.style.opacity = '1';
-            if (inputWrapper) inputWrapper.style.pointerEvents = 'auto';
-            if (toolbar) toolbar.style.visibility = 'visible';
-            if (banner) banner.style.display = 'none';
+            // --- RESTORE INTERFACE ---
+            if (inputControls) inputControls.style.display = 'block';
+            if (toolbar) toolbar.style.display = 'flex'; // Restore toolbar
+            muteBanner.style.display = 'none';
+            
+            if(muteInterval) clearInterval(muteInterval);
         }
     });
 }
@@ -6013,24 +6018,6 @@ window.sendSticker = function(url) {
 
 async function sendMessage() {
     if(isSending) return;
-    if(!auth.currentUser) return;
-
-    // ==========================================
-    // 🛑 1/1 REAL MUTE BLOCK (START)
-    // ==========================================
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const userData = userSnap.data();
-
-    // Check if the user is currently muted
-    if (userData.mutedUntil && Date.now() < userData.mutedUntil) {
-        const remaining = Math.ceil((userData.mutedUntil - Date.now()) / 1000);
-        window.triggerMuteToast(remaining); // Show the Red Toast
-        msgInput.value = ''; // Clear the input so they can't try again fast
-        return; // STOP THE FUNCTION HERE - No message is sent
-    }
-    // ==========================================
-    // 🛑 REAL MUTE BLOCK (END)
-    // ==========================================
 
     const text = msgInput.value.trim();
     
@@ -6216,16 +6203,7 @@ async function sendMessage() {
     }
 
 
-// Inside your sendMessage function:
-const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-const data = userSnap.data();
 
-if (data.mutedUntil && Date.now() < data.mutedUntil) {
-    const remaining = Math.ceil((data.mutedUntil - Date.now()) / 1000);
-    // CALL THE TOAST INSTEAD OF ALERT
-    window.triggerMuteToast(remaining);
-    return; // Kill the function
-}
 }
 
 
@@ -7848,28 +7826,6 @@ function showHijackToast(amount, type, name) {
         setTimeout(() => toast.remove(), 500);
     }, 4000);
 }
-
-
-
-window.triggerMuteToast = (seconds) => {
-    let existing = document.querySelector('.silence-toast');
-    if(existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.className = 'silence-toast';
-    toast.innerHTML = `<i class="fas fa-shield-virus"></i> 
-        <span>SISTEM RESTRICȚIONAT: TRANSMISIE BLOCATĂ (${seconds}s)</span>`;
-    document.body.appendChild(toast);
-
-    // Play a small error sound (optional)
-    new Audio("https://www.myinstants.com/media/sounds/error_CD7sV4j.mp3").play().catch(e=>{});
-
-    setTimeout(() => toast.classList.add('active'), 100);
-    setTimeout(() => {
-        toast.classList.remove('active');
-        setTimeout(() => toast.remove(), 500);
-    }, 4000);
-};
   </script>
 </body>
 </html>
