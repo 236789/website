@@ -2229,17 +2229,25 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
-<!-- PFP CHANGE MODAL -->
 <div id="pfpChangeModal" class="modal-overlay">
     <div class="payment-card">
         <button class="close-modal-btn" onclick="closeModal('pfpChangeModal')">✕</button>
         <h2 style="color: #00ff88; font-size: 20px; font-family: 'Orbitron';">POZĂ NOUĂ</h2>
-        <p style="font-size: 11px; color: #aaa; margin-bottom: 15px;">Introdu link-ul (URL) către noua ta poză:</p>
-        <input type="text" id="newPfpInput" class="calc-input" placeholder="https://i.ibb.co/..." style="font-size: 14px;">
-        <button class="pay-btn" style="background: #00ff88; color: #000;" onclick="processPfpChange()">CONFIRMĂ (15 Diamante)</button>
+        <p style="font-size: 11px; color: #aaa; margin-bottom: 15px;">Selectează o poză din galeria ta:</p>
+        
+        <!-- HIDDEN ACTUAL INPUT -->
+        <input type="file" id="pfpFileInput" accept="image/*" style="display: none;" onchange="updateFileName(this)">
+        
+        <!-- CUSTOM STYLED BUTTON -->
+        <button class="pay-btn" style="background: rgba(255,255,255,0.1); color: #fff; border: 1px dashed #00ff88;" onclick="document.getElementById('pfpFileInput').click()">
+            <i class="fas fa-image"></i> <span id="fileNameLabel">ALEGE DIN GALERIE</span>
+        </button>
+
+        <button id="pfpConfirmBtn" class="pay-btn" style="background: #00ff88; color: #000; margin-top: 20px;" onclick="processPfpChange()">
+            CONFIRMĂ (15 Diamante)
+        </button>
     </div>
 </div>
-
 
 <!-- BANNED OVERLAY -->
 <div id="bannedOverlay">
@@ -2826,6 +2834,9 @@ input:checked + .slider:before { transform: translateX(16px); }
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+import { updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
     import { getFirestore, collection, query,setDoc , orderBy, getDocs, doc, getDoc, updateDoc, onSnapshot,writeBatch,limit, serverTimestamp, arrayUnion, increment,addDoc,where  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -4654,7 +4665,7 @@ onAuthStateChanged(auth, async user => {
         const userRef = doc(db, "accounts", user.uid);
         
         // Header Default
-        document.getElementById('headerUserImg').src = user.photoURL;
+        document.getElementById('headerUserImg').src = d.image || user.photoURL;
         document.getElementById('headerUserImg').style.display = "block";
 
         onSnapshot(userRef, async (snap) => {
@@ -4974,42 +4985,60 @@ window.openPfpChangeModal = () => {
     closeModal('blackMarketModal');
     document.getElementById('pfpChangeModal').classList.add('active');
 };
+window.updateFileName = (input) => {
+    const label = document.getElementById('fileNameLabel');
+    if (input.files && input.files[0]) {
+        label.innerText = input.files[0].name.substring(0, 15) + "...";
+    }
+};
 
 window.processPfpChange = async () => {
-    const input = document.getElementById('newPfpInput');
-    const newUrl = input.value.trim();
+    const fileInput = document.getElementById('pfpFileInput');
+    const file = fileInput.files[0];
+    const btn = document.getElementById('pfpConfirmBtn');
 
-    // Basic validation
-    if(!newUrl || !newUrl.startsWith('http')) {
-        return showCustomAlert("Te rugăm să introduci un link valid (http/https)!", "EROARE");
-    }
+    if (!file) return showCustomAlert("Te rugăm să selectezi o imagine!", "EROARE");
 
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const user = auth.currentUser;
+    const userRef = doc(db, "accounts", user.uid);
     const userSnap = await getDoc(userRef);
     const diamonds = userSnap.data().diamonds || 0;
 
-    if (diamonds < 15) {
-        return showCustomAlert("Nu ai destule diamante (15)!", "SĂRĂCIE");
-    }
+    if (diamonds < 15) return showCustomAlert("Nu ai destule diamante (15)!", "SĂRĂCIE");
 
     const confirm = await showCustomConfirm("Vrei să schimbi poza de profil pentru 15 Diamante?", "CONFIRMĂ");
     if (!confirm) return;
 
     try {
+        btn.disabled = true;
+        btn.innerText = "SE ÎNCARCĂ...";
+
+        // 1. Upload to Firebase Storage
+        const storageRef = ref(storage, `avatars/${user.uid}_${Date.now()}`);
+        const uploadTask = await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(uploadTask.ref);
+
+        // 2. Update Firestore (for Database)
         await updateDoc(userRef, {
-            image: newUrl, // This updates the global image field
+            image: downloadUrl, 
             diamonds: increment(-15)
         });
 
-        // Log the transaction
-        await logTransaction(-15, "DIAMONDS", "Black Market", "Changed Profile Picture");
+        // 3. THIS IS THE GLOBAL FIX: Update Firebase Auth Profile
+        // This makes the new photo show up even on pages that don't check the database
+        await updateProfile(user, { photoURL: downloadUrl });
 
-        await showCustomAlert("Poza de profil a fost actualizată peste tot!", "SUCCES");
+        await logTransaction(-15, "DIAMONDS", "Black Market", "Changed Profile Picture via Gallery");
+
+        showCustomAlert("Poza de profil a fost actualizată peste tot!", "SUCCES");
         closeModal('pfpChangeModal');
-        input.value = '';
+        fileInput.value = '';
     } catch (e) {
         console.error(e);
-        showCustomAlert("Eroare la actualizare.", "EROARE");
+        showCustomAlert("Eroare la încărcare. Încearcă o imagine mai mică.", "EROARE");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "CONFIRMĂ (15 Diamante)";
     }
 };
 </script>
