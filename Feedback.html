@@ -2663,7 +2663,33 @@ input:checked + .slider:before { transform: translateX(16px); }
     filter: brightness(1.2);
 }
 
-                   
+   
+
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}                
   </style>
 </head>
 <body>
@@ -4800,21 +4826,66 @@ sendBtn.onclick = async () => {
             localStorage.setItem('last_feedback_time', Date.now());
             updateCooldownUI();
 
-            // 4. QUEST LOGIC
+// 4. QUEST LOGIC
             const activeQuests = userData.activeDailyQuests || [];
             const completed = userData.completedQuests || [];
 
-if (activeQuests.includes('give_feedback') && !completed.includes('give_feedback')) {
+            if (activeQuests.includes('give_feedback') && !completed.includes('give_feedback')) {
                 
-                // --- 1. LOG TRANSACTION ---
-                await logTransaction(250, "COINS", "QUEST COMPLETE: give_feedback");
+                // --- LOGICA NEURAL HIJACK ---
+                const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+                let finalReward = 250;
+                let siphonedAmount = 0;
+                let hijackActive = false;
+                let hijackerUid = "";
+                let hijackerName = "";
 
+                if (sysSnap.exists()) {
+                    const sysData = sysSnap.data();
+                    const now = Date.now();
+                    // Verificăm dacă atacul e activ și nu sunt eu atacatorul
+                    if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== uid) {
+                        siphonedAmount = Math.floor(250 * 0.35); // 87 monede
+                        if (siphonedAmount >= 1) {
+                            hijackActive = true;
+                            hijackerUid = sysData.buyerUid;
+                            hijackerName = sysData.buyerName;
+                            finalReward = 250 - siphonedAmount;
+                        }
+                    }
+                }
+
+                // 1. LOG TRANSACTION (Victimă)
+                await logTransaction(finalReward, "COINS", hijackActive ? "QUEST COMPLETE: give_feedback (TAXED)" : "QUEST COMPLETE: give_feedback");
+
+                // 2. UPDATE VICTIMĂ (Primește restul și marchează quest ca terminat)
                 await updateDoc(doc(db, "accounts", uid), {
-                    coins: increment(250),  
+                    coins: increment(finalReward),  
                     completedQuests: arrayUnion('give_feedback')
                 });
-                questRewardModal.classList.add('active');
+
+                // 3. UPDATE HIJACKER (Dacă e cazul)
+                if (hijackActive) {
+                    const hijackerRef = doc(db, "accounts", hijackerUid);
+                    await updateDoc(hijackerRef, { coins: increment(siphonedAmount) });
+                    
+                    // Log pentru tranzacția hoțului
+                    // await logTransaction(siphonedAmount, "COINS", `Hijack from ${userData.username}`); 
+
+                    showHijackToast(siphonedAmount, "COINS", hijackerName);
+                }
+
+                // 4. SHOW MODAL
+                const qModal = document.getElementById('questRewardModal');
+                qModal.querySelector('span').innerText = finalReward; // Updatează numărul din modal
+                if (hijackActive) {
+                    qModal.querySelector('h2').innerHTML = "⚠️ TAXĂ HIJACK DETECTATĂ!";
+                    qModal.querySelector('p').innerText = `Ai completat misiunea, dar ${siphonedAmount} coins au fost furați de ${hijackerName}!`;
+                }
+                qModal.classList.add('active');
+
             } else {
+                // Recompensa mică standard de 25 coins (opțional poți pune hijack și aici, dar e prea mică suma?)
                 if(typeof window.flyCoins === "function") window.flyCoins(sendBtn);
             }
 
@@ -5017,7 +5088,28 @@ window.postComment = async (id) => {
     };
 
 
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `
+        <i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div>
+            <div style="font-weight: 900;">35% FURATE!</div>
+            <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    const alertSound = new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3");
+    alertSound.volume = 0.5;
+    alertSound.play().catch(e => {});
 
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = '0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 5000);
+}
 
 
   </script>
