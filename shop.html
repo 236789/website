@@ -6539,15 +6539,31 @@ const ELITE_BANNERS = [
     { id: 'ebun_chrome', name: 'LIQUID SILVER', cssClass: 'bub-elite-chrome', price: 80, desc: 'Metal lichid' }
 ];
 
+// --- BLACK MARKET ELITE HUB & SHOP LOGIC ---
+
+window.openEliteHub = () => {
+    // Close the standard Black Market modal first
+    const bmModal = document.getElementById('blackMarketModal');
+    if(bmModal) bmModal.classList.remove('active');
+    
+    // Open the Elite Hub
+    const eliteHub = document.getElementById('eliteHubModal');
+    if(eliteHub) eliteHub.classList.add('active');
+};
+
 window.openEliteShop = async (type) => {
     const list = document.getElementById('eliteShopList');
     const title = document.getElementById('eliteShopTitle');
+    
+    if(!list || !title) return;
+    
     list.innerHTML = '<div style="color:#00ff88; font-family:Orbitron; grid-column: 1/-1; text-align:center;">CONECTARE SECURIZATĂ...</div>';
     
-    // Close Hub and open Shop (Fixes stacking)
+    // Smooth Modal Switch
     document.getElementById('eliteHubModal').classList.remove('active');
     document.getElementById('eliteShopModal').classList.add('active');
 
+    // Get current user data for "Owned" check
     const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const data = userSnap.data();
     
@@ -6590,6 +6606,34 @@ window.openEliteShop = async (type) => {
         }).join('');
     }
 };
+
+window.buyEliteItem = async (id, price, type) => {
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
+
+    if ((userData.diamonds || 0) < price) {
+        return showCustomAlert("Nu ai destule Diamante!", "FONDURI INSUFICIENTE");
+    }
+
+    const confirm = await showCustomConfirm(`Cumperi acest obiect de elită pentru ${price} Diamante?`, "CONFIRMĂ");
+    if (!confirm) return;
+
+    try {
+        const field = type === 'badge' ? 'ownedBadges' : 'ownedBanners';
+        await updateDoc(userRef, {
+            diamonds: increment(-price),
+            [field]: arrayUnion(id)
+        });
+
+        await logTransaction(-price, "DIAMONDS", "Black Market", `Bought Elite ${type}: ${id}`);
+        showCustomAlert("Obiectul a fost adăugat în inventar!", "SUCCES");
+        openEliteShop(type === 'badge' ? 'badges' : 'banners');
+    } catch (e) {
+        console.error(e);
+        showCustomAlert("Eroare la procesare.", "EROARE");
+    }
+};
 </script>
 </body>
-</html> 
+</html>
