@@ -3443,21 +3443,25 @@ input:checked + .slider:before { transform: translateX(16px); }
 </div>
 
 
-<!-- BRIBE THE SYSTEM CARD WITH TIMER -->
+<!-- BRIBE THE SYSTEM CARD -->
 <div id="bmBribeCard" class="bm-card-item" onclick="openBribeSelection()">
     
-    <!-- Timer Overlay (Hidden by default) -->
+    <!-- Timer Overlay Dinamic -->
     <div id="bmBribeOverlay" class="bm-overlay">
-        <i class="fas fa-hand-holding-usd" style="color: #ffd700; font-size: 24px;"></i>
+        <!-- Container pentru iconiță (populat prin JS) -->
+        <div id="bmBribeIconContainer"></div> 
+        
         <div class="bm-timer-text" id="bmBribeTimer">00:00</div>
-        <div style="font-size: 9px; color: #ffd700; margin-top: 5px; font-family: 'Orbitron';">SISTEM MITUIT</div>
+        
+        <!-- Label colorat dinamic -->
+        <div id="bmBribeLabel" style="font-size: 9px; margin-top: 5px; font-family: 'Orbitron'; font-weight: 900;">SISTEM COMPROMIS</div>
     </div>
 
     <div class="bm-content">
         <i class="fas fa-handshake" style="font-size: 32px; color: #ffd700; margin-bottom: 10px; filter: drop-shadow(0 0 10px #ffd700);"></i>
         <div class="bm-item-title">MITUIEȘTE SISTEMUL</div>
         <div class="bm-item-desc">
-            Plătește arbitrii și ocupă forțat <b>Locul #1</b> în clasament pentru 1 oră. Banii cumpără tot!
+            Cumpără <b>Locul #1</b> în clasamentul ales pentru 1 oră.
         </div>
         <div class="bm-price-btn">
             50 <img src="https://iili.io/fv5bmtj.png">
@@ -6585,10 +6589,11 @@ window.openBribeSelection = async () => {
 
 let bribeTimerInterval = null;
 
-// 1. Verifică statusul mizei în timp real (Apelează asta în window.openBlackMarket)
 async function checkBribeStatus() {
     const overlay = document.getElementById('bmBribeOverlay');
     const timerSpan = document.getElementById('bmBribeTimer');
+    const iconContainer = document.getElementById('bmBribeIconContainer');
+    const bribeLabel = document.getElementById('bmBribeLabel');
     
     onSnapshot(doc(db, "system", "leaderboard_bribe"), (docSnap) => {
         if (docSnap.exists()) {
@@ -6597,8 +6602,34 @@ async function checkBribeStatus() {
 
             if (data.active && now < data.expiresAt) {
                 overlay.style.display = "flex";
-                if(bribeTimerInterval) clearInterval(bribeTimerInterval);
                 
+                // --- LOGICA PENTRU ICONIȚĂ ȘI CULOARE ---
+                let accentColor = "#ffd700"; // Default Gold
+                let iconHtml = "";
+
+                if (data.category === 'coins') {
+                    accentColor = "#29f3ff"; // Blue
+                    iconHtml = `<img src="https://iili.io/fhc1SKQ.png" style="height: 25px; filter: drop-shadow(0 0 5px ${accentColor});">`;
+                } else if (data.category === 'diamonds') {
+                    accentColor = "#00ff88"; // Green
+                    iconHtml = `<img src="https://iili.io/fv5bmtj.png" style="height: 25px; filter: drop-shadow(0 0 5px ${accentColor});">`;
+                } else if (data.category === 'referrals') {
+                    accentColor = "#00ff88"; // Green
+                    iconHtml = `<i class="fas fa-user-plus" style="color: ${accentColor}; font-size: 24px; filter: drop-shadow(0 0 5px ${accentColor});"></i>`;
+                } else if (data.category === 'donated') {
+                    accentColor = "#ffd700"; // Gold
+                    iconHtml = `<i class="fas fa-hand-holding-usd" style="color: ${accentColor}; font-size: 24px; filter: drop-shadow(0 0 5px ${accentColor});"></i>`;
+                }
+
+                // Aplicăm stilul dinamic
+                timerSpan.style.color = accentColor;
+                timerSpan.style.textShadow = `0 0 15px ${accentColor}`;
+                bribeLabel.style.color = accentColor;
+                iconContainer.innerHTML = iconHtml;
+                overlay.style.borderColor = accentColor; // Bordura overlay-ului se schimbă și ea
+
+                // Pornim timer-ul
+                if(bribeTimerInterval) clearInterval(bribeTimerInterval);
                 bribeTimerInterval = setInterval(() => {
                     const remaining = data.expiresAt - Date.now();
                     if (remaining <= 0) {
@@ -6610,6 +6641,7 @@ async function checkBribeStatus() {
                         timerSpan.innerText = `${m}:${s < 10 ? '0'+s : s}`;
                     }
                 }, 1000);
+
             } else {
                 overlay.style.display = "none";
             }
