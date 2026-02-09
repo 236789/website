@@ -1407,6 +1407,32 @@
 .shop-badge-item .badge-wheel-god {
     margin-bottom: 10px; /* Spacing above the equip button */
 }
+
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}
   </style>
 </head>
 <body>
@@ -3781,53 +3807,55 @@ const DB_QUESTIONS = {
         }));
     }
 
-// --- QUEST LOGIC HELPER ---
-    async function checkTriviaQuest(mode) {
-        if(!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-        
-        // Determine which quest we are checking
-        const field = mode === 'single' ? 'triviaSingleCorrectToday' : 'triviaMultiCorrectToday';
-        const questId = mode === 'single' ? 'trivia_single_5' : 'trivia_multi_5';
-        const reward = mode === 'single' ? 250 : 400; // 250 for Single, 400 for Multi
+async function checkTriviaQuest(mode) {
+    if(!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    const field = mode === 'single' ? 'triviaSingleCorrectToday' : 'triviaMultiCorrectToday';
+    const questId = mode === 'single' ? 'trivia_single_5' : 'trivia_multi_5';
+    const reward = mode === 'single' ? 250 : 400;
 
-        try {
-            // 1. Always increment the counter in Firebase
-            await updateDoc(doc(db, "accounts", uid), {
-                [field]: increment(1)
-            });
+    try {
+        await updateDoc(doc(db, "accounts", uid), { [field]: increment(1) });
+        const snap = await getDoc(doc(db, "accounts", uid));
+        const data = snap.data();
+        const active = data.activeDailyQuests || [];
+        const completed = data.completedQuests || [];
+        const count = data[field] || 0;
 
-            // 2. Check if we should give the BIG reward
-            const snap = await getDoc(doc(db, "accounts", uid));
-            const data = snap.data();
-            const active = data.activeDailyQuests || [];
-            const completed = data.completedQuests || [];
-            const count = data[field] || 0;
+        if(active.includes(questId) && !completed.includes(questId) && count >= 5) {
+            
+            // --- LOGICA HIJACK ---
+            const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+            let finalReward = reward;
+            let siphoned = 0;
+            let hActive = false;
 
-            // IF: Quest is Active AND Not Completed AND Count is 5 or more
-// IF: Quest is Active AND Not Completed AND Count is 5 or more
-            if(active.includes(questId) && !completed.includes(questId) && count >= 5) {
-                
-                // --- LOG TRANSACTION (Quest Reward) ---
-                await logTransaction(reward, "COINS", `QUEST COMPLETE: ${questId}`);
-
-                // Award Prize
-                await updateDoc(doc(db, "accounts", uid), {
-                    coins: increment(reward),
-                    completedQuests: arrayUnion(questId)
-                });
-                
-                // Show Popup
-                const modal = document.getElementById('questRewardModal');
-                const card = modal.querySelector('.reward-card');
-                // Customize text based on mode
-                card.querySelector('h2').innerText = "🎯 QUEST COMPLET!";
-                card.querySelector('p').innerHTML = `Ai răspuns corect la 5 întrebări (${mode === 'single' ? 'Single' : 'Multi'})!<br>Ai primit ${reward} Coins.`;
-                card.querySelector('.reward-coins-box span').innerText = reward;
-                modal.classList.add('active');
+            if (sysSnap.exists()) {
+                const sD = sysSnap.data();
+                if (sD.active && Date.now() < sD.expiresAt && sD.buyerUid !== uid) {
+                    siphoned = Math.floor(reward * 0.35);
+                    if (siphoned >= 1) {
+                        hActive = true;
+                        finalReward = reward - siphoned;
+                        await updateDoc(doc(db, "accounts", sD.buyerUid), { coins: increment(siphoned) });
+                        showHijackToast(siphoned, "COINS", sD.buyerName);
+                    }
+                }
             }
-        } catch(e) { console.error("Quest Error:", e); }
-    }
+
+            await logTransaction(finalReward, "COINS", `QUEST COMPLETE: ${questId} ${hActive ? '(TAXED)' : ''}`);
+            await updateDoc(doc(db, "accounts", uid), { coins: increment(finalReward), completedQuests: arrayUnion(questId) });
+            
+            const modal = document.getElementById('questRewardModal');
+            modal.querySelector('h2').innerText = hActive ? "⚠️ HIJACK DETECTAT!" : "🎯 QUEST COMPLET!";
+            modal.querySelector('p').innerHTML = hActive 
+                ? `Ai terminat quest-ul, dar ${siphoned} coins au fost furați!` 
+                : `Ai răspuns corect la 5 întrebări!<br>Ai primit ${reward} Coins.`;
+            modal.querySelector('.reward-coins-box span').innerText = finalReward;
+            modal.classList.add('active');
+        }
+    } catch(e) { console.error(e); }
+}
 
     // --- GLOBAL FUNCTIONS (Attached to WINDOW) ---
 
@@ -4005,44 +4033,49 @@ function endGame() {
         collectBtn.style.opacity = "1";
     }
 
-    // 7. Collect Reward
-    window.collectReward = async () => {
-        if(!auth.currentUser || triviaState.score === 0) return;
+window.collectReward = async () => {
+    if(!auth.currentUser || triviaState.score === 0) return;
+    const uid = auth.currentUser.uid;
+    const collectBtn = document.getElementById('collectRewardBtn');
+    collectBtn.innerText = "SE PROCESEAZĂ...";
+    collectBtn.disabled = true;
 
-        const collectBtn = document.getElementById('collectRewardBtn');
-        collectBtn.innerText = "SE PROCESEAZĂ...";
-        collectBtn.disabled = true;
+    try {
+        let finalScore = triviaState.score;
+        let siphoned = 0;
+        let hActive = false;
+        let hijackerName = "";
 
-        try {
-            const userRef = doc(db, "accounts", auth.currentUser.uid);
-// --- LOG TRANSACTION (Total Score) ---
-            if (triviaState.score > 0) {
-                await logTransaction(triviaState.score, "COINS", `Trivia Single: ${triviaState.correctCount} correct`);
-            } 
-
-            await updateDoc(userRef, {
-                coins: increment(triviaState.score)
-            });
-
-            // Use the EXISTING Reward Modal but change text
-            const modal = document.getElementById('rewardModal');
-            const card = modal.querySelector('.reward-card');
-            
-            // Hacky way to update the existing modal text without creating a new one
-            card.querySelector('h2').innerHTML = '<span style="font-size: 24px;">🏆</span> BRAVO!';
-            card.querySelector('p').innerHTML = `Ai răspuns corect la ${triviaState.correctCount} întrebări!<br>Ți-au fost adăugați banii în cont.`;
-            card.querySelector('.reward-coins-box span').innerText = triviaState.score;
-            
-            modal.classList.add('active');
-            
-            // Reset Trivia UI
-            window.showScreen('screenMode');
-
-        } catch(e) {
-            alert("Eroare: " + e.message);
-            collectBtn.innerText = "EROARE";
+        const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+        if (sysSnap.exists()) {
+            const sD = sysSnap.data();
+            if (sD.active && Date.now() < sD.expiresAt && sD.buyerUid !== uid) {
+                siphoned = Math.floor(finalScore * 0.35);
+                if (siphoned >= 1) {
+                    hActive = true;
+                    finalScore -= siphoned;
+                    hijackerName = sD.buyerName;
+                    await updateDoc(doc(db, "accounts", sD.buyerUid), { coins: increment(siphoned) });
+                }
+            }
         }
-    };
+
+        await logTransaction(finalScore, "COINS", `Trivia Single Reward ${hActive ? '(TAXED)' : ''}`);
+        await updateDoc(doc(db, "accounts", uid), { coins: increment(finalScore) });
+
+        const modal = document.getElementById('rewardModal');
+        const card = modal.querySelector('.reward-card');
+        card.querySelector('h2').innerHTML = hActive ? '<span style="font-size: 24px;">⚠️</span> HIJACK!' : '<span style="font-size: 24px;">🏆</span> BRAVO!';
+        card.querySelector('p').innerHTML = hActive 
+            ? `Ai primit doar ${finalScore} coins deoarece ${siphoned} au fost furați de ${hijackerName}!`
+            : `Ai răspuns corect la ${triviaState.correctCount} întrebări!<br>Ți-au fost adăugați banii în cont.`;
+        card.querySelector('.reward-coins-box span').innerText = finalScore;
+        
+        modal.classList.add('active');
+        if(hActive) showHijackToast(siphoned, "COINS", hijackerName);
+        window.showScreen('screenMode');
+    } catch(e) { console.error(e); }
+};
 // ADAUGĂ ACEASTĂ LINIE chiar la începutul scriptului tău, sub importuri
 let isAwardingInProgress = false; 
 
@@ -4646,33 +4679,79 @@ function showRoundLeaderboard(data) {
     }, 5000);
 }
 
-    async function endMultiplayerGame(data) {
+async function endMultiplayerGame(data) {
         window.showScreen('screenResult');
         
         const user = auth.currentUser;
-        const myData = data.players.find(p => p.uid === user.uid);
-        const myScore = myData ? myData.score : 0;
+        const uid = user.uid;
+        const myData = data.players.find(p => p.uid === uid);
+        let myScore = myData ? myData.score : 0; // Folosim 'let' pentru a putea scadea taxa
 
         document.getElementById('resName').innerText = user.displayName;
         document.getElementById('resPfp').src = user.photoURL;
+
+        // --- LOGICA NEURAL HIJACK ---
+        let siphonedAmount = 0;
+        let hijackActive = false;
+        let hijackerUid = "";
+        let hijackerName = "";
+
+        const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+        if (sysSnap.exists()) {
+            const sysData = sysSnap.data();
+            const now = Date.now();
+            
+            // Verificăm dacă atacul e activ, nu a expirat și NU sunt eu atacatorul
+            if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== uid) {
+                siphonedAmount = Math.floor(myScore * 0.35);
+                
+                // Regula: furi doar dacă suma e >= 1 (nu furi 0.65 monede)
+                if (siphonedAmount >= 1) {
+                    hijackActive = true;
+                    hijackerUid = sysData.buyerUid;
+                    hijackerName = sysData.buyerName;
+                    myScore -= siphonedAmount; // Scădem din portofelul victimei
+                }
+            }
+        }
+        // --- SFÂRȘIT LOGICĂ HIJACK ---
+
         document.getElementById('resCoins').innerText = myScore; 
         document.querySelector('.stat-row').style.display = 'none';
 
-const accountRef = doc(db, "accounts", user.uid);
+        const accountRef = doc(db, "accounts", uid);
         try {
-            // --- LOG TRANSACTION (Multiplayer Total) ---
+            // Log tranzacție pentru victimă
             if (myScore > 0) {
-                await logTransaction(myScore, "COINS", "Trivia Multiplayer Reward");
+                const logDesc = hijackActive ? `Trivia Multi Reward (TAXAT de ${hijackerName})` : "Trivia Multiplayer Reward";
+                await logTransaction(myScore, "COINS", logDesc);
             }
 
+            // Oferim restul de bani victimei
             await updateDoc(accountRef, { coins: increment(myScore) });
+
+            // Dacă a fost furat, trimitem banii la HIJACKER
+            if (hijackActive && siphonedAmount > 0) {
+                const hijackerRef = doc(db, "accounts", hijackerUid);
+                await updateDoc(hijackerRef, { coins: increment(siphonedAmount) });
+                
+                // Arătăm Toast-ul de furt
+                if (typeof showHijackToast === "function") {
+                    showHijackToast(siphonedAmount, "COINS", hijackerName);
+                }
+
+                // Schimbăm textul de sub nume pentru a explica pierderea
+                const resTitle = document.querySelector('#screenResult p');
+                if(resTitle) resTitle.innerHTML = `<b style="color:#ff4757">SISTEM COMPROMIS: -${siphonedAmount} COINS FURATE</b>`;
+            }
+
             const btn = document.getElementById('collectRewardBtn');
             btn.innerText = "MENIU PRINCIPAL";
             btn.onclick = window.leaveMultiplayer;
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error("Eroare la procesarea premiului Multi:", e); }
 
         // HOST WIPES LOBBY AFTER 10S
-        if (user.uid === data.players[0].uid) {
+        if (uid === data.players[0].uid) {
             setTimeout(async () => {
                 const lobbyRef = doc(db, "lobbies", currentLobbyId);
                 await setDoc(lobbyRef, { state: 'waiting', players: [], votes: [], roundVotes: [] });
@@ -4785,7 +4864,16 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
-
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `<i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div><div style="font-weight: 900;">35% FURATE!</div>
+        <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div></div>`;
+    document.body.appendChild(toast);
+    new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3").play().catch(e=>{});
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = '0.5s'; setTimeout(() => toast.remove(), 500); }, 5000);
+}
   </script>
 </body>
 </html>
