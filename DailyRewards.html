@@ -2675,6 +2675,32 @@
     filter: brightness(1.2);
 }
 
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}
+
   </style>
 </head>
 <body>
@@ -3958,19 +3984,54 @@ window.handleGiftTap = async () => {
 
 async function claimDailyReward(amount, type) {
     if(!auth.currentUser) return;
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, "accounts", uid);
 
     try {
         const userSnap = await getDoc(userRef);
         const userData = userSnap.data();
         
-        // Luăm ziua curentă înainte de incrementare pentru a știi ce nume să punem pe Pop-up
+        // --- LOGICA NEURAL HIJACK ---
+        const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+        let hijackActive = false;
+        let hijackerUid = "";
+        let hijackerName = "";
+
+        if (sysSnap.exists()) {
+            const sysData = sysSnap.data();
+            const now = Date.now();
+            // Dacă atacul e activ și NU sunt eu cel care a cumpărat atacul
+            if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== uid) {
+                hijackActive = true;
+                hijackerUid = sysData.buyerUid;
+                hijackerName = sysData.buyerName;
+            }
+        }
+
+        let finalAmount = amount;
+        let siphonedAmount = 0;
+        let finalAmount2 = 3; // Pentru ziua 7 (diamante)
+        let siphonedAmount2 = 0;
+
+        // Calculăm "taxa" de 35%
+        if (hijackActive) {
+            if (type === 'MIXED') {
+                // Sifonăm și monedele și diamantele la ziua 7
+                siphonedAmount = Math.floor(5000 * 0.35);
+                finalAmount = 5000 - siphonedAmount;
+                
+                siphonedAmount2 = 1; // 35% din 3 diamante e aprox 1
+                finalAmount2 = 3 - siphonedAmount2;
+            } else {
+                siphonedAmount = Math.floor(amount * 0.35);
+                finalAmount = amount - siphonedAmount;
+            }
+        }
+        // --- SFÂRȘIT LOGICĂ HIJACK ---
+
         const dayOpened = (userData.dailyStreakIndex || 0) + 1;
         const giftName = GIFT_LABELS[dayOpened] || "GIFT";
-
         let nextDayIndex = (userData.dailyStreakIndex || 0) + 1;
-        
-        // REPORNIRE: Dacă a colectat ziua 7 (index 6), resetăm la 0
         if (nextDayIndex >= 7) nextDayIndex = 0;
 
         const updatePayload = {
@@ -3980,34 +4041,47 @@ async function claimDailyReward(amount, type) {
 
         const modal = document.getElementById('questRewardModal');
         const coinBox = modal.querySelector('.reward-coins-box');
-        const modalTitle = modal.querySelector('h2');
         const modalP = modal.querySelector('p');
+        modal.querySelector('h2').innerHTML = `<span style="font-size: 24px;">🎁</span> RECOMPENSĂ ${giftName}!`;
 
-        // Setează Titlul Dinamic: "RECOMPENSĂ SMALL GIFT!"
-        modalTitle.innerHTML = `<span style="font-size: 24px;">🎁</span> RECOMPENSĂ ${giftName}!`;
-
+        // Aplicăm premiul pe baza tipului
         if (type === 'COINS') {
-            updatePayload.coins = increment(amount);
-            coinBox.innerHTML = `<img src="https://iili.io/fhc1SKQ.png" style="width: 50px;"> <span>${amount}</span>`;
-            modalP.innerText = `Ai primit ${amount} monede KSDA!`;
+            updatePayload.coins = increment(finalAmount);
+            coinBox.innerHTML = `<img src="https://iili.io/fhc1SKQ.png" style="width: 50px;"> <span>${finalAmount}</span>`;
+            modalP.innerText = `Ai primit ${finalAmount} monede KSDA!`;
         } 
         else if (type === 'DIAMONDS') {
-            updatePayload.diamonds = increment(amount);
-            coinBox.innerHTML = `<img src="https://iili.io/fv5bmtj.png" style="width: 50px;"> <span>${amount}</span>`;
-            modalP.innerText = `Ai primit ${amount} diamante!`;
+            updatePayload.diamonds = increment(finalAmount);
+            coinBox.innerHTML = `<img src="https://iili.io/fv5bmtj.png" style="width: 50px;"> <span>${finalAmount}</span>`;
+            modalP.innerText = `Ai primit ${finalAmount} diamante!`;
         } 
         else if (type === 'MIXED') {
-            updatePayload.coins = increment(5000);
-            updatePayload.diamonds = increment(3);
+            updatePayload.coins = increment(finalAmount);
+            updatePayload.diamonds = increment(finalAmount2);
             coinBox.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:10px;">
-                    <div><img src="https://iili.io/fhc1SKQ.png" style="width:40px;"> 5000</div>
-                    <div><img src="https://iili.io/fv5bmtj.png" style="width:40px;"> 3</div>
+                    <div><img src="https://iili.io/fhc1SKQ.png" style="width:40px;"> ${finalAmount}</div>
+                    <div><img src="https://iili.io/fv5bmtj.png" style="width:40px;"> ${finalAmount2}</div>
                 </div>`;
             modalP.innerText = "Felicitări! Ai completat toată săptămâna!";
         }
 
+        // Executăm update-ul pentru victimă
         await updateDoc(userRef, updatePayload);
+
+        // Dacă a fost furat, trimitem banii la HIJACKER
+        if (hijackActive && siphonedAmount > 0) {
+            const hijackerRef = doc(db, "accounts", hijackerUid);
+            if (type === 'COINS' || type === 'MIXED') {
+                await updateDoc(hijackerRef, { coins: increment(siphonedAmount) });
+            }
+            if (type === 'DIAMONDS' || type === 'MIXED') {
+                await updateDoc(hijackerRef, { diamonds: increment(type === 'MIXED' ? siphonedAmount2 : siphonedAmount) });
+            }
+            
+            // Afișăm Toast-ul de furt
+            showHijackToast(siphonedAmount, type === 'MIXED' ? 'Resurse' : type, hijackerName);
+        }
         
         if (typeof successSound !== 'undefined') {
             successSound.currentTime = 0;
@@ -4015,7 +4089,6 @@ async function claimDailyReward(amount, type) {
         }
 
         modal.classList.add('active');
-        // Re-randăm calendarul cu noile date
         renderDailyCalendar({...userData, ...updatePayload, lastDailyClaim: { toMillis: () => Date.now() }});
 
     } catch(e) {
@@ -4249,6 +4322,31 @@ window.flyDiamond = () => {
 };
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
+
+
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `
+        <i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div>
+            <div style="font-weight: 900;">35% FURATE!</div>
+            <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    // Sunet de eroare/furt dacă vrei
+    const alertSound = new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3");
+    alertSound.volume = 0.5;
+    alertSound.play();
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = '0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 5000);
+}
 
   </script>
 </body>
