@@ -2229,25 +2229,17 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
+<!-- PFP CHANGE MODAL -->
 <div id="pfpChangeModal" class="modal-overlay">
     <div class="payment-card">
         <button class="close-modal-btn" onclick="closeModal('pfpChangeModal')">✕</button>
         <h2 style="color: #00ff88; font-size: 20px; font-family: 'Orbitron';">POZĂ NOUĂ</h2>
-        <p style="font-size: 11px; color: #aaa; margin-bottom: 15px;">Selectează o poză din galeria ta:</p>
-        
-        <!-- HIDDEN ACTUAL INPUT -->
-        <input type="file" id="pfpFileInput" accept="image/*" style="display: none;" onchange="updateFileName(this)">
-        
-        <!-- CUSTOM STYLED BUTTON -->
-        <button class="pay-btn" style="background: rgba(255,255,255,0.1); color: #fff; border: 1px dashed #00ff88;" onclick="document.getElementById('pfpFileInput').click()">
-            <i class="fas fa-image"></i> <span id="fileNameLabel">ALEGE DIN GALERIE</span>
-        </button>
-
-        <button id="pfpConfirmBtn" class="pay-btn" style="background: #00ff88; color: #000; margin-top: 20px;" onclick="processPfpChange()">
-            CONFIRMĂ (15 Diamante)
-        </button>
+        <p style="font-size: 11px; color: #aaa; margin-bottom: 15px;">Introdu link-ul (URL) către noua ta poză:</p>
+        <input type="text" id="newPfpInput" class="calc-input" placeholder="https://i.ibb.co/..." style="font-size: 14px;">
+        <button class="pay-btn" style="background: #00ff88; color: #000;" onclick="processPfpChange()">CONFIRMĂ (15 Diamante)</button>
     </div>
 </div>
+
 
 <!-- BANNED OVERLAY -->
 <div id="bannedOverlay">
@@ -2834,9 +2826,6 @@ input:checked + .slider:before { transform: translateX(16px); }
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
-import { updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
     import { getFirestore, collection, query,setDoc , orderBy, getDocs, doc, getDoc, updateDoc, onSnapshot,writeBatch,limit, serverTimestamp, arrayUnion, increment,addDoc,where  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -4664,45 +4653,34 @@ onAuthStateChanged(auth, async user => {
 
         const userRef = doc(db, "accounts", user.uid);
         
-        // --- 1. SETĂRI INIȚIALE (Până se încarcă baza de date) ---
-        const headerImg = document.getElementById('headerUserImg');
-        if(headerImg) {
-            // Folosim poza din contul Google/Firebase până vine cea din baza de date
-            headerImg.src = user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-            headerImg.style.display = "block";
-        }
+        // Header Default
+        document.getElementById('headerUserImg').src = user.photoURL;
+        document.getElementById('headerUserImg').style.display = "block";
 
-        // --- 2. ASCULTĂTOR REAL-TIME (Baza de date) ---
         onSnapshot(userRef, async (snap) => {
             if(snap.exists()) {
                 const d = snap.data();
-                window.currentUserData = d; 
+                window.currentUserData = d; // Global save for currency switching
                 
                 await resetUserQuests(userRef, d);
 
-                // --- UPDATE IMAGINI (Peste tot) ---
-                const finalPhoto = d.image || user.photoURL; // Prioritate baza de date, apoi cont Auth
-                
-                if(headerImg) headerImg.src = finalPhoto;
-
-                const shopImg = document.getElementById('shopUserImg');
-                if(shopImg) shopImg.src = finalPhoto;
-
-                const popImg = document.getElementById('popUserImg');
-                if(popImg) popImg.src = finalPhoto;
-
-                // --- UPDATE SHOP HERO BUBBLE ---
+                // --- UPDATE SHOP HERO BUBBLE (FIXED) ---
                 const shopCard = document.getElementById('shopUserCard');
                 const shopName = document.getElementById('shopUserName');
+                const shopImg = document.getElementById('shopUserImg');
                 const shopFrame = document.getElementById('shopHeroFrame');
 
+                // Apply Banner CSS to the bubble
                 if(shopCard) shopCard.className = 'user-stats-card ' + (d.equippedBanner?.cssClass || '');
                 
+                // Apply Custom Text CSS to name
                 if(shopName) {
                     shopName.innerText = d.username || user.displayName;
                     shopName.className = (d.equippedText?.cssClass || '');
                 }
 
+                // Update Photo & Frame
+                if(shopImg) shopImg.src = d.image || user.photoURL;
                 if(shopFrame) {
                     if (d.equippedFrame?.img) {
                         shopFrame.src = d.equippedFrame.img;
@@ -4710,6 +4688,7 @@ onAuthStateChanged(auth, async user => {
                     } else { shopFrame.style.display = "none"; }
                 }
 
+                // Trigger currency display
                 refreshShopHeroCurrency();
 
                 // --- Modal & Header Sync ---
@@ -4719,12 +4698,10 @@ onAuthStateChanged(auth, async user => {
                     headerText.className = 'login-btn-header ' + (d.equippedText?.cssClass || '');
                 }
 
+                document.getElementById('popUserImg').src = d.image || user.photoURL;
                 const popName = document.getElementById('popUserName');
-                if(popName) {
-                    popName.innerText = d.username;
-                    popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
-                }
-
+                popName.innerText = d.username;
+                popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
                 document.getElementById('popUserCoins').innerText = formatCurrency(d.coins || 0);
                 document.getElementById('popUserDiamonds').innerText = formatCurrency(d.diamonds || 0);
                 
@@ -4737,6 +4714,7 @@ onAuthStateChanged(auth, async user => {
         });
     }
 });
+
     document.getElementById('headerLoginBtn').onclick = () => document.getElementById('accountModal').classList.add('active');
     document.getElementById('closeAccountPop').onclick = () => document.getElementById('accountModal').classList.remove('active');
     document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
@@ -4996,60 +4974,42 @@ window.openPfpChangeModal = () => {
     closeModal('blackMarketModal');
     document.getElementById('pfpChangeModal').classList.add('active');
 };
-window.updateFileName = (input) => {
-    const label = document.getElementById('fileNameLabel');
-    if (input.files && input.files[0]) {
-        label.innerText = input.files[0].name.substring(0, 15) + "...";
-    }
-};
 
 window.processPfpChange = async () => {
-    const fileInput = document.getElementById('pfpFileInput');
-    const file = fileInput.files[0];
-    const btn = document.getElementById('pfpConfirmBtn');
+    const input = document.getElementById('newPfpInput');
+    const newUrl = input.value.trim();
 
-    if (!file) return showCustomAlert("Te rugăm să selectezi o imagine!", "EROARE");
+    // Basic validation
+    if(!newUrl || !newUrl.startsWith('http')) {
+        return showCustomAlert("Te rugăm să introduci un link valid (http/https)!", "EROARE");
+    }
 
-    const user = auth.currentUser;
-    const userRef = doc(db, "accounts", user.uid);
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
     const diamonds = userSnap.data().diamonds || 0;
 
-    if (diamonds < 15) return showCustomAlert("Nu ai destule diamante (15)!", "SĂRĂCIE");
+    if (diamonds < 15) {
+        return showCustomAlert("Nu ai destule diamante (15)!", "SĂRĂCIE");
+    }
 
     const confirm = await showCustomConfirm("Vrei să schimbi poza de profil pentru 15 Diamante?", "CONFIRMĂ");
     if (!confirm) return;
 
     try {
-        btn.disabled = true;
-        btn.innerText = "SE ÎNCARCĂ...";
-
-        // 1. Upload to Firebase Storage
-        const storageRef = ref(storage, `avatars/${user.uid}_${Date.now()}`);
-        const uploadTask = await uploadBytes(storageRef, file);
-        const downloadUrl = await getDownloadURL(uploadTask.ref);
-
-        // 2. Update Firestore (for Database)
         await updateDoc(userRef, {
-            image: downloadUrl, 
+            image: newUrl, // This updates the global image field
             diamonds: increment(-15)
         });
 
-        // 3. THIS IS THE GLOBAL FIX: Update Firebase Auth Profile
-        // This makes the new photo show up even on pages that don't check the database
-        await updateProfile(user, { photoURL: downloadUrl });
+        // Log the transaction
+        await logTransaction(-15, "DIAMONDS", "Black Market", "Changed Profile Picture");
 
-        await logTransaction(-15, "DIAMONDS", "Black Market", "Changed Profile Picture via Gallery");
-
-        showCustomAlert("Poza de profil a fost actualizată peste tot!", "SUCCES");
+        await showCustomAlert("Poza de profil a fost actualizată peste tot!", "SUCCES");
         closeModal('pfpChangeModal');
-        fileInput.value = '';
+        input.value = '';
     } catch (e) {
         console.error(e);
-        showCustomAlert("Eroare la încărcare. Încearcă o imagine mai mică.", "EROARE");
-    } finally {
-        btn.disabled = false;
-        btn.innerText = "CONFIRMĂ (15 Diamante)";
+        showCustomAlert("Eroare la actualizare.", "EROARE");
     }
 };
 </script>
