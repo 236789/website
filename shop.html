@@ -3364,6 +3364,17 @@ input:checked + .slider:before { transform: translateX(16px); }
     text-shadow: 0 0 10px #ffd700;
 }
 
+
+/* Add this to your CSS */
+.bm-card-item {
+    position: relative;
+}
+
+/* This ensures that if the overlay is flex (visible), nothing under it can be clicked */
+.bm-overlay {
+    pointer-events: auto; /* Captures clicks so they don't hit the card */
+}
+
   </style>
 </head>
 <body>
@@ -6573,17 +6584,55 @@ function showHijackToast(amount, type, name) {
 }
 
 
-window.openBribeSelection = () => {
-    if(!auth.currentUser) return showCustomAlert("Trebuie să fii logat!", "EROARE");
-    
-    // Deschidem modalul instantaneu
-    const modal = document.getElementById('bribeSelectionModal');
-    if(modal) {
-        modal.classList.add('active');
-    } else {
-        console.error("Modalul bribeSelectionModal nu a fost găsit în pagină!");
+window.openBribeSelection = async () => {
+    if (!auth.currentUser) return showCustomAlert("Trebuie să fii logat!", "EROARE");
+
+    try {
+        // Fetch the global bribe status from Firebase
+        const bribeSnap = await getDoc(doc(db, "system", "leaderboard_bribe"));
+        
+        if (bribeSnap.exists()) {
+            const data = bribeSnap.data();
+            const now = Date.now();
+
+            // Check if there is an active bribe that hasn't expired yet
+            if (data.active && now < data.expiresAt) {
+                const remainingMs = data.expiresAt - now;
+                const remainingMins = Math.ceil(remainingMs / 60000);
+
+                // Case 1: YOU bought it
+                if (data.uid === auth.currentUser.uid) {
+                    return showCustomAlert(
+                        `Ai deja o mită activă! Manipularea sistemului expiră în ${remainingMins} minute.`, 
+                        "MITĂ ACTIVĂ"
+                    );
+                } 
+                // Case 2: SOMEONE ELSE bought it
+                else {
+                    return showCustomAlert(
+                        `Oficialii sunt deja mituiți de <b>${data.username}</b>!<br><br>Trebuie să aștepți <b>${remainingMins} minute</b> până când sistemul redevine vulnerabil.`, 
+                        "SISTEM OCUPAT"
+                    );
+                }
+            }
+        }
+
+        // If no bribe is active (or it expired), check if user has enough diamonds locally
+        const userData = window.currentUserData;
+        if ((userData.diamonds || 0) < 50) {
+            return showCustomAlert("Ai nevoie de 50 Diamante pentru a mitui sistemul!", "FONDURI INSUFICIENTE");
+        }
+
+        // Everything is clear -> Open the selection
+        document.getElementById('bribeSelectionModal').classList.add('active');
+
+    } catch (e) {
+        console.error("Eroare la verificarea Bribe:", e);
+        showCustomAlert("Eroare de conexiune la server.", "EROARE");
     }
 };
+
+
 let bribeTimerInterval = null;
 
 async function checkBribeStatus() {
