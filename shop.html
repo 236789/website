@@ -4095,8 +4095,8 @@ async function checkRainCooldown() {
     }
 }
 
-// 3. Trigger The Rain
 window.triggerRain = async () => {
+    if(!auth.currentUser) return; // Safety check
     const uid = auth.currentUser.uid;
     const userRef = doc(db, "accounts", uid);
     const userSnap = await getDoc(userRef);
@@ -4121,9 +4121,10 @@ window.triggerRain = async () => {
         // D. Log Transaction
         await logTransaction(-50, "DIAMONDS", "Black Market", "Used Make It Rain");
 
-        // E. Find Online Users (Limit to 50 to prevent crash, works for "everybody" in small/med communities)
+        // E. Find Online Users
         // We look for users active in the last 10 minutes
         const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
+        
         const q = query(
             collection(db, "accounts"), 
             where("lastActive", ">", tenMinsAgo), 
@@ -4131,19 +4132,18 @@ window.triggerRain = async () => {
         );
         
         const onlineSnaps = await getDocs(q);
-        const batch = writeBatch(db); // Use batch for efficiency
+        
+        // --- FIX: USE writeBatch (Now Imported) ---
+        const batch = writeBatch(db); 
         
         let count = 0;
         onlineSnaps.forEach((docUser) => {
-            // Don't give coins to self (optional, remove check if you want self to get it too)
-            if (docUser.id !== uid) {
-                const ref = doc(db, "accounts", docUser.id);
-                batch.update(ref, { 
-                    coins: increment(5000),
-                    // Optional: Add a notification field if you have a notif system
-                });
-                count++;
-            }
+            // Give coins to everyone (including self, why not?)
+            const ref = doc(db, "accounts", docUser.id);
+            batch.update(ref, { 
+                coins: increment(5000)
+            });
+            count++;
         });
 
         // Commit the batch money transfer
@@ -4163,13 +4163,13 @@ window.triggerRain = async () => {
         `;
 
         await addDoc(collection(db, "wall_messages"), {
-            text: rainMessage, // This HTML will render in your chat if innerHTML is enabled
+            text: rainMessage, 
             uid: "system-rain",
             name: "SYSTEM ALERT",
-            photo: "https://cdn-icons-png.flaticon.com/512/2454/2454269.png", // Money cloud icon
+            photo: "https://cdn-icons-png.flaticon.com/512/2454/2454269.png",
             isSpecial: true,
             isBot: true,
-            equippedBanner: { cssClass: "bubble-toxic" }, // Uses your Toxic banner style
+            equippedBanner: { cssClass: "bubble-toxic" },
             createdAt: serverTimestamp(),
             reactions: {},
             seenBy: []
@@ -4181,7 +4181,12 @@ window.triggerRain = async () => {
 
     } catch (e) {
         console.error(e);
-        showCustomAlert("A apărut o eroare.", "EROARE");
+        // Specifically check if it's an index error
+        if(e.message.includes("index")) {
+            alert("ADMIN: You need to create a Firestore Index link shown in the console (F12)!");
+        } else {
+            showCustomAlert("A apărut o eroare: " + e.message, "EROARE");
+        }
     }
 };
 </script>
