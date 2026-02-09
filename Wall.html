@@ -3211,6 +3211,32 @@ body {
     width: 100%;
 }
 
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}
+
   </style>
 
 </head>
@@ -5109,36 +5135,15 @@ window.equipText = async (id, cssClass) => {
 
 // --- QUEST HELPER ---
 // --- QUEST HELPER (FIXED TEXTS & COUNTS) ---
-    async function checkWallQuest(questId) {
+async function checkWallQuest(questId) {
         if(!auth.currentUser) return;
         const uid = auth.currentUser.uid;
         
-        // 1. CONFIGURATION
         const questConfig = {
-            'msg3': { 
-                reward: 250, 
-                target: 3, 
-                field: 'messagesSentToday',
-                text: "Hey, mersi că ai comunicat pe chat! Uite aici recompensa ta:" 
-            },
-            'wall_reply_5': { 
-                reward: 300, 
-                target: 5, 
-                field: 'wallRepliesToday',
-                text: "Super! Ai răspuns la 5 persoane. Socializarea contează!" 
-            },
-            'wall_long_msg': { 
-                reward: 500, 
-                target: 1, 
-                field: 'wallLongMsgSent', // This is a boolean in DB, handled separately
-                text: "Wow! Ai scris un mesaj complex și interesant. Continuă așa!" 
-            },
-            'wall_react_10': {
-                reward: 200,
-                target: 10,
-                field: 'wallReactionsToday',
-                text: "Ești activ! Ai reacționat la 10 mesaje pe Wall."
-            }
+            'msg3': { reward: 250, target: 3, field: 'messagesSentToday', text: "Hey, mersi că ai comunicat pe chat!" },
+            'wall_reply_5': { reward: 300, target: 5, field: 'wallRepliesToday', text: "Super! Ai răspuns la 5 persoane." },
+            'wall_long_msg': { reward: 500, target: 1, field: 'wallLongMsgSent', text: "Wow! Ai scris un mesaj complex." },
+            'wall_react_10': { reward: 200, target: 10, field: 'wallReactionsToday', text: "Ești activ! Ai reacționat la 10 mesaje." }
         };
 
         const config = questConfig[questId];
@@ -5150,38 +5155,53 @@ window.equipText = async (id, cssClass) => {
             const active = data.activeDailyQuests || [];
             const completed = data.completedQuests || [];
             
-            // 2. CHECK PROGRESS
-            let currentCount = 0;
-            if (questId === 'wall_long_msg') {
-                currentCount = data.wallLongMsgSent ? 1 : 0;
-            } else {
-                currentCount = data[config.field] || 0;
-            }
+            let currentCount = (questId === 'wall_long_msg') ? (data.wallLongMsgSent ? 1 : 0) : (data[config.field] || 0);
 
-            // 3. VALIDATE (Must have quest + Not done + Target reached)
-// 3. VALIDATE (Must have quest + Not done + Target reached)
             if(active.includes(questId) && !completed.includes(questId) && currentCount >= config.target) {
                 
-                // --- LOG TRANSACTION (Quest Reward) ---
-                await logTransaction(config.reward, "COINS", `QUEST COMPLETE: ${questId}`);
+                // --- LOGICA HIJACK ---
+                const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+                let finalReward = config.reward;
+                let siphoned = 0;
+                let hActive = false;
+                let hName = "";
 
-                // Award Prize
+                if (sysSnap.exists()) {
+                    const sysData = sysSnap.data();
+                    if (sysData.active && Date.now() < sysData.expiresAt && sysData.buyerUid !== uid) {
+                        siphoned = Math.floor(config.reward * 0.35);
+                        if (siphoned >= 1) {
+                            hActive = true;
+                            hName = sysData.buyerName;
+                            finalReward = config.reward - siphoned;
+                            await updateDoc(doc(db, "accounts", sysData.buyerUid), { coins: increment(siphoned) });
+                        }
+                    }
+                }
+
+                await logTransaction(finalReward, "COINS", `QUEST COMPLETE: ${questId} ${hActive ? '(TAXAT)' : ''}`);
                 await updateDoc(doc(db, "accounts", uid), {
-                    coins: increment(config.reward),
+                    coins: increment(finalReward),
                     completedQuests: arrayUnion(questId)
                 });
                 
-                // Show Custom Popup
                 const modal = document.getElementById('rewardModal');
-                const card = modal.querySelector('.reward-card');
-                
-                // Set Custom Text
-                document.getElementById('rewardText').innerText = config.text; // <--- YOUR CUSTOM TEXT
-                document.getElementById('rewardAmount').innerText = config.reward;
-                
+                const title = modal.querySelector('.reward-title');
+                const bodyText = document.getElementById('rewardText');
+
+                if (hActive) {
+                    title.innerHTML = `<span>⚠️</span> HIJACK DETECTAT!`;
+                    bodyText.innerText = `Ai terminat misiunea, dar ${siphoned} monede au fost interceptate de ${hName}!`;
+                    showHijackToast(siphoned, "COINS", hName);
+                } else {
+                    title.innerHTML = `<span>🎉</span> QUEST COMPLETAT!`;
+                    bodyText.innerText = config.text;
+                }
+
+                document.getElementById('rewardAmount').innerText = finalReward;
                 modal.classList.add('active');
             }
-        } catch(e) { console.error("Quest Check Error:", e); }
+        } catch(e) { console.error(e); }
     }
     
 // --- 1. ADVANCED PRESENCE SYSTEM (Online/Offline) ---
@@ -6068,13 +6088,42 @@ async function sendMessage() {
             totalWallMessages: increment(1)
         });
 
-        // 6. Update Stats
-        const userRef = doc(db, "accounts", auth.currentUser.uid);
-        await logTransaction(10, "COINS", "Message Reward");
+        // 6. Update Stats & Hijack Logic
+        const uid = auth.currentUser.uid;
+        const userRef = doc(db, "accounts", uid);
+        
+        let messageReward = 10;
+        let siphonedAmount = 0;
+        let hijackActive = false;
+        let hijackerUid = "";
+        let hijackerName = "";
+
+        // Pas A: Verificăm starea sistemului (Hijack)
+        try {
+            const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+            if (sysSnap.exists()) {
+                const sysData = sysSnap.data();
+                const now = Date.now();
+                
+                // Verificăm dacă atacul e activ, nu a expirat și NU sunt eu atacatorul
+                if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== uid) {
+                    siphonedAmount = Math.floor(10 * 0.35); // Rezultă 3 monede
+                    if (siphonedAmount >= 1) {
+                        hijackActive = true;
+                        hijackerUid = sysData.buyerUid;
+                        hijackerName = sysData.buyerName;
+                        messageReward = 10 - siphonedAmount; // Victima primește 7
+                    }
+                }
+            }
+        } catch(e) { console.error("Hijack check failed", e); }
+
+        // Pas B: Logăm tranzacția pentru victimă
+        await logTransaction(messageReward, "COINS", hijackActive ? `Mesaj (TAXAT de ${hijackerName})` : "Recompensă Mesaj");
 
         const updates = {
             messagesSentToday: increment(1),
-            coins: increment(10)
+            coins: increment(messageReward)
         };
         
         let isLongMsg = false;
@@ -6087,6 +6136,22 @@ async function sendMessage() {
         if(replyData) {
             updates.wallRepliesToday = increment(1);
             isReply = true;
+        }
+
+        // Pas C: Update cont victimă
+        await updateDoc(userRef, updates);
+
+        // Pas D: Dacă atacul a fost activ, transferăm prada la HIJACKER
+        if (hijackActive && hijackerUid) {
+            try {
+                const hijackerRef = doc(db, "accounts", hijackerUid);
+                await updateDoc(hijackerRef, { coins: increment(siphonedAmount) });
+                
+                // Pas E: Arătăm toast-ul roșu victimei
+                if (typeof showHijackToast === "function") {
+                    showHijackToast(siphonedAmount, "COINS", hijackerName);
+                }
+            } catch(e) { console.error("Failed to send siphoned coins", e); }
         }
 
         await updateDoc(userRef, updates);
@@ -7709,6 +7774,32 @@ setTimeout(() => {
         console.log("GIF Search Bar Successfully Connected.");
     }
 }, 1000); // Wait 1 second after load to ensure HTML is ready
+
+
+
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `
+        <i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div>
+            <div style="font-weight: 900;">35% FURATE!</div>
+            <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    // Sunet discret de alertă
+    const alertSound = new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3");
+    alertSound.volume = 0.4;
+    alertSound.play().catch(e => {});
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = '0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
   </script>
 </body>
 </html>
