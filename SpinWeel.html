@@ -2309,6 +2309,34 @@ input:checked + .slider:before { transform: translateX(24px); }
     transition: 0.3s;
 }
 .admin-toggle-btn:hover { transform: scale(1.1); background: #ff4757; color: #fff; }
+
+
+
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}
 </style>
 </head>
 <body>
@@ -3711,18 +3739,11 @@ async function finalizeSpin(idx) {
     let reward = { ...REWARDS[idx] }; 
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
-    // Determine who receives the prize
+    // Cine primește premiul?
     let targetUid = auth.currentUser.uid;
     if (isEventModeActive && eventSelectedUser) targetUid = eventSelectedUser.uid;
 
-    // --- SAFETY FIX 1: Debugging iAmTheSpinner ---
-    // This variable tells the code "You are allowed to update the Database"
     const iAmTheSpinner = (auth.currentUser.uid === currentSpinAdminId);
-    
-    // If you don't get rewards, check the console (F12). If this says false, 
-    // it means the currentSpinAdminId variable was lost during the spin.
-    console.log("Spin Finalized. iAmTheSpinner:", iAmTheSpinner, "Target:", targetUid);
-
     const targetRef = doc(db, "accounts", targetUid);
     const targetSnap = await getDoc(targetRef);
     const targetData = targetSnap.exists() ? targetSnap.data() : {};
@@ -3742,8 +3763,32 @@ async function finalizeSpin(idx) {
         reward.jackpot = false; 
     }
 
-    // --- 2. POP-UP LOGIC (Pentru câștigător) ---
-    // This only shows the UI to the person sitting at the computer
+    // --- 2. LOGICA NEURAL HIJACK ---
+    let siphonedAmount = 0;
+    let hijackActive = false;
+    let hijackerUid = "";
+    let hijackerName = "";
+
+    // Doar dacă premiul este monedă (Coins sau Diamonds)
+    if (reward.type === "coins" || reward.type === "diamonds") {
+        const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+        if (sysSnap.exists()) {
+            const sysData = sysSnap.data();
+            const now = Date.now();
+            // Dacă e activ și nu sunt eu cel care fură
+            if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== targetUid) {
+                siphonedAmount = Math.floor(reward.val * 0.35);
+                if (siphonedAmount >= 1) {
+                    hijackActive = true;
+                    hijackerUid = sysData.buyerUid;
+                    hijackerName = sysData.buyerName;
+                    reward.val = reward.val - siphonedAmount; // Reducem premiul victimei
+                }
+            }
+        }
+    }
+
+    // --- 3. POP-UP LOGIC (Pentru utilizatorul de la tastatură) ---
     if (auth.currentUser.uid === targetUid) {
         const modal = document.getElementById('questRewardModal');
         const coinsBox = modal.querySelector('.reward-coins-box');
@@ -3752,26 +3797,19 @@ async function finalizeSpin(idx) {
         let displayVal = reward.val;
         let textColor = "#ffd700"; 
 
-        if (reward.type === "diamonds") {
-            iconUrl = "https://iili.io/fv5bmtj.png";
-            textColor = "#00ffcc"; 
-        } else if (reward.type === "xp") {
-            iconUrl = "https://cdn-icons-png.flaticon.com/512/9167/9167151.png"; 
-            displayVal = "+15%";
-            textColor = "#29f3ff";
-        } else if (reward.type === "badge" || reward.type === "banner") {
-            iconUrl = "https://iili.io/fXvBEiB.png"; 
-            displayVal = "NEW!";
-            textColor = "#ffffff";
-        }
+        if (reward.type === "diamonds") { iconUrl = "https://iili.io/fv5bmtj.png"; textColor = "#00ffcc"; }
+        else if (reward.type === "xp") { iconUrl = "https://cdn-icons-png.flaticon.com/512/9167/9167151.png"; displayVal = "+15%"; textColor = "#29f3ff"; }
+        else if (reward.type === "badge" || reward.type === "banner") { iconUrl = "https://iili.io/fXvBEiB.png"; displayVal = "NEW!"; textColor = "#ffffff"; }
 
         coinsBox.innerHTML = `
             <img src="${iconUrl}" alt="Reward" style="width: 50px; height: 50px; object-fit: contain;">
             <span style="font-size: 45px; font-weight: 900; color: ${textColor}; font-family: 'Orbitron';">${displayVal}</span>
         `;
 
-        modal.querySelector('h2').innerText = reward.type === "xp" ? "🛡️ LOSS PROTECTION" : "🎉 FELICITĂRI!";
-        modal.querySelector('.reward-card p').innerText = isDuplicate ? "Dețineai deja premiul, compensație:" : "Ai câștigat la roată:";
+        modal.querySelector('h2').innerText = hijackActive ? "⚠️ HIJACK DETECTAT!" : (reward.type === "xp" ? "🛡️ LOSS PROTECTION" : "🎉 FELICITĂRI!");
+        modal.querySelector('.reward-card p').innerText = hijackActive 
+            ? `O parte din câștigul tău a fost interceptat de ${hijackerName}!`
+            : (isDuplicate ? "Dețineai deja premiul, compensație:" : "Ai câștigat la roată:");
         
         const labelEl = modal.querySelector('p:nth-of-type(2)');
         labelEl.innerText = reward.type === "xp" ? "EXPERIENȚĂ ADUNATĂ" : (reward.type === "diamonds" ? "GEMS / DIAMANTE" : "KSDA COINS");
@@ -3784,72 +3822,60 @@ async function finalizeSpin(idx) {
             if(!isMuted) audioFail.play().catch(()=>{});
         }
         modal.classList.add('active');
+
+        if(hijackActive) showHijackToast(siphonedAmount, reward.type.toUpperCase(), hijackerName);
     }
 
-    // --- 3. DATABASE UPDATES ---
-    // SAFETY FIX 2: We ONLY write to DB if iAmTheSpinner is true. 
-    // This prevents 5 people getting rewards when only 1 admin spun.
+    // --- 4. DATABASE UPDATES ---
     if (iAmTheSpinner) {
         try {
             if (reward.type === "xp" && !isEventModeActive) {
                 let nextXP = (targetData.wheelXP || 0) + 15;
                 await updateDoc(targetRef, { "wheelStats.xpLandings": increment(1) });
                 if (nextXP >= 100) {
-                    // Logic for 100% XP
                     await updateDoc(targetRef, { wheelXP: 0, diamonds: increment(5) });
-                    // Optional: show the XP Complete modal
                     document.getElementById('xpCompleteModal').classList.add('active');
                 } else {
                     await updateDoc(targetRef, { wheelXP: nextXP });
                 }
             } 
             else if (reward.type !== "xp") {
-                let updateData = {};
+                let updateVictim = {};
                 if (reward.type === "coins") { 
-                    updateData.coins = increment(reward.val); 
-                    updateData["wheelStats.coins"] = increment(reward.val); 
+                    updateVictim.coins = increment(reward.val); 
+                    updateVictim["wheelStats.coins"] = increment(reward.val); 
                 }
                 else if (reward.type === "diamonds") { 
-                    updateData.diamonds = increment(reward.val); 
-                    updateData["wheelStats.diamonds"] = increment(reward.val); 
+                    updateVictim.diamonds = increment(reward.val); 
+                    updateVictim["wheelStats.diamonds"] = increment(reward.val); 
                 }
-                else if (reward.type === "badge") { 
-                    updateData.ownedBadges = arrayUnion(reward.val); 
-                }
-                else if (reward.type === "banner") { 
-                    updateData.ownedBanners = arrayUnion(reward.val); 
+                else if (reward.type === "badge") { updateVictim.ownedBadges = arrayUnion(reward.val); }
+                else if (reward.type === "banner") { updateVictim.ownedBanners = arrayUnion(reward.val); }
+
+                await updateDoc(targetRef, updateVictim);
+
+                // TRIMITEM PARTEA FURATĂ LA HIJACKER
+                if (hijackActive) {
+                    const hijackerRef = doc(db, "accounts", hijackerUid);
+                    await updateDoc(hijackerRef, { [reward.type]: increment(siphonedAmount) });
+                    // Log tranzacție pentru atacator (opțional)
+                    // await logTransaction(siphonedAmount, reward.type.toUpperCase(), `Hijack from ${targetName}`);
                 }
 
-                await updateDoc(targetRef, updateData);
-
-                // --- 4. WALL MESSAGE & HISTORY (JACKPOT) ---
-                const isJackpot = (reward.type === 'diamonds' && reward.val >= 10) || (reward.type === 'coins' && reward.val >= 2500) || reward.jackpot;
-                
+                // JACKPOT LOGIC
+                const isJackpot = (reward.type === 'diamonds' && reward.val + siphonedAmount >= 10) || (reward.type === 'coins' && reward.val + siphonedAmount >= 2500) || reward.jackpot;
                 if (isJackpot) {
                     await addDoc(collection(db, "wheel_jackpot_history"), {
-                        username: targetName, 
-                        userPhoto: targetPhoto,
-                        rewardLabel: reward.label, 
-                        rewardType: reward.type, 
-                        timestamp: serverTimestamp()
+                        username: targetName, userPhoto: targetPhoto,
+                        rewardLabel: reward.label, rewardType: reward.type, timestamp: serverTimestamp()
                     });
-
                     await addDoc(collection(db, "wall_messages"), {
-                        text: `🏆 @${targetName} a câștigat un JACKPOT la Roată: ${reward.label}! ${isDuplicate ? '(Compensație Duplicate)' : '🔥'}`,
-                        uid: "system-alert", 
-                        name: "KSDA JACKPOT",
-                        photo: "https://iili.io/fXvBEiB.png",
-                        isBot: true,
-                        isSpecial: true,
-                        createdAt: serverTimestamp(),
-                        reactions: {},
-                        seenBy: []
+                        text: `🏆 @${targetName} a câștigat un JACKPOT la Roată! ${hijackActive ? `(Dar ${hijackerName} a furat o parte! 😈)` : '🔥'}`,
+                        uid: "system-alert", name: "KSDA JACKPOT", photo: "https://iili.io/fXvBEiB.png", isBot: true, isSpecial: true, createdAt: serverTimestamp(), reactions: {}, seenBy: []
                     });
                 }
             }
-        } catch (e) {
-            console.error("Database Update Failed:", e);
-        }
+        } catch (e) { console.error("Database Update Failed:", e); }
     }
 }
  
@@ -5137,6 +5163,31 @@ window.selectEventUser = async (uid, name) => {
 window.resetEventData = async () => {
     if(confirm("Resetezi lista?")) await updateDoc(doc(db, "site_metadata", "wheel_event"), { participants: [], selectedUserId: null });
 };
+
+
+
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `
+        <i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div>
+            <div style="font-weight: 900;">35% FURATE!</div>
+            <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    const alertSound = new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3");
+    alertSound.volume = 0.5;
+    alertSound.play().catch(e => {});
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = '0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 5000);
+}
   </script>
 </body>
 </html>
