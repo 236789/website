@@ -2209,18 +2209,31 @@ input:checked + .slider:before { transform: translateX(16px); }
 </div>
 
             <!-- OFFER 2: LOCKED -->
-            <div class="bm-card-item" style="border-color: #333; cursor: not-allowed; opacity: 0.6;">
-                <div class="bm-content">
-                    <i class="fas fa-user-secret" style="font-size: 30px; color: #555; margin-bottom: 5px;"></i>
-                    <div class="bm-item-title" style="color: #777;">ANONYMOUS</div>
-                    <div class="bm-item-desc">
-                        Trimite mesaje pe chat fără nume și fără urmă.
-                    </div>
-                    <div class="bm-price-tag" style="background: #222; border-color: #444; color: #777;">
-                        STOC EPUIZAT
-                    </div>
-                </div>
-            </div>
+<!-- NEURAL HIJACK -->
+<div id="bmHijackCard" class="bm-card-item" onclick="activateHijack()">
+    
+    <!-- Cooldown/Active Overlay -->
+    <div id="bmHijackOverlay" class="bm-overlay">
+        <i class="fas fa-radiation"></i>
+        <div class="bm-timer-text" id="bmHijackTimer">00:00:00</div>
+        <div style="font-size: 9px; color: #aaa; margin-top: 5px;">SISTEM COMPROMIS</div>
+    </div>
+
+    <!-- Content -->
+    <div class="bm-content">
+        <i class="fas fa-satellite-dish" style="font-size: 32px; color: #adff2f; margin-bottom: 10px; filter: drop-shadow(0 0 10px #adff2f);"></i>
+        
+        <div class="bm-item-title" style="color: #adff2f;">NEURAL HIJACK</div>
+        
+        <div class="bm-item-desc">
+            Interceptează fluxul global de date. Timp de 15 min, furi <b>35%</b> din toate câștigurile celorlalți utilizatori.
+        </div>
+
+        <div class="bm-price-btn" style="border-color: #adff2f;">
+            250 <img src="https://iili.io/fv5bmtj.png">
+        </div>
+    </div>
+</div>
 
         </div>
     </div>
@@ -4951,6 +4964,126 @@ window.closeModal = (id) => {
     document.getElementById(id).classList.remove('active');
     if(id === 'blackMarketModal') {
         stopCoinRainAnimation();
+    }
+};
+
+
+
+
+// --- NEURAL HIJACK SYSTEM ---
+
+let hijackInterval = null;
+
+// A. Check if someone is currently hijacking when opening the Black Market
+async function checkHijackStatus() {
+    const overlay = document.getElementById('bmHijackOverlay');
+    const timerSpan = document.getElementById('bmHijackTimer');
+    
+    // Listen to the global system state
+    onSnapshot(doc(db, "system", "hijack_state"), (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const now = Date.now();
+
+            if (data.active && now < data.expiresAt) {
+                // Hijack is currently ACTIVE
+                overlay.style.display = "flex";
+                
+                if(hijackInterval) clearInterval(hijackInterval);
+                
+                hijackInterval = setInterval(() => {
+                    const remaining = data.expiresAt - Date.now();
+                    if (remaining <= 0) {
+                        overlay.style.display = "none";
+                        clearInterval(hijackInterval);
+                    } else {
+                        const m = Math.floor(remaining / 60000);
+                        const s = Math.floor((remaining % 60000) / 1000);
+                        timerSpan.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                    }
+                }, 1000);
+            } else {
+                overlay.style.display = "none";
+            }
+        }
+    });
+}
+
+// Update your openBlackMarket function to include this check
+window.openBlackMarket = () => {
+    if(!auth.currentUser) return alert("Loghează-te!");
+    document.getElementById('blackMarketModal').classList.add('active');
+    startCoinRainAnimation();
+    checkRainCooldown();
+    checkHijackStatus(); // <--- Add this
+};
+
+// B. The Purchase Logic
+window.activateHijack = async () => {
+    if(!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, "accounts", uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
+
+    // 1. Check Diamonds
+    if ((userData.diamonds || 0) < 250) {
+        return showCustomAlert("Ai nevoie de 250 Diamante pentru a compromite sistemul!", "FONDURI INSUFICIENTE");
+    }
+
+    // 2. Double Check if one is already active (Server side check)
+    const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+    if (sysSnap.exists() && sysSnap.data().active && Date.now() < sysSnap.data().expiresAt) {
+        return showCustomAlert("Sistemul este deja sub atacul altui utilizator!", "EROARE");
+    }
+
+    // 3. Confirm
+    const confirm = await showCustomConfirm(
+        "Neural Hijack: Timp de 15 minute, vei colecta automat 35% din tot ce câștigă ceilalți utilizatori pe site. Confirmi atacul?",
+        "NEURAL HIJACK"
+    );
+    if (!confirm) return;
+
+    try {
+        // 4. Pay and Set Global State
+        await updateDoc(userRef, { diamonds: increment(-250) });
+
+        await setDoc(doc(db, "system", "hijack_state"), {
+            active: true,
+            buyerUid: uid,
+            buyerName: userData.username,
+            expiresAt: Date.now() + (15 * 60 * 1000) // 15 Minutes
+        });
+
+        // 5. Broadcat with Kevin Bot (The Villain Reveal)
+        await addDoc(collection(db, "wall_messages"), {
+            text: `
+                <div style="text-align:center;">
+                    <i class="fas fa-satellite-dish" style="font-size:24px; color:#adff2f;"></i>
+                    <div style="font-family:'Orbitron'; font-weight:900; color:#adff2f; margin-top:5px;">SYSTEM COMPROMISED</div>
+                    <div style="font-size:12px; color:#fff; margin-top:10px;">
+                        Utilizatorul <b style="color:#adff2f;">${userData.username}</b> a activat <b>NEURAL HIJACK</b>!
+                    </div>
+                    <div style="font-size:10px; color:#aaa; margin-top:5px;">
+                        Acesta va fura 35% din toate veniturile voastre pentru următoarele 15 minute!
+                    </div>
+                </div>
+            `,
+            uid: "kevin-bot-official",
+            name: "Kevin Bot",
+            photo: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
+            isBot: true,
+            isSpecial: true,
+            equippedBanner: { id: "bub_toxic", cssClass: "bubble-toxic" },
+            createdAt: serverTimestamp()
+        });
+
+        closeModal('blackMarketModal');
+        showCustomAlert("Conexiune Neurală stabilită. Profitul începe acum.", "HIJACK ACTIVAT");
+
+    } catch (e) {
+        console.error(e);
+        showCustomAlert("Eroare la injectarea codului.", "EROARE");
     }
 };
 </script>
