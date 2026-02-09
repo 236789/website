@@ -3295,6 +3295,37 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
 </div>
 
+
+<!-- BRIBE THE SYSTEM CARD -->
+<div id="bmBribeCard" class="bm-card-item" onclick="openBribeSelection()">
+    <div class="bm-content">
+        <i class="fas fa-handshake" style="font-size: 32px; color: #ffd700; margin-bottom: 10px; filter: drop-shadow(0 0 10px #ffd700);"></i>
+        <div class="bm-item-title">MITUIEȘTE SISTEMUL</div>
+        <div class="bm-item-desc">
+            Cumpără locul #1 în orice clasament timp de 1 oră (1 min pt test). Cine are bani, are putere!
+        </div>
+        <div class="bm-price-btn">
+            50 <img src="https://iili.io/fv5bmtj.png">
+        </div>
+    </div>
+</div>
+
+        </div>
+    </div>
+</div>
+
+<!-- BRIBE SELECTION MODAL -->
+<div id="bribeSelectionModal" class="account-modal-overlay">
+    <div class="payment-card" style="border-color: #ffd700;">
+        <button class="close-modal-btn" onclick="closeModal('bribeSelectionModal')">✕</button>
+        <h2 style="color: #ffd700; font-family: 'Orbitron'; font-size: 18px;">ALEGE CLASAMENTUL</h2>
+        <p style="font-size: 11px; color: #aaa; margin-bottom: 20px;">Unde vrei să fii afișat ca numărul #1?</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <button class="cyber-btn" onclick="processBribe('coins')">TOP COINS</button>
+            <button class="cyber-btn" onclick="processBribe('diamonds')">TOP DIAMANTE</button>
+            <button class="cyber-btn" onclick="processBribe('donated')">TOP DONATORI</button>
+            <button class="cyber-btn" onclick="processBribe('referrals')">TOP INVITES</button>
         </div>
     </div>
 </div>
@@ -3974,7 +4005,7 @@ input:checked + .slider:before { transform: translateX(16px); }
     </div>
     <div class="select-btn-v6 c-frame" onclick="openInventory('frames'); document.getElementById('inventoryModal').classList.add('active'); document.getElementById('cosmeticsSelectModal').classList.remove('active');">
         <i class="fas fa-crop-alt"></i>
-        <span>RAME</span> 
+        <span>RAME</span>
     </div>
     <div class="select-btn-v6 c-banner" onclick="openInventory('banners'); document.getElementById('inventoryModal').classList.add('active'); document.getElementById('cosmeticsSelectModal').classList.remove('active');">
         <i class="fas fa-image"></i>
@@ -6360,41 +6391,68 @@ function showHijackToast(amount, type, name) {
 }
 
 
-// --- LOGICA REDIRECTIONARE BUTOANE AUTH ---
+window.openBribeSelection = async () => {
+    if(!auth.currentUser) return;
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    if((userSnap.data().diamonds || 0) < 50) return showCustomAlert("Ai nevoie de 50 Diamante!", "FONDURI INSUFICIENTE");
+    
+    // Verificăm dacă e deja o mită activă
+    const sysSnap = await getDoc(doc(db, "system", "leaderboard_bribe"));
+    if(sysSnap.exists() && sysSnap.data().active && Date.now() < sysSnap.data().expiresAt) {
+        return showCustomAlert("Sistemul este deja mituit de altcineva!", "EROARE");
+    }
+    
+    document.getElementById('bribeSelectionModal').classList.add('active');
+};
 
-// 1. Butonul din Header (PC)
-if (headerLoginBtn) {
-    headerLoginBtn.onclick = () => {
-        if (!auth.currentUser) {
-            // Trimitem utilizatorul la index pentru logare
-            window.location.href = "index.html?action=login";
-        } else {
-            // Dacă e logat, deschidem modalul de cont
-            document.getElementById('accountModal').classList.add('active');
-        }
-    };
-}
+window.processBribe = async (category) => {
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, "accounts", uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
 
-// 2. Butonul din Meniul Lateral (Mobil)
-const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-if (mobileLoginBtn) {
-    mobileLoginBtn.onclick = () => {
-        if (!auth.currentUser) {
-            window.location.href = "index.html?action=login";
-        } else {
-            // Închidem meniul lateral și deschidem profilul
-            sideMenu.classList.remove('open');
-            document.getElementById('accountModal').classList.add('active');
-        }
-    };
-}
+    const confirmed = await showCustomConfirm(`Confirmi mita de 50 💎 pentru a prelua locul #1 la categoria ${category.toUpperCase()}?`, "MITĂ SISTEM");
+    if(!confirmed) return;
 
-// Restul butoanelor de închidere
-document.getElementById('closeAccountPop').onclick = () => document.getElementById('accountModal').classList.remove('active');
-document.getElementById('popLogoutBtn').onclick = () => signOut(auth).then(() => location.reload());
+    try {
+        await updateDoc(userRef, { diamonds: increment(-50) });
+        
+        // Setează starea globală (1 minut pentru test - schimbă la 3600000 pentru 1 oră mai târziu)
+        const duration = 60000; // 1 minut (test)
+        
+        await setDoc(doc(db, "system", "leaderboard_bribe"), {
+            active: true,
+            uid: uid,
+            username: userData.username,
+            category: category, // 'coins', 'diamonds', 'donated', 'referrals'
+            expiresAt: Date.now() + duration
+        });
 
-// Pornire procese Shop
-renderShop();
+        // Mesaj pe Wall
+        const catNames = { coins: "Top Coins", diamonds: "Top Diamonds", donated: "Top Donatori", referrals: "Top Invites" };
+        await addDoc(collection(db, "wall_messages"), {
+            text: `
+                <div style="text-align:center;">
+                    <i class="fas fa-user-secret" style="font-size:24px; color:#ffd700;"></i>
+                    <div style="font-family:'Orbitron'; font-weight:900; color:#ffd700; margin-top:5px;">SISTEM MITUIT!</div>
+                    <div style="font-size:12px; color:#fff; margin-top:10px;">
+                        Utilizatorul <b style="color:#ffd700;">${userData.username}</b> a plătit administratorii și a preluat fraudulos <b>Locul #1</b> în <b style="color:#29f3ff;">${catNames[category]}</b>! 💸
+                    </div>
+                </div>
+            `,
+            uid: "kevin-bot-official",
+            name: "Kevin Bot",
+            photo: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
+            isBot: true, isSpecial: true,
+            equippedBanner: { id: "bub_midas", cssClass: "bubble-gold" },
+            createdAt: serverTimestamp()
+        });
+
+        closeModal('bribeSelectionModal');
+        showCustomAlert("Mita a fost acceptată. Acum ești Regele clasamentului!", "SUCCES");
+
+    } catch (e) { console.error(e); }
+};
 </script>
 </body>
 </html>
