@@ -2129,6 +2129,32 @@ input:checked + .slider:before { transform: translateX(16px); }
     filter: brightness(1.2);
 }
 
+
+/* Toast diabolic pentru Hijack */
+.hijack-toast {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    background: rgba(255, 71, 87, 0.9);
+    border: 2px solid #fff;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 15px;
+    z-index: 40000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+    animation: slideInLeft 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}
+
   </style>
 </head>
 <body>
@@ -3405,10 +3431,9 @@ window.confirmSkip = (questId, questTitle, cost, reward) => {
         };
     };
 
-// 2. Execute the actual skip in Firebase
-// 2. Execute the actual skip in Firebase
 async function executeSkip(questId, cost, reward) {
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const uid = auth.currentUser.uid;
+    const userRef = doc(db, "accounts", uid);
     const snap = await getDoc(userRef);
     const userData = snap.data();
 
@@ -3420,20 +3445,41 @@ async function executeSkip(questId, cost, reward) {
     try {
         document.getElementById('skipConfirmModal').classList.remove('active');
 
-        // --- 1. LOG THE COST (NEGATIVE) ---
+        // --- LOGICA NEURAL HIJACK ---
+        const sysSnap = await getDoc(doc(db, "system", "hijack_state"));
+        let hijackActive = false;
+        let hijackerUid = "";
+        let hijackerName = "";
+        let siphonedAmount = 0;
+        let finalReward = reward;
+
+        if (sysSnap.exists()) {
+            const sysData = sysSnap.data();
+            const now = Date.now();
+            // Dacă atacul e activ și nu sunt eu atacatorul
+            if (sysData.active && now < sysData.expiresAt && sysData.buyerUid !== uid) {
+                siphonedAmount = Math.floor(reward * 0.35);
+                if (siphonedAmount >= 1) {
+                    hijackActive = true;
+                    hijackerUid = sysData.buyerUid;
+                    hijackerName = sysData.buyerName;
+                    finalReward = reward - siphonedAmount;
+                }
+            }
+        }
+
+        // --- 1. LOGS ---
         await logTransaction(-cost, "COINS", `SKIP COST: ${questId}`);
+        await logTransaction(finalReward, "COINS", hijackActive ? `SKIP REWARD (TAXED): ${questId}` : `SKIP REWARD: ${questId}`);
 
-        // --- 2. LOG THE REWARD (POSITIVE) ---
-        await logTransaction(reward, "COINS", `SKIP REWARD: ${questId}`);
-
-        // Pregătim obiectul de update standard
+        // --- 2. UPDATE VICTIMĂ ---
         let updateData = {
-            coins: increment(reward - cost), 
+            coins: increment(finalReward - cost), 
             completedQuests: arrayUnion(questId),
             skipsUsedInBlock: increment(1)
         };
 
-        // --- LOGICĂ PENTRU UMPLEREA BARELOR DE PROGRES ---
+        // Umplem barele de progres (codul tău original)
         if (questId === 'wall_reply_5') updateData.wallRepliesToday = 5;
         if (questId === 'wall_react_10') updateData.wallReactionsToday = 10;
         if (questId === 'wall_long_msg') updateData.wallLongMsgSent = true;
@@ -3448,25 +3494,28 @@ async function executeSkip(questId, cost, reward) {
         if (questId === 'donate_100') updateData.coinsDonatedToday = 100;
         if (questId === 'trivia_single_5') updateData.triviaSingleCorrectToday = 5;
         if (questId === 'trivia_multi_5') updateData.triviaMultiCorrectToday = 5;
+        if (questId === 'gallery_task') { updateData.galleryLikesToday = 10; updateData.galleryCommentsToday = 3; }
+        if (questId === 'meet_team_hunt') { updateData.visited_lost_soul_today = true; updateData.visited_kevin_trinity_today = true; }
 
-        // Cazuri speciale (Galerie și Echipa)
-        if (questId === 'gallery_task') {
-            updateData.galleryLikesToday = 10;
-            updateData.galleryCommentsToday = 3;
-        }
-        if (questId === 'meet_team_hunt') {
-            updateData.visited_lost_soul_today = true;
-            updateData.visited_kevin_trinity_today = true;
-        }
-
-        // Trimitem totul către Firebase
         await updateDoc(userRef, updateData);
 
-        // Afișăm modalul de succes (ca în index.html)
+        // --- 3. UPDATE HIJACKER ---
+        if (hijackActive) {
+            const hijackerRef = doc(db, "accounts", hijackerUid);
+            await updateDoc(hijackerRef, { coins: increment(siphonedAmount) });
+            
+            // Log pentru hijacker
+            // Putem folosi o descriere mai detaliată dacă vrei
+            showHijackToast(siphonedAmount, "COINS", hijackerName);
+        }
+
+        // Afișăm rezultatul
         const modal = document.getElementById('genericRewardModal');
-        document.getElementById('modalTitleText').innerHTML = "🎉 TOO LAZY, HUH?";
-        document.getElementById('modalBodyText').innerText = "Quest sărit cu succes! Recompensa a fost adăugată în cont.";
-        document.getElementById('modalRewardAmount').innerText = reward;
+        document.getElementById('modalTitleText').innerHTML = hijackActive ? "⚠️ TAXĂ HIJACK DETECTATĂ!" : "🎉 TOO LAZY, HUH?";
+        document.getElementById('modalBodyText').innerText = hijackActive 
+            ? `Ai sărit quest-ul, dar ${siphonedAmount} coins au fost interceptați de ${hijackerName}!`
+            : "Quest sărit cu succes! Recompensa a fost adăugată în cont.";
+        document.getElementById('modalRewardAmount').innerText = finalReward;
         
         modal.classList.add('active');
         
@@ -3706,6 +3755,30 @@ function flyDiamond() {
     }, 900);
 }
 document.getElementById('claimStreakBtn').onclick = flyDiamond;
+
+
+function showHijackToast(amount, type, name) {
+    const toast = document.createElement('div');
+    toast.className = 'hijack-toast';
+    toast.innerHTML = `
+        <i class="fas fa-user-secret" style="font-size: 20px;"></i>
+        <div>
+            <div style="font-weight: 900;">35% FURATE!</div>
+            <div style="font-size: 10px; opacity: 0.8;">-${amount} ${type} colectate de ${name}</div>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    const alertSound = new Audio("https://www.myinstants.com/media/sounds/wrong-answer-126515.mp3");
+    alertSound.volume = 0.5;
+    alertSound.play().catch(e => {});
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = '0.5s';
+        setTimeout(() => toast.remove(), 500);
+    }, 5000);
+}
 </script>
 </body>
 </html>
