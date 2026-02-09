@@ -2122,6 +2122,22 @@ input:checked + .slider:before { transform: translateX(16px); }
 
 @keyframes slideUpFade { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+
+
+
+.badge-briber {
+    background: #ffd700;
+    color: #000;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Orbitron';
+    font-size: 8px;
+    font-weight: 900;
+    text-transform: uppercase;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    margin-top: 3px;
+    display: inline-block;
+}
   </style>
 </head>
 <body>
@@ -3346,11 +3362,39 @@ function setupLeaderboardListener() {
 
 window.totalUserCount = 0;
 
-// --- RENDER LEADERBOARD FUNCTION ---
-// --- RENDER LEADERBOARD FUNCTION (FIXED: BADGES IN LIST 4-50) ---
-function renderLeaderboard() {
-    let members = currentLeaderboardData;
+async function renderLeaderboard() {
+    let members = [...currentLeaderboardData]; 
     if (currentFilter === 'online') members = members.filter(m => checkIsOnline(m));
+
+    // --- LOGICA BRIBE (MITĂ) ---
+    const bribeSnap = await getDoc(doc(db, "system", "leaderboard_bribe"));
+    if (bribeSnap.exists()) {
+        const bribe = bribeSnap.data();
+        const now = Date.now();
+        if (bribe.active && now < bribe.expiresAt && bribe.category === currentMode) {
+            
+            // Căutăm dacă mituitorul este deja în lista de top 50
+            const existingIdx = members.findIndex(m => m.id === bribe.uid);
+            let bribedUserData;
+
+            if (existingIdx !== -1) {
+                // Îl scoatem din poziția lui reală
+                bribedUserData = members.splice(existingIdx, 1)[0];
+            } else {
+                // Dacă nu e în top 50, îi luăm datele rapid din DB (opțional, pentru siguranță)
+                const uSnap = await getDoc(doc(db, "accounts", bribe.uid));
+                if (uSnap.exists()) bribedUserData = { id: uSnap.id, ...uSnap.data() };
+            }
+
+            if (bribedUserData) {
+                bribedUserData.isBriber = true; // Marcam utilizatorul
+                members.unshift(bribedUserData); // Îl punem pe locul 1
+                if (members.length > 50) members.pop(); // Menținem lista la 50
+            }
+        }
+    }
+
+
 
     const podiumContainer = document.getElementById('podiumContainer');
 
@@ -3390,6 +3434,8 @@ function renderLeaderboard() {
                         <span class="name-text">${nameHtml}</span> 
                         ${getRoleBadge(m.email)}
                         ${getCosmeticBadge(m.equippedBadge)}
+            ${m.isBriber ? `<span class="badge-briber">BRIBER</span>` : ""}
+
                     </div>
                 </div>
                 <div class="top-right">
@@ -3439,11 +3485,15 @@ function renderLeaderboard() {
             let nameHtml = formatName(m.username);
             if(m.equippedText?.cssClass) nameHtml = `<span class="${m.equippedText.cssClass}">${nameHtml}</span>`;
             
-            let badgeHtml = "";
-            if(getRoleBadge(m.email)) badgeHtml += `<div>${getRoleBadge(m.email)}</div>`;
-            if(getCosmeticBadge(m.equippedBadge)) badgeHtml += `<div>${getCosmeticBadge(m.equippedBadge)}</div>`;
-            
-            document.getElementById(`name-${i}`).innerHTML = nameHtml + badgeHtml;
+// În interiorul buclei for (let i = 1; i <= 3; i++)
+let briberBadge = m.isBriber ? `<div class="badge-briber">BRIBER</div>` : "";
+let badgeHtml = "";
+if(getRoleBadge(m.email)) badgeHtml += `<div>${getRoleBadge(m.email)}</div>`;
+if(getCosmeticBadge(m.equippedBadge)) badgeHtml += `<div>${getCosmeticBadge(m.equippedBadge)}</div>`;
+
+// LINIA CORECTĂ:
+document.getElementById(`name-${i}`).innerHTML = nameHtml + badgeHtml + briberBadge;
+
             
             let iconHtml = '';
             if(conf.img && conf.img !== '') {
@@ -3528,6 +3578,10 @@ function renderLeaderboard() {
         showMoreBtn.innerHTML = `<i class="fas fa-plus"></i> SI INCA ${remaining} MEMBRI IN ECHIPA KSDA`;
         showMoreBtn.onclick = openAllUsersList;
         topListEl.appendChild(showMoreBtn);
+
+
+
+
     }
 }
 
