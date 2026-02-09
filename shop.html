@@ -6573,28 +6573,17 @@ function showHijackToast(amount, type, name) {
 }
 
 
-window.openBribeSelection = async () => {
-    if(!auth.currentUser) return;
+window.openBribeSelection = () => {
+    if(!auth.currentUser) return showCustomAlert("Trebuie să fii logat!", "EROARE");
     
-    try {
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        const userData = userSnap.data();
-
-        // 1. Verificăm doar dacă ai diamantele necesare
-        if((userData.diamonds || 0) < 50) {
-            return showCustomAlert("Ai nevoie de 50 Diamante pentru a mitui sistemul!", "FONDURI INSUFICIENTE");
-        }
-        
-        // 2. AM ELIMINAT verificarea "if(active)". 
-        // Acum poți deschide modalul chiar dacă altcineva (sau tu de pe alt cont) a cumpărat deja.
-        
-        document.getElementById('bribeSelectionModal').classList.add('active');
-        
-    } catch (e) {
-        console.error("Eroare la deschidere Bribe:", e);
+    // Deschidem modalul instantaneu
+    const modal = document.getElementById('bribeSelectionModal');
+    if(modal) {
+        modal.classList.add('active');
+    } else {
+        console.error("Modalul bribeSelectionModal nu a fost găsit în pagină!");
     }
 };
-
 let bribeTimerInterval = null;
 
 async function checkBribeStatus() {
@@ -6657,23 +6646,31 @@ async function checkBribeStatus() {
     });
 }
 
-// 2. Modifică funcția de cumpărare
 window.processBribe = async (category) => {
+    // 1. Basic Auth Check
+    if (!auth.currentUser) return showCustomAlert("Trebuie să fii logat!", "EROARE");
+    
     const uid = auth.currentUser.uid;
     const userRef = doc(db, "accounts", uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
+    
+    // Use the global data we already have to speed things up
+    const userData = window.currentUserData; 
+    if (!userData) return showCustomAlert("Se încarcă datele... încearcă din nou.", "AȘTEAPTĂ");
 
-    if ((userData.diamonds || 0) < 50) return showCustomAlert("Nu ai 50 💎!", "EROARE");
+    // 2. Check Diamonds
+    if ((userData.diamonds || 0) < 50) {
+        return showCustomAlert("Nu ai 50 💎!", "EROARE");
+    }
 
+    // 3. Show Confirmation Modal (Fixes Issue 1)
     const confirmed = await showCustomConfirm(`Confirmi mita de 50 💎 pentru Rank #1 la ${category.toUpperCase()}?`, "MITĂ SISTEM");
     if(!confirmed) return;
 
     try {
+        // 4. Execute transaction
         await updateDoc(userRef, { diamonds: increment(-50) });
         
-        // 60000 ms = 1 minut (test) | Schimbă la 3600000 pentru 1 oră
-        const duration = 3600000; 
+        const duration = 3600000; // 1 Hour
 
         await setDoc(doc(db, "system", "leaderboard_bribe"), {
             active: true,
@@ -6683,24 +6680,26 @@ window.processBribe = async (category) => {
             expiresAt: Date.now() + duration
         });
 
-        // --- MESAJUL PE WALL CU NOUL BANNER ---
-        const catNames = { coins: "Top Coins", diamonds: "Top Diamonds", donated: "Top Donatori", referrals: "Top Invites" };
+        // 5. Send Wall Message (Fixes Issue 2)
+        // We add reactions/seenBy to ensure the Wall page doesn't crash when reading this
+        const catNames = { 
+            coins: "Top Coins", 
+            diamonds: "Top Diamonds", 
+            donated: "Top Donatori", 
+            referrals: "Top Invites" 
+        };
         
-await addDoc(collection(db, "wall_messages"), {
+        await addDoc(collection(db, "wall_messages"), {
             text: `
                 <div style="text-align:center;">
                     <i class="fas fa-money-check-alt" style="font-size:24px; color:#ffd700; filter: drop-shadow(0 0 10px #00ff88);"></i>
                     <div style="font-family:'Orbitron'; font-weight:900; color:#fff; margin-top:5px; letter-spacing:1px;">SISTEM MANIPULAT</div>
-                    
                     <div style="font-size:12px; color:#fff; margin-top:10px;">
                         Utilizatorul <b style="color:#ffd700;">${userData.username}</b> a mituit oficialii! 💸
                     </div>
-
-                    <!-- FUN LINE ADDED BELOW -->
                     <div style="font-family:'Orbitron'; font-size:13px; color:#00ff88; margin: 8px 0; font-weight:900; text-shadow: 0 0 8px #00ff88; letter-spacing: 2px;">
                         BANI = POWER
                     </div>
-
                     <div style="font-size:11px; color:#e0ffef; margin-top:5px; opacity:0.9;">
                         A preluat <b>LOCUL #1</b> în <b style="color:#fff;">${catNames[category]}</b>!
                     </div>
@@ -6709,13 +6708,23 @@ await addDoc(collection(db, "wall_messages"), {
             uid: "kevin-bot-official",
             name: "Kevin Bot",
             photo: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
-            isBot: true, isSpecial: true,
+            isBot: true, 
+            isSpecial: true,
             equippedBanner: { id: "money_bribe", cssClass: "bubble-money-bribe" },
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            reactions: {}, // Required for some Wall versions
+            seenBy: [],    // Required for some Wall versions
+            isDeleted: false
         });
+
+        // 6. Close selection modal and show success
         closeModal('bribeSelectionModal');
-        showCustomAlert("Mita a fost livrată. Ești oficial de neatins!", "CORUPȚIE REUȘITĂ");
-    } catch (e) { console.error(e); }
+        await showCustomAlert("Mita a fost livrată. Ești oficial de neatins!", "CORUPȚIE REUȘITĂ");
+        
+    } catch (e) { 
+        console.error("Bribe Error:", e);
+        showCustomAlert("Eroare la procesare. Verifică conexiunea.", "EROARE");
+    }
 };
 
 // 3. NU UITA să adaugi checkBribeStatus() în funcția openBlackMarket:
