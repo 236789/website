@@ -3365,15 +3365,7 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-/* Add this to your CSS */
-.bm-card-item {
-    position: relative;
-}
 
-/* This ensures that if the overlay is flex (visible), nothing under it can be clicked */
-.bm-overlay {
-    pointer-events: auto; /* Captures clicks so they don't hit the card */
-}
 
   </style>
 </head>
@@ -3476,28 +3468,6 @@ input:checked + .slider:before { transform: translateX(16px); }
         </div>
         <div class="bm-price-btn">
             50 <img src="https://iili.io/fv5bmtj.png">
-        </div>
-    </div>
-</div>
-
-<!-- SILENCE PROTOCOL -->
-<div id="bmSilenceCard" class="bm-card-item" onclick="openSilenceSelection()">
-    
-    <!-- Cooldown Overlay -->
-    <div id="bmSilenceOverlay" class="bm-overlay" style="display: none;">
-        <i class="fas fa-microphone-slash"></i>
-        <div class="bm-timer-text" id="bmSilenceTimer">00:00</div>
-        <div style="font-size: 9px; color: #aaa; margin-top: 5px;">COOLDOWN</div>
-    </div>
-
-    <div class="bm-content">
-        <i class="fas fa-volume-mute" style="font-size: 32px; color: #ff4757; margin-bottom: 10px; filter: drop-shadow(0 0 10px #ff4757);"></i>
-        <div class="bm-item-title" style="color: #ff4757;">SILENCE PROTOCOL</div>
-        <div class="bm-item-desc">
-            Saturatează frecvențele unui utilizator. Acesta nu va putea scrie pe Wall timp de <b>1 minut</b>.
-        </div>
-        <div class="bm-price-btn" style="border-color: #ff4757;">
-            10 <img src="https://iili.io/fv5bmtj.png">
         </div>
     </div>
 </div>
@@ -5302,17 +5272,12 @@ window.equipText = async (id, cssClass) => {
         renderDonationList(filtered);
     };
 
-function selectTarget(id, name) {
-    if (window.isSilenceMode) {
-        window.isSilenceMode = false; // Reset
-        executeSilence(id, name);
-    } else {
+    function selectTarget(id, name) {
         donationTarget = { id, name };
         document.getElementById('targetName').innerText = name;
         closeModal('donationListModal');
         document.getElementById('donationAmountModal').classList.add('active');
     }
-}
 
 window.processDonation = async () => {
     const amountInput = document.getElementById('donateAmount');
@@ -6791,132 +6756,8 @@ window.openBlackMarket = () => {
     startCoinRainAnimation();
     checkRainCooldown();
     checkHijackStatus();
-    checkBribeStatus();
-    checkSilenceCooldown(); // <--- ADD THIS LINE
+    checkBribeStatus(); // <--- ADAUGĂ ASTA
 };
-
-
-
-// --- SILENCE PROTOCOL LOGIC ---
-
-let silenceCooldownInterval = null;
-
-// A. Check if the user is on cooldown when opening Black Market
-async function checkSilenceCooldown() {
-    const overlay = document.getElementById('bmSilenceOverlay');
-    const timerSpan = document.getElementById('bmSilenceTimer');
-    
-    if(!auth.currentUser) return;
-    
-    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-    const data = userSnap.data();
-
-    if (data.lastSilenceUsed) {
-        const lastTime = data.lastSilenceUsed.toMillis();
-        const cooldownMs = 30 * 60 * 1000; // 30 Minutes
-        const now = Date.now();
-        const diff = now - lastTime;
-
-        if (diff < cooldownMs) {
-            overlay.style.display = "flex";
-            if(silenceCooldownInterval) clearInterval(silenceCooldownInterval);
-            
-            silenceCooldownInterval = setInterval(() => {
-                const remaining = cooldownMs - (Date.now() - lastTime);
-                if (remaining <= 0) {
-                    overlay.style.display = "none";
-                    clearInterval(silenceCooldownInterval);
-                } else {
-                    const m = Math.floor(remaining / 60000);
-                    const s = Math.floor((remaining % 60000) / 1000);
-                    timerSpan.innerText = `${m}:${s < 10 ? '0'+s : s}`;
-                }
-            }, 1000);
-        } else {
-            overlay.style.display = "none";
-        }
-    }
-}
-
-// B. Open Selection (Reuse the Donation List UI but with Mute Context)
-window.openSilenceSelection = async () => {
-    if (!auth.currentUser) return;
-    
-    // Check local diamond count first
-    if ((window.currentUserData.diamonds || 0) < 10) {
-        return showCustomAlert("Ai nevoie de 10 💎 pentru a reduce pe cineva la tăcere!", "FONDURI INSUFICIENTE");
-    }
-
-    // Reuse the donation modal but change the title/logic
-    const listModal = document.getElementById('donationListModal');
-    const title = listModal.querySelector('h3');
-    title.innerText = "ALEGE VICTIMA (SILENCE)";
-    title.style.color = "#ff4757";
-
-    // We override the click function of the list items temporarily
-    window.isSilenceMode = true; 
-    openDonationList(); 
-};
-
-// C. The Actual Mute Execution
-window.executeSilence = async (targetId, targetName) => {
-    const ownerEmail = "nicaemmanuel433qe@gmail.com";
-    
-    // 1. Protection for Owner
-    const targetSnap = await getDoc(doc(db, "accounts", targetId));
-    if (targetSnap.data().email === ownerEmail) {
-        return showCustomAlert("Eroare: Semnalul acestui utilizator este criptat la nivel guvernamental. Nu îl poți reduce la tăcere!", "EȘEC");
-    }
-
-    const confirm = await showCustomConfirm(`Vrei să îl reduci la tăcere pe ${targetName} timp de 60 secunde pentru 10 💎?`, "CONFIRMĂ SILENCE");
-    if (!confirm) return;
-
-    try {
-        const uid = auth.currentUser.uid;
-        
-        // 2. Pay and Set Cooldown for Sender
-        await updateDoc(doc(db, "accounts", uid), {
-            diamonds: increment(-10),
-            lastSilenceUsed: serverTimestamp()
-        });
-
-        // 3. Set Mute Timestamp for Victim
-        const muteUntil = Date.now() + (60 * 1000); // 1 Minute from now
-        await updateDoc(doc(db, "accounts", targetId), {
-            mutedUntil: muteUntil
-        });
-
-        // 4. Funny Kevin Bot Messages
-        const lines = [
-            `I-a pus cineva scoci la gură lui <b>${targetName}</b>! Mersi, <b>${window.currentUserData.username}</b>.`,
-            `<b>${window.currentUserData.username}</b> i-a tăiat cablul de net lui <b>${targetName}</b> pentru un minut!`,
-            `Liniște în sală! <b>${window.currentUserData.username}</b> l-a trimis pe <b>${targetName}</b> la colț.`,
-            `<b>${targetName}</b> a primit un mut instant de la <b>${window.currentUserData.username}</b>. Shhh! 🤫`
-        ];
-        const randomLine = lines[Math.floor(Math.random() * lines.length)];
-
-        await addDoc(collection(db, "wall_messages"), {
-            text: `<div style="text-align:center; color:#ff4757;"><i class="fas fa-microphone-slash"></i><br>${randomLine}</div>`,
-            uid: "kevin-bot-official",
-            name: "Kevin Bot",
-            photo: "https://images.squarespace-cdn.com/content/v1/68026d02ef3401024739f55f/345b1fcb-5942-4eb3-831f-b6a42b23051b/21584177-ae66-438a-a2cd-27dc4461a670_removalai_preview.png?format=300w",
-            isBot: true,
-            isSpecial: true,
-            equippedBanner: { id: "anim_blood", cssClass: "bubble-anim-blood" },
-            createdAt: serverTimestamp()
-        });
-
-        closeModal('donationListModal');
-        closeModal('blackMarketModal');
-        showCustomAlert(`${targetName} a fost redus la tăcere. Bucură-te de liniște!`, "PROTOCOL REUȘIT");
-
-    } catch (e) {
-        console.error(e);
-        showCustomAlert("Eroare la procesare.", "EROARE");
-    }
-};
-
-
 </script>
 </body>
 </html>
