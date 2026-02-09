@@ -4750,22 +4750,25 @@ window.toggleAutoRead = () => {
 };
 
 // --- ROBUST SPEECH ENGINE ---
+// --- ROBUST SPEECH ENGINE (FIXED FOR HTML) ---
 window.speakMessage = (text, msgId = null, force = false) => {
-    // 1. If this is a MANUAL click (Force), stop everything and speak NOW.
     if (force) {
-        window.speechSynthesis.cancel(); // Stop current speech
-        speechQueue = []; // Clear backlog
+        window.speechSynthesis.cancel();
+        speechQueue = [];
         isProcessingQueue = false;
     }
 
-    // 2. Prevent duplicates for Auto-Read (ignored if Force is true)
     if (!force && msgId && alreadyReadMessages.has(msgId)) return;
     if (msgId) alreadyReadMessages.add(msgId);
 
-    // 3. Add to queue
-    speechQueue.push(text);
+    // FIX: Această linie șterge tot ce e între < > (tag-urile HTML)
+    let cleanPlainText = text.replace(/<[^>]*>/g, " ").trim();
 
-    // 4. Start processor if idle
+    // Dacă după curățare nu mai rămâne text, nu are ce să citească
+    if (cleanPlainText.length < 1) return;
+
+    speechQueue.push(cleanPlainText);
+
     if (!isProcessingQueue) {
         processSpeechQueue();
     }
@@ -6302,7 +6305,7 @@ async function sendBotMessage(text, customClass = null) {
             // --- NEW: Apply Custom Class if provided ---
             equippedBanner: customClass ? { cssClass: customClass } : null
         });
-    } catch(e) { 
+    } catch(e) {  
         console.error("Bot fail", e); 
     }
 }
@@ -6792,17 +6795,22 @@ if (autoReadEnabled) {
             }
 
             // --- APPEND TEXT CONTENT (If applicable and not just a raw vocal) ---
-            if (data.text && data.type !== 'vocal') {
-                let cleanText = data.text
-                    .replace(/<br>/g, " ") 
-                    .replace(/@\w+/g, "") // Remove mentions
-                    .replace(/\p{Extended_Pictographic}/gu, ""); // Remove emojis
-                
-                // Cleanup symbols but keep Romanian letters & punctuation
-                cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, "").trim();
-                
-                textToRead += cleanText;
-            }
+    // Caută această parte în onSnapshot-ul din loadMessages():
+if (data.text && data.type !== 'vocal') {
+    // 1. STRIP ALL HTML TAGS (Aceasta oprește citirea div-urilor și style-urilor)
+    let cleanText = data.text.replace(/<[^>]*>/g, " ");
+
+    // 2. Continuă cu curățarea restului de caractere
+    cleanText = cleanText
+        .replace(/<br>/g, " ") 
+        .replace(/@\w+/g, "") // Scoate tag-urile de tip @User
+        .replace(/\p{Extended_Pictographic}/gu, ""); // Scoate emoji-urile
+    
+    // Cleanup final pentru simboluri, păstrând diacriticele românești
+    cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, " ").trim();
+    
+    textToRead += cleanText;
+}
 
             // 3. Queue it up!
             if (textToRead.trim().length > 1) {
