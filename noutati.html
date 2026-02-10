@@ -1718,6 +1718,19 @@ onAuthStateChanged(auth, async (user) => {
             if (!uSnap.exists()) return;
             const data = uSnap.data();
 
+
+          // --- START FIX: PROFILE PICTURE SYNC ---
+                // 1. Determine the correct image (Database > Google > Placeholder)
+                const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
+                // 2. Force Update Header Image
+                if (headerUserImg) headerUserImg.src = finalProfilePic;
+
+                // 3. Force Update Account Modal Image
+                const popImg = document.getElementById('popUserImg');
+                if (popImg) popImg.src = finalProfilePic;
+                // --- END FIX ---
+
             // A. LOGICĂ RESET & PIERDERE STREAK
             if (typeof resetUserQuests === "function") {
                 await resetUserQuests(userRef, data);
@@ -1951,38 +1964,44 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     // --- OPEN SEEN LIST ---
-    window.openSeenByList = async (id) => {
-        const modal = document.getElementById('seenModal');
-        const listDiv = document.getElementById('seenUsersList');
-        modal.classList.add('active');
-        listDiv.innerHTML = '<div style="text-align:center; color:#aaa;">Se încarcă...</div>';
+window.openSeenByList = async (id) => {
+    const modal = document.getElementById('seenModal');
+    const listDiv = document.getElementById('seenUsersList');
+    modal.classList.add('active');
+    listDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Se încarcă...</div>';
+    
+    try {
+        const postSnap = await getDoc(doc(db, "site_news", id));
+        if(!postSnap.exists()) return;
+        const uids = postSnap.data().seenBy || [];
         
-        try {
-            const postSnap = await getDoc(doc(db, "site_news", id));
-            if(!postSnap.exists()) return;
-            const uids = postSnap.data().seenBy || [];
-            
-            if(uids.length === 0) { listDiv.innerHTML = '<div style="text-align:center; color:#aaa;">Nimeni încă.</div>'; return; }
+        if(uids.length === 0) { 
+            listDiv.innerHTML = '<div style="text-align:center; padding:20px; color:#aaa;">Nimeni încă.</div>'; 
+            return; 
+        }
 
-            // Fetch user details for these UIDs
-            // Note: Firestore 'in' query supports max 10 items. For simplicity/scale, we fetch individually here or fetch all accounts.
-            // Better approach for small lists: fetch individual docs
-            listDiv.innerHTML = '';
-            // Limit to last 50 viewers to avoid heavy reads
-            const recentUids = uids.slice(-50).reverse(); 
-            
-            for(const uid of recentUids) {
-                const userSnap = await getDoc(doc(db, "accounts", uid));
-                if(userSnap.exists()) {
-                    const u = userSnap.data();
-                    const item = document.createElement('div');
-                    item.className = 'seen-user-item';
-                    item.innerHTML = `<img src="${u.image}" class="seen-user-img"><span>${u.username}</span>`;
-                    listDiv.appendChild(item);
-                }
+        listDiv.innerHTML = '';
+        const recentUids = uids.slice(-50).reverse(); 
+        
+        for(const uid of recentUids) {
+            const userSnap = await getDoc(doc(db, "accounts", uid));
+            if(userSnap.exists()) {
+                const u = userSnap.data();
+                
+                // --- FIX IMAGINE LISTĂ ---
+                const participantImg = u.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+                
+                const item = document.createElement('div');
+                item.className = 'seen-user-item';
+                item.innerHTML = `
+                    <img src="${participantImg}" class="seen-user-img">
+                    <span>${u.username || "Anonim"}</span>
+                `;
+                listDiv.appendChild(item);
             }
-        } catch(e) { console.error(e); listDiv.innerHTML = 'Eroare.'; }
-    }
+        }
+    } catch(e) { console.error(e); listDiv.innerHTML = 'Eroare.'; }
+}
 
     // --- COMMENTS LOGIC ---
     window.toggleComments = async (id) => {
@@ -2016,7 +2035,9 @@ window.postComment = async (id) => {
                 uid: auth.currentUser.uid, 
                 email: auth.currentUser.email, 
                 name: displayName, // Numele corect
-                photo: auth.currentUser.photoURL, 
+            photo: finalPic,
+            image: finalPic,
+
                 createdAt: serverTimestamp() 
             };
             await addDoc(collection(db, `site_news/${id}/comments`), commentData);
@@ -2033,6 +2054,8 @@ window.postComment = async (id) => {
         let bubbleClass = 'comment-item';
         let badge = '';
         const email = data.email || "";
+    const commenterImg = data.image || data.photo || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
 
         if(email === 'nicaemmanuel433qe@gmail.com') { 
             bubbleClass += ' com-owner'; 
@@ -2051,21 +2074,23 @@ else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.c
     badge = `<span class="helper-badge" style="font-size:8px; padding:1px 4px;"><i class="fas fa-hands-helping"></i> HELPER</span>`; 
 }
 
-        div.className = bubbleClass;
-        // ADDED PROFILE ICON BUTTON
-        div.innerHTML = `
-            <img src="${data.photo}" class="com-pfp">
-            <div class="com-content">
-                <div class="com-name">
-                    ${data.name} ${badge}
-                    <button class="view-profile-btn" onclick="openUserProfile('${data.uid}')"><i class="fas fa-user"></i></button>
-                </div>
-                <div class="com-text">${data.text}</div>
-            </div>`;
-        container.appendChild(div);
-    }
+   div.className = bubbleClass;
+    div.innerHTML = `
+        <img src="${commenterImg}" class="com-pfp">
+        <div class="com-content">
+            <div class="com-name">
+                ${data.name} ${badge}
+                <button class="view-profile-btn" onclick="openUserProfile('${data.uid}')"><i class="fas fa-user"></i></button>
+            </div>
+            <div class="com-text">${data.text}</div>
+        </div>`;
+    container.appendChild(div);
+}
 
     function renderPost(data) {
+
+    const postAuthorImg = data.image || data.photo || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
         const div = document.createElement('div');
         let cardClass = 'post-card';
         let badge = '';
@@ -2131,7 +2156,7 @@ else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.c
 
         div.innerHTML = `
             <div class="post-header">
-                <img src="${data.photo}" class="post-pfp">
+            <img src="${postAuthorImg}" class="post-pfp">
                 <div class="post-name">
                     ${data.name} ${badge}
                     <button class="view-profile-btn" onclick="openUserProfile('${data.uid}')"><i class="fas fa-user"></i></button>
@@ -2190,7 +2215,9 @@ adminPostBtn.onclick = async () => {
                 uid: auth.currentUser.uid, 
                 name: displayName, // Numele corect
                 email: auth.currentUser.email, 
-                photo: auth.currentUser.photoURL, 
+            photo: window.myCurrentPfp || auth.currentUser.photoURL,
+            image: window.myCurrentPfp || auth.currentUser.photoURL,
+
                 createdAt: serverTimestamp(), 
                 isOwner: auth.currentUser.email === 'nicaemmanuel433qe@gmail.com',
                 seenBy: [auth.currentUser.uid] 
