@@ -1924,25 +1924,32 @@ else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.c
 
 window.postGalleryComment = async (imgId) => {
         if (!auth.currentUser) return alert("Trebuie să fii logat!");
+        
         const input = document.getElementById(`inp-${imgId}`);
         const sendBtn = document.querySelector(`#com-sec-${imgId} .card-send-btn`);
+        
+        // Cooldown Logic
         const lastCommentTime = localStorage.getItem('last_comment_time');
         const now = Date.now();
-        const cooldownDuration = 10000;
+        const cooldownDuration = 10000; // 10 seconds
 
         if (lastCommentTime && (now - parseInt(lastCommentTime) < cooldownDuration)) {
-            const remaining = Math.ceil((cooldownDuration - (now - parseInt(lastCommentTime))) / 1000);
-        triggerInputCooldown(input, sendBtn, 10); // MODIFICAT DE LA 60 LA 10
+            triggerInputCooldown(input, sendBtn, 10);
+            return;
         }
 
         const text = input.value.trim();
         if(!text) return;
 
         try {
-            // LUĂM DATELE DIN DB PENTRU NUME
+            // 1. OBTINEM DATELE UTILIZATORULUI (Inclusiv imaginea noua)
             const userDocSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             const userData = userDocSnap.data();
+            
             const displayName = userData.username || auth.currentUser.displayName;
+            
+            // --- FIX DEFINITIV: Definim variabila AICI, la inceput ---
+            const displayPic = userData.image || auth.currentUser.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
 
             if(typeof window.flyCoins === "function" && sendBtn) window.flyCoins(sendBtn);
 
@@ -1950,32 +1957,35 @@ window.postGalleryComment = async (imgId) => {
             const snap = await getDoc(metaRef);
             if(!snap.exists()) await setDoc(metaRef, { votes: {} });
 
-            // SALVĂM COMENTARIUL CU NUMELE DIN SHOP
+            // 2. SALVAM IN BAZA DE DATE (Folosind displayPic)
             await addDoc(collection(db, `gallery_meta/${imgId}/comments`), {
                 text: text,
                 uid: auth.currentUser.uid,
                 email: auth.currentUser.email,
-                name: displayName, // Numele corect
-                photo: displayPic, // <--- THIS IS THE FIX (Was auth.currentUser.photoURL)
+                name: displayName, 
+                photo: displayPic, 
                 createdAt: serverTimestamp()
             });
 
-            // Update UI local imediat
+            // 3. ACTUALIZAM UI-UL LOCAL (Folosind displayPic)
             const email = auth.currentUser.email;
             let bubbleClass = 'mini-comment';
             let badge = '';
+            
             if(email === 'nicaemmanuel433qe@gmail.com') { bubbleClass += ' mini-owner'; badge = `<span class="owner-badge">OWNER</span>`; }
             else if(email === 'kevin.trinity2020@gmail.com') { bubbleClass += ' mini-admin'; badge = `<span class="admin-badge">ADMIN</span>`; }
-
-else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.com' || email === 'violetaflorentinadima@gmail.com' || email === 'biggycelmic.115@gmail.com') {
-    bubbleClass += ' mini-helper';
-    badge = `<span class="helper-badge">HELPER</span>`;
-}
+            else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.com' || email === 'violetaflorentinadima@gmail.com' || email === 'biggycelmic.115@gmail.com') {
+                bubbleClass += ' mini-helper';
+                badge = `<span class="helper-badge">HELPER</span>`;
+            }
             
             const listDiv = document.getElementById(`list-${imgId}`);
             const div = document.createElement('div');
             div.className = bubbleClass;
-            div.innerHTML = `<img src="${auth.currentUser.photoURL}" class="mini-com-pfp"><div class="mini-com-body"><div class="mini-com-name">${displayName} ${badge}</div><div class="mini-com-text">${text}</div></div>`;
+            
+            // Aici era eroarea: Acum displayPic exista sigur
+            div.innerHTML = `<img src="${displayPic}" class="mini-com-pfp"><div class="mini-com-body"><div class="mini-com-name">${displayName} ${badge}</div><div class="mini-com-text">${text}</div></div>`;
+            
             listDiv.appendChild(div);
             listDiv.scrollTop = listDiv.scrollHeight;
 
@@ -1983,13 +1993,13 @@ else if(email === 'norbyims@gmail.com' || email === 'promovarideafaceri7@gmail.c
             countSpan.innerText = (parseInt(countSpan.innerText) || 0) + 1;
             countSpan.classList.add('visible'); 
 
-// --- LOG TRANSACTION (+5 Coins) ---
             await logTransaction(5, "COINS", "COMMENT REWARD: Galerie");
 
-            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { galleryCommentsToday: increment(1), coins: increment(5) });            localStorage.setItem('last_comment_time', Date.now());
-            triggerInputCooldown(input, sendBtn, 60);
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), { galleryCommentsToday: increment(1), coins: increment(5) });            
+            localStorage.setItem('last_comment_time', Date.now());
+            triggerInputCooldown(input, sendBtn, 10);
 
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error("Eroare la postare comentariu:", e); }
     };
 
 // MODIFICARE PENTRU REDIRECȚIONARE
