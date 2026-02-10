@@ -6030,7 +6030,7 @@ window.selectAdminCurrency = (type) => {
     }
 };
 
-// 2. Executare Acțiune (Add / Remove)
+// --- ADMIN ACTION FIX (Reads buttons directly to avoid bugs) ---
 window.executeAdminAction = async (action) => {
     if(!selectedAdminTargetUid) return alert("Selectează un utilizator mai întâi!");
     
@@ -6038,7 +6038,6 @@ window.executeAdminAction = async (action) => {
     const reasonInput = document.getElementById('adminReason');
     const amountVal = amountInput.value.trim();
 
-    // Verificăm dacă suma este un număr valid
     if(!amountVal || isNaN(amountVal) || Number(amountVal) <= 0) {
         return alert("Introdu o sumă validă (număr pozitiv)!");
     }
@@ -6046,49 +6045,49 @@ window.executeAdminAction = async (action) => {
     const amount = parseInt(amountVal);
     const finalAmount = action === 'add' ? amount : -amount;
     
-    // Blocăm panelul pentru a preveni dublu-click
+    // SAFETY CHECK: Read which button is active directly from DOM
+    const isDiamond = document.getElementById('btnSelDiamond').classList.contains('active');
+    const dbField = isDiamond ? 'diamonds' : 'coins'; 
+
+    console.log(`ADMIN ACTION: ${action} ${amount} to ${dbField} for ${selectedAdminTargetUid}`);
+
     const panel = document.getElementById('adminActionPanel');
     panel.style.opacity = '0.5';
     panel.style.pointerEvents = 'none';
 
     try {
         const userRef = doc(db, "accounts", selectedAdminTargetUid);
-        const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
         
-        const targetName = targetUser ? targetUser.username : "Utilizator";
-        const targetImg = targetUser ? targetUser.pfp : "https://i.ibb.co/XyqWk9N/def-user.png";
-        const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
-
-        // IMPORTANT: Verificăm că avem cheia corectă (coins sau diamonds)
-        const dbField = selectedAdminCurrency; 
-
-        // Update în Firebase
+        // 1. UPDATE CURRENCY
         await updateDoc(userRef, {
             [dbField]: increment(finalAmount)
         });
 
-        // Adăugare în Istoric Tranzacții
+        // 2. LOG TRANSACTION
+        const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
+        const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
+        
         await addDoc(collection(db, "transactions"), {
             userId: selectedAdminTargetUid,
-            username: targetName,
-            userImage: targetImg,
+            username: targetUser ? targetUser.username : "User",
+            userImage: targetUser ? targetUser.pfp : "https://i.ibb.co/XyqWk9N/def-user.png",
             amount: finalAmount,
-            type: selectedAdminCurrency === 'coins' ? 'COINS' : 'DIAMONDS',
+            type: isDiamond ? 'DIAMONDS' : 'COINS',
             source: "System", 
             description: `Admin (${adminName}): ${reasonInput.value || (action === 'add' ? 'Bonus' : 'Sancțiune')}`,
             timestamp: serverTimestamp()
         });
 
-        alert(`Succes! Am ${action === 'add' ? 'adăugat' : 'scăzut'} ${amount} ${selectedAdminCurrency}.`);
+        alert(`Succes! Am ${action === 'add' ? 'adăugat' : 'scăzut'} ${amount} ${dbField.toUpperCase()}.`);
         
-        // Resetăm inputul
+        // Refresh UI
         amountInput.value = '';
         reasonInput.value = '';
         
-        // Actualizăm vizual cardul utilizatorului selectat dacă e în cache
+        // Update the visual card immediately
         if(targetUser) {
-             if(selectedAdminCurrency === 'coins') targetUser.coins += finalAmount;
-             else targetUser.diamonds += finalAmount;
+             if(isDiamond) targetUser.diamonds += finalAmount;
+             else targetUser.coins += finalAmount;
              
              document.getElementById('selUserCoins').innerText = formatCurrency(targetUser.coins);
              document.getElementById('selUserDiamonds').innerText = formatCurrency(targetUser.diamonds);
@@ -6096,7 +6095,8 @@ window.executeAdminAction = async (action) => {
 
     } catch(e) {
         console.error("Eroare Admin Balance:", e);
-        alert("Eroare la procesare: " + e.message);
+        // Show the exact permission error
+        alert("EROARE PERMISIUNI: " + e.message + "\n\nVerifică dacă ești logat cu contul de Owner/Admin!");
     } finally {
         panel.style.opacity = '1';
         panel.style.pointerEvents = 'all';
