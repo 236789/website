@@ -4010,38 +4010,49 @@ function handleAnswer(selectedIndex, btnElement) {
 
     // 6. End Game
 function endGame() {
-        // --- ADDED FIXES START ---
-        triviaState.active = false;       // Deactivates the game so clicks stop
-        clearInterval(triviaState.timer);  // Stops the 15-second countdown
-        // --- ADDED FIXES END ---
+    // 1. Dezactivăm starea jocului și oprim cronometrul
+    triviaState.active = false;
+    clearInterval(triviaState.timer);
 
-        window.showScreen('screenResult');
-        
-        // Populate Result Data
-        if(auth.currentUser) {
-            document.getElementById('resPfp').src = auth.currentUser.photoURL;
-            document.getElementById('resName').innerText = auth.currentUser.displayName;
+    // 2. Schimbăm ecranul către rezultate
+    window.showScreen('screenResult');
+
+    // 3. Preluăm datele custom din variabila globală (salvată în onSnapshot)
+    const d = window.currentUserData || {};
+    
+    // Determinăm imaginea de profil (Prioritate: DB > Google > Placeholder)
+    const finalProfilePic = d.image || auth.currentUser?.photoURL || "https://iili.io/fXks1Dv.png";
+    
+    // Determinăm numele (Prioritate: Numele din Shop > Numele Google)
+    const finalDisplayName = d.username || auth.currentUser?.displayName || "Jucător";
+
+    // 4. Actualizăm elementele vizuale ale ecranului de rezultate
+    const resPfp = document.getElementById('resPfp');
+    const resName = document.getElementById('resName');
+
+    if (resPfp) resPfp.src = finalProfilePic;
+    if (resName) {
+        // Dacă ai o culoare de text echipată, o aplicăm și aici
+        if (d.equippedText && d.equippedText.cssClass) {
+            resName.innerHTML = `<span class="${d.equippedText.cssClass}">${finalDisplayName}</span>`;
+        } else {
+            resName.innerText = finalDisplayName;
         }
-        
-        document.getElementById('resCorrect').innerText = triviaState.correctCount;
-        document.getElementById('resWrong').innerText = triviaState.wrongCount;
-        document.getElementById('resCoins').innerText = triviaState.score; // Total earned
+    }
 
-        const collectBtn = document.getElementById('collectRewardBtn');
+    // 5. Populăm statisticile scorului
+    document.getElementById('resCorrect').innerText = triviaState.correctCount;
+    document.getElementById('resWrong').innerText = triviaState.wrongCount;
+    document.getElementById('resCoins').innerText = triviaState.score; // Total monede câștigate
+
+    // 6. Resetăm butonul de colectare premiu
+    const collectBtn = document.getElementById('collectRewardBtn');
+    if (collectBtn) {
         collectBtn.innerText = "COLECTEAZĂ";
         collectBtn.disabled = false;
         collectBtn.style.opacity = "1";
-
-
-
-
-    if(auth.currentUser) {
-        // Folosim datele din window.currentUserData încărcate deja în onSnapshot
-        const d = window.currentUserData || {};
-        document.getElementById('resPfp').src = d.image || auth.currentUser.photoURL || "https://iili.io/fXks1Dv.png";
-        document.getElementById('resName').innerText = d.username || auth.currentUser.displayName;
     }
-    }
+}
 
 window.collectReward = async () => {
     if(!auth.currentUser || triviaState.score === 0) return;
@@ -4249,6 +4260,7 @@ window.initMultiplayer = async () => {
         
         // Use custom name from shop if it exists, otherwise Google name
         const finalName = userData.username || user.displayName;
+        const finalPic = userData.image || user.photoURL || "https://iili.io/fXks1Dv.png";
 
         if(docSnap.exists()) {
             const data = docSnap.data();
@@ -4276,7 +4288,7 @@ window.initMultiplayer = async () => {
             players: arrayUnion({
                 uid: user.uid,
                 name: finalName,
-        pic: finalPic, // MODIFICAT: folosim finalPic (DB prima dată)
+                pic: finalPic, // Folosim variabila definită mai sus
                 score: 0,
                 cosmetics: {
                     banner: userData.equippedBanner || null,
@@ -4584,12 +4596,13 @@ async function handleMultiAnswer(selectedIndex, pickedText, correctIndex, btnEle
         const userSnap = await getDoc(doc(db, "accounts", user.uid));
         const userData = userSnap.data() || {};
         const finalName = userData.username || user.displayName; 
+        const finalPic = userData.image || user.photoURL || "https://iili.io/fXks1Dv.png";
 
         await updateDoc(lobbyRef, {
             roundVotes: arrayUnion({
                 uid: user.uid,
                 name: finalName, // Uses custom name
-        pic: finalPic, // MODIFICAT: folosim finalPic
+                pic: finalPic, // Folosim variabila definită mai sus
                 correct: isCorrect,
                 time: timeTaken,
                 picked: pickedText,
