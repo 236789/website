@@ -5434,7 +5434,8 @@ function renderOnlineList() {
         let frameHtml = '';
         if(u.equippedFrame && u.equippedFrame.img) {
             const scale = u.equippedFrame.scale || 1.45;
-            frameHtml = `<img src="${u.equippedFrame.img}" class="list-frame-overlay" style="width:${scale*100}%; height:${scale*100}%">`;
+            const sizePct = scale * 100;
+            frameHtml = `<img src="${u.equippedFrame.img}" class="list-frame-overlay" style="width:${sizePct}%; height:${sizePct}%">`;
         }
 
         // --- NEW: COLORED TEXT LOGIC ---
@@ -5456,12 +5457,16 @@ function renderOnlineList() {
             staffBadge = ` <span class="helper-badge" style="font-size:8px; padding:1px 4px;">HELPER</span>`;
         }
 
+        // --- MASTER IMAGE LOGIC ---
+        // Folosim u.image care conține URL-ul custom sau cel de la Google salvat în DB
+        const listImg = u.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
         let cosmeticHtml = getCosmeticBadge(u.equippedBadge);
         let locationIcon = (u.currentPage === 'wall') ? '<i class="fas fa-comment-dots" style="font-size:10px; color:var(--primary); margin-left:5px;" title="Pe Wall"></i>' : '';
 
         div.innerHTML = `
             <div class="list-avatar-wrapper">
-                <img src="${u.image}" class="list-avatar-img">
+                <img src="${listImg}" class="list-avatar-img">
                 ${frameHtml}
             </div>
             <div style="margin-left:10px; flex:1;">
@@ -5604,17 +5609,21 @@ if (isOwner || isAdmin || isMod || isHelper) {
                 const data = docSnap.data();
 
 // --- START FIX: PROFILE PICTURE SYNC ---
-                // 1. Determine the correct image (Database > Google > Placeholder)
-                const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
 
-                // 2. Force Update Header Image
-                if (headerUserImg) headerUserImg.src = finalProfilePic;
+// 1. Update Header Small PFP
+if (headerUserImg) headerUserImg.src = finalProfilePic;
 
-                // 3. Force Update Account Modal Image
-                const popImg = document.getElementById('popUserImg');
-                if (popImg) popImg.src = finalProfilePic;
-                // --- END FIX ---
+// 2. Update Chat Header (Top bar inside the card)
+if (userAvatar) userAvatar.src = finalProfilePic;
 
+// 3. Update Account Modal PFP
+const popImg = document.getElementById('popUserImg');
+if (popImg) popImg.src = finalProfilePic;
+
+// Salvează global pentru a fi folosită la trimiterea mesajelor
+window.myCurrentPfp = finalProfilePic;
+// --- END FIX ---
 
               
                 if (typeof resetUserQuests === "function") {
@@ -6043,11 +6052,13 @@ async function uploadVoiceMessage(blob) {
 async function sendVoiceToFirestore(audioUrl) {
     const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
     const userData = userSnapshot.data();
+    const finalPic = userData.image || auth.currentUser.photoURL;
+
 
     await addDoc(collection(db, "wall_messages"), {
         uid: auth.currentUser.uid,
         name: userData.username || auth.currentUser.displayName,
-        photo: auth.currentUser.photoURL, // Salvează poza
+        photo: finalPic, // MODIFICAT: Aici punem poza custom
         audioUrl: audioUrl,
         type: 'vocal',
         createdAt: serverTimestamp(),
@@ -6139,7 +6150,7 @@ async function sendMessage() {
             text: text,
             uid: auth.currentUser.uid,
             name: displayName,
-            photo: auth.currentUser.photoURL,
+    photo: window.myCurrentPfp || auth.currentUser.photoURL, 
             email: auth.currentUser.email,
             ip: userIP || "unknown",
             isAdmin: isAdmin, 
@@ -7370,9 +7381,9 @@ window.openUserProfile = async (uid) => {
         if(!snap.exists()) return;
         const data = snap.data();
         
-        // 1. Image & Frame
-        const ownerImg = data.image || "https://iili.io/fXks1Dv.png";
-        document.getElementById('viewUserImg').src = ownerImg;
+// În interiorul openUserProfile:
+const ownerImg = data.image || "https://iili.io/fXks1Dv.png"; // Preluăm din field-ul custom
+document.getElementById('viewUserImg').src = ownerImg;
         
         const viewFrame = document.getElementById('viewUserFrame');
         if (data.equippedFrame && data.equippedFrame.img) {
@@ -7457,14 +7468,24 @@ async function fetchUserDataForHistory(uid, fallbackName) {
             if (d.equippedText && d.equippedText.cssClass) {
                 nameHtml = `<span class="${d.equippedText.cssClass}">${nameHtml}</span>`;
             }
+
+            // --- MASTER IMAGE LOGIC ---
+            // Prioritate: Imaginea custom din DB, apoi placeholder
+            const finalImg = d.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
             return {
-                img: d.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png",
+                img: finalImg,
                 name: nameHtml
             };
         }
-    } catch (e) { console.log(e); }
+    } catch (e) { 
+        console.log("Error fetching history user:", e); 
+    }
     
-    return { img: "https://i.ibb.co/4pGm9S2/user-placeholder.png", name: fallbackName };
+    return { 
+        img: "https://i.ibb.co/4pGm9S2/user-placeholder.png", 
+        name: fallbackName 
+    };
 }
 
 // --- 1. REFERRAL HISTORY (VISUAL) ---
