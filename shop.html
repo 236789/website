@@ -6497,55 +6497,48 @@ onAuthStateChanged(auth, async user => {
         }
 
         // Ascultă datele în timp real
+// Ascultă datele în timp real
         onSnapshot(userRef, async (snap) => {
             if(snap.exists()) {
                 const d = snap.data();
-
-
-// --- START OF FIX ---
-
-// 1. Define the correct image priority (Database > Google > Placeholder)
-const finalProfilePic = d.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-
-// 2. FORCE UPDATE THE HEADER (This is what was missing)
-if (headerImg) headerImg.src = finalProfilePic;
-
-// 3. Update Shop Hero Image (Replace your old line)
-if(shopImg) shopImg.src = finalProfilePic;
-
-// 4. Update Account Modal Image (Replace your old line)
-const popImg = document.getElementById('popUserImg');
-if (popImg) popImg.src = finalProfilePic;
-
-// --- END OF FIX ---
-
-
-                window.currentUserData = d; // Global save for currency switching
+                window.currentUserData = d; 
                 
                 await resetUserQuests(userRef, d);
 
-                // --- SYNC MOBILE BUTTON TEXT ---
-                if (mobileText) {
-                    mobileText.innerText = (d.username || "ACCOUNT").toUpperCase();
-                }
-
-                // --- UPDATE SHOP HERO BUBBLE (FIXED) ---
+                // 1. DEFINE VARIABLES FIRST (This fixes the error)
                 const shopCard = document.getElementById('shopUserCard');
                 const shopName = document.getElementById('shopUserName');
                 const shopImg = document.getElementById('shopUserImg');
                 const shopHeroFrame = document.getElementById('shopHeroFrame');
+                const popImg = document.getElementById('popUserImg');
+                const popName = document.getElementById('popUserName');
+                const popUserFrame = document.getElementById('popUserFrame');
+                const streakLabel = document.querySelector('.streak-txt');
 
-                // Aplică stilul Banner-ului pe bulă
-                if(shopCard) shopCard.className = 'user-stats-card ' + (d.equippedBanner?.cssClass || '');
+                // 2. DEFINE THE MASTER IMAGE (Database > Google > Placeholder)
+                const finalProfilePic = d.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
+                // 3. FORCE UPDATE ALL IMAGES
+                // Header Image
+                if (headerImg) headerImg.src = finalProfilePic;
                 
-                // Aplică stilul Text-ului pe nume
+                // Mobile Menu Text
+                if (mobileText) mobileText.innerText = (d.username || "ACCOUNT").toUpperCase();
+
+                // Header Text
+                if(headerText) {
+                    headerText.innerText = (d.username || "").toUpperCase();
+                    headerText.className = 'login-btn-header ' + (d.equippedText?.cssClass || '');
+                }
+
+                // Shop Hero Section
+                if(shopCard) shopCard.className = 'user-stats-card ' + (d.equippedBanner?.cssClass || '');
                 if(shopName) {
                     shopName.innerText = d.username || user.displayName;
                     shopName.className = (d.equippedText?.cssClass || '');
                 }
-
-                // Update Poză & Ramă în Hero
-                if(shopImg) shopImg.src = d.image || user.photoURL;
+                if(shopImg) shopImg.src = finalProfilePic; // <--- Now this works!
+                
                 if(shopHeroFrame) {
                     if (d.equippedFrame?.img) {
                         shopHeroFrame.src = d.equippedFrame.img;
@@ -6553,30 +6546,24 @@ if (popImg) popImg.src = finalProfilePic;
                     } else { shopHeroFrame.style.display = "none"; }
                 }
 
-                // Actualizează afișarea monedelor în bulă
                 refreshShopHeroCurrency();
 
-                // --- Modal & Header Sync ---
-                if(headerText) {
-                    headerText.innerText = (d.username || "").toUpperCase();
-                    headerText.className = 'login-btn-header ' + (d.equippedText?.cssClass || '');
+                // Account Modal (Popup)
+                if (popImg) popImg.src = finalProfilePic;
+                
+                if (popName) {
+                    popName.innerText = d.username;
+                    popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
                 }
-
-                document.getElementById('popUserImg').src = d.image || user.photoURL;
-                const popName = document.getElementById('popUserName');
-                popName.innerText = d.username;
-                popName.className = 'pop-user ' + (d.equippedText?.cssClass || '');
                 
-                document.getElementById('popUserCoins').innerText = formatCurrency(d.coins || 0);
-                document.getElementById('popUserDiamonds').innerText = formatCurrency(d.diamonds || 0);
+                if(document.getElementById('popUserCoins')) document.getElementById('popUserCoins').innerText = formatCurrency(d.coins || 0);
+                if(document.getElementById('popUserDiamonds')) document.getElementById('popUserDiamonds').innerText = formatCurrency(d.diamonds || 0);
                 
-                const popUserFrame = document.getElementById('popUserFrame');
                 if(popUserFrame && d.equippedFrame?.img) {
                     popUserFrame.src = d.equippedFrame.img;
                     popUserFrame.style.display = "block";
                 }
 
-                const streakLabel = document.querySelector('.streak-txt');
                 if(streakLabel) streakLabel.innerText = `Daily Streak: ${d.streak || 0}`;
             }
         });
