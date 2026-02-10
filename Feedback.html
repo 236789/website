@@ -4015,13 +4015,10 @@ async function fetchUserDataForHistory(uid, fallbackName) {
         const snap = await getDoc(doc(db, "accounts", uid));
         if (snap.exists()) {
             const d = snap.data();
-            let nameHtml = d.username || fallbackName;
-            if (d.equippedText && d.equippedText.cssClass) {
-                nameHtml = `<span class="${d.equippedText.cssClass}">${nameHtml}</span>`;
-            }
             return {
+                // Ensure this pulls d.image
                 img: d.image || "https://i.ibb.co/4pGm9S2/user-placeholder.png",
-                name: nameHtml
+                name: d.username || fallbackName
             };
         }
     } catch (e) {}
@@ -4309,6 +4306,20 @@ async function resetUserQuests(userRef, snapData) {
             onSnapshot(userRef, async (snap) => {
                 if(!snap.exists()) return;
                 const data = snap.data();
+
+
+
+              // --- START FIX: PROFILE PICTURE SYNC ---
+                // 1. Determine the correct image (Database > Google > Placeholder)
+                const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
+                // 2. Force Update Header Image
+                if (headerUserImg) headerUserImg.src = finalProfilePic;
+
+                // 3. Force Update Account Modal Image
+                const popImg = document.getElementById('popUserImg');
+                if (popImg) popImg.src = finalProfilePic;
+                // --- END FIX ---
 
                 // --- LOGICĂ RESETARE / PIERDERE STREAK ---
                 if (typeof resetUserQuests === "function") {
@@ -4788,7 +4799,8 @@ sendBtn.onclick = async () => {
             const userSnapshot = await getDoc(doc(db, "accounts", uid));
             const userData = userSnapshot.data();
             const displayName = userData.username || auth.currentUser.displayName;
-            
+            const finalProfilePic = userData.image || auth.currentUser.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+
             // Cosmetics
             const equippedBadge = userData.equippedBadge || null;
             const equippedBanner = userData.equippedBanner || null;
@@ -4798,7 +4810,7 @@ sendBtn.onclick = async () => {
             const feedbackData = { 
                 text: text, 
                 name: displayName,
-                photo: auth.currentUser.photoURL, 
+        photo: finalProfilePic, // Now it uses the custom one!
                 email: auth.currentUser.email, 
                 uid: uid, 
                 ip: userIP || "unknown", 
@@ -5060,6 +5072,7 @@ window.postComment = async (id) => {
         try {
             const uSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             const uData = uSnapshot.data();
+    const finalProfilePic = uData.image || auth.currentUser.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
             const displayName = uData.username || auth.currentUser.displayName;
             const equippedBadge = uData.equippedBadge || null;
             const equippedBanner = uData.equippedBanner || null;
@@ -5071,7 +5084,7 @@ window.postComment = async (id) => {
                 uid: auth.currentUser.uid, 
                 name: displayName,
                 email: auth.currentUser.email,
-                photo: auth.currentUser.photoURL, 
+        photo: finalProfilePic, // Now it uses the custom one!
                 ip: userIP || "unknown", 
                 createdAt: serverTimestamp(),
                 equippedBadge: equippedBadge,
