@@ -4346,6 +4346,35 @@ input:checked + .slider:before { transform: translateX(16px); }
     box-shadow: 0 0 15px #fff;
 }
 
+
+/* --- ELITE BUY ALL BUTTON --- */
+.elite-buy-all-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(90deg, #02050a, #001a15, #02050a);
+    border: 1px solid #00ffcc;
+    color: #00ffcc;
+    font-family: 'Orbitron';
+    font-weight: 900;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    box-shadow: 0 0 15px rgba(0, 255, 204, 0.1);
+    transition: 0.3s;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+}
+
+.elite-buy-all-btn:hover {
+    background: #00ffcc;
+    color: #000;
+    box-shadow: 0 0 40px rgba(0, 255, 204, 0.6);
+    letter-spacing: 3px;
+}
+
+
   </style>
 </head>
 <body>
@@ -8161,11 +8190,35 @@ window.renderEliteItems = async (category) => {
     const data = snap.data();
     const owned = (category === 'badges') ? (data.ownedBadges || []) : (data.ownedBanners || []);
 
-    // Pick array based on category
     const items = (category === 'badges') ? ELITE_BADGES : ELITE_BANNERS;
     
     list.innerHTML = '';
 
+    // --- 1. INSERT BUY ALL BUTTON ---
+    // Only show if there are items left to buy
+    const unownedItems = items.filter(i => !owned.includes(i.id));
+    if (unownedItems.length > 0) {
+        const totalCost = unownedItems.reduce((sum, i) => sum + i.price, 0);
+        
+        // Calculate a discount price (optional, or just sum)
+        // Let's just show the sum for now
+        
+        list.innerHTML += `
+            <div style="grid-column: 1 / -1; margin-bottom: 10px;">
+                <button onclick="window.buyAllElite('${category}')" class="elite-buy-all-btn">
+                    <i class="fas fa-shopping-cart"></i> BUY ALL (${totalCost} 💎)
+                </button>
+            </div>
+        `;
+    } else {
+        list.innerHTML += `
+             <div style="grid-column: 1 / -1; margin-bottom: 10px; text-align:center; color:#00ffcc; font-family:'Orbitron'; font-size:12px;">
+                COLECȚIE COMPLETĂ <i class="fas fa-check-circle"></i>
+            </div>
+        `;
+    }
+
+    // --- 2. RENDER ITEMS ---
     items.forEach(item => {
         const isOwned = owned.includes(item.id);
         const card = document.createElement('div');
@@ -8179,6 +8232,7 @@ window.renderEliteItems = async (category) => {
                 </div>
             `;
         } else {
+            // Render banner
             visual = `
                 <div class="${item.cssClass}" style="width:100%; height:50px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:10px;">
                     ${item.name}
@@ -8186,7 +8240,6 @@ window.renderEliteItems = async (category) => {
             `;
         }
 
-        // Diamond Icon
         const diamIcon = `<img src="https://iili.io/fv5bmtj.png">`;
 
         card.innerHTML = `
@@ -8201,6 +8254,61 @@ window.renderEliteItems = async (category) => {
         `;
         list.appendChild(card);
     });
+};
+
+
+window.buyAllElite = async (category) => {
+    if (!auth.currentUser) return;
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const snap = await getDoc(userRef);
+    const data = snap.data();
+
+    // Determine config
+    const database = (category === 'badges') ? ELITE_BADGES : ELITE_BANNERS;
+    const ownedField = (category === 'badges') ? 'ownedBadges' : 'ownedBanners';
+    const currentOwned = data[ownedField] || [];
+
+    // Filter what needs to be bought
+    const itemsToBuy = database.filter(item => !currentOwned.includes(item.id));
+    
+    if (itemsToBuy.length === 0) return showCustomAlert("Ai deja totul!", "INFO");
+
+    // Calculate Total Cost
+    const totalCost = itemsToBuy.reduce((sum, item) => sum + item.price, 0);
+
+    // Confirmation
+    const confirm = await showCustomConfirm(
+        `Cumperi ${itemsToBuy.length} obiecte pentru ${totalCost} DIAMANTE?`, 
+        "CUMPĂRĂ TOT"
+    );
+    
+    if (!confirm) return;
+
+    // Check Balance
+    if ((data.diamonds || 0) < totalCost) {
+        return showCustomAlert(`Nu ai destule diamante! (Ai: ${data.diamonds}, Necesar: ${totalCost})`, "SĂRĂCIE");
+    }
+
+    try {
+        const newIds = itemsToBuy.map(i => i.id);
+
+        await updateDoc(userRef, {
+            diamonds: increment(-totalCost),
+            [ownedField]: arrayUnion(...newIds)
+        });
+
+        await logTransaction(-totalCost, "DIAMONDS", "Black Market", `Bought ALL Elite ${category}`);
+
+        showCustomAlert("Tranzacție masivă reușită! Ești o legendă.", "DOMINAȚIE TOTALĂ");
+        
+        // Refresh Grid
+        window.renderEliteItems(category);
+
+    } catch (e) {
+        console.error(e);
+        showCustomAlert("Eroare la procesare.", "FAIL");
+    }
 };
 
 window.buyEliteItem = async (category, id, price, name) => {
