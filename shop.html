@@ -4445,6 +4445,44 @@ input:checked + .slider:before { transform: translateX(16px); }
     50% { filter: brightness(1.4); }
     100% { filter: brightness(1); }
 }
+
+
+/* FIX MOBILE: 1 per row in Elite Shop to prevent text cutting */
+@media (max-width: 768px) {
+    #eliteShopContent {
+        grid-template-columns: 1fr !important; /* 1 per row on mobile */
+        padding: 10px !important;
+    }
+    
+    .elite-card-item {
+        min-height: 180px !important;
+        padding: 25px !important;
+    }
+
+    .badge-elite {
+        font-size: 14px !important; /* Text mai vizibil */
+        padding: 12px 25px !important;
+    }
+}
+
+/* Stilul UNITAR pentru Badge-uri Elite (Shop + Inventar) */
+.badge-elite {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 13px;
+    text-transform: uppercase;
+    background: rgba(0,0,0,0.85);
+    border-width: 2px;
+    border-style: solid;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    transition: 0.3s;
+    box-shadow: 0 0 15px currentColor;
+}
   </style>
 </head>
 <body>
@@ -6750,7 +6788,7 @@ window.openInventory = async (type = 'badges') => {
 
     list.innerHTML = '';
 
-// --- 1. BADGES (Elite vs Standard Logic) ---
+    // --- 1. BADGES (Elite Styles Fixed) ---
     if(type === 'badges') {
         const ownedIds = data.ownedBadges || [];
         const equipped = data.equippedBadge?.id || null;
@@ -6762,7 +6800,7 @@ window.openInventory = async (type = 'badges') => {
             if(!badge) return;
             
             const isEquipped = (id === equipped);
-            // Aceasta este verificarea crucială:
+            // FIX CRITIC: Detectăm orice insignă Elite (b_el_) sau God
             const isElite = id.startsWith('b_el_') || id === 'b_wheel_god' || id.startsWith('b_wheel'); 
 
             const item = document.createElement('div');
@@ -6770,14 +6808,14 @@ window.openInventory = async (type = 'badges') => {
             
             let visual = '';
             if(isElite) {
-                // RENDER ELITE (Exact ca în Shop, cu border colorat și glow)
+                // APLICĂ STILUL SICK (Exact ca în shop)
                 visual = `
                     <div class="badge-elite" style="border-color: ${badge.color}; color: ${badge.color}; box-shadow: 0 0 20px ${badge.color};">
                         <i class="fas ${badge.icon}"></i> ${badge.text}
                     </div>
                 `;
             } else {
-                // RENDER STANDARD (Cel mic și simplu)
+                // Stil Standard (Insigne ieftine)
                 visual = `
                     <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 5px ${badge.color}; width:100%; display:block;">
                         <i class="fas ${badge.icon}"></i> ${badge.text}
@@ -6795,16 +6833,18 @@ window.openInventory = async (type = 'badges') => {
             list.appendChild(item);
         });
         
-        // Buton Unequip (Păstrat din originalul tău)
         if(equipped) {
              const unequipBtn = document.createElement('button');
              unequipBtn.className = 'elite-buy-all-btn'; 
-             unequipBtn.style.cssText = "background: rgba(255, 71, 87, 0.1); border-color: #ff4757; color: #ff4757; margin-top:10px;";
+             unequipBtn.style.background = "rgba(255, 71, 87, 0.1)";
+             unequipBtn.style.borderColor = "#ff4757";
+             unequipBtn.style.color = "#ff4757";
+             unequipBtn.style.marginTop = "10px";
              unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
              unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
              actionContainer.appendChild(unequipBtn);
         }
-    }
+    } 
     
     // --- 2. BANNERS (Elite vs Standard Logic) ---
     else if (type === 'banners') {
@@ -6817,7 +6857,6 @@ window.openInventory = async (type = 'badges') => {
             const item = BANNERS_DB.find(b => b.id === id);
             if(item) {
                 const isEquipped = (id === equipped);
-                // Check if Elite
                 const isElite = id.startsWith('b_') || id.startsWith('ban_el_') || item.cssClass.includes('b-'); 
 
                 const card = document.createElement('div');
@@ -6825,14 +6864,12 @@ window.openInventory = async (type = 'badges') => {
                 
                 let visual = '';
                 if(isElite) {
-                    // ELITE RENDER (Folosește exact clasa de animație din CSS: e.g. b-godslayer)
                     visual = `
                         <div class="${item.cssClass}" style="width:100%; height:55px; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:10px; border: 1px solid rgba(255,255,255,0.2);">
                             ${item.name}
                         </div>
                     `;
                 } else {
-                    // Standard Render
                     visual = `
                         <div class="${item.cssClass}" style="width:100%; height:55px; border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
                             <span style="opacity:0.8; font-size:10px; font-weight:800; letter-spacing:2px; color:#fff;">${item.name}</span>
