@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -6030,40 +6031,46 @@ window.selectAdminCurrency = (type) => {
     }
 };
 
-// --- ADMIN ACTION FIX (Reads buttons directly to avoid bugs) ---
+// --- ADMIN BALANCE ACTION FIX ---
+let isAdminProcessing = false; // Flag to prevent multiple clicks
+
 window.executeAdminAction = async (action) => {
-    if(!selectedAdminTargetUid) return alert("Selectează un utilizator mai întâi!");
+    // 1. Prevent overlapping clicks
+    if (isAdminProcessing) return;
+    if (!selectedAdminTargetUid) return alert("Selectează un utilizator mai întâi!");
     
     const amountInput = document.getElementById('adminAmount');
     const reasonInput = document.getElementById('adminReason');
     const amountVal = amountInput.value.trim();
 
-    if(!amountVal || isNaN(amountVal) || Number(amountVal) <= 0) {
-        return alert("Introdu o sumă validă (număr pozitiv)!");
+    if (!amountVal || isNaN(amountVal) || Number(amountVal) <= 0) {
+        return alert("Introdu o sumă validă!");
     }
 
     const amount = parseInt(amountVal);
     const finalAmount = action === 'add' ? amount : -amount;
     
-    // SAFETY CHECK: Read which button is active directly from DOM
+    // Check which currency is active
     const isDiamond = document.getElementById('btnSelDiamond').classList.contains('active');
     const dbField = isDiamond ? 'diamonds' : 'coins'; 
 
-    console.log(`ADMIN ACTION: ${action} ${amount} to ${dbField} for ${selectedAdminTargetUid}`);
-
-    const panel = document.getElementById('adminActionPanel');
-    panel.style.opacity = '0.5';
-    panel.style.pointerEvents = 'none';
+    // 2. Start Processing Mode
+    isAdminProcessing = true;
+    const btn = event.target.closest('button'); // Get the button that was clicked
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SE SALVEAZĂ...';
 
     try {
         const userRef = doc(db, "accounts", selectedAdminTargetUid);
         
-        // 1. UPDATE CURRENCY
+        // 3. DATABASE UPDATE (The only thing that matters)
         await updateDoc(userRef, {
             [dbField]: increment(finalAmount)
         });
 
-        // 2. LOG TRANSACTION
+        // 4. LOG TRANSACTION
+        // We look up user data from cache to fill the log
         const targetUser = cachedUsers.find(u => u.uid === selectedAdminTargetUid);
         const adminName = auth.currentUser ? (auth.currentUser.displayName || "Admin") : "System";
         
@@ -6078,28 +6085,25 @@ window.executeAdminAction = async (action) => {
             timestamp: serverTimestamp()
         });
 
-        alert(`Succes! Am ${action === 'add' ? 'adăugat' : 'scăzut'} ${amount} ${dbField.toUpperCase()}.`);
+        // 5. SUCCESS UI
+        showToast(`Succes! ${action === 'add' ? 'Adăugat' : 'Scăzut'} ${amount} ${dbField}.`);
         
-        // Refresh UI
+        // Clear inputs
         amountInput.value = '';
         reasonInput.value = '';
         
-        // Update the visual card immediately
-        if(targetUser) {
-             if(isDiamond) targetUser.diamonds += finalAmount;
-             else targetUser.coins += finalAmount;
-             
-             document.getElementById('selUserCoins').innerText = formatCurrency(targetUser.coins);
-             document.getElementById('selUserDiamonds').innerText = formatCurrency(targetUser.diamonds);
-        }
+        // IMPORTANT: DO NOT manually update cachedUsers. 
+        // Your onSnapshot(collection(db, "accounts")) will see the change 
+        // in the database and update the UI automatically and correctly.
 
-    } catch(e) {
+    } catch (e) {
         console.error("Eroare Admin Balance:", e);
-        // Show the exact permission error
-        alert("EROARE PERMISIUNI: " + e.message + "\n\nVerifică dacă ești logat cu contul de Owner/Admin!");
+        alert("EROARE: " + e.message);
     } finally {
-        panel.style.opacity = '1';
-        panel.style.pointerEvents = 'all';
+        // 6. Reset Processing State
+        isAdminProcessing = false;
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 };
 
