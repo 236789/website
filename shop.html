@@ -4374,7 +4374,40 @@ input:checked + .slider:before { transform: translateX(16px); }
     letter-spacing: 3px;
 }
 
+/* --- INVENTORY FIXES --- */
 
+/* 1. Apply the Green/Black Scrollbar to Inventory too */
+#inventoryList::-webkit-scrollbar { width: 6px; }
+#inventoryList::-webkit-scrollbar-track { background: #050b14; border-left: 1px solid #111; }
+#inventoryList::-webkit-scrollbar-thumb { background: #00ffcc; border-radius: 10px; box-shadow: 0 0 10px #00ffcc; }
+
+/* 2. Elite Badge Style (Global) */
+.badge-elite {
+    padding: 8px 12px; 
+    border-radius: 8px;
+    font-family: 'Orbitron'; font-weight: 900; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 1px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    position: relative; overflow: hidden;
+    background: rgba(0,0,0,0.8);
+    border-width: 2px; border-style: solid;
+    box-shadow: 0 0 15px currentColor; /* Glow based on text color */
+    width: 100%; /* Fill container in inventory */
+}
+
+/* 3. Dark Matter Fix (Specific for Inventory too) */
+.badge-elite[style*="color: #111"] {
+    color: #fff !important; 
+    text-shadow: 0 0 10px #fff; 
+    border-color: #555 !important; 
+    background: #000 !important;
+}
+
+/* 4. Inventory Item Layout */
+.shop-badge-item {
+    min-height: 120px; /* Ensure consistent height */
+    justify-content: space-evenly;
+}
   </style>
 </head>
 <body>
@@ -6660,111 +6693,213 @@ window.buyAllItems = async (category) => {
     }
 };
 
-    // --- INVENTORY LOGIC ---
 window.openInventory = async (type = 'badges') => {
-        const modal = document.getElementById('inventoryModal');
-        const list = document.getElementById('inventoryList');
-        list.innerHTML = '<div style="color:#aaa;">Se încarcă...</div>';
-        modal.classList.add('active');
-        
-        const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
-        const data = userSnap.data();
-        const userPic = data.image || auth.currentUser.photoURL;
+    const modal = document.getElementById('inventoryModal');
+    const list = document.getElementById('inventoryList');
+    const title = document.getElementById('inventoryTitle');
+    const actionContainer = document.getElementById('inventoryActions');
+    
+    // Clear previous
+    list.innerHTML = '<div style="color:#aaa; width:100%; text-align:center; padding:20px;">Se încarcă...</div>';
+    actionContainer.innerHTML = ''; 
+    modal.classList.add('active');
+    
+    const userSnap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+    const data = userSnap.data();
+    const userPic = data.image || auth.currentUser.photoURL;
 
-        list.innerHTML = '';
+    // Set Title
+    if(title) title.innerText = "INVENTAR " + type.toUpperCase();
+
+    list.innerHTML = '';
+
+    // --- 1. BADGES (Elite vs Standard Logic) ---
+    if(type === 'badges') {
+        const ownedIds = data.ownedBadges || [];
+        const equipped = data.equippedBadge?.id || null;
+
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
+
+        ownedIds.forEach(id => {
+            const badge = BADGES_DB.find(b => b.id === id);
+            if(!badge) return;
+            
+            const isEquipped = (id === equipped);
+            const isElite = id.startsWith('b_el_') || id === 'b_wheel_god'; // Check if Elite
+
+            const item = document.createElement('div');
+            item.className = 'shop-badge-item';
+            
+            // RENDER LOGIC
+            let visual = '';
+            if(isElite) {
+                // Elite Style (Glowing Border, Dark BG)
+                visual = `
+                    <div class="badge-elite" style="border: 1px solid ${badge.color}; color: ${badge.color}; box-shadow: 0 0 10px ${badge.color};">
+                        <i class="fas ${badge.icon}"></i> ${badge.text}
+                    </div>
+                `;
+            } else {
+                // Standard Style (Flat Color BG)
+                visual = `
+                    <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 5px ${badge.color}; width:100%; display:block;">
+                        <i class="fas ${badge.icon}"></i> ${badge.text}
+                    </span>
+                `;
+            }
+
+            item.innerHTML = `
+                ${visual}
+                ${isEquipped 
+                    ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
+                    : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
+                }
+            `;
+            list.appendChild(item);
+        });
         
-        // --- TEXTS LOGIC (NEW) ---
-        if(type === 'texts') {
-            const ownedIds = data.ownedTexts || [];
-            const equipped = data.equippedText?.id || null;
-            if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai culori text.</p>';
-            
-            ownedIds.forEach(id => {
-                const item = TEXTS_DB.find(b => b.id === id);
-                if(item) {
-                    const isEquipped = (id === equipped);
-                    list.innerHTML += `
-                        <div class="shop-badge-item">
-                            <div class="${item.cssClass}" style="font-size:14px; font-weight:800; margin-bottom:10px;">${data.username}</div>
-                            <div style="font-weight:700; font-size:11px; margin-bottom:5px;">${item.name}</div>
-                            ${isEquipped 
-                                ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` 
-                                : `<button class="equip-btn" onclick="equipText('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
-                            }
-                        </div>`;
-                }
-            });
-            if(equipped) list.innerHTML += `<button class="btn-tasks" onclick="unequipItem('text')">Resetează Culoarea</button>`;
+        if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'elite-buy-all-btn'; // Reuse the cool button style
+             unequipBtn.style.background = "rgba(255, 71, 87, 0.1)";
+             unequipBtn.style.borderColor = "#ff4757";
+             unequipBtn.style.color = "#ff4757";
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
+             actionContainer.appendChild(unequipBtn);
         }
-        // --- BADGES LOGIC ---
-        else if(type === 'badges') {
-            const ownedIds = data.ownedBadges || [];
-            const equipped = data.equippedBadge?.id || null;
-            if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai insigne.</p>';
-            
-            ownedIds.forEach(id => {
-                 const badge = BADGES_DB.find(b => b.id === id);
-                 if(badge) {
-                    const isEquipped = (id === equipped);
-                    list.innerHTML += `
-                        <div class="shop-badge-item">
-                            <span class="shop-badge-preview" style="background:${badge.color}; color:#000;"><i class="fas ${badge.icon}"></i> ${badge.text}</span>
-                            ${isEquipped ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`}
-                        </div>`;
-                 }
-            });
-             if(equipped) list.innerHTML += `<button class="btn-tasks" onclick="unequipItem('badge')">Scoate Insigna</button>`;
-        } 
-        // --- BANNERS LOGIC ---
-        else if (type === 'banners') {
-            const ownedIds = data.ownedBanners || [];
-            const equipped = data.equippedBanner?.id || null;
-            if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai bannere.</p>';
-            
-            ownedIds.forEach(id => {
-                const item = BANNERS_DB.find(b => b.id === id);
-                if(item) {
-                    const isEquipped = (id === equipped);
-                    list.innerHTML += `
-                        <div class="shop-badge-item">
-                            <div class="${item.cssClass}" style="padding:5px; border-radius:5px; font-size:10px;">PREVIEW</div>
-                            <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                            ${isEquipped 
-                                ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` 
-                                : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
-                            }
-                        </div>`;
+    } 
+    
+    // --- 2. BANNERS (Elite vs Standard Logic) ---
+    else if (type === 'banners') {
+        const ownedIds = data.ownedBanners || [];
+        const equipped = data.equippedBanner?.id || null;
+        
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai bannere.</p>'; return; }
+        
+        ownedIds.forEach(id => {
+            const item = BANNERS_DB.find(b => b.id === id);
+            if(item) {
+                const isEquipped = (id === equipped);
+                // Check if Elite based on ID prefix or class name
+                const isElite = id.startsWith('b_') || id.startsWith('ban_el_') || item.cssClass.includes('b-'); 
+
+                const card = document.createElement('div');
+                card.className = 'shop-badge-item';
+                
+                let visual = '';
+                if(isElite) {
+                    // Elite Render (Uses the CSS Animation)
+                    visual = `
+                        <div class="${item.cssClass}" style="width:100%; height:55px; display:flex; align-items:center; justify-content:center; border-radius:10px; font-size:10px;">
+                            ${item.name}
+                        </div>
+                    `;
+                } else {
+                    // Standard Render
+                    visual = `
+                        <div class="${item.cssClass}" style="width:100%; height:55px; border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                            <span style="opacity:0.8; font-size:10px; font-weight:800; letter-spacing:2px; color:#fff;">${item.name}</span>
+                        </div>
+                    `;
                 }
-            });
-            if(equipped) list.innerHTML += `<button class="btn-tasks" onclick="unequipItem('banner')">Scoate Banner</button>`;
+
+                card.innerHTML = `
+                    ${visual}
+                    ${isEquipped 
+                        ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipBanner('${item.id}', '${item.cssClass}')">ECHIPEAZĂ</button>`
+                    }
+                `;
+                list.appendChild(card);
+            }
+        });
+        
+        if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'elite-buy-all-btn';
+             unequipBtn.style.background = "rgba(255, 71, 87, 0.1)";
+             unequipBtn.style.borderColor = "#ff4757";
+             unequipBtn.style.color = "#ff4757";
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE BANNER';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBanner: null }); window.openInventory('banners'); };
+             actionContainer.appendChild(unequipBtn);
         }
-        // --- FRAMES LOGIC ---
-        else if (type === 'frames') {
-            const ownedIds = data.ownedFrames || [];
-            const equipped = data.equippedFrame?.id || null;
-            if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai rame.</p>';
-            
-            ownedIds.forEach(id => {
-                const item = FRAMES_DB.find(b => b.id === id);
-                if(item) {
-                    const isEquipped = (id === equipped);
-                    list.innerHTML += `
-                        <div class="shop-badge-item">
-                            <div class="frame-preview-box">
-                                <img src="${userPic}" class="frame-preview-user">
-                                <img src="${item.img}" class="frame-preview-img">
-                            </div>
-                            <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
-                            ${isEquipped 
-                                ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` 
-                                : `<button class="equip-btn" onclick="equipFrame('${item.id}', '${item.img}')">ECHIPEAZĂ</button>`
-                            }
-                        </div>`;
-                }
-            });
-            if(equipped) list.innerHTML += `<button class="btn-tasks" onclick="unequipItem('frame')">Scoate Rama</button>`;
+    }
+    
+    // --- 3. TEXTS (Standard) ---
+    else if(type === 'texts') {
+        const ownedIds = data.ownedTexts || [];
+        const equipped = data.equippedText?.id || null;
+        if(ownedIds.length === 0) list.innerHTML = '<p style="color:#aaa; width:100%; text-align:center;">Nu ai culori text.</p>';
+        
+        ownedIds.forEach(id => {
+            const item = TEXTS_DB.find(b => b.id === id);
+            if(item) {
+                const isEquipped = (id === equipped);
+                const card = document.createElement('div');
+                card.className = 'shop-badge-item';
+                card.innerHTML = `
+                    <div class="${item.cssClass}" style="font-size:14px; font-weight:800; margin-bottom:10px;">${data.username}</div>
+                    <button class="equip-btn" ${isEquipped ? 'style="background:#555; cursor:default;"' : `onclick="equipText('${item.id}', '${item.cssClass}')"`}>
+                        ${isEquipped ? 'ECHIPAT' : 'ECHIPEAZĂ'}
+                    </button>`;
+                list.appendChild(card);
+            }
+        });
+        if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'elite-buy-all-btn';
+             unequipBtn.style.background = "rgba(255, 71, 87, 0.1)";
+             unequipBtn.style.borderColor = "#ff4757";
+             unequipBtn.style.color = "#ff4757";
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> RESET CULOARE';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedText: null }); window.openInventory('texts'); };
+             actionContainer.appendChild(unequipBtn);
         }
-    };
+    }
+    
+    // --- 4. FRAMES (Standard) ---
+    else if (type === 'frames') {
+        const ownedIds = data.ownedFrames || [];
+        const equipped = data.equippedFrame?.id || null;
+        
+        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai rame.</p>'; return; }
+
+        ownedIds.forEach(id => {
+            const item = FRAMES_DB.find(b => b.id === id);
+            if(item) {
+                const isEquipped = (id === equipped);
+                const scale = item.scale || 1.45;
+                const sizePct = scale * 100;
+                const card = document.createElement('div');
+                card.className = 'shop-badge-item';
+                card.innerHTML = `
+                    <div class="frame-preview-box">
+                        <img src="${userPic}" class="frame-preview-user">
+                        <img src="${item.img}" class="frame-preview-img" style="width:${sizePct}%; height:${sizePct}%;">
+                    </div>
+                    <div style="font-weight:700; font-size:11px; margin:5px 0;">${item.name}</div>
+                    ${isEquipped 
+                        ? `<button class="equip-btn" style="background:#555;">ECHIPAT</button>` 
+                        : `<button class="equip-btn" onclick="equipFrame('${item.id}', '${item.img}', ${scale})">ECHIPEAZĂ</button>`
+                    }
+                `;
+                list.appendChild(card);
+            }
+        });
+        if(equipped) {
+             const unequipBtn = document.createElement('button');
+             unequipBtn.className = 'elite-buy-all-btn';
+             unequipBtn.style.background = "rgba(255, 71, 87, 0.1)";
+             unequipBtn.style.borderColor = "#ff4757";
+             unequipBtn.style.color = "#ff4757";
+             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> SCOATE RAMA';
+             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedFrame: null }); window.openInventory('frames'); };
+             actionContainer.appendChild(unequipBtn);
+        }
+    }
+};
 
 
 
