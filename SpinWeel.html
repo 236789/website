@@ -3581,8 +3581,15 @@ window.toggleRewardsModal = (show) => {
     const modal = document.getElementById('rewardsInfoModal');
     if (!list || !modal) return;
 
-    // Sort by rarity (Common items at top, Rare at bottom)
-    const sortedRewards = [...REWARDS].sort((a, b) => b.chance - a.chance);
+    // Fixed sorting: Coins (1), Diamonds (2), Items (3), XP (4)
+    const typePriority = { 'coins': 1, 'diamonds': 2, 'badge': 3, 'banner': 3, 'xp': 4 };
+    
+    const sortedRewards = [...REWARDS].sort((a, b) => {
+        if (typePriority[a.type] !== typePriority[b.type]) {
+            return typePriority[a.type] - typePriority[b.type];
+        }
+        return b.val - a.val; // Within groups, higher values first
+    });
 
     list.innerHTML = sortedRewards.map(r => {
         let visual = "";
@@ -3603,7 +3610,6 @@ window.toggleRewardsModal = (show) => {
             visual = `<div class="bubble-jackpot" style="height:35px; width:150px; font-size:9px;">ULTRA BANNER</div>`;
         }
 
-        // --- UPDATED LAYOUT: Removed percentage DIV and centered the content ---
         return `
             <div class="reward-item-row" style="justify-content: center;">
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -3765,7 +3771,6 @@ async function finalizeSpin(idx) {
     const targetPhoto = targetData.image || targetData.photoURL || "https://iili.io/fXks1Dv.png";
 
     // --- 3. DUPLICATE & COMPENSATION LOGIC ---
-    // This happens BEFORE the database update so the correct value is saved
     let isDuplicate = false;
     if (reward.type === "badge" && (targetData.ownedBadges || []).includes(reward.val)) {
         isDuplicate = true;
@@ -3783,7 +3788,6 @@ async function finalizeSpin(idx) {
 
     // --- 4. SHOW MODALS (UI LOGIC) ---
     if (isEventModeActive) {
-        // EVENT MODE: Show the Big Square Golden Modal to EVERYONE watching
         const adminModal = document.getElementById('adminSpinResultModal');
         const adminUserImg = document.getElementById('adminSpinUserImg');
         const adminUserName = document.getElementById('adminSpinUserName');
@@ -3800,13 +3804,23 @@ async function finalizeSpin(idx) {
             adminModal.classList.add('active');
         }
     } else if (auth.currentUser.uid === targetUid) {
-        // PRIVATE MODE: Show standard reward modal only to the player who spun
         const modal = document.getElementById('questRewardModal');
         const coinsBox = modal.querySelector('.reward-coins-box');
+        const typeLabel = modal.querySelector('#modalRewardTypeLabel');
         
         if (modal && coinsBox) {
-            let iconUrl = reward.type === "diamonds" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-            coinsBox.innerHTML = `<img src="${iconUrl}" style="width:50px;"> <span>${reward.label}</span>`;
+            // FIXED: XP Visuals in Modal
+            if (reward.type === "xp") {
+                coinsBox.innerHTML = `<i class="fas fa-chart-line" style="font-size:50px; color:var(--primary); filter: drop-shadow(0 0 10px var(--primary));"></i> <span style="font-size:45px; font-weight:900; color:#fff; font-family:'Orbitron';">XP</span>`;
+                if (typeLabel) typeLabel.innerText = "LOSS PROTECTION";
+            } else {
+                let iconUrl = reward.type === "diamonds" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
+                coinsBox.innerHTML = `<img id="modalIconImg" src="${iconUrl}" style="width:60px; height:60px; object-fit:contain;"> <span id="modalRewardVal" style="font-size:45px; font-weight:900; color:#ffd700; font-family:'Orbitron';">${reward.label}</span>`;
+                if (typeLabel) {
+                    typeLabel.innerText = reward.type === "diamonds" ? "GEMS / DIAMONDS" : "KSDA COINS";
+                    typeLabel.style.color = reward.type === "diamonds" ? "#00ffcc" : "#ffd700";
+                }
+            }
             
             if (reward.type !== "xp") {
                 launchConfetti();
@@ -3818,12 +3832,11 @@ async function finalizeSpin(idx) {
         }
     }
 
-    // --- 5. DATABASE UPDATES (STRICT AUTHORITY) ---
+    // --- 5. DATABASE UPDATES ---
     if (iAmTheSpinner) {
         try {
             let updateObj = {};
             
-            // Handle XP / Loss Protection
             if (reward.type === "xp" && !isEventModeActive) {
                 let currentXP = targetData.wheelXP || 0;
                 let nextXP = currentXP + 15;
@@ -3832,13 +3845,11 @@ async function finalizeSpin(idx) {
                 if (nextXP >= 100) {
                     updateObj.wheelXP = 0;
                     updateObj.diamonds = increment(5);
-                    // FIXED: Show the consolation modal
                     document.getElementById('xpCompleteModal').classList.add('active');
                 } else {
                     updateObj.wheelXP = nextXP;
                 }
             } 
-            // Handle Currency (Coins/Diamonds)
             else if (reward.type === "coins") {
                 updateObj.coins = increment(reward.val);
                 updateObj["wheelStats.coins"] = increment(reward.val);
@@ -3847,7 +3858,6 @@ async function finalizeSpin(idx) {
                 updateObj.diamonds = increment(reward.val);
                 updateObj["wheelStats.diamonds"] = increment(reward.val);
             } 
-            // Handle Items (Badge/Banner)
             else if (reward.type === "badge") {
                 updateObj.ownedBadges = arrayUnion(reward.val);
             } 
@@ -3855,13 +3865,9 @@ async function finalizeSpin(idx) {
                 updateObj.ownedBanners = arrayUnion(reward.val);
             }
 
-            // Execute the batch update
             await updateDoc(targetRef, updateObj);
-
-            // Log the transaction for history
             await logTransaction(reward.val, reward.type.toUpperCase(), `Spin Wheel: ${reward.label}`);
 
-            // If it was a Jackpot, record it in the global history
             if (reward.jackpot) {
                 await addDoc(collection(db, "wheel_jackpot_history"), {
                     username: targetName, 
@@ -4124,6 +4130,7 @@ onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
 
         // 2. LOGICA PENTRU PILL (Cine apare în casetă)
         // FIXED: Strictly ensure we only show personal stats if NOT in Event Mode and NO user is currently selected
+        // This prevents the flickering back to your stats when you spin for someone else
         if (!isEventModeActive && !eventSelectedUser) {
             updatePillVisuals({ uid: user.uid, ...data });
         }
@@ -4132,7 +4139,7 @@ onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
         window.currentUserStack = data.freeSpinStack || 0;
         window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : Date.now();
     }
-});
+});;
         
 // --- 3. FREE SPIN TIMER LOOP ---
 const timerInterval = setInterval(() => {
@@ -4147,26 +4154,29 @@ const timerInterval = setInterval(() => {
     const nextSpinAt = (window.lastAccrualTime || Date.now()) + twelveHours;
     const diff = nextSpinAt - Date.now();
 
+    // Priority 1: Show Stack if > 0
     if (stack > 0) {
-        // Arată numărul de rotiri pe buton
         if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 8px; border-radius:50px; font-size:12px; font-weight:900; margin-left:8px;">${stack}</span>`;
         freeBtn.style.pointerEvents = "auto"; 
         freeBtn.style.opacity = "1"; 
         freeBtn.style.filter = "none";
-    } else if (diff <= 0) {
-        // FIXED: Prevent negative values by showing "READY" or 0 until DB syncs
-        if (btnTop) btnTop.innerText = `FREE SPIN READY`;
-        freeBtn.style.pointerEvents = "auto"; 
-        freeBtn.style.opacity = "1";
-    } else {
-        // Countdown până la următoarea acumulare
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        if (btnTop) btnTop.innerText = `NEXT: ${h}h ${m}m ${s}s`;
-        freeBtn.style.pointerEvents = "none"; 
-        freeBtn.style.opacity = "0.7"; 
-        freeBtn.style.filter = "grayscale(0.8)";
+    } 
+    // Priority 2: Show countdown if stack is empty
+    else {
+        if (diff <= 0) {
+            // Transition state while waiting for DB sync
+            if (btnTop) btnTop.innerText = `READY...`;
+            freeBtn.style.pointerEvents = "none";
+            freeBtn.style.opacity = "0.7";
+        } else {
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            if (btnTop) btnTop.innerText = `NEXT: ${h}h ${m}m ${s}s`;
+            freeBtn.style.pointerEvents = "none"; 
+            freeBtn.style.opacity = "0.7"; 
+            freeBtn.style.filter = "grayscale(0.8)";
+        }
     }
 }, 1000);
 
