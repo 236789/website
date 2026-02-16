@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -3359,11 +3360,30 @@
     display: block;
 }
 
-
+/* --- ARCHIVE MEDIA VIEWER --- */
+.archive-lightbox {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+    z-index: 30000; display: none; justify-content: center; align-items: center;
+    backdrop-filter: blur(10px);
+}
+.archive-lightbox.active { display: flex; }
+.archive-lb-content { max-width: 90%; max-height: 80%; position: relative; }
+.archive-lb-img { max-width: 100%; max-height: 80vh; border: 2px solid var(--primary); border-radius: 12px; }
+.archive-lb-close { position: absolute; top: -40px; right: 0; color: #fff; font-size: 30px; cursor: pointer; background: none; border: none; }
 
   </style>
 </head>
 <body>
+  
+
+<!-- ARCHIVE MEDIA LIGHTBOX -->
+<div id="archiveLightbox" class="archive-lightbox">
+    <div class="archive-lb-content">
+        <button class="archive-lb-close" onclick="document.getElementById('archiveLightbox').classList.remove('active')">✕</button>
+        <img id="archiveLbImg" class="archive-lb-img" src="">
+        <div id="archiveLbTitle" style="margin-top: 15px; font-family: 'Orbitron'; color: var(--primary); text-align: center;"></div>
+    </div>
+</div>
 <!-- BANNED OVERLAY -->
 <div id="bannedOverlay">
     <i class="fas fa-ban ban-icon"></i>
@@ -3744,6 +3764,11 @@
             <span>Wall Activity </span>
         </a>
 
+
+<a href="#" class="ga-nav-item" onclick="switchSection('wall-archive-view', this)">
+            <i class="fas fa-history" style="color: #a2cfff;"></i>
+            <span>Wall Archive</span>
+        </a>
         <!-- TRAFIC -->
         <a href="#" class="ga-nav-item" onclick="switchSection('traffic-view', this)">
             <i class="fas fa-eye" style="color: #a2cfff;"></i>
@@ -4923,6 +4948,53 @@
                 <tr><td colspan="4" style="padding:40px; text-align:center;">Se încarcă lista de control...</td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+
+
+
+<!-- VIEW: WALL ARCHIVE -->
+<div id="wall-archive-view" class="view-section">
+    <h2 class="metallic-title-big" style="text-align:center; margin-bottom: 20px; font-size:24px;">
+        WALL MESSAGE ARCHIVE
+    </h2>
+
+    <!-- SEARCH BAR -->
+    <div class="search-container-center">
+        <input type="text" id="wallArchiveSearch" class="search-input-neon" 
+               placeholder="[SEARCH] Cauta mesaj sau @utilizator (ex: @Lost Soul)..." onkeyup="filterWallArchive()">
+    </div>
+
+    <!-- DATE SELECTOR -->
+    <div class="filter-row" style="justify-content: center; background: rgba(5, 11, 20, 0.9); border: 1px solid rgba(41, 243, 255, 0.2); border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+        <div class="filter-group" style="align-items: center; gap: 15px;">
+            <label style="font-family: 'Orbitron'; font-size: 11px; color: var(--primary);">FILTRARE DATA:</label>
+            <input type="date" id="wallArchiveDate" class="sort-select-pro" onchange="loadWallArchive()">
+            <button class="filter-btn" onclick="resetArchiveFilters()">RESET</button>
+        </div>
+    </div>
+
+    <div class="table-glass-container">
+        <table class="neon-table">
+            <thead>
+                <tr>
+                    <th class="sticky-left">UTILIZATOR</th>
+                    <th>DATA & ORA</th>
+                    <th style="text-align: left;">MESAJ / CONTINUT</th>
+                    <th>TIP</th>
+                </tr>
+            </thead>
+            <tbody id="wallArchiveTableBody">
+                <tr><td colspan="4" style="padding:40px; text-align:center;">Se incarca arhiva...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div style="text-align:center; margin-top: 20px; margin-bottom: 40px;">
+        <button id="loadMoreArchiveBtn" class="filter-btn" style="display:none; margin: 0 auto;" onclick="loadMoreArchive()">
+            INCARCA MAI MULTE
+        </button>
     </div>
 </div>
 </main>
@@ -7398,7 +7470,9 @@ window.switchSection = (sectionId, btnElement) => {
         'wheel-losers-view',
         'admin-manage-view',
          'news-manager-view', // <--- ADD THIS
-    'manage-users-view' // <--- ADAUGĂ ACEASTĂ LINIE AICI
+    'manage-users-view', // <--- ADAUGĂ ACEASTĂ LINIE AICI
+        'wall-archive-view' // Add this line
+
 
 
     ]; 
@@ -7467,6 +7541,11 @@ case 'manage-users-view':
             break;
         case 'wheel-losers-view':
             setTimeout(() => { if(typeof window.runWheelLosersAnalytics === "function") window.runWheelLosersAnalytics(); }, 500);
+            break;
+
+
+case 'wall-archive-view':
+            if (typeof window.loadWallArchive === "function") window.loadWallArchive();
             break;
 
 case 'feedback-manager-view':
@@ -9230,6 +9309,156 @@ window.postAdminComment = async (id) => {
         email: auth.currentUser.email, createdAt: serverTimestamp()
     });
     input.value = '';
+};
+
+
+
+
+// --- WALL ARCHIVE SYSTEM ---
+let archiveLimit = 100;
+let rawArchiveData = [];
+
+window.loadWallArchive = async function() {
+    const tableBody = document.getElementById('wallArchiveTableBody');
+    if (!tableBody) return;
+
+    const q = query(collection(db, "wall_messages"), orderBy("createdAt", "desc"), limit(archiveLimit));
+    
+    onSnapshot(q, (snapshot) => {
+        rawArchiveData = [];
+        snapshot.forEach(docSnap => {
+            const d = docSnap.data();
+            rawArchiveData.push({ id: docSnap.id, ...d });
+        });
+        window.filterWallArchive();
+    });
+};
+
+window.filterWallArchive = function() {
+    const tableBody = document.getElementById('wallArchiveTableBody');
+    const searchVal = document.getElementById('wallArchiveSearch').value.trim().toLowerCase();
+    const dateVal = document.getElementById('wallArchiveDate').value; 
+    
+    let filtered = rawArchiveData;
+
+    if (dateVal) {
+        filtered = filtered.filter(m => {
+            if (!m.createdAt) return false;
+            const msgDate = m.createdAt.toDate().toISOString().split('T')[0];
+            return msgDate === dateVal;
+        });
+    }
+
+    if (searchVal) {
+        if (searchVal.startsWith('@')) {
+            const targetUser = searchVal.substring(1).toLowerCase();
+            filtered = filtered.filter(m => m.name && m.name.toLowerCase().includes(targetUser));
+        } else {
+            filtered = filtered.filter(m => m.text && m.text.toLowerCase().includes(searchVal));
+        }
+    }
+
+    if (filtered.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:40px; text-align:center; color:#888;">Niciun mesaj gasit.</td></tr>';
+        return;
+    }
+
+    tableBody.innerHTML = filtered.map(m => {
+        let dateStr = "Recent";
+        let timeStr = "";
+        if (m.createdAt) {
+            const d = m.createdAt.toDate();
+            dateStr = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
+            timeStr = d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        let contentText = (m.text || "").replace(/</g, "&lt;");
+        let mediaHtml = "";
+
+        // Handle Images
+        if (m.image) {
+            mediaHtml = `
+                <div style="margin-top:10px; display:flex; align-items:center; gap:12px;">
+                    <img src="${m.image}" style="width:45px; height:45px; object-fit:cover; border-radius:8px; border:1px solid rgba(41,243,255,0.3);">
+                    <button class="btn-ap-action" onclick="window.viewArchiveImage('${m.image}', '${(m.name || 'User').replace(/'/g, "\\'")}')">
+                        <i class="fas fa-search-plus"></i> VEZI IMAGINE
+                    </button>
+                </div>
+            `;
+        }
+
+        // Handle Vocals
+        if (m.type === 'vocal') {
+            mediaHtml = `
+                <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.2); padding:10px; border-radius:12px; border:1px solid rgba(0,255,136,0.1);">
+                    <audio src="${m.audioUrl}" controls style="height:35px; width:100%; max-width:250px; filter: invert(100%) hue-rotate(180deg);"></audio>
+                    <button class="btn-ap-action" style="border-color:#00ff88; color:#00ff88; width:fit-content;" onclick="window.downloadArchiveVocal('${m.audioUrl}', '${(m.name || 'User').replace(/'/g, "\\'")}')">
+                        <i class="fas fa-download"></i> SALVEAZA AUDIO
+                    </button>
+                </div>
+            `;
+        }
+
+        return `
+            <tr>
+                <td class="sticky-left">
+                    <div class="td-user">
+                        <img src="${m.photo || 'https://iili.io/fXks1Dv.png'}" class="td-pfp">
+                        <div class="td-name">${m.name || 'Anonim'}</div>
+                    </div>
+                </td>
+                <td>
+                    <div style="font-family:'Orbitron'; font-size:11px;">${dateStr}</div>
+                    <div style="font-size:10px; color:var(--primary);">${timeStr}</div>
+                </td>
+                <td style="text-align:left; font-size:12px; max-width:400px; white-space: normal; word-break: break-word;">
+                    <div style="margin-bottom:5px;">${contentText}</div>
+                    ${mediaHtml}
+                </td>
+                <td>
+                    <span class="source-tag" style="font-size:8px;">${m.type || 'msg'}</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+};
+
+window.loadMoreArchive = function() {
+    archiveLimit += 100;
+    window.loadWallArchive();
+};
+
+window.resetArchiveFilters = function() {
+    document.getElementById('wallArchiveSearch').value = "";
+    document.getElementById('wallArchiveDate').value = "";
+    window.filterWallArchive();
+};
+
+
+
+// --- ARCHIVE MEDIA HELPERS ---
+window.viewArchiveImage = (url, name) => {
+    const modal = document.getElementById('archiveLightbox');
+    document.getElementById('archiveLbImg').src = url;
+    document.getElementById('archiveLbTitle').innerText = "IMAGINE TRIMISA DE: " + name.toUpperCase();
+    modal.classList.add('active');
+};
+
+window.downloadArchiveVocal = async (url, name) => {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `Vocal_${name}_${Date.now()}.webm`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+        window.open(url, '_blank');
+    }
 };
 
   </script>
