@@ -4477,6 +4477,76 @@ body {
     background: rgba(255, 255, 255, 0.08); 
     transform: scale(1.2); 
 }
+
+
+
+/* --- MOBILE TOOLBAR OPTIMIZATION --- */
+@media (max-width: 768px) {
+    .chat-tools-bar {
+        display: grid !important;
+        /* 7 equal columns: 6 tools + 1 arrow */
+        grid-template-columns: repeat(7, 1fr); 
+        gap: 0px; /* Tighter gap for small screens */
+        padding: 10px 5px !important;
+        
+        /* Animation Props */
+        max-height: 55px; /* Height of one row */
+        overflow: hidden;
+        transition: max-height 0.4s cubic-bezier(0.25, 1, 0.5, 1), background 0.3s;
+        
+        /* Centering */
+        justify-items: center;
+        align-items: center;
+    }
+
+    /* THE EXPANDED STATE */
+    .chat-tools-bar.expanded {
+        max-height: 110px; /* Height for two rows */
+        background: rgba(0, 0, 0, 0.95) !important; /* Darker when open */
+    }
+
+    /* Style the buttons to fit perfectly */
+    .tool-btn, .mic-btn {
+        width: 100% !important; /* Fill grid cell */
+        height: 35px !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin: 0 !important;
+        font-size: 16px !important; /* Slightly smaller icons */
+    }
+
+    /* HIDE THE ARROW ON DESKTOP, SHOW ON MOBILE */
+    .mobile-expand-arrow {
+        display: flex !important;
+        color: var(--primary) !important;
+        grid-column: 7; /* Force into the 7th slot of Row 1 */
+        grid-row: 1;
+        z-index: 10;
+    }
+
+    /* ROTATION ANIMATION FOR THE ICON */
+    .mobile-expand-arrow i {
+        transition: transform 0.4s ease;
+    }
+
+    /* Rotate arrow down when expanded */
+    .chat-tools-bar.expanded .mobile-expand-arrow i {
+        transform: rotate(180deg);
+    }
+    
+    /* RESET BUTTON FIX: Don't push to right on mobile grid */
+    #resetChatBtn {
+        margin-left: 0 !important;
+    }
+}
+
+/* HIDE ARROW ON PC */
+@media (min-width: 769px) {
+    .mobile-expand-arrow {
+        display: none !important;
+    }
+}
   </style>
 
 </head>
@@ -5102,47 +5172,27 @@ body {
     <!-- 1. TOOLBAR (Blue Line) -->
 <!-- 1. TOOLBAR (Blue Line) -->
 <!-- 1. TOOLBAR (Blue Line) -->
-    <div class="chat-tools-bar"> 
+<!-- INSIDE .chat-tools-bar -->
+<div class="chat-tools-bar"> 
+    <!-- ... existing buttons (GIF, Emoji, Mic, etc.) ... -->
+    <button id="gifBtn" class="tool-btn" onclick="togglePicker('gif')"><span class="gif-text-icon">GIF</span></button>
+    <button id="btnOpenEmojis" class="tool-btn" onclick="toggleStandaloneEmojis()"><i class="fas fa-smile"></i></button>
+    
+    <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
+    <button id="imgBtn" class="tool-btn" style="display:none;"><i class="fas fa-image"></i></button>
 
-        
-        <!-- GIF Button -->
-        <button id="gifBtn" class="tool-btn" onclick="togglePicker('gif')">
-            <span class="gif-text-icon">GIF</span>
-        </button>
+    <button id="micBtn" class="mic-btn" onclick="toggleRecording()"><i class="fas fa-microphone"></i></button>
+    <button id="paletteBtn" class="tool-btn" onclick="openPalette()"><i class="fas fa-palette"></i></button>
+    
+    <button id="pollBtn" class="tool-btn" style="display:none;" onclick="openPollCreator()"><i class="fas fa-poll"></i></button>
+    <button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()"><i class="fas fa-volume-up"></i></button>
+    <button id="resetChatBtn" class="tool-btn" style="display:none; margin-left:auto; color:#ff4757;"><i class="fas fa-trash"></i></button>
 
-<!-- CORRECTED EMOJI BUTTON -->
-<button id="btnOpenEmojis" class="tool-btn" onclick="toggleStandaloneEmojis()">
-    <i class="fas fa-smile"></i>
-</button>
-
-
-
-        <!-- Image Button (Staff Only) -->
-        <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
-        <button id="imgBtn" class="tool-btn" style="display:none;"><i class="fas fa-image"></i></button>
-
-    <!-- ADD THIS -->
-    <button id="micBtn" class="mic-btn" onclick="toggleRecording()">
-        <i class="fas fa-microphone"></i>
+    <!-- NEW TOGGLE BUTTON (Only shows on mobile via CSS) -->
+    <button id="toolbarExpandBtn" class="tool-btn mobile-expand-arrow" onclick="toggleMobileToolbar()">
+        <i class="fas fa-chevron-up"></i>
     </button>
-
-<!-- Schimbă onclick din openThemes() în openPalette() -->
-<button id="paletteBtn" class="tool-btn" onclick="openPalette()">
-    <i class="fas fa-palette"></i>
-</button>
-
-        <!-- Vote/Poll Button (Staff Only) -->
-        <button id="pollBtn" class="tool-btn" style="display:none;" onclick="openPollCreator()">
-            <i class="fas fa-poll"></i>
-        </button>
-<button id="autoReadBtn" class="tool-btn" onclick="toggleAutoRead()" style="transition: 0.3s;">
-    <i class="fas fa-volume-up"></i>
-</button>
-        <!-- Reset Chat Button (Owner/Admin Only - Pushed to Right) -->
-        <button id="resetChatBtn" class="tool-btn" style="display:none; margin-left:auto; color:#ff4757;">
-            <i class="fas fa-trash"></i>
-        </button>
-    </div>
+</div>
 
 
     <div id="typingIndicator" class="typing-indicator"></div>
@@ -9536,6 +9586,20 @@ function showHijackToast(amount, type, name) {
         input.focus();
         input.dispatchEvent(new Event('input'));
     };
+
+
+
+/* --- MOBILE TOOLBAR TOGGLE LOGIC --- */
+window.toggleMobileToolbar = function() {
+    const toolbar = document.querySelector('.chat-tools-bar');
+    const btnIcon = document.querySelector('#toolbarExpandBtn i');
+    
+    // Toggle the class that handles height animation
+    toolbar.classList.toggle('expanded');
+    
+    // Optional: Add haptic feedback if supported (vibration)
+    if (navigator.vibrate) navigator.vibrate(10);
+};
 </script>
 </body>
 </html>
