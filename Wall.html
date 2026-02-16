@@ -9387,8 +9387,14 @@ function showHijackToast(amount, type, name) {
         ]
     };
 
+   /* ... EMOJI_DATA stays above this ... */
+
+    // --- LAZY LOADING STATE ---
+    let activeEmojiList = [];
+    let nextEmojiIndex = 0;
+    const BATCH_SIZE = 70; // How many emojis to load at once
+
     // --- SHARED HELPERS ---
-    
     function closeEmojiPanel() {
         const panel = document.getElementById('standaloneEmojiPanel');
         const btn = document.getElementById('btnOpenEmojis');
@@ -9400,7 +9406,6 @@ function showHijackToast(amount, type, name) {
         const drawer = document.getElementById('pickerDrawer');
         const gifSec = document.getElementById('gifSection');
         const btn = document.getElementById('gifBtn');
-        
         if (drawer) drawer.classList.remove('open');
         if (gifSec) setTimeout(() => { gifSec.style.display = 'none'; }, 300);
         if (btn) btn.classList.remove('active');
@@ -9410,13 +9415,10 @@ function showHijackToast(amount, type, name) {
     window.toggleStandaloneEmojis = function() {
         const panel = document.getElementById('standaloneEmojiPanel');
         const btn = document.getElementById('btnOpenEmojis');
-        
         if (!panel) return;
 
-        // STEP 1: FORCE CLOSE GIFS
-        closeGifDrawer();
+        closeGifDrawer(); // Close GIFs first
 
-        // STEP 2: TOGGLE EMOJIS
         const isOpen = panel.classList.contains('emoji-panel-open');
 
         if (isOpen) {
@@ -9425,8 +9427,8 @@ function showHijackToast(amount, type, name) {
             panel.classList.add('emoji-panel-open');
             btn.classList.add('active');
             
+            // Initial Load if empty
             const grid = document.getElementById('epGrid');
-            // If empty, render defaults
             if (grid && grid.children.length === 0) {
                 window.renderEmojiCategory('faces', document.querySelector('.ep-tab'));
             }
@@ -9436,78 +9438,94 @@ function showHijackToast(amount, type, name) {
     // --- 3. GIF TOGGLE FUNCTION ---
     window.togglePicker = function(type) {
         if (type !== 'gif') return;
-
         const drawer = document.getElementById('pickerDrawer');
         const gifSec = document.getElementById('gifSection');
         const btn = document.getElementById('gifBtn');
-
         if (!drawer || !gifSec) return;
 
-        // STEP 1: FORCE CLOSE EMOJIS
-        closeEmojiPanel();
+        closeEmojiPanel(); // Close Emojis first
 
-        // STEP 2: TOGGLE GIFS
-        const isOpen = drawer.classList.contains('open');
-
-        if (isOpen) {
+        if (drawer.classList.contains('open')) {
             closeGifDrawer();
         } else {
             gifSec.style.display = 'flex';
             drawer.classList.add('open');
             btn.classList.add('active');
-
+            
+            // Load GIFs if empty
             const resBox = document.getElementById('gifResults');
             if(resBox && resBox.children.length === 0) {
                 const apiKey = window.GIPHY_API_KEY_FINAL || "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN";
-                if(typeof window.loadGifs === 'function') {
-                    window.loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=50&rating=g`);
-                }
+                if(typeof window.loadGifs === 'function') window.loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=50&rating=g`);
             }
         }
     };
 
-    // --- 4. RENDER CATEGORY (Optimized for Large Lists) ---
+    // --- 4. RENDER CATEGORY (RESET & START BATCH) ---
     window.renderEmojiCategory = function(catName, tabElement) {
         const grid = document.getElementById('epGrid');
         if (!grid) return;
         
+        // Tab Styling
         document.querySelectorAll('.ep-tab').forEach(t => t.classList.remove('active'));
         if(tabElement) tabElement.classList.add('active');
 
-        // Reset scroll position to top when switching
+        // Reset State
         grid.scrollTop = 0; 
         grid.innerHTML = '';
+        activeEmojiList = EMOJI_DATA[catName] || [];
+        nextEmojiIndex = 0;
 
-        const list = EMOJI_DATA[catName] || [];
-        
-        // Performance: Use DocumentFragment
+        // Render First Batch
+        window.renderNextBatch();
+    };
+
+    // --- 5. RENDER BATCH (THE ANTI-LAG LOGIC) ---
+    window.renderNextBatch = function() {
+        const grid = document.getElementById('epGrid');
+        if (nextEmojiIndex >= activeEmojiList.length) return; // Stop if done
+
         const fragment = document.createDocumentFragment();
+        const limit = Math.min(nextEmojiIndex + BATCH_SIZE, activeEmojiList.length);
 
-        list.forEach(char => {
+        for (let i = nextEmojiIndex; i < limit; i++) {
+            const char = activeEmojiList[i];
             const b = document.createElement('button');
             b.className = 'ep-btn';
             b.textContent = char;
             b.type = "button"; 
-            // Optimized listener: MouseDown is faster than Click for emoji pickers
             b.onmousedown = (e) => {
                 e.preventDefault(); 
                 window.injectEmojiAtCursor(char);
             };
             fragment.appendChild(b);
-        });
+        }
 
         grid.appendChild(fragment);
+        nextEmojiIndex = limit;
     };
 
-    // --- 5. INSERT LOGIC ---
+    // --- 6. SCROLL LISTENER (INFINITE SCROLL) ---
+    // Wait 1s to ensure DOM exists, then attach scroll event
+    setTimeout(() => {
+        const grid = document.getElementById('epGrid');
+        if(grid) {
+            grid.addEventListener('scroll', () => {
+                // Check if user scrolled near bottom (within 100px)
+                if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 150) {
+                    window.renderNextBatch();
+                }
+            });
+        }
+    }, 1000);
+
+    // --- 7. INSERT LOGIC ---
     window.injectEmojiAtCursor = function(char) {
         const input = document.getElementById('msgInput');
         if (!input) return;
-
         const start = input.selectionStart;
         const end = input.selectionEnd;
         const text = input.value;
-        
         input.value = text.substring(0, start) + char + text.substring(end, text.length);
         input.selectionStart = input.selectionEnd = start + char.length;
         input.focus();
