@@ -4547,6 +4547,24 @@ body {
         display: none !important;
     }
 }
+
+
+
+/* DYNAMIC ICON STYLING */
+#dynamicEmojiIcon {
+    font-size: 20px;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s;
+    
+    /* AURORA SHIFT LINK */
+    color: var(--atmo-main) !important; 
+    filter: drop-shadow(0 0 8px var(--atmo-glow));
+}
+
+/* Hover effect */
+#btnOpenEmojis:hover #dynamicEmojiIcon {
+    transform: scale(1.2) !important;
+    text-shadow: 0 0 15px var(--atmo-main);
+}
   </style>
 
 </head>
@@ -5176,9 +5194,10 @@ body {
 <div class="chat-tools-bar"> 
     <!-- ... existing buttons (GIF, Emoji, Mic, etc.) ... -->
     <button id="gifBtn" class="tool-btn" onclick="togglePicker('gif')"><span class="gif-text-icon">GIF</span></button>
-<!-- REPLACE THE OLD EMOJI BUTTON WITH THIS -->
+<!-- INSIDE .chat-tools-bar -->
 <button id="btnOpenEmojis" class="tool-btn" onclick="toggleStandaloneEmojis()">
-    <span id="dynamicEmojiIcon" style="font-size: 19px; line-height: 1; filter: drop-shadow(0 0 5px rgba(255,255,255,0.4));">😀</span>
+    <!-- This icon will morph automatically via JS -->
+    <i id="dynamicEmojiIcon" class="fas fa-smile"></i>
 </button>
     
     <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
@@ -5207,10 +5226,7 @@ body {
     
 <!-- INSIDE #standaloneEmojiPanel -->
 <div class="ep-tabs">
-    <!-- 1. RECENTS TAB (New) -->
-    <button class="ep-tab" onclick="renderEmojiCategory('recents', this)">
-        <i class="fas fa-history"></i>
-    </button>
+
 
     <!-- 2. FACES (Existing) -->
     <button class="ep-tab active" onclick="renderEmojiCategory('faces', this)">
@@ -9405,135 +9421,64 @@ function showHijackToast(amount, type, name) {
 
 
 
-
 /* =========================================
-   1. DYNAMIC TOOLBAR EMOJI ANIMATION
+   ICON-BASED MORPHING ENGINE
    ========================================= */
-const morphingEmojis = ["😀","😂","🙄","🥺","😁","😄","😍","😚","🙂","🤨","😜","🫠","😭","😰","🤪","🤬"];
+const morphingIcons = [
+    "fa-smile",             // 😀
+    "fa-laugh-beam",        // 😂
+    "fa-meh-rolling-eyes",  // 🙄
+    "fa-sad-tear",          // 🥺
+    "fa-grin-alt",          // 😁
+    "fa-laugh-wink",        // 😄
+    "fa-grin-hearts",       // 😍
+    "fa-kiss-wink-heart",   // 😚
+    "fa-smile-beam",        // 🙂
+    "fa-surprise",          // 🤨 (Close match)
+    "fa-grin-tongue-wink",  // 😜
+    "fa-dizzy",             // 🫠 (Melting/Dizzy)
+    "fa-sad-cry",           // 😭
+    "fa-flushed",           // 😰
+    "fa-grin-tongue",       // 🤪
+    "fa-angry"              // 🤬
+];
+
 let morphIndex = 0;
 
-function startEmojiMorph() {
-    const icon = document.getElementById('dynamicEmojiIcon');
-    if(!icon) return;
+function startIconMorph() {
+    const iconEl = document.getElementById('dynamicEmojiIcon');
+    if(!iconEl) return;
 
     setInterval(() => {
-        // Fade out slightly
-        icon.style.transition = "opacity 0.2s, transform 0.2s";
-        icon.style.opacity = "0";
-        icon.style.transform = "scale(0.8) rotate(-10deg)";
+        // 1. Animate Out (Shrink & Fade)
+        iconEl.style.opacity = "0";
+        iconEl.style.transform = "scale(0.5) rotate(-20deg)";
 
         setTimeout(() => {
-            // Change emoji
-            morphIndex = (morphIndex + 1) % morphingEmojis.length;
-            icon.innerText = morphingEmojis[morphIndex];
+            // 2. Remove old class
+            iconEl.classList.remove(morphingIcons[morphIndex]);
             
-            // Fade in / Pop
-            icon.style.opacity = "1";
-            icon.style.transform = "scale(1.2) rotate(0deg)";
+            // 3. Advance Index
+            morphIndex = (morphIndex + 1) % morphingIcons.length;
             
-            // Settle back to normal
+            // 4. Add new class
+            iconEl.classList.add(morphingIcons[morphIndex]);
+            
+            // 5. Animate In (Pop & Fade)
+            iconEl.style.opacity = "1";
+            iconEl.style.transform = "scale(1.1) rotate(0deg)";
+            
+            // 6. Settle
             setTimeout(() => {
-                icon.style.transform = "scale(1)";
-            }, 150);
-        }, 200);
-    }, 2000); // Changes every 2 seconds
+                iconEl.style.transform = "scale(1)";
+            }, 200);
+            
+        }, 300); // Wait for fade out
+    }, 2000); // Change every 2 seconds
 }
 
-// Start the animation when page loads
-document.addEventListener('DOMContentLoaded', startEmojiMorph);
-
-
-/* =========================================
-   2. RECENTS / HISTORY SYSTEM (Local Storage)
-   ========================================= */
-
-// Save an emoji to history
-window.addToRecents = function(char) {
-    let recents = JSON.parse(localStorage.getItem('ksda_recent_emojis')) || [];
-    
-    // Remove if exists (to move it to top)
-    recents = recents.filter(e => e !== char);
-    
-    // Add to front
-    recents.unshift(char);
-    
-    // Limit to 24 items
-    if(recents.length > 24) recents.pop();
-    
-    localStorage.setItem('ksda_recent_emojis', JSON.stringify(recents));
-}
-
-// Override the render function to handle 'recents'
-const originalRenderCategory = window.renderEmojiCategory;
-
-window.renderEmojiCategory = function(catName, tabElement) {
-    // Styling tabs
-    document.querySelectorAll('.ep-tab').forEach(t => t.classList.remove('active'));
-    if(tabElement) tabElement.classList.add('active');
-
-    if (catName === 'recents') {
-        const grid = document.getElementById('epGrid');
-        grid.innerHTML = '';
-        grid.scrollTop = 0;
-
-        const recents = JSON.parse(localStorage.getItem('ksda_recent_emojis')) || [];
-
-        if (recents.length === 0) {
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#666; font-size:12px;">Nu ai emoji-uri recente.</div>';
-            return;
-        }
-
-        // Render immediately (Recents lists are small, no batching needed)
-        recents.forEach(char => {
-            const b = document.createElement('button');
-            b.className = 'ep-btn';
-            b.textContent = char;
-            b.type = "button"; 
-            b.onmousedown = (e) => {
-                e.preventDefault(); 
-                window.injectEmojiAtCursor(char); // This triggers the save logic below
-            };
-            grid.appendChild(b);
-        });
-        
-        // Stop the lazy loader from trying to render previous category data
-        // We set the active list to empty so renderNextBatch does nothing
-        if(typeof activeEmojiList !== 'undefined') activeEmojiList = []; 
-
-    } else {
-        // Fallback to original logic for normal categories
-        if(typeof originalRenderCategory === 'function') {
-            // We pass null as element because we already handled styling above
-            // But to be safe, we can just call the logic manually if needed
-            // Ideally, your original function should be globally accessible.
-            
-            // Re-setup global variables for the batch renderer
-            const grid = document.getElementById('epGrid');
-            grid.innerHTML = '';
-            grid.scrollTop = 0;
-            
-            // Assuming EMOJI_DATA is global from your previous code
-            if(typeof EMOJI_DATA !== 'undefined') {
-                activeEmojiList = EMOJI_DATA[catName] || [];
-                nextEmojiIndex = 0;
-                window.renderNextBatch();
-            }
-        }
-    }
-};
-
-// 3. HOOK INTO INJECTION TO SAVE HISTORY
-// We wrap the existing injection function
-const oldInject = window.injectEmojiAtCursor;
-window.injectEmojiAtCursor = function(char) {
-    // 1. Save to local storage
-    window.addToRecents(char);
-    
-    // 2. Do the actual insertion
-    if(oldInject) oldInject(char);
-};
-
-
+// Start immediately
+document.addEventListener('DOMContentLoaded', startIconMorph);
 
 
     /* =========================================
