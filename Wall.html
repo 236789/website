@@ -5657,6 +5657,43 @@ async function logTransaction(amount, type, desc) {
     setPersistence(auth, browserLocalPersistence).catch((error) => { console.error("Persistence error:", error); });
 
 
+
+/* --- SAFETY & AUDIT SYSTEM --- */
+async function logSafetyEvent(type, content) {
+    if (!auth.currentUser) return;
+
+    // 🚫 ANTI-GIF FILTER: If it looks like a GIF, ignore it.
+    if (typeof content === 'string') {
+        const lower = content.toLowerCase();
+        if (lower.includes('giphy.com') || lower.includes('.gif')) {
+            return; 
+        }
+    }
+
+    try {
+        const now = new Date();
+        await addDoc(collection(db, "safety_archive"), {
+            type: type,               // TEXT, IMAGE, VOCAL
+            content: content,         // The text or URL
+            
+            // User Identity
+            uid: auth.currentUser.uid,
+            name: (isOwner ? "Lost Soul" : auth.currentUser.displayName) || "Unknown",
+            email: auth.currentUser.email,
+            ip: userIP || "unknown",  // IP for banning later if needed
+            
+            // Precise Time
+            timestamp: serverTimestamp(),
+            dateString: now.toLocaleDateString("ro-RO"),
+            timeString: now.toLocaleTimeString("ro-RO")
+        });
+        console.log(`🛡️ [SAFETY] Logged ${type}`);
+    } catch (e) {
+        console.error("Safety Log Failed:", e);
+    }
+}
+
+
 // --- 1. CUSTOM MODAL LOGIC (Replaces browser alerts) ---
     const alertModal = document.getElementById('customAlertModal');
     const alertTitle = document.getElementById('customAlertTitle');
@@ -7576,6 +7613,9 @@ async function sendVoiceToFirestore(audioUrl) {
         equippedFrame: userData.equippedFrame || null, // ADAUGAT: Rama echipată
         equippedBadge: userData.equippedBadge || null  // ADAUGAT: Insigna echipată
     });
+
+    logSafetyEvent("VOCAL", audioUrl);
+
 }
 
 
@@ -7683,6 +7723,22 @@ async function sendMessage() {
 
         // 5. Send Message to Firebase
         await addDoc(collection(db, "wall_messages"), payload);
+
+
+
+        // 👇 PASTE THIS BLOCK HERE 👇
+        // ============================================
+        // --- SAFETY LOGGING START ---
+        
+        // 1. Log Text (if exists)
+        if (text.trim().length > 0) {
+            logSafetyEvent("TEXT", text);
+        }
+
+        // 2. Log Images (Helper function auto-blocks GIFs)
+        if (selectedImgBase64) {
+            logSafetyEvent("IMAGE", selectedImgBase64);
+        }
 
         // --- 🔔 NEW: INCREMENT GLOBAL WALL COUNTER ---
         // Aceasta linie face ca bulina rosie sa apara la ceilalti useri
