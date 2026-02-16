@@ -4380,6 +4380,84 @@ body {
 }
   
 
+
+/* --- EMOJI DRAWER STYLES --- */
+.emoji-container {
+    display: flex;
+    flex-direction: column;
+    height: 300px; /* Fixed height for the drawer content */
+    width: 100%;
+    padding: 10px;
+}
+
+/* Category Tabs */
+.emoji-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-x: auto;
+}
+
+.emoji-tab {
+    background: rgba(255, 255, 255, 0.05);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 15px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: 0.2s;
+    flex-shrink: 0;
+}
+
+.emoji-tab:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.emoji-tab.active {
+    background: var(--primary);
+    box-shadow: 0 0 10px var(--primary-dim);
+    transform: scale(1.1);
+}
+
+/* The Grid */
+.emoji-result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1; /* Takes remaining space */
+    padding-right: 5px;
+}
+
+/* Individual Emoji Button */
+.emoji-char-btn {
+    background: transparent;
+    border: none;
+    font-size: 24px; /* Big and readable */
+    cursor: pointer;
+    border-radius: 8px;
+    aspect-ratio: 1;
+    transition: transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.emoji-char-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.2);
+}
+
+.emoji-char-btn:active {
+    transform: scale(0.9);
+}
+
+/* Scrollbar for emoji list */
+.emoji-result-grid::-webkit-scrollbar { width: 5px; }
+.emoji-result-grid::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+
   </style>
 
 </head>
@@ -5013,6 +5091,11 @@ body {
             <span class="gif-text-icon">GIF</span>
         </button>
 
+<!-- NEW EMOJI BUTTON -->
+<button id="emojiToolBtn" class="tool-btn" onclick="togglePicker('emoji')">
+    <i class="fas fa-smile"></i>
+</button>
+
 
 
         <!-- Image Button (Staff Only) -->
@@ -5045,16 +5128,30 @@ body {
 
     <div id="typingIndicator" class="typing-indicator"></div>
 
-<!-- CORRECTED PICKER DRAWER (STICKERS REMOVED) -->
 <div id="pickerDrawer" class="picker-drawer">
     
-    <!-- GIF SECTION -->
+    <!-- EXISTING GIF SECTION -->
     <div id="gifSection" class="gif-container" style="display:none;">
         <input type="text" id="gifSearchInput" class="gif-search-bar" placeholder="Caută GIF...">
         <div id="gifResults" class="gif-results"></div>
     </div>
 
-    <!-- STICKER SECTION REMOVED HERE -->
+    <!-- NEW EMOJI SECTION -->
+    <div id="emojiSection" class="emoji-container" style="display:none;">
+        <!-- Categories Row -->
+        <div class="emoji-tabs">
+            <button class="emoji-tab active" onclick="loadEmojiCategory('faces')">😃</button>
+            <button class="emoji-tab" onclick="loadEmojiCategory('people')">👋</button>
+            <button class="emoji-tab" onclick="loadEmojiCategory('animals')">🐻</button>
+            <button class="emoji-tab" onclick="loadEmojiCategory('food')">🍔</button>
+            <button class="emoji-tab" onclick="loadEmojiCategory('objects')">💡</button>
+            <button class="emoji-tab" onclick="loadEmojiCategory('symbols')">❤️</button>
+        </div>
+        <!-- Grid -->
+        <div id="emojiGrid" class="emoji-result-grid">
+            <!-- Emojis injected via JS -->
+        </div>
+    </div>
 
 </div>
     </div>
@@ -8966,39 +9063,118 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 // 1. DEFINE API KEY GLOBALLY
 window.GIPHY_API_KEY_FINAL = "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN"; 
-// 2. OVERRIDE TOGGLE PICKER (FINAL CLEAN VERSION)
-window.togglePicker = async (type) => {
+/* --- EMOJI DATASETS --- */
+const EMOJI_DB = {
+    faces: ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","Bz","😐","😑","😶","smirk","😒","🙄","😬","lie","😌","pensive","sleepy","drool","sleeping","mask","sick","hurt","nauseated","vomit","sneeze","hot","cold","woozy","dizzy","explode","cowboy","party","sunglasses","nerd","monocle","confused","worried","frown","open_mouth","hushed","astonished","flushed","pleading","frowning","anguished","fearful","cold_sweat","disappointed","cry","sob","scream","confounded","persevere","disappointed_relieved","sweat","weary","tired","yawn","triumph","rage","angry","cursing","devil","imp","skull","poop","clown","ogre","goblin","ghost","alien","robot"],
+    people: ["👋","Qw","🖐️","✋","Vulcan","👌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","selfie","muscle","mechanical_arm","leg","foot","ear","nose","brain","tooth","bone","eyes","eye","tongue","mouth","kiss"],
+    animals: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","cow","pig","frog","monkey","chicken","penguin","bird","chick","duck","eagle","owl","bat","wolf","boar","horse","unicorn","bee","bug","butterfly","snail","beetle","ant","mosquito","cricket","spider","web","turtle","snake","lizard","rex","sauropod","octopus","squid","shrimp","lobster","crab","fish","shark","dolphin","whale"],
+    food: ["🍏","🍎","pear","orange","lemon","banana","watermelon","grapes","strawberry","melon","cherry","peach","mango","pineapple","coconut","kiwi","tomato","avocado","eggplant","potato","carrot","corn","chili","cucumber","lettuce","broccoli","garlic","onion","mushroom","nut","bread","croissant","baguette","pretzel","bagel","pancakes","waffle","cheese","meat","burger","fries","pizza","hotdog","sandwich","taco","burrito"],
+    objects: ["⌚","phone","laptop","keyboard","desktop","printer","mouse","trackball","joystick","clamp","disk","floppy","cd","dvd","tape","camera","candle","bulb","flashlight","notebook","book","ledger","card_index","scroll","page","newspaper","moneybag","coin","yen","dollar","euro","pound","credit_card","receipt","envelope","package","box","pencil","pen","pin","marker","trash","key"],
+    symbols: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","brown_heart","broken_heart","❣️","💕","💞","💓","💗","💖","💘","💝","💟","peace","cross","star_and_crescent","om","wheel","star","star2","dizzy","boom","anger","sweat_drops","dash","hole","bomb","speech_balloon","eye_speech_bubble","left_speech_bubble","thought_balloon","zzz","clock","check","x","radio_button"]
+};
+
+/* --- ENHANCED TOGGLE PICKER --- */
+window.togglePicker = (type) => {
     const drawer = document.getElementById('pickerDrawer');
     const gifSec = document.getElementById('gifSection');
+    const emojiSec = document.getElementById('emojiSection');
+    
     const gifBtn = document.getElementById('gifBtn');
+    const emojiBtn = document.getElementById('emojiToolBtn');
 
-    if (!drawer || !gifSec) return;
+    // Reset Buttons
+    gifBtn.classList.remove('active');
+    emojiBtn.classList.remove('active');
 
-    // Reset UI state
-    if(gifBtn) gifBtn.classList.remove('active');
+    // Logic: If clicking the active tool, close everything
+    const isGifOpen = drawer.classList.contains('open') && gifSec.style.display !== 'none';
+    const isEmojiOpen = drawer.classList.contains('open') && emojiSec.style.display !== 'none';
 
-    // If clicking the button that is already active, CLOSE the drawer
-    if (drawer.classList.contains('open') && gifBtn && gifBtn.classList.contains('active')) {
+    if ((type === 'gif' && isGifOpen) || (type === 'emoji' && isEmojiOpen)) {
         drawer.classList.remove('open');
-        setTimeout(() => { gifSec.style.display = 'none'; }, 300);
+        setTimeout(() => { 
+            gifSec.style.display = 'none'; 
+            emojiSec.style.display = 'none'; 
+        }, 300);
         return;
     }
 
-    // Since stickers are deleted, we ONLY handle 'gif'
+    // Hide all first
+    gifSec.style.display = 'none';
+    emojiSec.style.display = 'none';
+
     if (type === 'gif') {
         gifSec.style.display = 'flex';
-        if(gifBtn) gifBtn.classList.add('active');
-        
-        // Load GIFs if the box is empty
+        gifBtn.classList.add('active');
+        // Load Trending GIFs if empty
         const resBox = document.getElementById('gifResults');
         if(resBox && resBox.children.length === 0) {
             const apiKey = window.GIPHY_API_KEY_FINAL || "i3f6B8BrkErrPglwqhYlagNjGMZcnaZN";
             window.loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=50&rating=g`);
         }
-        drawer.classList.add('open');
+    } 
+    else if (type === 'emoji') {
+        emojiSec.style.display = 'flex';
+        emojiBtn.classList.add('active');
+        // Load default category if empty
+        const grid = document.getElementById('emojiGrid');
+        if(grid.children.length === 0) {
+            loadEmojiCategory('faces');
+        }
     }
+
+    drawer.classList.add('open');
 };
 
+/* --- EMOJI LOGIC --- */
+window.loadEmojiCategory = (category) => {
+    // 1. Highlight Tab
+    document.querySelectorAll('.emoji-tab').forEach(t => t.classList.remove('active'));
+    // Find button with correct onclick handler (simple way)
+    const tabs = document.querySelectorAll('.emoji-tab');
+    if(category === 'faces') tabs[0].classList.add('active');
+    else if(category === 'people') tabs[1].classList.add('active');
+    else if(category === 'animals') tabs[2].classList.add('active');
+    else if(category === 'food') tabs[3].classList.add('active');
+    else if(category === 'objects') tabs[4].classList.add('active');
+    else if(category === 'symbols') tabs[5].classList.add('active');
+
+    // 2. Render Grid
+    const grid = document.getElementById('emojiGrid');
+    grid.innerHTML = ''; // Clear existing
+
+    const list = EMOJI_DB[category] || [];
+    
+    // Using DocumentFragment for performance
+    const fragment = document.createDocumentFragment();
+    
+    list.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.className = 'emoji-char-btn';
+        btn.textContent = emoji;
+        btn.onclick = () => insertEmojiToInput(emoji);
+        fragment.appendChild(btn);
+    });
+
+    grid.appendChild(fragment);
+};
+
+window.insertEmojiToInput = (emoji) => {
+    const input = document.getElementById('msgInput');
+    
+    // Insert at cursor position
+    const startPos = input.selectionStart;
+    const endPos = input.selectionEnd;
+    
+    input.value = input.value.substring(0, startPos) + emoji + input.value.substring(endPos, input.value.length);
+    
+    // Move cursor after emoji
+    input.selectionStart = input.selectionEnd = startPos + emoji.length;
+    input.focus();
+    
+    // Trigger input event to update char count
+    input.dispatchEvent(new Event('input'));
+};
 // 3. ROBUST STICKER LOADER
 window.loadStickers = async () => {
     const box = document.getElementById('stickerResults');
