@@ -4750,12 +4750,67 @@ body {
 .cancel-edit-btn { background: none; border: none; color: #ff4757; font-size: 16px; cursor: pointer; }
 
 
+/* (Editat) Text Style */
+.edited-indicator {
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+    margin-left: 5px;
+    cursor: help;
+}
 
+/* History Button Style */
+.history-btn {
+    background: none;
+    border: none;
+    color: #ff9f43; /* Orange color to stand out */
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    opacity: 0.7;
+}
+.history-btn:hover {
+    opacity: 1;
+    color: #fff;
+    transform: rotate(-15deg);
+}
+
+/* History List Item */
+.history-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 13px;
+}
+.history-time {
+    font-size: 10px;
+    color: var(--primary);
+    margin-bottom: 4px;
+    font-family: 'Orbitron';
+    display: block;
+}
 
   </style>
 
 </head>
 <body>
+
+<!-- EDIT HISTORY MODAL -->
+<div id="editHistoryModal" class="account-modal-overlay">
+    <div class="account-card" style="max-width: 400px; max-height: 600px;">
+        <button class="close-pop" onclick="document.getElementById('editHistoryModal').classList.remove('active')">✕</button>
+        <h3 style="font-family:'Orbitron'; color:var(--primary); margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
+            <i class="fas fa-history"></i> ISTORIC EDITĂRI
+        </h3>
+        <div id="editHistoryList" style="text-align: left; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; max-height: 400px; width: 100%;">
+            <!-- History items injected here -->
+        </div>
+    </div>
+</div>
 
 
 
@@ -7914,16 +7969,30 @@ async function sendMessage() {
     }
 
     try {
-        if (currentEditId) {
-            // [INFO] EDIT MODE: Update existing document
-            const msgRef = doc(db, "wall_messages", currentEditId);
-            await updateDoc(msgRef, {
-                text: text,
-                editedAt: serverTimestamp(),
-                isEdited: true
-            });
-            showToast("Mesaj actualizat!", "success");
-        } else {
+if (currentEditId) {
+    // [INFO] EDIT MODE: Update existing document with History
+    const msgRef = doc(db, "wall_messages", currentEditId);
+    
+    // 1. Get current data to save the "Old" text
+    const oldSnap = await getDoc(msgRef);
+    if (oldSnap.exists()) {
+        const oldData = oldSnap.data();
+        const oldTextContent = oldData.text || "";
+
+        // 2. Perform the update
+        await updateDoc(msgRef, {
+            text: text,
+            editedAt: serverTimestamp(),
+            isEdited: true,
+            // Push old text to history array
+            editHistory: arrayUnion({
+                content: oldTextContent,
+                timestamp: Date.now() // Save specific time of edit
+            })
+        });
+    }
+    showToast("Mesaj actualizat!", "success");
+}else {
             // [INFO] CREATE MODE: Full original logic
             const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             const userData = userSnapshot.data();
@@ -8712,35 +8781,82 @@ if (!isSystemOrBot || isAdmin || isOwner) {
 
             const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
 
-            // --- FINAL ASSEMBLY ---
-            wrapper.innerHTML = `
-                ${avatarHtml}
-                <div class="msg-content-column">
-                    <div class="msg-author" style="font-size:11px; margin-bottom:4px; font-weight:700;">
-                        ${fullAuthorHeader}
-                    </div>
-                    <div class="${bubbleClass}" style="cursor:pointer;" onclick="window.tagUser('${cleanNameForTag}')">
-                        ${bubbleContent}
-                    </div>
-                    ${reactionsContainerHtml}
-                    <div class="msg-info" style="display:flex; gap:10px; margin-top:4px; align-items:center; opacity:0.7; font-size:9px;">
-                        <span class="msg-time">${time}</span> 
-                        ${seenIndicatorHtml}
-                        ${ttsBtnHtml} 
-                    </div>
-                </div>
-                ${dropdownMenuHtml}
-            `;
-            feed.appendChild(wrapper);
-            if (typeof seenObserver !== 'undefined') seenObserver.observe(wrapper);
 
-// [INFO] Trigger rich link preview if a placeholder was generated
-            const lpPlaceholder = wrapper.querySelector('.lp-placeholder');
-            if (lpPlaceholder) {
-                const linkUrl = lpPlaceholder.dataset.url;
-                // [INFO] Small delay to allow DOM to settle before fetching
-                setTimeout(() => fetchLinkPreview(msgId, linkUrl), 200);
-            }
+
+// --- EDITED STATUS LOGIC ---
+let editedHtml = "";
+let historyBtnHtml = "";
+
+if (data.isEdited) {
+    // 1. Add "(editat)" text
+    editedHtml = `<span class="edited-indicator" title="Acest mesaj a fost modificat">(editat)</span>`;
+
+    // 2. Add History Loop Icon (Only for Staff)
+    // Check if there is actual history data to show
+    const hasHistory = data.editHistory && data.editHistory.length > 0;
+    
+    if ((isOwner || isAdmin) && hasHistory) {
+        historyBtnHtml = `
+            <button class="history-btn" onclick="window.viewEditHistory('${msgId}')" title="Vezi istoricul modificărilor">
+                <i class="fas fa-history"></i>
+            </button>
+        `;
+    }
+}
+
+window.viewEditHistory = async (msgId) => {
+    const modal = document.getElementById('editHistoryModal');
+    const list = document.getElementById('editHistoryList');
+    
+    list.innerHTML = '<div style="text-align:center; color:#aaa; padding:20px;">Se încarcă istoricul...</div>';
+    modal.classList.add('active');
+
+    try {
+        const snap = await getDoc(doc(db, "wall_messages", msgId));
+        if (!snap.exists()) return;
+
+        const data = snap.data();
+        const history = data.editHistory || [];
+
+        list.innerHTML = '';
+
+        if (history.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px;">Nu există istoric salvat.</div>';
+            return;
+        }
+
+        // Show newest edits first
+        history.reverse().forEach((item, index) => {
+            // Format time
+            const date = new Date(item.timestamp);
+            const timeStr = date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) + 
+                          ' - ' + date.toLocaleDateString('ro-RO');
+
+            const div = document.createElement('div');
+            div.className = 'history-item';
+            div.innerHTML = `
+                <span class="history-time">Versiunea ${history.length - index}: ${timeStr}</span>
+                <div style="color:#ddd;">${item.content}</div>
+            `;
+            list.appendChild(div);
+        });
+
+        // Add the CURRENT version at the top for comparison
+        const currentDiv = document.createElement('div');
+        currentDiv.className = 'history-item';
+        currentDiv.style.border = '1px solid #00ff88';
+        currentDiv.style.background = 'rgba(0, 255, 136, 0.05)';
+        currentDiv.innerHTML = `
+            <span class="history-time" style="color:#00ff88;">ACTUAL (Acum)</span>
+            <div style="color:#fff;">${data.text}</div>
+        `;
+        list.prepend(currentDiv);
+
+    } catch (e) {
+        console.error(e);
+        list.innerHTML = '<div style="text-align:center; color:#ff4757;">Eroare la încărcare.</div>';
+    }
+};
 
 
 
@@ -10089,6 +10205,62 @@ cancelEditBtn.onclick = () => {
     currentEditId = null;
     editBar.style.display = 'none';
     msgInput.value = '';
+};
+
+
+
+window.viewEditHistory = async (msgId) => {
+    const modal = document.getElementById('editHistoryModal');
+    const list = document.getElementById('editHistoryList');
+    
+    list.innerHTML = '<div style="text-align:center; color:#aaa; padding:20px;">Se încarcă istoricul...</div>';
+    modal.classList.add('active');
+
+    try {
+        const snap = await getDoc(doc(db, "wall_messages", msgId));
+        if (!snap.exists()) return;
+
+        const data = snap.data();
+        const history = data.editHistory || [];
+
+        list.innerHTML = '';
+
+        if (history.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px;">Nu există istoric salvat.</div>';
+            return;
+        }
+
+        // Show newest edits first
+        history.reverse().forEach((item, index) => {
+            // Format time
+            const date = new Date(item.timestamp);
+            const timeStr = date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) + 
+                          ' - ' + date.toLocaleDateString('ro-RO');
+
+            const div = document.createElement('div');
+            div.className = 'history-item';
+            div.innerHTML = `
+                <span class="history-time">Versiunea ${history.length - index}: ${timeStr}</span>
+                <div style="color:#ddd;">${item.content}</div>
+            `;
+            list.appendChild(div);
+        });
+
+        // Add the CURRENT version at the top for comparison
+        const currentDiv = document.createElement('div');
+        currentDiv.className = 'history-item';
+        currentDiv.style.border = '1px solid #00ff88';
+        currentDiv.style.background = 'rgba(0, 255, 136, 0.05)';
+        currentDiv.innerHTML = `
+            <span class="history-time" style="color:#00ff88;">ACTUAL (Acum)</span>
+            <div style="color:#fff;">${data.text}</div>
+        `;
+        list.prepend(currentDiv);
+
+    } catch (e) {
+        console.error(e);
+        list.innerHTML = '<div style="text-align:center; color:#ff4757;">Eroare la încărcare.</div>';
+    }
 };
 </script>
 </body>
