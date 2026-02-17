@@ -7914,9 +7914,9 @@ async function initiateWipeSequence(forced) {
 }
 // --- 3. ȘTERGEREA EFECTIVĂ (BATCH) ---
 async function wipeAllMessages() {
-    let totalDeleted = 0;
-    // Luăm ultimele 500 de mesaje (limită batch Firestore)
-    const q = query(collection(db, "wall_messages"), limit(500));
+    let totalUpdated = 0;
+    // Get the messages that are not yet soft-deleted
+    const q = query(collection(db, "wall_messages"), where("isDeleted", "==", false), limit(500));
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) return 0;
@@ -7926,20 +7926,20 @@ async function wipeAllMessages() {
 
     snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        // Ștergem tot ce NU este fixat (Pinned)
+        // Only target messages that are NOT pinned
         if (data.isPinned !== true) {
-            batch.delete(docSnap.ref);
+            // We use update instead of delete
+            batch.update(docSnap.ref, { isDeleted: true });
             count++;
-            totalDeleted++;
+            totalUpdated++;
         }
     });
 
     if (count > 0) {
         await batch.commit();
     }
-    return totalDeleted;
+    return totalUpdated;
 }
-
 // --- 4. CONFIGURARE BOT ---
 
 // --- BOT MESSAGE SENDER (UPDATED) ---
