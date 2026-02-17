@@ -8040,8 +8040,8 @@ async function sendMessage() {
 
     const text = msgInput.value.trim();
     
-    // Validation: Allow send if there is Text OR an Image/GIF
-    if((!text && !selectedImgBase64) || !auth.currentUser) return;
+    // Validation: Allow send if there is Text OR an Image/GIF (Sticker) OR Uploaded Images
+    if((!text && !selectedImgBase64 && selectedImagesArray.length === 0) || !auth.currentUser) return;
     
     // 1. Admin Commands
     if(text === '/reset chat') {
@@ -8074,30 +8074,30 @@ async function sendMessage() {
     }
 
     try {
-if (currentEditId) {
-    // [INFO] EDIT MODE: Update existing document with History
-    const msgRef = doc(db, "wall_messages", currentEditId);
-    
-    // 1. Get current data to save the "Old" text
-    const oldSnap = await getDoc(msgRef);
-    if (oldSnap.exists()) {
-        const oldData = oldSnap.data();
-        const oldTextContent = oldData.text || "";
+        if (currentEditId) {
+            // [INFO] EDIT MODE: Update existing document with History
+            const msgRef = doc(db, "wall_messages", currentEditId);
+            
+            // 1. Get current data to save the "Old" text
+            const oldSnap = await getDoc(msgRef);
+            if (oldSnap.exists()) {
+                const oldData = oldSnap.data();
+                const oldTextContent = oldData.text || "";
 
-        // 2. Perform the update
-        await updateDoc(msgRef, {
-            text: text,
-            editedAt: serverTimestamp(),
-            isEdited: true,
-            // Push old text to history array
-            editHistory: arrayUnion({
-                content: oldTextContent,
-                timestamp: Date.now() // Save specific time of edit
-            })
-        });
-    }
-    showToast("Mesaj actualizat!", "success");
-}else {
+                // 2. Perform the update
+                await updateDoc(msgRef, {
+                    text: text,
+                    editedAt: serverTimestamp(),
+                    isEdited: true,
+                    // Push old text to history array
+                    editHistory: arrayUnion({
+                        content: oldTextContent,
+                        timestamp: Date.now() // Save specific time of edit
+                    })
+                });
+            }
+            showToast("Mesaj actualizat!", "success");
+        } else {
             // [INFO] CREATE MODE: Full original logic
             const userSnapshot = await getDoc(doc(db, "accounts", auth.currentUser.uid));
             const userData = userSnapshot.data();
@@ -8130,16 +8130,19 @@ if (currentEditId) {
                 seenBy: [auth.currentUser.uid]
             };
 
-// --- NEW MULTI-IMAGE LOGIC ---
-            if (selectedImagesArray.length > 0) {
-                // If only 1 image, save as string (backward compatibility)
+            // --- IMAGE LOGIC (Combines Stickers & Uploads) ---
+            if (selectedImgBase64) {
+                // Priority: Single GIF/Sticker
+                payload.image = selectedImgBase64;
+            } else if (selectedImagesArray.length > 0) {
+                // Uploads
                 if (selectedImagesArray.length === 1) {
                     payload.image = selectedImagesArray[0];
                 } else {
-                    // If 2-5 images, save as array
                     payload.images = selectedImagesArray;
                 }
             }
+
             if(replyData) {
                 payload.replyToId = replyData.id;
                 payload.replyToName = replyData.name;
@@ -8246,8 +8249,10 @@ if (currentEditId) {
             if (editBar) editBar.style.display = 'none';
         }
         
-// RESET UI
-        selectedImagesArray = []; // Clear array
+        // RESET UI & VARIABLES
+        selectedImagesArray = []; 
+        selectedImgBase64 = null; // [INFO] Reset single image source
+        
         if (imgPreviewContainer) {
             imgPreviewContainer.style.display = 'none';
             imgPreviewContainer.innerHTML = '<button class="remove-preview" id="cancelImg">&times;</button><img src="" id="imgPreview" class="preview-img">';
@@ -9913,8 +9918,9 @@ window.sendMediaFinal = function(url) {
     // otherwise we use a fallback logic.
     try {
         // Try setting the variable used by your main script
-        if(typeof selectedImagesArray  !== 'undefined') {
-            selectedImagesArray  = url;
+        // [FIX] Use selectedImgBase64 for single items (GIFs/Stickers) instead of the array
+        if(typeof selectedImgBase64  !== 'undefined') {
+            selectedImgBase64  = url;
         } else {
             // If we can't access the variable, we attach it to window
             window.tempSelectedImg = url;
@@ -10381,8 +10387,9 @@ window.viewEditHistory = async (msgId) => {
 
 
 // --- GLOBAL VARIABLE UPDATE ---
+// --- GLOBAL VARIABLE UPDATE ---
     let selectedImagesArray = []; // Replaces selectedImgBase64
-
+    let selectedImgBase64 = null; // Restored for Sticker/GIF compatibility
     // --- NEW INPUT HANDLER ---
     imgBtn.onclick = () => imgInputFile.click();
     
