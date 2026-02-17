@@ -4565,6 +4565,30 @@ body {
     transform: scale(1.2) !important;
     text-shadow: 0 0 15px var(--atmo-main);
 }
+
+
+
+/* --- MESSAGE GROUPING SYSTEM --- */
+.msg-wrapper.consecutive-msg {
+    margin-bottom: 4px !important;
+}
+
+/* Hides the Name and Badges for consecutive messages */
+.msg-wrapper.consecutive-msg .msg-author {
+    display: none !important;
+}
+
+/* Hides the PFP and Frame but keeps the width for alignment */
+.msg-wrapper.consecutive-msg .msg-pfp-column {
+    visibility: hidden !important;
+    height: 10px !important; /* Minimal height to keep bubbles tight */
+    margin-bottom: 0 !important;
+}
+
+/* Tighten the gap between grouped bubbles */
+.msg-wrapper.consecutive-msg .msg-content-column {
+    gap: 0 !important;
+}
   </style>
 
 </head>
@@ -8200,7 +8224,12 @@ function loadMessages() {
          * =====================================================================
          * We iterate through every individual message document retrieved.
          */
-docs.forEach(data => {
+        
+        // [INFO] Grouping Logic Variables
+        let lastUid = null;
+        let consecutiveCount = 0;
+
+        docs.forEach((data, index) => {
             // SECURITY CHECK: Skip rendering if the message is soft-deleted.
             if (data.isDeleted) return;
 
@@ -8210,6 +8239,18 @@ docs.forEach(data => {
             const isBot = (data.isBot === true);
             const isSpecial = (data.isSpecial === true); // <--- CHECK FOR SHOP ALERTS
 
+            // [INFO] Check if this message should be grouped with the previous one
+            // Grouping resets if: UID changes, user is a Bot, message is a Special Alert,
+            // or if the consecutive count exceeds 5.
+            let isConsecutive = false;
+            if (data.uid === lastUid && !isBot && !isSpecial && consecutiveCount < 5) {
+                isConsecutive = true;
+                consecutiveCount++;
+            } else {
+                lastUid = data.uid;
+                consecutiveCount = 1;
+                isConsecutive = false;
+            }
             
             // ROLE DETERMINATION:
             const userIsAdmin = (data.isAdmin === true);
@@ -8219,7 +8260,7 @@ docs.forEach(data => {
 
             // COMPONENT INITIALIZATION:
             const wrapper = document.createElement('div');
-            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'} msg-row`;
+            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'} msg-row ${isConsecutive ? 'consecutive-msg' : ''}`;
             wrapper.dataset.id = msgId;
 
             // TIMESTAMP GENERATION:
@@ -8228,7 +8269,7 @@ docs.forEach(data => {
                 time = data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             }
 
-// --- FIX STYLE CONFIGURATION ---
+            // --- FIX STYLE CONFIGURATION ---
             let bubbleContent = "";
             let bubbleClass = 'msg-bubble';
             
@@ -8316,10 +8357,10 @@ docs.forEach(data => {
                     const truncatedReply = safeReply.length > 50 ? safeReply.substring(0, 50) + "..." : safeReply;
                     bubbleContent += `<span class="quoted-msg"><strong style="color:var(--primary);">@${data.replyToName}</strong>${truncatedReply}</span>`;
                 }
-if (data.image) {
-    // UPDATED: Now calls openLightbox instead of window.open
-    bubbleContent += `<div class="message-image-wrap"><img src="${data.image}" class="msg-img-content" onclick="openLightbox('${data.image}')"></div>`;
-}
+                if (data.image) {
+                    // UPDATED: Now calls openLightbox instead of window.open
+                    bubbleContent += `<div class="message-image-wrap"><img src="${data.image}" class="msg-img-content" onclick="openLightbox('${data.image}')"></div>`;
+                }
                 // STANDARD TEXT ESCAPING (This is what was breaking your cards before)
                 let baseText = (data.text || "").replace(/</g, "&lt;").replace(/\n/g, "<br>");
                 if (baseText) {
@@ -8347,18 +8388,18 @@ if (data.image) {
                 reactionsContainerHtml += `</div>`;
             }
 
-const totalSeen = (data.seenBy || []).length;
-const seenIndicatorHtml = `<button class="seen-btn ${totalSeen > 0 ? 'active' : ''}" style="background:none; border:none; color:inherit; font-size:10px; cursor:pointer;" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${totalSeen}</button>`;
+            const totalSeen = (data.seenBy || []).length;
+            const seenIndicatorHtml = `<button class="seen-btn ${totalSeen > 0 ? 'active' : ''}" style="background:none; border:none; color:inherit; font-size:10px; cursor:pointer;" onclick="window.openSeenByList('${msgId}')"><i class="fas fa-eye"></i> ${totalSeen}</button>`;
 
-// NEW SPEAKER BUTTON (FIXED)
-let ttsBtnHtml = "";
-// Allow reading text messages AND system messages
-if ((data.text || data.uid === 'system-alert') && data.type !== 'vocal') {
-    // Escape quotes to prevent HTML breaking
-    const safeText = (data.text || "").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/\n/g, " ");
-    // The 'true' at the end forces immediate playback
-    ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}', null, true)"><i class="fas fa-volume-up"></i></button>`;
-}
+            // NEW SPEAKER BUTTON (FIXED)
+            let ttsBtnHtml = "";
+            // Allow reading text messages AND system messages
+            if ((data.text || data.uid === 'system-alert') && data.type !== 'vocal') {
+                // Escape quotes to prevent HTML breaking
+                const safeText = (data.text || "").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/\n/g, " ");
+                // The 'true' at the end forces immediate playback
+                ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}', null, true)"><i class="fas fa-volume-up"></i></button>`;
+            }
 
             // --- DROPDOWN MENU ---
             let dropdownMenuHtml = "";
@@ -8397,7 +8438,7 @@ if ((data.text || data.uid === 'system-alert') && data.type !== 'vocal') {
 
             const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
 
-// --- FINAL ASSEMBLY ---
+            // --- FINAL ASSEMBLY ---
             wrapper.innerHTML = `
                 ${avatarHtml}
                 <div class="msg-content-column">
@@ -8453,22 +8494,21 @@ if (autoReadEnabled) {
             }
 
             // --- APPEND TEXT CONTENT (If applicable and not just a raw vocal) ---
-    // Caută această parte în onSnapshot-ul din loadMessages():
-if (data.text && data.type !== 'vocal') {
-    // 1. STRIP ALL HTML TAGS (Aceasta oprește citirea div-urilor și style-urilor)
-    let cleanText = data.text.replace(/<[^>]*>/g, " ");
+            if (data.text && data.type !== 'vocal') {
+                // 1. STRIP ALL HTML TAGS (Aceasta oprește citirea div-urilor și style-urilor)
+                let cleanText = data.text.replace(/<[^>]*>/g, " ");
 
-    // 2. Continuă cu curățarea restului de caractere
-    cleanText = cleanText
-        .replace(/<br>/g, " ") 
-        .replace(/@\w+/g, "") // Scoate tag-urile de tip @User
-        .replace(/\p{Extended_Pictographic}/gu, ""); // Scoate emoji-urile
-    
-    // Cleanup final pentru simboluri, păstrând diacriticele românești
-    cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, " ").trim();
-    
-    textToRead += cleanText;
-}
+                // 2. Continuă cu curățarea restului de caractere
+                cleanText = cleanText
+                    .replace(/<br>/g, " ") 
+                    .replace(/@\w+/g, "") // Scoate tag-urile de tip @User
+                    .replace(/\p{Extended_Pictographic}/gu, ""); // Scoate emoji-urile
+                
+                // Cleanup final pentru simboluri, păstrând diacriticele românești
+                cleanText = cleanText.replace(/[^\w\săâîșțĂÂÎȘȚ.,?!'-]/gi, " ").trim();
+                
+                textToRead += cleanText;
+            }
 
             // 3. Queue it up!
             if (textToRead.trim().length > 1) {
@@ -8506,7 +8546,6 @@ if (data.text && data.type !== 'vocal') {
      * Final line count and operational log.
      */
     console.log("Message listener successfully initialized with full feature set.");
-    // END OF FUNCTION loadMessages
 }
 
 window.toggleWaAudio = (id) => {
