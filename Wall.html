@@ -4684,6 +4684,48 @@ body {
     color: #ffd700; 
 }
 .cancel-edit-btn { background: none; border: none; color: #ff4757; font-size: 16px; cursor: pointer; }
+
+
+
+/* --- NEW MESSAGE NOTIFICATION BADGE --- */
+.new-msg-toast {
+    position: absolute;
+    bottom: 85px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--primary);
+    color: #000;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 50px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    z-index: 500;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 0 20px var(--atmo-glow);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    opacity: 0;
+}
+
+.new-msg-toast.active {
+    display: flex;
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.new-msg-toast i {
+    font-size: 10px;
+    animation: bounceDown 1.5s infinite;
+}
+
+@keyframes bounceDown {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+}
   </style>
 
 </head>
@@ -5298,6 +5340,14 @@ body {
     <div id="messagesFeed" class="messages-feed">
         <div style="text-align:center; color:#555; margin-top:50px;">Se încarcă chat-ul...</div>
     </div>
+
+
+<!-- NEW MESSAGES TOAST -->
+<button id="newMsgToast" class="new-msg-toast">
+    <i class="fas fa-arrow-down"></i>
+    <span id="newMsgCount">0</span> MESAJE NOI
+</button>
+
 <div class="input-area-wrapper">
 
     <!-- MUTE BANNER -->
@@ -8352,6 +8402,14 @@ function loadMessages() {
             });
         });
 
+// [INFO] Calculate how many new messages arrived compared to current UI
+        // This must be done BEFORE clearing the feed.
+        const currentMsgElements = feed.querySelectorAll('.msg-row');
+        const incomingCount = docs.length - currentMsgElements.length;
+
+        // [INFO] Existing clear feed logic
+        feed.innerHTML = '';
+
         // DISPLAY ORDERING:
         // We reverse the array to ensure chronological order (Old at Top, New at Bottom).
         docs.reverse();
@@ -8675,21 +8733,31 @@ if (autoReadEnabled) {
 }
         }); 
         
-        /**
+/**
          * =====================================================================
-         * STAGE 6: VIEWPORT SYNCHRONIZATION
+         * STAGE 6: VIEWPORT SYNCHRONIZATION & TOAST LOGIC
          * =====================================================================
-         * If the user was already looking at the bottom, or if they were the 
-         * one who sent the message, we force the scroll to jump to the new content.
          */
         const lastMsgObj = docs[docs.length - 1];
         const sentByMe = (lastMsgObj && lastMsgObj.uid === currentUid);
         
         if (wasAtBottom || sentByMe) {
-            feed.scrollTo({ 
-                top: feed.scrollHeight, 
-                behavior: 'smooth' 
+            // [INFO] User is already at the bottom or sent a message -> Snap down
+            unreadCount = 0;
+            if (newMsgToast) newMsgToast.classList.remove('active');
+            requestAnimationFrame(() => {
+                feed.scrollTo({ 
+                    top: feed.scrollHeight, 
+                    behavior: 'smooth' 
+                });
             });
+        } else if (incomingCount > 0) {
+            // [INFO] User is scrolled up and new messages arrived -> Show Toast
+            unreadCount += incomingCount;
+            if (newMsgToast) {
+                newMsgCount.innerText = unreadCount;
+                newMsgToast.classList.add('active');
+            }
         }
     });
 
@@ -9962,6 +10030,21 @@ cancelEditBtn.onclick = () => {
     editBar.style.display = 'none';
     msgInput.value = '';
 };
+
+
+
+let unreadCount = 0;
+    const newMsgToast = document.getElementById('newMsgToast');
+    const newMsgCount = document.getElementById('newMsgCount');
+
+    // Click handler to go to bottom
+    if (newMsgToast) {
+        newMsgToast.onclick = () => {
+            unreadCount = 0;
+            newMsgToast.classList.remove('active');
+            messagesFeed.scrollTo({ top: messagesFeed.scrollHeight, behavior: 'smooth' });
+        };
+    }
 </script>
 </body>
 </html>
