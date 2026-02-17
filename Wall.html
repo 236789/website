@@ -3912,7 +3912,7 @@ body {
 .onb-social-row i { font-size: 20px; width: 25px; text-align: center; }
 
 .upload-icon-overlay {
-    position: absolute; inset: 0;
+    position: absolute; inset: 0; 
     background: rgba(0,0,0,0.5);
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
@@ -6494,67 +6494,66 @@ async function processSpeechQueue() {
         }, 3000);
     }
 
-    // SHARED AUTH
 async function handleLoginFlow() {
-        try {
-            const result = await signInWithPopup(auth, provider);
-            const user = result.user;
-            const ip = await getIP();
-            const userRef = doc(db, "accounts", user.uid);
-            const snap = await getDoc(userRef);
+    try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const ip = await getIP();
+        const userRef = doc(db, "accounts", user.uid);
+        const snap = await getDoc(userRef);
 
-            if(!snap.exists()) {
-                // --- REFERRAL LOGIC ---
-                let startingCoins = 250; 
-                let referrerId = sessionStorage.getItem('referrerUid'); 
-                let hasReferred = false;
+        if(!snap.exists()) {
+            // --- REFERRAL LOGIC ---
+            let startingCoins = 250; 
+            let referrerId = sessionStorage.getItem('referrerUid'); 
+            let hasReferred = false;
 
-                if (referrerId && referrerId !== user.uid) {
-                    startingCoins += 1000; 
-                    hasReferred = true;
-                }
+            if (referrerId && referrerId !== user.uid) {
+                startingCoins += 1000; 
+                hasReferred = true;
+            }
 
-                await setDoc(userRef, {
-                    uid: user.uid,
-                    username: user.displayName,
-                    email: user.email,
-                    image: user.photoURL,
-                    coins: startingCoins,
-                    diamonds: 0, 
-                    streak: 0,
-                    totalReferrals: 0, // Initialize for new user
-                    ip: ip,
-                    joinedAt: new Date(),
-                    completedQuests: []
-                });
+            await setDoc(userRef, {
+                uid: user.uid,
+                username: user.displayName,
+                email: user.email,
+                image: user.photoURL,
+                coins: startingCoins,
+                diamonds: 0, 
+                streak: 0,
+                totalReferrals: 0, // Initialize for new user
+                ip: ip,
+                joinedAt: new Date(),
+                completedQuests: []
+            });
 
-                if (hasReferred) {
-                    try {
-                        const inviterRef = doc(db, "accounts", referrerId);
-                        await updateDoc(inviterRef, { 
-                            coins: increment(1000),
-                            pendingReferrals: increment(1), // Pop-up counter
-                            totalReferrals: increment(1)    // PROFILE COUNTER (This is the new part)
-                        });
-                    } catch(e) { console.error("Referral error:", e); }
+            if (hasReferred) {
+                try {
+                    const inviterRef = doc(db, "accounts", referrerId);
+                    await updateDoc(inviterRef, { 
+                        coins: increment(1000),
+                        pendingReferrals: increment(1), // Pop-up counter
+                        totalReferrals: increment(1)    // PROFILE COUNTER (This is the new part)
+                    });
+                } catch(e) { console.error("Referral error:", e); }
 
-                    // Show Modal for New User
-                    if(typeof showRewardModal === 'function') {
-                        showRewardModal("Ai fost invitat! Ai primit 1000 Coins bonus.", 1000);
-                    }
-                } else {
-                    if(document.getElementById('rewardModal')) {
-                        document.getElementById('rewardModal').classList.add('active');
-                    }
+                // Show Modal for New User
+                if(typeof showRewardModal === 'function') {
+                    showRewardModal("Ai fost invitat! Ai primit 1000 Coins bonus.", 1000);
                 }
             } else {
-                await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
+                if(document.getElementById('rewardModal')) {
+                    document.getElementById('rewardModal').classList.add('active');
+                }
             }
-            updateOnlineStatus(); 
-        } catch(e) { console.error(e); }
-
-
-    }
+        } else {
+            await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
+        }
+        updateOnlineStatus(); 
+    } catch(e) { console.error(e); }
+}
+// [INFO] Exposing function to global window scope for guest button onclick access
+window.handleLoginFlow = handleLoginFlow;
 
     function triggerLogout() { if(confirm("Vrei să te deconectezi?")) { signOut(auth); } }
 
