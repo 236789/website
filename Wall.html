@@ -4687,45 +4687,7 @@ body {
 
 
 
-/* --- NEW MESSAGE NOTIFICATION BADGE --- */
-.new-msg-toast {
-    position: absolute;
-    bottom: 110px; /* Increased from 85px to move it higher */
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: var(--primary);
-    color: #000;
-    border: none;
-    padding: 8px 18px;
-    border-radius: 50px;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 11px;
-    font-weight: 800;
-    cursor: pointer;
-    z-index: 500;
-    display: none;
-    align-items: center;
-    gap: 8px;
-    box-shadow: 0 0 20px var(--atmo-glow);
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    opacity: 0;
-}
 
-.new-msg-toast.active {
-    display: flex;
-    transform: translateX(-50%) translateY(0);
-    opacity: 1;
-}
-
-.new-msg-toast i {
-    font-size: 10px;
-    animation: bounceDown 1.5s infinite;
-}
-
-@keyframes bounceDown {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(3px); }
-}
   </style>
 
 </head>
@@ -5340,14 +5302,6 @@ body {
     <div id="messagesFeed" class="messages-feed">
         <div style="text-align:center; color:#555; margin-top:50px;">Se încarcă chat-ul...</div>
     </div>
-
-
-<!-- NEW MESSAGES TOAST -->
-<button id="newMsgToast" class="new-msg-toast">
-    <i class="fas fa-arrow-down"></i>
-    <span id="newMsgCount">0</span> MESAJE NOI
-</button>
-
 <div class="input-area-wrapper">
 
     <!-- MUTE BANNER -->
@@ -8185,31 +8139,21 @@ async function sendBotMessage(text, customClass = null) {
 }
 
 
-const seenObserver = new IntersectionObserver((entries) => {
+    const seenObserver = new IntersectionObserver((entries) => {
         entries.forEach(async entry => {
             if (entry.isIntersecting && currentUid) {
                 const msgId = entry.target.dataset.id;
-                
-                // [INFO] Logic to decrement unread count when seen
-                if (entry.target.classList.contains('is-new-arrival')) {
-                    entry.target.classList.remove('is-new-arrival');
-                    if (unreadCount > 0) {
-                        unreadCount--;
-                        if (newMsgCount) newMsgCount.innerText = unreadCount;
-                        if (unreadCount <= 0 && newMsgToast) newMsgToast.classList.remove('active');
-                    }
-                }
-
                 const msgRef = doc(db, "wall_messages", msgId);
                 try {
                     const snap = await getDoc(msgRef);
                     if (snap.exists()) {
-                        const seenArr = snap.data().seenBy || [];
+                        const data = snap.data();
+                        const seenArr = data.seenBy || [];
                         if (!seenArr.includes(currentUid)) {
                             await updateDoc(msgRef, { seenBy: arrayUnion(currentUid) });
                         }
                     }
-                } catch(e) { console.error("Seen update failed", e); }
+                } catch(e) {}
             }
         });
     }, { threshold: 0.5 });
@@ -8412,28 +8356,6 @@ function loadMessages() {
             });
         });
 
-// [INFO] Filter out soft-deleted messages for counting accuracy
-        const visibleDocs = docs.filter(d => !d.isDeleted);
-        
-        // [INFO] Find the ID of the last message currently rendered in the UI
-        const lastMsgInUi = feed.querySelector('.msg-row:last-child');
-        const lastIdInUi = lastMsgInUi ? lastMsgInUi.dataset.id : null;
-
-        let incomingCount = 0;
-        let newIds = [];
-
-        if (lastIdInUi) {
-            const lastIdx = visibleDocs.findIndex(d => d.id === lastIdInUi);
-            if (lastIdx !== -1) {
-                // Only count messages that are actually newer than the current view
-                const newMessages = visibleDocs.slice(lastIdx + 1);
-                incomingCount = newMessages.length;
-                newIds = newMessages.map(m => m.id);
-            }
-        }
-        // [INFO] Existing clear feed logic
-        feed.innerHTML = '';
-
         // DISPLAY ORDERING:
         // We reverse the array to ensure chronological order (Old at Top, New at Bottom).
         docs.reverse();
@@ -8482,11 +8404,9 @@ function loadMessages() {
             const userIsMod = (data.isMod === true);
             const userIsHelper = (data.isHelper === true);
 
-// COMPONENT INITIALIZATION:
+            // COMPONENT INITIALIZATION:
             const wrapper = document.createElement('div');
-            // [INFO] Added is-new-arrival class to specifically track messages that arrived while scrolled up
-            const isNewArrival = typeof newIds !== 'undefined' && newIds.includes(msgId) && !wasAtBottom;
-            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'} msg-row ${isConsecutive ? 'consecutive-msg' : ''} ${isNewArrival ? 'is-new-arrival' : ''}`;
+            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'} msg-row ${isConsecutive ? 'consecutive-msg' : ''}`;
             wrapper.dataset.id = msgId;
 
             // TIMESTAMP GENERATION:
@@ -8759,44 +8679,24 @@ if (autoReadEnabled) {
 }
         }); 
         
-/**
+        /**
          * =====================================================================
-         * STAGE 6: VIEWPORT SYNCHRONIZATION & TOAST LOGIC
+         * STAGE 6: VIEWPORT SYNCHRONIZATION
          * =====================================================================
+         * If the user was already looking at the bottom, or if they were the 
+         * one who sent the message, we force the scroll to jump to the new content.
          */
         const lastMsgObj = docs[docs.length - 1];
         const sentByMe = (lastMsgObj && lastMsgObj.uid === currentUid);
         
         if (wasAtBottom || sentByMe) {
-            // [INFO] User is at bottom or sent a message: Clear all tracking
-            unreadCount = 0;
-            if (newMsgToast) {
-                newMsgToast.classList.remove('active');
-                newMsgCount.innerText = "0";
-            }
-            // Remove the arrival class from all since user is at the bottom
-            feed.querySelectorAll('.is-new-arrival').forEach(el => el.classList.remove('is-new-arrival'));
-
-            requestAnimationFrame(() => {
-                feed.scrollTo({ 
-                    top: feed.scrollHeight, 
-                    behavior: 'smooth' 
-                });
+            feed.scrollTo({ 
+                top: feed.scrollHeight, 
+                behavior: 'smooth' 
             });
-        } else {
-            // [INFO] Calculate unreadCount based on elements waiting to be seen
-            // This prevents the number from jumping incorrectly on metadata updates
-            const pendingElements = feed.querySelectorAll('.is-new-arrival');
-            unreadCount = pendingElements.length;
-
-            if (unreadCount > 0 && newMsgToast) {
-                newMsgCount.innerText = unreadCount;
-                newMsgToast.classList.add('active');
-            } else if (unreadCount <= 0 && newMsgToast) {
-                newMsgToast.classList.remove('active');
-            }
         }
     });
+
     /**
      * =========================================================================
      * STAGE 7: DEBUGGING & AUDIT
@@ -10066,21 +9966,6 @@ cancelEditBtn.onclick = () => {
     editBar.style.display = 'none';
     msgInput.value = '';
 };
-
-
-
-let unreadCount = 0;
-    const newMsgToast = document.getElementById('newMsgToast');
-    const newMsgCount = document.getElementById('newMsgCount');
-
-    // Click handler to go to bottom
-    if (newMsgToast) {
-        newMsgToast.onclick = () => {
-            unreadCount = 0;
-            newMsgToast.classList.remove('active');
-            messagesFeed.scrollTo({ top: messagesFeed.scrollHeight, behavior: 'smooth' });
-        };
-    }
 </script>
 </body>
 </html>
