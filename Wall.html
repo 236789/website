@@ -8185,21 +8185,31 @@ async function sendBotMessage(text, customClass = null) {
 }
 
 
-    const seenObserver = new IntersectionObserver((entries) => {
+const seenObserver = new IntersectionObserver((entries) => {
         entries.forEach(async entry => {
             if (entry.isIntersecting && currentUid) {
                 const msgId = entry.target.dataset.id;
+                
+                // [INFO] Logic to decrement unread count when seen
+                if (entry.target.classList.contains('is-new-arrival')) {
+                    entry.target.classList.remove('is-new-arrival');
+                    if (unreadCount > 0) {
+                        unreadCount--;
+                        if (newMsgCount) newMsgCount.innerText = unreadCount;
+                        if (unreadCount <= 0 && newMsgToast) newMsgToast.classList.remove('active');
+                    }
+                }
+
                 const msgRef = doc(db, "wall_messages", msgId);
                 try {
                     const snap = await getDoc(msgRef);
                     if (snap.exists()) {
-                        const data = snap.data();
-                        const seenArr = data.seenBy || [];
+                        const seenArr = snap.data().seenBy || [];
                         if (!seenArr.includes(currentUid)) {
                             await updateDoc(msgRef, { seenBy: arrayUnion(currentUid) });
                         }
                     }
-                } catch(e) {}
+                } catch(e) { console.error("Seen update failed", e); }
             }
         });
     }, { threshold: 0.5 });
@@ -8405,19 +8415,22 @@ function loadMessages() {
 // [INFO] Filter out soft-deleted messages for counting accuracy
         const visibleDocs = docs.filter(d => !d.isDeleted);
         
-        // [INFO] Detect new messages by comparing against the last message currently in UI
+        // [INFO] Find the ID of the last message currently rendered in the UI
         const lastMsgInUi = feed.querySelector('.msg-row:last-child');
         const lastIdInUi = lastMsgInUi ? lastMsgInUi.dataset.id : null;
 
         let incomingCount = 0;
+        let newIds = [];
+
         if (lastIdInUi) {
             const lastIdx = visibleDocs.findIndex(d => d.id === lastIdInUi);
             if (lastIdx !== -1) {
-                // Count only the valid messages that come AFTER our current last message
-                incomingCount = visibleDocs.length - (lastIdx + 1);
+                // Only count messages that are actually newer than the current view
+                const newMessages = visibleDocs.slice(lastIdx + 1);
+                incomingCount = newMessages.length;
+                newIds = newMessages.map(m => m.id);
             }
         }
-
         // [INFO] Existing clear feed logic
         feed.innerHTML = '';
 
@@ -8469,9 +8482,11 @@ function loadMessages() {
             const userIsMod = (data.isMod === true);
             const userIsHelper = (data.isHelper === true);
 
-            // COMPONENT INITIALIZATION:
+// COMPONENT INITIALIZATION:
             const wrapper = document.createElement('div');
-            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'} msg-row ${isConsecutive ? 'consecutive-msg' : ''}`;
+            // [INFO] Added is-new-arrival class to specifically track messages that arrived while scrolled up
+            const isNewArrival = typeof newIds !== 'undefined' && newIds.includes(msgId) && !wasAtBottom;
+            wrapper.className = `msg-wrapper ${isMine ? 'mine' : 'theirs'} msg-row ${isConsecutive ? 'consecutive-msg' : ''} ${isNewArrival ? 'is-new-arrival' : ''}`;
             wrapper.dataset.id = msgId;
 
             // TIMESTAMP GENERATION:
@@ -8753,28 +8768,35 @@ if (autoReadEnabled) {
         const sentByMe = (lastMsgObj && lastMsgObj.uid === currentUid);
         
         if (wasAtBottom || sentByMe) {
-            // [INFO] User is at bottom: Reset unread count and hide toast
+            // [INFO] User is at bottom or sent a message: Clear all tracking
             unreadCount = 0;
             if (newMsgToast) {
                 newMsgToast.classList.remove('active');
                 newMsgCount.innerText = "0";
             }
+            // Remove the arrival class from all since user is at the bottom
+            feed.querySelectorAll('.is-new-arrival').forEach(el => el.classList.remove('is-new-arrival'));
+
             requestAnimationFrame(() => {
                 feed.scrollTo({ 
                     top: feed.scrollHeight, 
                     behavior: 'smooth' 
                 });
             });
-        } else if (incomingCount > 0) {
-            // [INFO] User is scrolled up: increment only by the new filtered messages
-            unreadCount += incomingCount;
-            if (newMsgToast) {
+        } else {
+            // [INFO] Calculate unreadCount based on elements waiting to be seen
+            // This prevents the number from jumping incorrectly on metadata updates
+            const pendingElements = feed.querySelectorAll('.is-new-arrival');
+            unreadCount = pendingElements.length;
+
+            if (unreadCount > 0 && newMsgToast) {
                 newMsgCount.innerText = unreadCount;
                 newMsgToast.classList.add('active');
+            } else if (unreadCount <= 0 && newMsgToast) {
+                newMsgToast.classList.remove('active');
             }
-        } 
+        }
     });
-
     /**
      * =========================================================================
      * STAGE 7: DEBUGGING & AUDIT
