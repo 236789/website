@@ -4690,7 +4690,7 @@ body {
 /* --- NEW MESSAGE NOTIFICATION BADGE --- */
 .new-msg-toast {
     position: absolute;
-    bottom: 85px;
+    bottom: 110px; /* Increased from 85px to move it higher */
     left: 50%;
     transform: translateX(-50%) translateY(20px);
     background: var(--primary);
@@ -8402,10 +8402,21 @@ function loadMessages() {
             });
         });
 
-// [INFO] Calculate how many new messages arrived compared to current UI
-        // This must be done BEFORE clearing the feed.
-        const currentMsgElements = feed.querySelectorAll('.msg-row');
-        const incomingCount = docs.length - currentMsgElements.length;
+// [INFO] Filter out soft-deleted messages for counting accuracy
+        const visibleDocs = docs.filter(d => !d.isDeleted);
+        
+        // [INFO] Detect new messages by comparing against the last message currently in UI
+        const lastMsgInUi = feed.querySelector('.msg-row:last-child');
+        const lastIdInUi = lastMsgInUi ? lastMsgInUi.dataset.id : null;
+
+        let incomingCount = 0;
+        if (lastIdInUi) {
+            const lastIdx = visibleDocs.findIndex(d => d.id === lastIdInUi);
+            if (lastIdx !== -1) {
+                // Count only the valid messages that come AFTER our current last message
+                incomingCount = visibleDocs.length - (lastIdx + 1);
+            }
+        }
 
         // [INFO] Existing clear feed logic
         feed.innerHTML = '';
@@ -8742,9 +8753,12 @@ if (autoReadEnabled) {
         const sentByMe = (lastMsgObj && lastMsgObj.uid === currentUid);
         
         if (wasAtBottom || sentByMe) {
-            // [INFO] User is already at the bottom or sent a message -> Snap down
+            // [INFO] User is at bottom: Reset unread count and hide toast
             unreadCount = 0;
-            if (newMsgToast) newMsgToast.classList.remove('active');
+            if (newMsgToast) {
+                newMsgToast.classList.remove('active');
+                newMsgCount.innerText = "0";
+            }
             requestAnimationFrame(() => {
                 feed.scrollTo({ 
                     top: feed.scrollHeight, 
@@ -8752,13 +8766,13 @@ if (autoReadEnabled) {
                 });
             });
         } else if (incomingCount > 0) {
-            // [INFO] User is scrolled up and new messages arrived -> Show Toast
+            // [INFO] User is scrolled up: increment only by the new filtered messages
             unreadCount += incomingCount;
             if (newMsgToast) {
                 newMsgCount.innerText = unreadCount;
                 newMsgToast.classList.add('active');
             }
-        }
+        } 
     });
 
     /**
