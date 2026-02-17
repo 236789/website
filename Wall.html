@@ -4794,6 +4794,14 @@ body {
     display: block;
 }
 
+
+/* Make the Aurora layer softer/smokier */
+.atmo-visual-layer::before {
+    /* Existing animation code... */
+    filter: blur(120px) !important; /* Increased blur for better 'fog' effect */
+    opacity: 0.7; /* Make the gray glow slightly stronger */
+}
+
   </style>
 
 </head>
@@ -5996,7 +6004,18 @@ async function logSafetyEvent(type, content) {
 // În funcția togglePicker, caută unde se apelează loadGifs și pune limita 100:
 // loadGifs(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=100&rating=g`);
 const ATMOSPHERES_DB = [
+
+
+    // --- NEW DEFAULT (Index 0) ---
+    { 
+        name: 'Shadow Aurora', 
+        main: '#000000',       /* Silver/White Glow */
+        bg: '#000000',         /* Pitch Black */
+        inBg: 'rgba(20, 20, 20, 0.9)' 
+    },
     { name: 'Cyber Blue', main: '#00f5ff', bg: '#050a12', inBg: 'rgba(5,15,30,0.95)' },
+
+
     { name: 'Matrix Rain', main: '#00ff41', bg: '#000800', inBg: 'rgba(0,20,5,0.98)' },
     { name: 'Hellfire', main: '#ff4757', bg: '#10000/0', inBg: 'rgba(40,5,5,0.95)' },
     { name: 'Midas Gold', main: '#ffd700', bg: '#0d0a05', inBg: 'rgba(25,20,10,0.95)' },
@@ -6054,24 +6073,32 @@ window.applyAtmosphere = (index) => {
     root.style.setProperty('--atmo-input-bg', atmo.inBg);
     root.style.setProperty('--atmo-glow', atmo.main + '44');
     
-    // This fixes the text contrast automatically
+    // UPDATED LOGIC: Only show GIF if the theme is explicitly 'Cyber Blue'
+    if (atmo.name === 'Cyber Blue') {
+        root.style.setProperty('--atmo-url', "url('https://i.makeagif.com/media/3-03-2021/otrneG.gif')");
+    } else {
+        root.style.setProperty('--atmo-url', "none");
+    }
+
+    // Text contrast fix
     const isLight = atmo.main === '#ffffff' || atmo.main === '#eee';
     root.style.setProperty('--atmo-input-text', isLight ? '#000' : atmo.main);
 
-    // Update the visual layer if it exists
+    // Update visual layer opacity
     const visual = document.getElementById('atmoVisual');
     if(visual) visual.style.opacity = "0.6";
 
     localStorage.setItem('saved_atmo_index', index);
-
-// Add this line at the very end of your applyAtmosphere function
-window.updateIconContrast();
+    
+    // Apply changes to icons
+    if(typeof window.updateIconContrast === 'function') window.updateIconContrast();
 };
 
 // Start the engine
 document.addEventListener('DOMContentLoaded', () => {
     window.initAtmoEngine();
     const saved = localStorage.getItem('saved_atmo_index');
+    // If nothing saved, default to 0 (Shadow Aurora)
     window.applyAtmosphere(saved !== null ? parseInt(saved) : 0);
 });
 
@@ -8779,89 +8806,72 @@ if (!isSystemOrBot || isAdmin || isOwner) {
                 </div>
             `;
 
-            const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
+const cleanNameForTag = (data.name || "User").replace(/'/g, "\\'");
 
+            // --- EDITED STATUS LOGIC ---
+            let editedHtml = "";
+            let historyBtnHtml = "";
 
+            if (data.isEdited) {
+                // 1. Add "(editat)" text
+                editedHtml = `<span class="edited-indicator" title="Acest mesaj a fost modificat" style="font-size:9px; opacity:0.6; font-style:italic; margin-left:5px;">(editat)</span>`;
 
-// --- EDITED STATUS LOGIC ---
-let editedHtml = "";
-let historyBtnHtml = "";
+                // 2. Add History Loop Icon (Only for Staff)
+                const hasHistory = data.editHistory && data.editHistory.length > 0;
+                
+                // Allow Owner, Admin, Mod AND Helper to see history (optional)
+                if ((isOwner || isAdmin || isMod || isHelper) && hasHistory) {
+                    historyBtnHtml = `
+                        <button class="history-btn" onclick="window.viewEditHistory('${msgId}')" title="Vezi istoricul modificărilor" style="background:none; border:none; color:#ff9f43; cursor:pointer; font-size:11px; margin-left:5px;">
+                            <i class="fas fa-history"></i>
+                        </button>
+                    `;
+                }
+            }
 
-if (data.isEdited) {
-    // 1. Add "(editat)" text
-    editedHtml = `<span class="edited-indicator" title="Acest mesaj a fost modificat">(editat)</span>`;
-
-    // 2. Add History Loop Icon (Only for Staff)
-    // Check if there is actual history data to show
-    const hasHistory = data.editHistory && data.editHistory.length > 0;
-    
-    if ((isOwner || isAdmin) && hasHistory) {
-        historyBtnHtml = `
-            <button class="history-btn" onclick="window.viewEditHistory('${msgId}')" title="Vezi istoricul modificărilor">
-                <i class="fas fa-history"></i>
-            </button>
-        `;
-    }
-}
-
-window.viewEditHistory = async (msgId) => {
-    const modal = document.getElementById('editHistoryModal');
-    const list = document.getElementById('editHistoryList');
-    
-    list.innerHTML = '<div style="text-align:center; color:#aaa; padding:20px;">Se încarcă istoricul...</div>';
-    modal.classList.add('active');
-
-    try {
-        const snap = await getDoc(doc(db, "wall_messages", msgId));
-        if (!snap.exists()) return;
-
-        const data = snap.data();
-        const history = data.editHistory || [];
-
-        list.innerHTML = '';
-
-        if (history.length === 0) {
-            list.innerHTML = '<div style="text-align:center; padding:20px;">Nu există istoric salvat.</div>';
-            return;
-        }
-
-        // Show newest edits first
-        history.reverse().forEach((item, index) => {
-            // Format time
-            const date = new Date(item.timestamp);
-            const timeStr = date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) + 
-                          ' - ' + date.toLocaleDateString('ro-RO');
-
-            const div = document.createElement('div');
-            div.className = 'history-item';
-            div.innerHTML = `
-                <span class="history-time">Versiunea ${history.length - index}: ${timeStr}</span>
-                <div style="color:#ddd;">${item.content}</div>
+            // --- FINAL ASSEMBLY (RESTORED) ---
+            wrapper.innerHTML = `
+                ${avatarHtml}
+                <div class="msg-content-column">
+                    <div class="msg-author" style="font-size:11px; margin-bottom:4px; font-weight:700;">
+                        ${fullAuthorHeader}
+                    </div>
+                    
+                    <!-- Bubble Content + Edited Text -->
+                    <div class="${bubbleClass}" style="cursor:pointer;" onclick="window.tagUser('${cleanNameForTag}')">
+                        ${bubbleContent} ${editedHtml}
+                    </div>
+                    
+                    ${reactionsContainerHtml}
+                    
+                    <div class="msg-info" style="display:flex; gap:10px; margin-top:4px; align-items:center; opacity:0.7; font-size:9px;">
+                        <span class="msg-time">${time}</span> 
+                        ${seenIndicatorHtml}
+                        <!-- History Button -->
+                        ${historyBtnHtml}
+                        <!-- TTS Button -->
+                        ${ttsBtnHtml} 
+                    </div>
+                </div>
+                ${dropdownMenuHtml}
             `;
-            list.appendChild(div);
-        });
+            
+            // Append to feed
+            feed.appendChild(wrapper);
+            
+            // Observer for "Seen By" logic
+            if (typeof seenObserver !== 'undefined') seenObserver.observe(wrapper);
 
-        // Add the CURRENT version at the top for comparison
-        const currentDiv = document.createElement('div');
-        currentDiv.className = 'history-item';
-        currentDiv.style.border = '1px solid #00ff88';
-        currentDiv.style.background = 'rgba(0, 255, 136, 0.05)';
-        currentDiv.innerHTML = `
-            <span class="history-time" style="color:#00ff88;">ACTUAL (Acum)</span>
-            <div style="color:#fff;">${data.text}</div>
-        `;
-        list.prepend(currentDiv);
+            // Trigger rich link preview if needed
+            const lpPlaceholder = wrapper.querySelector('.lp-placeholder');
+            if (lpPlaceholder) {
+                const linkUrl = lpPlaceholder.dataset.url;
+                setTimeout(() => fetchLinkPreview(msgId, linkUrl), 200);
+            }
 
-    } catch (e) {
-        console.error(e);
-        list.innerHTML = '<div style="text-align:center; color:#ff4757;">Eroare la încărcare.</div>';
-    }
-};
-
-
-
-// --- AUTO-READ LOGIC (UPDATED: BOTS + IMAGES + VOCALS) ---
-if (autoReadEnabled) {
+            // --- AUTO-READ LOGIC ---
+            if (autoReadEnabled) {
+                // ... (Keep your existing auto-read logic here) ...
     // 1. Check if it's content we care about (Text OR Image OR Vocal)
     if (data.text || data.image || data.type === 'vocal') {
         
