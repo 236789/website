@@ -598,50 +598,114 @@ input:checked + .slider:before { transform: translateX(16px); }
     .msg-wrapper.mine .msg-options { left: -25px; right: auto; }
     .msg-wrapper:hover .msg-options { opacity: 1; }
 
+/* --- PRO MENU DESIGN & POSITION FIX --- */
+
+/* 1. The Container */
 .options-dropdown {
     display: none;
     position: absolute;
-    top: 30px; /* Adjusted to not overlap the dots */
-    z-index: 5000; /* High z-index to stay on top of everything */
-    background: #08101b; 
-    border: 1px solid var(--primary); 
-    border-radius: 12px;
-    width: 200px; 
-    box-shadow: 0 10px 25px rgba(0,0,0,0.8);
-    overflow: hidden;
+    /* Position below the 3-dots icon */
+    top: 25px; 
+    /* Default z-index high enough to float over messages */
+    z-index: 10000; 
+    
+    /* GLASSMORPHISM DESIGN */
+    background: rgba(8, 16, 27, 0.95); /* Deep dark blue */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(41, 243, 255, 0.2); /* Cyan border glow */
+    border-radius: 16px;
+    
+    /* Sizing */
+    width: 200px;
+    padding: 6px;
+    
+    /* Pro Shadow */
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 
+                0 0 15px rgba(41, 243, 255, 0.1);
+    
+    /* Animation */
+    transform-origin: top right;
+    animation: menuScaleIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+/* 2. Positioning Logic (THE FIX) */
+/* For MY messages (Right side): Align menu to the RIGHT edge */
+.msg-wrapper.mine .options-dropdown {
+    right: 0; 
+    left: auto; /* Reset left */
+}
 
-    /* UPDATED: Fixed position offset for own messages based on new width */
-    .msg-wrapper.mine .options-dropdown { left: -220px; }
-    .msg-wrapper.theirs .options-dropdown { right: -100px; }
+/* For THEIR messages (Left side): Align menu to the LEFT edge */
+.msg-wrapper.theirs .options-dropdown {
+    left: 0;
+    right: auto;
+}
 
+/* 3. The Buttons inside */
 .options-dropdown button {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
-    background: none;
+    background: transparent;
     border: none;
-    padding: 12px 15px;
-    color: #fff;
+    padding: 10px 12px;
+    color: #a5b1c2; /* Muted text */
     font-size: 13px;
+    font-weight: 600;
+    font-family: 'Poppins', sans-serif;
     cursor: pointer;
     text-align: left;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px; /* Rounded items */
+    transition: all 0.2s ease;
+    margin-bottom: 2px;
 }
 
-
+/* Hover Effect */
 .options-dropdown button:hover {
     background: rgba(41, 243, 255, 0.1);
+    color: #fff;
+    padding-left: 16px; /* Slide effect */
+}
+
+.options-dropdown button i {
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
     color: var(--primary);
 }
 
+/* 4. Special Button Styles */
+/* Delete / Ban / Mute - Red Colors */
+.options-dropdown button.danger-btn {
+    color: #ff4757;
+}
+.options-dropdown button.danger-btn i {
+    color: #ff4757;
+}
+.options-dropdown button.danger-btn:hover {
+    background: rgba(255, 71, 87, 0.15);
+    color: #ff4757;
+}
 
+/* Separator Line */
+.menu-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 8px;
+}
 
-    .options-dropdown button.mute-btn { color: #ff4757; border-color: #ff4757; }
-    .options-dropdown button.mute-btn:hover { background: rgba(255, 71, 87, 0.1); color: #fff; }
+/* Animation Keyframes */
+@keyframes menuScaleIn {
+    from { opacity: 0; transform: scale(0.8) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
 
+/* Ensure the wrapper doesn't clip the menu */
+.msg-wrapper {
+    overflow: visible !important;
+}
    
     .show-menu { display: block !important; }
     
@@ -8547,18 +8611,78 @@ let processedBody = linkify(baseText, msgId);
                 ttsBtnHtml = `<button class="seen-btn" style="margin-left:10px; opacity:0.6;" onclick="window.speakMessage('${safeText}', null, true)"><i class="fas fa-volume-up"></i></button>`;
             }
 
-// --- DROPDOWN MENU ---
-            let dropdownMenuHtml = "";
-            const isSystemOrBot = (data.uid === 'system-alert' || data.isBot === true);
-            const canManage = (isMine || isAdmin || isOwner || isMod);
-            if (!isSystemOrBot || isAdmin || isOwner) {
-                let pinningOption = (isAdmin || isOwner || isMod || isHelper) ? `<button onclick="window.${data.isPinned ? 'unpinMsg' : 'pinMsg'}('${msgId}')"><i class="fas fa-thumbtack"></i> ${data.isPinned ? 'Dezfixează' : 'Fixează'}</button>` : "";
-                
-                // [INFO] Added Edit Button logic here
-                let editOption = (isMine && data.type !== 'vocal') ? `<button onclick="window.startEdit('${msgId}', '${(data.text || "").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-edit"></i> Editează</button>` : "";
+// --- DROPDOWN MENU GENERATION (UPDATED) ---
+let dropdownMenuHtml = "";
+const isSystemOrBot = (data.uid === 'system-alert' || data.isBot === true);
+const canManage = (isMine || isAdmin || isOwner || isMod);
 
-                dropdownMenuHtml = `<div class="msg-options" onclick="toggleMenu('${msgId}')"><i class="fas fa-ellipsis-v"></i></div><div id="menu-${msgId}" class="options-dropdown">${!isSystemOrBot ? `<button onclick="startReply('${msgId}', '${(data.name || "User")}', '${(data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;')}', '${data.uid}')"><i class="fas fa-reply"></i> Răspunde</button>${editOption}<button onclick="toggleEmojiPicker('${msgId}')"><i class="far fa-heart"></i> Reacționează</button><button onclick="window.openUserProfile('${data.uid}')"><i class="fas fa-user"></i> Profil</button>` : ''}${pinningOption}${canManage ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')"><i class="fas fa-trash"></i> Șterge</button>` : ''}${(isAdmin || isOwner || isMod || isHelper) && !isSystemOrBot ? `<button class="mute-btn" onclick="handleMuteAction('${data.uid}', '${data.name}')"><i class="fas fa-microphone-slash"></i> Mute / Unmute</button>` : ''}${isOwner && !isSystemOrBot ? `<button style="color:#ff4757;" onclick="banIpUser('${data.uid}', '${data.name}', '${data.ip}')"><i class="fas fa-gavel"></i> BAN IP</button>` : ''}<div id="emojis-${msgId}" class="emoji-picker-menu"><div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div><div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div></div></div>`;
-            }
+if (!isSystemOrBot || isAdmin || isOwner) {
+    let pinningOption = (isAdmin || isOwner || isMod || isHelper) 
+        ? `<button onclick="window.${data.isPinned ? 'unpinMsg' : 'pinMsg'}('${msgId}')"><i class="fas fa-thumbtack"></i> ${data.isPinned ? 'Dezfixează' : 'Fixează'}</button>` 
+        : "";
+    
+    let editOption = (isMine && data.type !== 'vocal') 
+        ? `<button onclick="window.startEdit('${msgId}', '${(data.text || "").replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><i class="fas fa-edit"></i> Editează</button>` 
+        : "";
+
+    // Escape text for reply safely
+    const safeText = (data.text || "Media").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const safeName = (data.name || "User");
+
+    dropdownMenuHtml = `
+        <div class="msg-options" onclick="toggleMenu('${msgId}')">
+            <i class="fas fa-ellipsis-v"></i>
+        </div>
+        <div id="menu-${msgId}" class="options-dropdown">
+            ${!isSystemOrBot ? `
+                <!-- User Actions -->
+                <button onclick="startReply('${msgId}', '${safeName}', '${safeText}', '${data.uid}')">
+                    <i class="fas fa-reply"></i> Răspunde
+                </button>
+                ${editOption}
+                <button onclick="toggleEmojiPicker('${msgId}')">
+                    <i class="far fa-heart"></i> Reacționează
+                </button>
+                <button onclick="window.openUserProfile('${data.uid}')">
+                    <i class="fas fa-user"></i> Profil
+                </button>
+            ` : ''}
+
+            <!-- Admin/Mod Actions -->
+            ${(canManage || pinningOption) ? `<div class="menu-separator"></div>` : ''}
+            
+            ${pinningOption}
+            
+            ${(isAdmin || isOwner || isMod || isHelper) && !isSystemOrBot ? `
+                <button class="danger-btn" onclick="handleMuteAction('${data.uid}', '${safeName}')">
+                    <i class="fas fa-microphone-slash"></i> Mute User
+                </button>
+            ` : ''}
+            
+            ${canManage ? `
+                <button class="danger-btn" onclick="deleteMsg('${msgId}')">
+                    <i class="fas fa-trash"></i> Șterge
+                </button>
+            ` : ''}
+            
+            ${isOwner && !isSystemOrBot ? `
+                <button class="danger-btn" style="border: 1px solid rgba(255,0,0,0.3);" onclick="banIpUser('${data.uid}', '${safeName}', '${data.ip}')">
+                    <i class="fas fa-gavel"></i> <strong>BAN IP</strong>
+                </button>
+            ` : ''}
+
+            <!-- Emoji Quick Picker inside menu -->
+            <div id="emojis-${msgId}" class="emoji-picker-menu">
+                <div class="emoji-btn" onclick="reactMsg('${msgId}', '❤️')">❤️</div>
+                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😂')">😂</div>
+                <div class="emoji-btn" onclick="reactMsg('${msgId}', '🔥')">🔥</div>
+                <div class="emoji-btn" onclick="reactMsg('${msgId}', '👍')">👍</div>
+                <div class="emoji-btn" onclick="reactMsg('${msgId}', '😡')">😡</div>
+                <div class="emoji-btn" onclick="reactMsg('${msgId}', '🤩')">🤩</div>
+            </div>
+        </div>
+    `;
+}
 
             // --- AVATAR & IDENTITY ASSEMBLY ---
             let finalDisplayName = (data.name || "Anonim");
