@@ -4252,7 +4252,7 @@ body {
 
 /* Toast diabolic pentru Hijack */
 .hijack-toast {
-    position: fixed;
+    position: fixed; 
     top: 100px;
     right: 20px;
     background: rgba(255, 71, 87, 0.9);
@@ -4588,6 +4588,36 @@ body {
 /* Tighten the gap between grouped bubbles */
 .msg-wrapper.consecutive-msg .msg-content-column {
     gap: 0 !important;
+}
+
+
+
+/* --- PREMIUM LIQUID SCROLL PHYSICS --- */
+html {
+    scroll-behavior: auto !important; /* Disable native to let the engine take over */
+    overflow-x: hidden;
+}
+
+body {
+    overscroll-behavior-y: none; /* Prevents browser bounce/rubber-banding */
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Minimalist Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #02050a;
+}
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(to bottom, #29f3ff, #0044ff);
+    border-radius: 10px;
+    border: 2px solid #02050a;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #fff;
 }
   </style>
 
@@ -5312,13 +5342,13 @@ body {
 
 
 <!-- GUEST LOGIN BAR -->
-    <div id="guestLoginBar" style="display:none; background: rgba(0,0,0,0.8); border-top: 1px solid var(--primary); padding: 20px; text-align: center; backdrop-filter: blur(10px);">
-        <p style="font-family: 'Orbitron'; font-size: 12px; color: #fff; margin-bottom: 15px;">Autentifică-te pentru a participa la discuție</p>
-        <button onclick="handleLoginFlow()" class="google-btn" style="margin: 0 auto; width: fit-content; padding: 10px 25px;">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" height="18">
-            LOGHEAZĂ-TE
-        </button>
-    </div>
+<div id="guestLoginBar" style="display:none; background: rgba(0,0,0,0.8); border-top: 1px solid var(--primary); padding: 20px; text-align: center; backdrop-filter: blur(10px); position: relative; z-index: 10;">
+    <p style="font-family: 'Orbitron'; font-size: 11px; color: #fff; margin-bottom: 15px; letter-spacing: 1px;">AUTENTIFICĂ-TE PENTRU A PARTICIPA LA DISCUȚIE</p>
+    <button onclick="window.location.href='index.html?action=login'" class="google-btn" style="margin: 0 auto; width: fit-content; padding: 10px 25px; border: 1px solid var(--primary);">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" height="18">
+        LOGHEAZĂ-TE ACUM
+    </button>
+</div>
 </div>
 
         </div>
@@ -6494,66 +6524,67 @@ async function processSpeechQueue() {
         }, 3000);
     }
 
+    // SHARED AUTH
 async function handleLoginFlow() {
-    try {
-        const result = await signInWithPopup(auth, provider);
-        const user = result.user;
-        const ip = await getIP();
-        const userRef = doc(db, "accounts", user.uid);
-        const snap = await getDoc(userRef);
+        try {
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+            const ip = await getIP();
+            const userRef = doc(db, "accounts", user.uid);
+            const snap = await getDoc(userRef);
 
-        if(!snap.exists()) {
-            // --- REFERRAL LOGIC ---
-            let startingCoins = 250; 
-            let referrerId = sessionStorage.getItem('referrerUid'); 
-            let hasReferred = false;
+            if(!snap.exists()) {
+                // --- REFERRAL LOGIC ---
+                let startingCoins = 250; 
+                let referrerId = sessionStorage.getItem('referrerUid'); 
+                let hasReferred = false;
 
-            if (referrerId && referrerId !== user.uid) {
-                startingCoins += 1000; 
-                hasReferred = true;
-            }
+                if (referrerId && referrerId !== user.uid) {
+                    startingCoins += 1000; 
+                    hasReferred = true;
+                }
 
-            await setDoc(userRef, {
-                uid: user.uid,
-                username: user.displayName,
-                email: user.email,
-                image: user.photoURL,
-                coins: startingCoins,
-                diamonds: 0, 
-                streak: 0,
-                totalReferrals: 0, // Initialize for new user
-                ip: ip,
-                joinedAt: new Date(),
-                completedQuests: []
-            });
+                await setDoc(userRef, {
+                    uid: user.uid,
+                    username: user.displayName,
+                    email: user.email,
+                    image: user.photoURL,
+                    coins: startingCoins,
+                    diamonds: 0, 
+                    streak: 0,
+                    totalReferrals: 0, // Initialize for new user
+                    ip: ip,
+                    joinedAt: new Date(),
+                    completedQuests: []
+                });
 
-            if (hasReferred) {
-                try {
-                    const inviterRef = doc(db, "accounts", referrerId);
-                    await updateDoc(inviterRef, { 
-                        coins: increment(1000),
-                        pendingReferrals: increment(1), // Pop-up counter
-                        totalReferrals: increment(1)    // PROFILE COUNTER (This is the new part)
-                    });
-                } catch(e) { console.error("Referral error:", e); }
+                if (hasReferred) {
+                    try {
+                        const inviterRef = doc(db, "accounts", referrerId);
+                        await updateDoc(inviterRef, { 
+                            coins: increment(1000),
+                            pendingReferrals: increment(1), // Pop-up counter
+                            totalReferrals: increment(1)    // PROFILE COUNTER (This is the new part)
+                        });
+                    } catch(e) { console.error("Referral error:", e); }
 
-                // Show Modal for New User
-                if(typeof showRewardModal === 'function') {
-                    showRewardModal("Ai fost invitat! Ai primit 1000 Coins bonus.", 1000);
+                    // Show Modal for New User
+                    if(typeof showRewardModal === 'function') {
+                        showRewardModal("Ai fost invitat! Ai primit 1000 Coins bonus.", 1000);
+                    }
+                } else {
+                    if(document.getElementById('rewardModal')) {
+                        document.getElementById('rewardModal').classList.add('active');
+                    }
                 }
             } else {
-                if(document.getElementById('rewardModal')) {
-                    document.getElementById('rewardModal').classList.add('active');
-                }
+                await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
             }
-        } else {
-            await setDoc(userRef, { ip: ip, image: user.photoURL }, { merge: true });
-        }
-        updateOnlineStatus(); 
-    } catch(e) { console.error(e); }
-}
-// [INFO] Exposing function to global window scope for guest button onclick access
-window.handleLoginFlow = handleLoginFlow;
+            updateOnlineStatus(); 
+        } catch(e) { console.error(e); }
+
+
+    }
 
     function triggerLogout() { if(confirm("Vrei să te deconectezi?")) { signOut(auth); } }
 
@@ -7064,6 +7095,8 @@ onAuthStateChanged(auth, async (user) => {
     loadMessages();
     listenForPinned();
 
+    const toolbar = document.querySelector('.chat-tools-bar');
+
     if (user) {
         
         // --- 🔴 ONESIGNAL (PĂSTRAT) ---
@@ -7085,8 +7118,9 @@ onAuthStateChanged(auth, async (user) => {
         chatView.style.display = 'flex';
         document.getElementById('inputControls').style.display = 'block';
         document.getElementById('guestLoginBar').style.display = 'none';
-        const toolbar = document.querySelector('.chat-tools-bar');
-        if(toolbar) toolbar.style.display = 'flex';
+        
+        // [INFO] Restore Toolbar: Remove the "none !important" forced by guest mode
+        if(toolbar) toolbar.style.removeProperty('display');
 
         // --- 🔔 NEW: RESET WALL NOTIFICATIONS ---
         // Cand intri pe Wall, marcam toate mesajele ca fiind "vazute" pentru tine
@@ -7312,8 +7346,9 @@ window.myCurrentPfp = finalProfilePic;
         chatView.style.display = 'flex';
         document.getElementById('inputControls').style.display = 'none';
         document.getElementById('guestLoginBar').style.display = 'block';
-        const toolbar = document.querySelector('.chat-tools-bar');
-        if(toolbar) toolbar.style.display = 'none';
+        
+        // [INFO] Force Toolbar Hidden: CSS "!important" workaround for mobile
+        if(toolbar) toolbar.style.setProperty('display', 'none', 'important');
         
         if(headerLoginText) headerLoginText.innerText = "LOGIN";
         if(headerUserImg) headerUserImg.style.display = "none";
@@ -9814,6 +9849,73 @@ window.toggleMobileToolbar = function() {
         };
         previewImg.style.cursor = "zoom-in";
     }
+
+
+
+/**
+ * =========================================================================
+ * HIGH-END LIQUID INERTIA ENGINE v2.0
+ * =========================================================================
+ */
+(function() {
+    // ENGINE CONFIGURATION
+    const friction = 0.07; // [POWER] Lower = more glide (0.01 to 0.1)
+    const sensitivity = 0.8; // [SPEED] Higher = faster scroll
+    
+    let targetY = window.scrollY;
+    let currentY = window.scrollY;
+    let isRunning = false;
+
+    // Detect if we should ignore the engine (e.g. when hovering over the chat)
+    function shouldIgnoreScroll(el) {
+        if (!el) return false;
+        const scrollableElements = ['#messagesFeed', '.online-list-popup', '.cosmetics-card-v6', '.inventory-scroll-area', '.ep-grid'];
+        return scrollableElements.some(selector => el.closest(selector));
+    }
+
+    window.addEventListener('wheel', (e) => {
+        // [INFO] Redirect scroll if mouse is over the chat feed
+        if (shouldIgnoreScroll(e.target)) return;
+
+        e.preventDefault();
+        
+        // Calculate movement based on wheel delta
+        const delta = e.deltaY * sensitivity;
+        targetY += delta;
+
+        // Clamp values to page boundaries
+        const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+        targetY = Math.max(0, Math.min(targetY, maxScroll));
+
+        if (!isRunning) {
+            isRunning = true;
+            requestAnimationFrame(updateScroll);
+        }
+    }, { passive: false });
+
+    function updateScroll() {
+        // Linear Interpolation (Lerp) for high-end smoothness
+        const diff = targetY - currentY;
+        currentY += diff * friction;
+
+        window.scrollTo(0, currentY);
+
+        // Continue the animation loop until the movement is microscopic
+        if (Math.abs(diff) > 0.1) {
+            requestAnimationFrame(updateScroll);
+        } else {
+            isRunning = false;
+            currentY = targetY;
+        }
+    }
+
+    // [INFO] Sync targetY on manual interactions (like clicking links or dragging scrollbar)
+    window.addEventListener('mousedown', () => targetY = window.scrollY);
+    window.addEventListener('touchstart', () => targetY = window.scrollY);
+    window.addEventListener('scroll', () => {
+        if (!isRunning) currentY = targetY = window.scrollY;
+    });
+})();
 </script>
 </body>
 </html>
