@@ -4589,6 +4589,86 @@ body {
 .msg-wrapper.consecutive-msg .msg-content-column {
     gap: 0 !important;
 }
+
+
+
+
+/* --- RICH LINK PREVIEW CARD --- */
+.lp-card {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(41, 243, 255, 0.2);
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 100%;
+    width: 320px;
+    text-decoration: none !important;
+    transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+.lp-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 20px var(--atmo-glow);
+    transform: translateY(-2px);
+}
+
+.lp-thumb {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    background: #000;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.lp-content {
+    padding: 12px;
+}
+
+.lp-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-transform: uppercase;
+}
+
+.lp-desc {
+    font-size: 10px;
+    color: #a5b1c2;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.lp-site {
+    font-size: 8px;
+    color: #556;
+    text-transform: uppercase;
+    margin-top: 8px;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+/* Loading state for the card */
+.lp-loading {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-family: 'Orbitron';
+    color: #445;
+}
   </style>
 
 </head>
@@ -5309,9 +5389,6 @@ body {
             <div id="charCount" class="char-count">0 / 1000</div>
         </div>
     </div>
-
-
-
 </div>
 
         </div>
@@ -7490,19 +7567,24 @@ window.startReply = function(id, name, text, uid) {
 }
     cancelReplyBtn.addEventListener('click', () => { replyData = null; replyBar.style.display = 'none'; });
 
-function linkify(text) {
+function linkify(text, msgId) {
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
+    let firstLink = null;
+
     let processed = text.replace(urlRegex, function(url) { 
+        if (!firstLink) firstLink = url;
         return `<a href="${url}" target="_blank">${url}</a>`; 
     });
 
-    // REGEX NOU: Permite spații, puncte și cratime în interiorul tag-ului
-    // Se va opri doar când întâlnește sfârșitul liniei sau un caracter special care nu e de nume
     const mentionRegex = /(@[a-zA-Z0-9._-]+(?:\s[a-zA-Z0-9._-]+)*)/g;
-    
     processed = processed.replace(mentionRegex, function(mention) {
         return `<span style="color:var(--primary); font-weight:900; text-shadow: 0 0 10px rgba(41, 243, 255, 0.8); cursor:pointer;">${mention}</span>`;
     });
+
+    // [INFO] If a link exists, append a placeholder for the Rich Preview Card
+    if (firstLink && msgId) {
+        processed += `<div id="lp-${msgId}" class="lp-placeholder" data-url="${firstLink}"></div>`;
+    }
 
     return processed;
 }
@@ -7613,6 +7695,43 @@ async function uploadVoiceMessage(blob) {
     } catch (e) {
         console.error("Firebase Upload Error:", e);
         showToast("Eroare la încărcarea audio.");
+    }
+}
+
+
+// --- RICH LINK PREVIEW ENGINE ---
+async function fetchLinkPreview(msgId, url) {
+    const container = document.getElementById(`lp-${msgId}`);
+    if (!container || container.innerHTML !== "") return;
+
+    // [INFO] Using Microlink free API for OpenGraph data fetching
+    try {
+        const response = await fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`);
+        const data = await response.json();
+
+        if (data.status === 'success' && data.data) {
+            const meta = data.data;
+            const title = meta.title || "Link Preview";
+            const image = meta.image ? meta.image.url : null;
+            const description = meta.description || "";
+            const siteName = meta.publisher || new URL(url).hostname;
+
+            container.innerHTML = `
+                <a href="${url}" target="_blank" class="lp-card">
+                    ${image ? `<img src="${image}" class="lp-thumb" loading="lazy">` : ""}
+                    <div class="lp-content">
+                        <span class="lp-title">${title}</span>
+                        ${description ? `<p class="lp-desc">${description}</p>` : ""}
+                        <div class="lp-site">${siteName}</div>
+                    </div>
+                </a>
+            `;
+        } else {
+            container.remove(); // Remove placeholder if fetch fails
+        }
+    } catch (e) {
+        console.warn("Link preview failed for:", url);
+        container.remove();
     }
 }
 
@@ -8367,7 +8486,7 @@ function loadMessages() {
                 // STANDARD TEXT ESCAPING (This is what was breaking your cards before)
                 let baseText = (data.text || "").replace(/</g, "&lt;").replace(/\n/g, "<br>");
                 if (baseText) {
-                    let processedBody = linkify(baseText);
+let processedBody = linkify(baseText, msgId);
                     if (textStyleClass) {
                         processedBody = `<span class="${textStyleClass}">${processedBody}</span>`;
                     }
@@ -8462,6 +8581,14 @@ function loadMessages() {
             `;
             feed.appendChild(wrapper);
             if (typeof seenObserver !== 'undefined') seenObserver.observe(wrapper);
+
+// [INFO] Trigger rich link preview if a placeholder was generated
+            const lpPlaceholder = wrapper.querySelector('.lp-placeholder');
+            if (lpPlaceholder) {
+                const linkUrl = lpPlaceholder.dataset.url;
+                // [INFO] Small delay to allow DOM to settle before fetching
+                setTimeout(() => fetchLinkPreview(msgId, linkUrl), 200);
+            }
 
 
 
