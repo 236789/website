@@ -4802,6 +4802,92 @@ body {
     opacity: 0.7; /* Make the gray glow slightly stronger */
 }
 
+
+
+/* --- MULTI-IMAGE GRID SYSTEM --- */
+.media-grid {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    max-width: 320px; /* Keeps bubbles from getting too wide */
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+
+/* Single Image (Standard) */
+.media-grid[data-count="1"] {
+    grid-template-columns: 1fr;
+}
+
+/* 2 Images (Side by Side 50/50) */
+.media-grid[data-count="2"] {
+    grid-template-columns: 1fr 1fr;
+}
+
+/* 3 Images (1 Top, 2 Bottom) */
+.media-grid[data-count="3"] {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 150px 100px;
+}
+.media-grid[data-count="3"] .grid-img:first-child {
+    grid-column: span 2; /* Spans full width */
+    height: 150px;
+}
+
+/* 4 Images (2x2 Square) */
+.media-grid[data-count="4"] {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 100px 100px;
+}
+
+/* 5+ Images (2 Top, 3 Bottom) */
+.media-grid[data-count="5"] {
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr; /* 6 fractional units */
+    grid-template-rows: 100px 80px;
+}
+/* First 2 images take 50% width each */
+.media-grid[data-count="5"] .grid-img:nth-child(1),
+.media-grid[data-count="5"] .grid-img:nth-child(2) {
+    grid-column: span 3; 
+}
+/* Bottom 3 images take 33% width each */
+.media-grid[data-count="5"] .grid-img:nth-child(n+3) {
+    grid-column: span 2;
+}
+
+/* Common Image Style in Grid */
+.grid-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Ensures perfect squares without stretching */
+    cursor: zoom-in;
+    background: rgba(0,0,0,0.3);
+    transition: 0.2s;
+    min-height: 80px; /* Safety height */
+}
+.grid-img:hover {
+    filter: brightness(1.1);
+    transform: scale(1.02);
+}
+
+/* PREVIEW CONTAINER UPDATE */
+.preview-container {
+    display: none; 
+    gap: 5px; 
+    padding: 10px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 15px; 
+    margin-bottom: 10px; 
+    border: 1px dashed var(--primary);
+    flex-wrap: wrap;
+}
+.mini-preview {
+    width: 50px; height: 50px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.3);
+}
   </style>
 
 </head>
@@ -5450,7 +5536,8 @@ body {
     <i id="dynamicEmojiIcon" class="fas fa-smile"></i>
 </button>
     
-    <input type="file" id="imgInputFile" accept="image/*" style="display:none;">
+<!-- FIND THIS LINE AND REPLACE IT -->
+<input type="file" id="imgInputFile" accept="image/*" multiple style="display:none;">
     <button id="imgBtn" class="tool-btn" style="display:none;"><i class="fas fa-image"></i></button>
 
     <button id="micBtn" class="mic-btn" onclick="toggleRecording()"><i class="fas fa-microphone"></i></button>
@@ -6567,8 +6654,6 @@ function getCosmeticBadge(equippedBadge) {
     const imgPreviewContainer = document.getElementById('imgPreviewContainer');
     const imgPreview = document.getElementById('imgPreview');
     const cancelImg = document.getElementById('cancelImg');
-    let selectedImgBase64 = null;
-
     let currentUid = null;
     let userIP = null;
     let replyData = null;
@@ -8045,10 +8130,16 @@ if (currentEditId) {
                 seenBy: [auth.currentUser.uid]
             };
 
-            if(selectedImgBase64) {
-                payload.image = selectedImgBase64;
+// --- NEW MULTI-IMAGE LOGIC ---
+            if (selectedImagesArray.length > 0) {
+                // If only 1 image, save as string (backward compatibility)
+                if (selectedImagesArray.length === 1) {
+                    payload.image = selectedImagesArray[0];
+                } else {
+                    // If 2-5 images, save as array
+                    payload.images = selectedImagesArray;
+                }
             }
-
             if(replyData) {
                 payload.replyToId = replyData.id;
                 payload.replyToName = replyData.name;
@@ -8155,9 +8246,12 @@ if (currentEditId) {
             if (editBar) editBar.style.display = 'none';
         }
         
-        selectedImgBase64 = null;
-        if (imgPreview) imgPreview.src = "";
-        if (imgPreviewContainer) imgPreviewContainer.style.display = 'none';
+// RESET UI
+        selectedImagesArray = []; // Clear array
+        if (imgPreviewContainer) {
+            imgPreviewContainer.style.display = 'none';
+            imgPreviewContainer.innerHTML = '<button class="remove-preview" id="cancelImg">&times;</button><img src="" id="imgPreview" class="preview-img">';
+        }
 
     } catch(e) { 
         console.error(e); 
@@ -8656,9 +8750,27 @@ function loadMessages() {
                     const truncatedReply = safeReply.length > 50 ? safeReply.substring(0, 50) + "..." : safeReply;
                     bubbleContent += `<span class="quoted-msg"><strong style="color:var(--primary);">@${data.replyToName}</strong>${truncatedReply}</span>`;
                 }
-                if (data.image) {
-                    // UPDATED: Now calls openLightbox instead of window.open
-                    bubbleContent += `<div class="message-image-wrap"><img src="${data.image}" class="msg-img-content" onclick="openLightbox('${data.image}')"></div>`;
+// --- MULTI-IMAGE RENDERER ---
+                
+                // 1. Convert Legacy/Single image to Array
+                let imgList = [];
+                if (data.images && Array.isArray(data.images)) {
+                    imgList = data.images;
+                } else if (data.image) {
+                    imgList = [data.image];
+                }
+
+                // 2. Render Grid if images exist
+                if (imgList.length > 0) {
+                    const count = imgList.length;
+                    let gridHtml = `<div class="media-grid" data-count="${count}">`;
+                    
+                    imgList.forEach(src => {
+                        gridHtml += `<img src="${src}" class="grid-img" onclick="openLightbox('${src}')">`;
+                    });
+                    
+                    gridHtml += `</div>`;
+                    bubbleContent += gridHtml;
                 }
                 // STANDARD TEXT ESCAPING (This is what was breaking your cards before)
                 let baseText = (data.text || "").replace(/</g, "&lt;").replace(/\n/g, "<br>");
@@ -9060,8 +9172,8 @@ window.formatTime = function(seconds) {
                 ctx.drawImage(img, 0, 0, width, height);
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
                 if (dataUrl.length > 1000000) { showToast("Imaginea este prea mare chiar și comprimată."); return; }
-                selectedImgBase64 = dataUrl;
-                imgPreview.src = selectedImgBase64;
+                selectedImagesArray  = dataUrl;
+                imgPreview.src = selectedImagesArray ;
                 imgPreviewContainer.style.display = 'block';
             };
         };
@@ -9801,8 +9913,8 @@ window.sendMediaFinal = function(url) {
     // otherwise we use a fallback logic.
     try {
         // Try setting the variable used by your main script
-        if(typeof selectedImgBase64 !== 'undefined') {
-            selectedImgBase64 = url;
+        if(typeof selectedImagesArray  !== 'undefined') {
+            selectedImagesArray  = url;
         } else {
             // If we can't access the variable, we attach it to window
             window.tempSelectedImg = url;
@@ -10265,6 +10377,84 @@ window.viewEditHistory = async (msgId) => {
         list.innerHTML = '<div style="text-align:center; color:#ff4757;">Eroare la încărcare.</div>';
     }
 };
+
+
+
+// --- GLOBAL VARIABLE UPDATE ---
+    let selectedImagesArray = []; // Replaces selectedImgBase64
+
+    // --- NEW INPUT HANDLER ---
+    imgBtn.onclick = () => imgInputFile.click();
+    
+    imgInputFile.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        
+        if (files.length === 0) return;
+        
+        // 1. LIMIT CHECK
+        if (files.length > 5) {
+            showToast("Maxim 5 imagini!");
+            // Slice to first 5
+            files.length = 5;
+        }
+
+        showToast(`Procesez ${files.length} imagini...`, "success");
+        
+        // Reset current selection
+        selectedImagesArray = [];
+        const container = document.getElementById('imgPreviewContainer');
+        container.innerHTML = '<button class="remove-preview" id="cancelImg">&times;</button>'; // Keep reset btn
+        
+        // 2. PROCESS LOOP
+        for (const file of files) {
+            if (file.size > 10 * 1024 * 1024) continue; // Skip huge files > 10MB
+
+            const base64 = await convertToBase64(file);
+            selectedImagesArray.push(base64);
+
+            // Create Mini Thumbnail for Preview
+            const img = document.createElement('img');
+            img.src = base64;
+            img.className = 'mini-preview';
+            container.appendChild(img);
+        }
+
+        // Show Container
+        container.style.display = 'flex';
+
+        // Re-attach cancel listener
+        document.getElementById('cancelImg').onclick = () => {
+            selectedImagesArray = [];
+            container.style.display = 'none';
+            imgInputFile.value = '';
+        };
+    };
+
+    // Helper to resize/convert images (Prevents lag)
+    function convertToBase64(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    // Max dimension 800px to save DB space
+                    const MAX = 800; 
+                    let w = img.width, h = img.height;
+                    
+                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+                    else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+                    
+                    canvas.width = w; canvas.height = h;
+                    ctx.drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+            };
+        });
+    }
 </script>
 </body>
 </html>
