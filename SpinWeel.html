@@ -4780,17 +4780,23 @@ window.toggleRewardsModal = (show) => {
     const modal = document.getElementById('rewardsInfoModal');
     if (!list || !modal) return;
 
-    // Sort: XP -> Coins (low to high) -> Diamonds (low to high) -> Badge/Banner/Frame
+    // Helper to parse labels like "2.5k" or "1" into numbers for sorting
+    const parseLabel = (label) => {
+        let l = label.toLowerCase();
+        if (l.includes('k')) return parseFloat(l) * 1000;
+        let n = parseFloat(l);
+        return isNaN(n) ? 0 : n;
+    };
+
+    // Sort: XP -> Coins (low to high label) -> Diamonds (low to high label) -> Badge/Banner/Frame
     const typeOrder = { "xp": 0, "coins": 1, "diamonds": 2, "badge": 3, "banner": 4, "frame": 5 };
     
     const sortedRewards = [...REWARDS].sort((a, b) => {
         if (typeOrder[a.type] !== typeOrder[b.type]) {
             return typeOrder[a.type] - typeOrder[b.type];
         }
-        // If types are the same, sort by numeric value
-        const valA = typeof a.val === 'number' ? a.val : 0;
-        const valB = typeof b.val === 'number' ? b.val : 0;
-        return valA - valB;
+        // Within the same type, sort by the numeric value shown on the label
+        return parseLabel(a.label) - parseLabel(b.label);
     });
 
     list.innerHTML = sortedRewards.map(r => {
