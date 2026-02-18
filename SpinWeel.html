@@ -4606,11 +4606,14 @@ function drawWheel() {
         const midAngle = sliceAngle + arc / 2;
 
         ctx.save();
+        
+        // Define slice path
         ctx.beginPath();
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
         ctx.closePath();
 
+        // Slice Background (Radial Gradient)
         let g = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
         if (rew.jackpot) {
             if (rew.type === "diamonds") {
@@ -4627,6 +4630,7 @@ function drawWheel() {
         ctx.fillStyle = g;
         ctx.fill();
 
+        // Consistent Gold Outline
         let grad = ctx.createLinearGradient(
             250 + 180 * Math.cos(midAngle - 0.5), 250 + 180 * Math.sin(midAngle - 0.5),
             250 + 230 * Math.cos(midAngle + 0.5), 250 + 230 * Math.sin(midAngle + 0.5)
@@ -4643,16 +4647,24 @@ function drawWheel() {
         ctx.stroke();
         ctx.restore();
 
+        // 3. DRAW ICONS AND TEXT
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(midAngle);
-        const hasIcon = (rew.type === "coins" || rew.type === "diamonds" || rew.type === "xp");
 
-        if (hasIcon) {
-            let img = coinImg;
-            if(rew.type === "diamonds") img = diamImg;
-            if(rew.type === "xp") img = xpImg;
-
+        if (rew.type === "xp") {
+            // Draw FontAwesome Lightning Icon for XP
+            ctx.save();
+            ctx.translate(100, 0);
+            ctx.rotate(-midAngle); // Keep icon upright
+            ctx.fillStyle = "#29f3ff";
+            ctx.font = '900 18px "Font Awesome 6 Free"';
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText('\uf0e7', 0, 0); 
+            ctx.restore();
+        } else if (rew.type === "coins" || rew.type === "diamonds") {
+            const img = (rew.type === "coins") ? coinImg : diamImg;
             if (img.complete) {
                 ctx.save();
                 ctx.translate(100, 0); 
@@ -4663,9 +4675,11 @@ function drawWheel() {
 
         ctx.save();
         ctx.translate(170, 0); 
+
         const cleanAngle = (midAngle % (Math.PI * 2));
         const shouldFlip = (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
         if (shouldFlip) ctx.rotate(Math.PI);
+
         ctx.fillStyle = "#fff";
         ctx.font = rew.label.length > 12 ? "900 10px Orbitron" : "900 15px Orbitron";
         ctx.textAlign = "center";
@@ -4674,13 +4688,15 @@ function drawWheel() {
         ctx.shadowColor = "black";
         ctx.fillText(rew.label, 0, 0);
         ctx.restore();
+
         ctx.restore();
     });
 
-    // 4. HOLOGRAM CENTER HUB (PERFECTLY CENTERED)
+    // 4. CENTER HUB WITH PERFECTLY CENTERED HOLOGRAM
     ctx.save();
     ctx.translate(250, 250);
     
+    // Hub Rim
     ctx.beginPath();
     ctx.arc(0, 0, 48, 0, Math.PI * 2);
     ctx.fillStyle = "#050b14";
@@ -4688,75 +4704,72 @@ function drawWheel() {
     ctx.strokeStyle = "#ffd700";
     ctx.lineWidth = 3;
     ctx.stroke();
+    
+    // Clip area inside hub
+    ctx.beginPath();
+    ctx.arc(0, 0, 48, 0, Math.PI * 2);
     ctx.clip();
 
-    const hInterval = 2000;
-    const hSeed = Math.floor(Date.now() / hInterval);
-    const hIndex = (hSeed * 7) % REWARDS.length;
-    const hRew = REWARDS[hIndex];
+    // Logic: Cycle through rewards that are NOT frames
+    const hologramInterval = 2000;
+    const timeSeed = Math.floor(Date.now() / hologramInterval);
+    const validRewards = REWARDS.filter(r => r.type !== "frame");
+    const hIndex = (timeSeed * 7) % validRewards.length;
+    const hRew = validRewards[hIndex];
 
     ctx.save();
+    // Centering the hologram perfectly in the middle
     ctx.globalAlpha = 0.7 + Math.sin(Date.now() / 250) * 0.2; 
     ctx.shadowBlur = 10;
     ctx.shadowColor = "#29f3ff";
 
-    if (hRew.type === "coins" || hRew.type === "diamonds" || hRew.type === "xp") {
-        let hImg = coinImg;
-        if(hRew.type === "diamonds") hImg = diamImg;
-        if(hRew.type === "xp") hImg = xpImg;
-
+    if (hRew.type === "xp") {
+        ctx.fillStyle = "#29f3ff";
+        ctx.font = '900 28px "Font Awesome 6 Free"';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText('\uf0e7', 0, 0);
+    } else if (hRew.type === "coins" || hRew.type === "diamonds") {
+        let hImg = (hRew.type === "diamonds") ? diamImg : coinImg;
         if (hImg.complete) {
-            // Draw perfectly centered
             ctx.drawImage(hImg, -18, -18, 36, 36);
         }
-    } 
-    else if (hRew.type === "badge") {
-        const b = BADGES_DB.find(x => x.id === hRew.val);
-        if(b) {
-            // Render actual badge pill in center
+    } else if (hRew.type === "badge") {
+        const bData = BADGES_DB.find(x => x.id === hRew.val);
+        if (bData) {
             ctx.beginPath();
-            ctx.roundRect(-40, -12, 80, 24, 6);
-            ctx.fillStyle = b.color.includes('gradient') ? "#ffd700" : b.color;
+            ctx.roundRect(-35, -10, 70, 20, 5);
+            ctx.fillStyle = bData.color.includes('gradient') ? "#ffd700" : bData.color;
             ctx.fill();
             ctx.strokeStyle = "#fff";
             ctx.lineWidth = 1;
             ctx.stroke();
             ctx.fillStyle = "#000";
-            ctx.font = "900 9px Orbitron";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(b.text, 0, 0);
-        }
-    }
-    else if (hRew.type === "banner") {
-        const bn = BANNERS_DB.find(x => x.id === hRew.val);
-        if(bn) {
-            // Render actual banner rect in center
-            ctx.beginPath();
-            ctx.rect(-40, -15, 80, 30);
-            let bg = ctx.createLinearGradient(-40, 0, 40, 0);
-            bg.addColorStop(0, "#1a0b2e"); bg.addColorStop(1, "#5000ca");
-            ctx.fillStyle = bg;
-            ctx.fill();
-            ctx.strokeStyle = "#29f3ff";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.fillStyle = "#fff";
             ctx.font = "900 8px Orbitron";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(bn.name, 0, 0);
+            ctx.fillText(bData.text, 0, 0);
         }
-    }
-    else if (hRew.type === "frame") {
-        const fr = FRAMES_DB.find(x => x.id === hRew.val);
-        const placeholder = new Image(); placeholder.src = "https://i.ibb.co/4pGm9S2/user-placeholder.png";
-        ctx.save();
-        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.clip();
-        ctx.drawImage(placeholder, -18, -18, 36, 36);
-        ctx.restore();
-        const fImg = new Image(); fImg.src = fr.img;
-        if(fImg.complete) ctx.drawImage(fImg, -28, -28, 56, 56);
+    } else if (hRew.type === "banner") {
+        const bnData = BANNERS_DB.find(x => x.id === hRew.val);
+        if (bnData) {
+            ctx.beginPath();
+            ctx.rect(-38, -12, 76, 24);
+            let grad = ctx.createLinearGradient(-38, 0, 38, 0);
+            grad.addColorStop(0, "#050b14");
+            grad.addColorStop(0.5, "#7000ff");
+            grad.addColorStop(1, "#050b14");
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = "#29f3ff";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.fillStyle = "#fff";
+            ctx.font = "900 7px Orbitron";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(bnData.name, 0, 0);
+        }
     }
 
     ctx.restore();
