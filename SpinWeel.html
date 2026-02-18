@@ -4577,7 +4577,7 @@ function drawWheel() {
     const arc = (2 * Math.PI) / 16;
     ctx.clearRect(0, 0, 500, 500);
 
-    // Rim & Bulbs logic stays same
+    // Rim & Bulbs logic
     ctx.beginPath(); ctx.arc(250, 250, 246, 0, Math.PI * 2); ctx.fillStyle = "#111"; ctx.fill();
     ctx.beginPath(); ctx.arc(250, 250, 240, 0, Math.PI * 2); ctx.fillStyle = "#fbc02d"; ctx.fill();
     for (let i = 0; i < 24; i++) {
@@ -4590,48 +4590,72 @@ function drawWheel() {
     REWARDS.forEach((rew, i) => {
         const sliceAngle = i * arc + rotation;
         ctx.save();
+        
+        // Path for Fill and Outline
         ctx.beginPath();
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
         ctx.closePath();
 
+        // Fill logic
         let g = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
-        
         if (rew.jackpot) {
             if (rew.type === "diamonds") {
-                // Gems Jackpot: Green + Black Gradient
                 g.addColorStop(0, "#000000");
                 g.addColorStop(1, "#00ff88");
             } else if (rew.type === "coins" && rew.val >= 2500) {
-                // 2.5K Coins Jackpot: Yellow + Black Gradient
                 g.addColorStop(0, "#000000");
                 g.addColorStop(1, "#ffd700");
             } else {
-                // Badge + Banner Jackpots: Void + Purple
                 g.addColorStop(0, "#050b14");
                 g.addColorStop(1, "#7000ff");
             }
-            ctx.strokeStyle = "#29f3ff";
-            ctx.lineWidth = 3;
         } else {
-            // Normal Slices: Jackpot Style Gradient
             g.addColorStop(0, "#050b14");
             g.addColorStop(1, rew.color);
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-            ctx.lineWidth = 1;
         }
-
         ctx.fillStyle = g;
         ctx.fill();
-        ctx.stroke();
+
+        // Outline logic
+        if (rew.jackpot) {
+            // Animated Gold Outline
+            let timeShift = (Date.now() / 250) % 1;
+            let goldGlow = ctx.createLinearGradient(
+                250 + 200 * Math.cos(sliceAngle + arc / 2),
+                250 + 200 * Math.sin(sliceAngle + arc / 2),
+                250 + 230 * Math.cos(sliceAngle + arc / 2),
+                250 + 230 * Math.sin(sliceAngle + arc / 2)
+            );
+            goldGlow.addColorStop(Math.max(0, timeShift - 0.2), "#ffd700");
+            goldGlow.addColorStop(timeShift, "#ffffff");
+            goldGlow.addColorStop(Math.min(1, timeShift + 0.2), "#ffd700");
+            
+            ctx.strokeStyle = goldGlow;
+            ctx.lineWidth = 5;
+            ctx.lineJoin = "round";
+            ctx.stroke();
+            
+            // Secondary glow effect
+            ctx.strokeStyle = "rgba(255, 215, 0, 0.5)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        } else {
+            // Standard Cyan Outline
+            ctx.strokeStyle = "#29f3ff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        
         ctx.restore();
 
+        // Text and Icons
         ctx.save();
         ctx.translate(250, 250);
         const midAngle = sliceAngle + arc / 2;
         ctx.rotate(midAngle);
         const cleanAngle = (midAngle % (Math.PI * 2));
-        const shouldFlip = rew.jackpot && (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
+        const shouldFlip = (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
 
         ctx.save();
         ctx.translate(shouldFlip ? 130 : 150, 0); 
@@ -4639,6 +4663,8 @@ function drawWheel() {
         ctx.fillStyle = "#fff";
         ctx.font = rew.label.length > 12 ? "900 10px Orbitron" : "900 15px Orbitron";
         ctx.textAlign = "center";
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = "black";
         ctx.fillText(rew.label, 0, 5);
         ctx.restore();
 
@@ -4654,6 +4680,7 @@ function drawWheel() {
         ctx.restore();
     });
 
+    // Center Hub
     ctx.beginPath(); ctx.arc(250, 250, 48, 0, Math.PI * 2); ctx.fillStyle = "#050b14"; ctx.fill();
     ctx.strokeStyle = "#29f3ff"; ctx.lineWidth = 4; ctx.stroke();
 }
