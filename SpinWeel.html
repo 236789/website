@@ -5353,11 +5353,9 @@ onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
 
         // 3. Update-uri necesare pentru restul site-ului (Free Spins, etc)
         window.currentUserStack = data.freeSpinStack || 0;
-        window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : Date.now();
-    }
+window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : (Date.now() - (12 * 60 * 60 * 1000));    }
 });
         
-        // --- 3. FREE SPIN TIMER LOOP ---
 const timerInterval = setInterval(() => {
     if (!auth.currentUser) { clearInterval(timerInterval); return; }
     
@@ -5367,17 +5365,26 @@ const timerInterval = setInterval(() => {
     const btnTop = freeBtn.querySelector('.btn-top');
     const stack = window.currentUserStack || 0;
     const twelveHours = 12 * 60 * 60 * 1000;
-    const nextSpinAt = (window.lastAccrualTime || Date.now()) + twelveHours;
+    
+    // Fallback to a time in the past if variable is missing so it shows as ready
+    const lastTime = window.lastAccrualTime || (Date.now() - twelveHours);
+    const nextSpinAt = lastTime + twelveHours;
     const diff = nextSpinAt - Date.now();
 
     if (stack > 0) {
-        // Arată numărul de rotiri pe buton
+        // Show number of available spins
         if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 8px; border-radius:50px; font-size:12px; font-weight:900; margin-left:8px;">${stack}</span>`;
         freeBtn.style.pointerEvents = "auto"; 
         freeBtn.style.opacity = "1"; 
         freeBtn.style.filter = "none";
+    } else if (diff <= 0) {
+        // Time elapsed but Firestore hasn't incremented the stack yet
+        if (btnTop) btnTop.innerText = `SYNCING...`;
+        freeBtn.style.pointerEvents = "none"; 
+        freeBtn.style.opacity = "0.7"; 
+        freeBtn.style.filter = "grayscale(0.8)";
     } else {
-        // Countdown până la următoarea acumulare
+        // Correct countdown math for positive difference only
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
         const s = Math.floor((diff % 60000) / 1000);
