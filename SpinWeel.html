@@ -4374,7 +4374,7 @@ let isSpinning = false;
 // Imaginile pentru iconițe
 const coinImg = new Image(); coinImg.src = "https://iili.io/fhc1SKQ.png";
 const diamImg = new Image(); diamImg.src = "https://iili.io/fv5bmtj.png";
-
+const xpImg = new Image(); xpImg.src = "https://i.ibb.co/Xz9Z4Y6/xp-icon.png";
 // --- AUDIO SETUP ---
 
 // 1. Spin Click Sound
@@ -4606,14 +4606,11 @@ function drawWheel() {
         const midAngle = sliceAngle + arc / 2;
 
         ctx.save();
-        
-        // Define slice path
         ctx.beginPath();
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
         ctx.closePath();
 
-        // Slice Background (Radial Gradient)
         let g = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
         if (rew.jackpot) {
             if (rew.type === "diamonds") {
@@ -4630,7 +4627,6 @@ function drawWheel() {
         ctx.fillStyle = g;
         ctx.fill();
 
-        // Consistent Gold Outline
         let grad = ctx.createLinearGradient(
             250 + 180 * Math.cos(midAngle - 0.5), 250 + 180 * Math.sin(midAngle - 0.5),
             250 + 230 * Math.cos(midAngle + 0.5), 250 + 230 * Math.sin(midAngle + 0.5)
@@ -4642,38 +4638,34 @@ function drawWheel() {
         grad.addColorStop(1, "#b8860b");
 
         ctx.strokeStyle = grad;
-        ctx.lineWidth = 2; // Fixed thickness for all slices
+        ctx.lineWidth = 2; 
         ctx.lineJoin = "round";
         ctx.stroke();
         ctx.restore();
 
-        // 3. DRAW ICONS AND TEXT (RE-POSITIONED TO PREVENT COLLISION)
         ctx.save();
         ctx.translate(250, 250);
         ctx.rotate(midAngle);
+        const hasIcon = (rew.type === "coins" || rew.type === "diamonds" || rew.type === "xp");
 
-        const hasIcon = (rew.type === "coins" || rew.type === "diamonds");
-
-        // DRAW ICON (Placed closer to the center at radius 100)
         if (hasIcon) {
-            const img = (rew.type === "coins") ? coinImg : diamImg;
+            let img = coinImg;
+            if(rew.type === "diamonds") img = diamImg;
+            if(rew.type === "xp") img = xpImg;
+
             if (img.complete) {
                 ctx.save();
                 ctx.translate(100, 0); 
-                // We don't rotate icons based on flip here to keep them upright relative to center
                 ctx.drawImage(img, -12, -12, 24, 24);
                 ctx.restore();
             }
         }
 
-        // DRAW TEXT (Pushed out toward the rim at radius 170)
         ctx.save();
         ctx.translate(170, 0); 
-
         const cleanAngle = (midAngle % (Math.PI * 2));
         const shouldFlip = (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
         if (shouldFlip) ctx.rotate(Math.PI);
-
         ctx.fillStyle = "#fff";
         ctx.font = rew.label.length > 12 ? "900 10px Orbitron" : "900 15px Orbitron";
         ctx.textAlign = "center";
@@ -4682,15 +4674,13 @@ function drawWheel() {
         ctx.shadowColor = "black";
         ctx.fillText(rew.label, 0, 0);
         ctx.restore();
-
         ctx.restore();
     });
 
-    // 4. HOLOGRAM CENTER HUB
+    // 4. HOLOGRAM CENTER HUB (PERFECTLY CENTERED)
     ctx.save();
     ctx.translate(250, 250);
     
-    // Hub Rim Background
     ctx.beginPath();
     ctx.arc(0, 0, 48, 0, Math.PI * 2);
     ctx.fillStyle = "#050b14";
@@ -4698,46 +4688,78 @@ function drawWheel() {
     ctx.strokeStyle = "#ffd700";
     ctx.lineWidth = 3;
     ctx.stroke();
-    
-    // Hologram Logic: Switch reward every 2 seconds randomly
-    const hologramInterval = 2000;
-    const hologramSeed = Math.floor(Date.now() / hologramInterval);
-    // Pseudo-random selection based on time seed
-    const hIndex = (hologramSeed * 7) % REWARDS.length;
+    ctx.clip();
+
+    const hInterval = 2000;
+    const hSeed = Math.floor(Date.now() / hInterval);
+    const hIndex = (hSeed * 7) % REWARDS.length;
     const hRew = REWARDS[hIndex];
 
-    // Hologram Visual Effects
     ctx.save();
-    ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200) * 0.2; // Subtle pulsing
-    ctx.shadowBlur = 15;
+    ctx.globalAlpha = 0.7 + Math.sin(Date.now() / 250) * 0.2; 
+    ctx.shadowBlur = 10;
     ctx.shadowColor = "#29f3ff";
 
-    if (hRew.type === "coins" || hRew.type === "diamonds") {
-        const hImg = (hRew.type === "coins") ? coinImg : diamImg;
+    if (hRew.type === "coins" || hRew.type === "diamonds" || hRew.type === "xp") {
+        let hImg = coinImg;
+        if(hRew.type === "diamonds") hImg = diamImg;
+        if(hRew.type === "xp") hImg = xpImg;
+
         if (hImg.complete) {
-            ctx.drawImage(hImg, -18, -25, 36, 36);
+            // Draw perfectly centered
+            ctx.drawImage(hImg, -18, -18, 36, 36);
         }
-    } else {
-        // For XP, Badges, Banners, Frames
-        const hTrophy = trophyImg;
-        if (hTrophy.complete) {
-            ctx.drawImage(hTrophy, -18, -25, 36, 36);
+    } 
+    else if (hRew.type === "badge") {
+        const b = BADGES_DB.find(x => x.id === hRew.val);
+        if(b) {
+            // Render actual badge pill in center
+            ctx.beginPath();
+            ctx.roundRect(-40, -12, 80, 24, 6);
+            ctx.fillStyle = b.color.includes('gradient') ? "#ffd700" : b.color;
+            ctx.fill();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.fillStyle = "#000";
+            ctx.font = "900 9px Orbitron";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(b.text, 0, 0);
         }
     }
+    else if (hRew.type === "banner") {
+        const bn = BANNERS_DB.find(x => x.id === hRew.val);
+        if(bn) {
+            // Render actual banner rect in center
+            ctx.beginPath();
+            ctx.rect(-40, -15, 80, 30);
+            let bg = ctx.createLinearGradient(-40, 0, 40, 0);
+            bg.addColorStop(0, "#1a0b2e"); bg.addColorStop(1, "#5000ca");
+            ctx.fillStyle = bg;
+            ctx.fill();
+            ctx.strokeStyle = "#29f3ff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = "#fff";
+            ctx.font = "900 8px Orbitron";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(bn.name, 0, 0);
+        }
+    }
+    else if (hRew.type === "frame") {
+        const fr = FRAMES_DB.find(x => x.id === hRew.val);
+        const placeholder = new Image(); placeholder.src = "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+        ctx.save();
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.clip();
+        ctx.drawImage(placeholder, -18, -18, 36, 36);
+        ctx.restore();
+        const fImg = new Image(); fImg.src = fr.img;
+        if(fImg.complete) ctx.drawImage(fImg, -28, -28, 56, 56);
+    }
 
-    // Label for the hologram
-    ctx.fillStyle = "#29f3ff";
-    ctx.font = "900 10px Orbitron";
-    ctx.textAlign = "center";
-    ctx.fillText(hRew.label, 0, 22);
     ctx.restore();
-    
-    // Hub Center Decoration Dot
-    ctx.beginPath();
-    ctx.arc(0, 0, 3, 0, Math.PI * 2);
-    ctx.fillStyle = "#29f3ff";
-    ctx.fill();
-
     ctx.restore();
 }
 window.toggleRewardsModal = (show) => {
