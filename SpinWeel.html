@@ -3848,10 +3848,7 @@ input:checked + .slider:before { transform: translateX(24px); }
     <!-- 5. CONTROLS -->
     <div class="controls-container" style="margin-top: 30px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%;">
         
-        <!-- Buton 1: Free Spin -->
-        <button id="freeSpinBtn" class="btn-spin-blue">
-            <span class="btn-top">FREE SPIN</span>
-        </button>
+
 
         <!-- Buton 2: Spin for 1 Diamond -->
 <button id="paidSpinBtn" class="btn-spin-blue">
@@ -4866,7 +4863,7 @@ async function startSpin(forcedIndex = null, speedOverride = null) {
     requestAnimationFrame(animate);
 }
 
-async function attemptSpin(isFreeAttempt) {
+async function attemptSpin() {
     if (isSpinning) return;
     if (!auth.currentUser) return alert("Trebuie să fii logat!");
 
@@ -4875,24 +4872,18 @@ async function attemptSpin(isFreeAttempt) {
     const data = snap.data();
     const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
 
-    if (isFreeAttempt) {
-        if ((data.freeSpinStack || 0) < 1) return alert("Nu ai rotiri gratuite!");
-    } else {
-        if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
-    }
+    if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
 
-    let rewardIdx = pickRewardIndex(); // Default random
+    let rewardIdx = pickRewardIndex(); 
 
     // CASE 1: ADMIN IS SPINNING FOR AN EVENT
     if (isEventModeActive && isAdmin) {
         if (!eventSelectedUser) return alert("Alege un participant din listă mai întâi!");
         
-        // Verificăm dacă adminul a forțat o recompensă
         const forcedVal = parseInt(document.getElementById('adminForcedReward').value);
         if (forcedVal !== -1) rewardIdx = forcedVal;
 
-        if (isFreeAttempt) await updateDoc(userRef, { freeSpinStack: increment(-1) });
-        else await updateDoc(userRef, { diamonds: increment(-1) });
+        await updateDoc(userRef, { diamonds: increment(-1) });
 
         // Broadcast global spin
         await updateDoc(doc(db, "site_metadata", "wheel_event"), {
@@ -4906,21 +4897,15 @@ async function attemptSpin(isFreeAttempt) {
         return; 
     }
 
-    // CASE 2: PRIVATE SPIN (Normal players)
-    // Deduct currency
-    if (isFreeAttempt) await updateDoc(userRef, { freeSpinStack: increment(-1) });
-    else await updateDoc(userRef, { diamonds: increment(-1) });
+    // CASE 2: PRIVATE SPIN
+    await updateDoc(userRef, { diamonds: increment(-1) });
 
-    // FIX: Set self as the spinner so finalizeSpin knows to award the prize
     currentSpinAdminId = auth.currentUser.uid;
     
-    // Start spin locally for this user only
     startSpin(rewardIdx, parseFloat(document.getElementById('multiSpinSpeed')?.value || 1));
 }
 
-document.getElementById('freeSpinBtn').onclick = () => attemptSpin(true);
-document.getElementById('paidSpinBtn').onclick = () => attemptSpin(false);
-
+document.getElementById('paidSpinBtn').onclick = () => attemptSpin();
 // Replace the existing autoSpinBtn logic with this:
 
 // Request animation frame to make bulbs blink
@@ -5352,41 +5337,10 @@ onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
         }
 
         // 3. Update-uri necesare pentru restul site-ului (Free Spins, etc)
-        window.currentUserStack = data.freeSpinStack || 0;
-        window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : Date.now();
     }
 });
         
-        // --- 3. FREE SPIN TIMER LOOP ---
-const timerInterval = setInterval(() => {
-    if (!auth.currentUser) { clearInterval(timerInterval); return; }
-    
-    const freeBtn = document.getElementById('freeSpinBtn');
-    if (!freeBtn) return;
 
-    const btnTop = freeBtn.querySelector('.btn-top');
-    const stack = window.currentUserStack || 0;
-    const twelveHours = 12 * 60 * 60 * 1000;
-    const nextSpinAt = (window.lastAccrualTime || Date.now()) + twelveHours;
-    const diff = nextSpinAt - Date.now();
-
-    if (stack > 0) {
-        // Arată numărul de rotiri pe buton
-        if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 8px; border-radius:50px; font-size:12px; font-weight:900; margin-left:8px;">${stack}</span>`;
-        freeBtn.style.pointerEvents = "auto"; 
-        freeBtn.style.opacity = "1"; 
-        freeBtn.style.filter = "none";
-    } else {
-        // Countdown până la următoarea acumulare
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        if (btnTop) btnTop.innerText = `NEXT: ${h}h ${m}m ${s}s`;
-        freeBtn.style.pointerEvents = "none"; 
-        freeBtn.style.opacity = "0.7"; 
-        freeBtn.style.filter = "grayscale(0.8)";
-    }
-}, 1000);
 
     } else {
         document.getElementById('wheelLoginWall').style.display = 'flex';
