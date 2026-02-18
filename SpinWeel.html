@@ -5366,29 +5366,29 @@ const timerInterval = setInterval(() => {
     const stack = window.currentUserStack || 0;
     const twelveHours = 12 * 60 * 60 * 1000;
     
-    // Fallback to a time in the past if variable is missing so it shows as ready
-    const lastTime = window.lastAccrualTime || (Date.now() - twelveHours);
+    // The timestamp when the next spin will be ready
+    const lastTime = window.lastAccrualTime || Date.now();
     const nextSpinAt = lastTime + twelveHours;
     const diff = nextSpinAt - Date.now();
 
     if (stack > 0) {
-        // Show number of available spins
+        // Show stack count
         if (btnTop) btnTop.innerHTML = `FREE SPIN <span style="background:white; color:#2196f3; padding:2px 8px; border-radius:50px; font-size:12px; font-weight:900; margin-left:8px;">${stack}</span>`;
         freeBtn.style.pointerEvents = "auto"; 
         freeBtn.style.opacity = "1"; 
         freeBtn.style.filter = "none";
-    } else if (diff <= 0) {
-        // Time elapsed but Firestore hasn't incremented the stack yet
-        if (btnTop) btnTop.innerText = `SYNCING...`;
-        freeBtn.style.pointerEvents = "none"; 
-        freeBtn.style.opacity = "0.7"; 
-        freeBtn.style.filter = "grayscale(0.8)";
     } else {
-        // Correct countdown math for positive difference only
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        if (btnTop) btnTop.innerText = `NEXT: ${h}h ${m}m ${s}s`;
+        // If diff is negative, it means a spin is technically ready and the listener above 
+        // will trigger the DB update shortly. We show a small buffer to prevent negative numbers.
+        if (diff <= 0) {
+            if (btnTop) btnTop.innerText = `PREPARING...`;
+        } else {
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            if (btnTop) btnTop.innerText = `NEXT: ${h}h ${m}m ${s}s`;
+        }
+        
         freeBtn.style.pointerEvents = "none"; 
         freeBtn.style.opacity = "0.7"; 
         freeBtn.style.filter = "grayscale(0.8)";
@@ -6075,11 +6075,27 @@ onSnapshot(userRef, async (uSnap) => {
     if (!uSnap.exists()) return;
     const data = uSnap.data();
 
-    // --- 1. DETERMINE PROFILE PICTURE PRIORITY ---
-    // First: Database custom image | Second: Google Photo | Third: Placeholder
+    // --- DATABASE-DRIVEN FREE SPIN ACCRUAL ---
+    const now = Date.now();
+    const twelveHours = 12 * 60 * 60 * 1000;
+    const lastAccrual = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : 0;
+
+    // If 12 hours have passed since the last award (or if the user is new), give a spin
+    if (now - lastAccrual >= twelveHours) {
+        try {
+            await updateDoc(userRef, {
+                freeSpinStack: increment(1),
+                lastFreeSpinAccrual: serverTimestamp()
+            });
+            console.log("Free spin awarded via database check.");
+        } catch (e) {
+            console.error("Accrual error:", e);
+        }
+    }
+
+    // --- PROFILE PICTURE SYNC ---
     const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
 
-    // --- 2. UPDATE HEADER ELEMENTS ---
     if (headerUserImg) {
         headerUserImg.src = finalProfilePic;
         headerUserImg.style.display = "block";
@@ -6088,7 +6104,7 @@ onSnapshot(userRef, async (uSnap) => {
         headerLoginText.innerText = (data.username || "ACCOUNT").toUpperCase();
     }
 
-    // --- 3. UPDATE ACCOUNT POPUP (MODAL) ---
+    // --- POPUP MODAL SYNC ---
     const popImg = document.getElementById('popUserImg');
     if (popImg) {
         popImg.src = finalProfilePic;
@@ -6103,12 +6119,12 @@ onSnapshot(userRef, async (uSnap) => {
         }
     }
 
-    // --- 4. UPDATE WHEEL STATS PILL (Only if not in Event Mode) ---
+    // --- WHEEL STATS PILL SYNC ---
     if (!isEventModeActive) {
         updatePillVisuals({ uid: user.uid, ...data });
     }
 
-    // --- 5. SYNC OTHER STATS ---
+    // --- CURRENCY SYNC ---
     if (document.getElementById('popUserCoins')) {
         document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
     }
@@ -6116,9 +6132,9 @@ onSnapshot(userRef, async (uSnap) => {
         document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
     }
 
-    // Keep Free Spin Data for the Timer
+    // Global variables for Timer
     window.currentUserStack = data.freeSpinStack || 0;
-    window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : Date.now();
+    window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : now;
 });
         });
 
