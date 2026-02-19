@@ -3384,6 +3384,84 @@ input:checked + .slider:before { transform: translateX(24px); }
     animation: rainbowAnim 10s ease infinite !important;
     color: #fff !important;
 }
+
+/* --- SICK JACKPOT BADGES ENGINE --- */
+.badge-jackpot-base {
+    position: relative !important;
+    padding: 6px 16px !important;
+    border-radius: 50px !important;
+    font-family: 'Orbitron', sans-serif !important;
+    font-weight: 900 !important;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 1px;
+    overflow: hidden !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 2px solid #fff;
+}
+
+/* 1. IMMORTAL (Deathly Purple/Black) */
+.badge-immortal {
+    background: #000 !important;
+    color: #a020f0 !important;
+    border-color: #a020f0 !important;
+    box-shadow: 0 0 15px #a020f0, inset 0 0 10px #000 !important;
+    text-shadow: 0 0 5px #a020f0;
+    animation: bloodPulse 2s infinite !important;
+}
+
+/* 2. CELESTIAL (Holy White/Cyan) */
+.badge-celestial {
+    background: #fff !important;
+    color: #00e5ff !important;
+    border-color: #00e5ff !important;
+    box-shadow: 0 0 20px #fff, inset 0 0 10px #00e5ff !important;
+    animation: neonGlow 1.5s infinite alternate !important;
+}
+
+/* 3. CYBER GHOST (Matrix Green) */
+.badge-cyber-ghost {
+    background: #08101b !important;
+    color: #00ff41 !important;
+    border-color: #00ff41 !important;
+    box-shadow: 0 0 15px #00ff41, inset 0 0 10px #000 !important;
+    font-family: 'Courier New', monospace !important;
+}
+.badge-cyber-ghost::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 2px;
+    background: #00ff41; animation: scanline 2s linear infinite;
+}
+@keyframes scanline { 0% { top: 0; } 100% { top: 100%; } }
+
+/* 4. DEMON SLAYER (Hellfire Red/Gold) */
+.badge-demon-slayer {
+    background: linear-gradient(135deg, #600, #000) !important;
+    color: #ffd700 !important;
+    border-color: #ff0000 !important;
+    box-shadow: 0 0 15px #ff0000, inset 0 0 10px #f00 !important;
+    animation: firePulse 1s infinite alternate !important;
+}
+
+/* 5. VOID MASTER (Deep Blue/Black) */
+.badge-void-master {
+    background: #050b14 !important;
+    color: #fff !important;
+    border-color: #29f3ff !important;
+    box-shadow: 0 0 15px #7000ff, inset 0 0 10px #29f3ff !important;
+}
+.badge-void-master::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(112, 0, 255, 0.4), transparent);
+    animation: quantumBadgeScan 3s infinite linear;
+}
+
+/* Utility to fix Inventory Spacing */
+.shop-badge-item .badge-jackpot-base {
+    margin-bottom: 15px;
+    transform: scale(1.1);
+}
   
 </style>
 </head>
@@ -5923,38 +6001,35 @@ window.openInventory = async (type = 'badges') => {
 
     list.innerHTML = '';
 
-    if(type === 'badges') {
-        const ownedIds = data.ownedBadges || [];
-        const equipped = data.equippedBadge?.id || null;
-
-        if(ownedIds.length === 0) { list.innerHTML = '<p style="width:100%; text-align:center; color:#aaa;">Nu ai insigne.</p>'; return; }
-
-        ownedIds.forEach(id => {
-            const badge = BADGES_DB.find(b => b.id === id);
-            if(!badge) return;
-            const isEquipped = (id === equipped);
-            const item = document.createElement('div');
-            item.className = 'shop-badge-item';
-            item.innerHTML = `
-                <span class="shop-badge-preview" style="background:${badge.color}; color:#000; border:none; box-shadow:0 0 10px ${badge.color};">
-                    <i class="fas ${badge.icon}"></i> ${badge.text}
-                </span>
-                ${isEquipped 
-                    ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
-                    : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
-                }
-            `;
-            list.appendChild(item);
-        });
+// Locate the 'badges' section inside window.openInventory
+if(type === 'badges') {
+    ownedIds.forEach(id => {
+        const badge = BADGES_DB.find(b => b.id === id);
+        if(!badge) return;
+        const isEquipped = (id === equipped);
         
-        if(equipped) {
-             const unequipBtn = document.createElement('button');
-             unequipBtn.className = 'unequip-all-btn';
-             unequipBtn.innerHTML = '<i class="fas fa-ban"></i> DEZ-ECHIPEAZĂ TOT';
-             unequipBtn.onclick = async () => { await updateDoc(doc(db, "accounts", auth.currentUser.uid), { equippedBadge: null }); window.openInventory('badges'); };
-             actionContainer.appendChild(unequipBtn);
-        }
-    } 
+        // CHECK IF IT IS A JACKPOT BADGE
+        const jackpotIds = ['b_immortal', 'b_celestial', 'b_cyber_ghost', 'b_demon_slayer', 'b_void_master', 'b_wheel_god'];
+        const isJackpot = jackpotIds.includes(id);
+        
+        // Define Class
+        const cssClass = isJackpot ? `badge-jackpot-base ${id.replace('b_', 'badge-').replace(/_/g, '-')}` : '';
+        const inlineStyle = isJackpot ? '' : `background:${badge.color}; color:#000; box-shadow:0 0 10px ${badge.color};`;
+
+        const item = document.createElement('div');
+        item.className = 'shop-badge-item';
+        item.innerHTML = `
+            <span class="${isJackpot ? cssClass : 'shop-badge-preview'}" style="${inlineStyle}">
+                <i class="fas ${badge.icon}"></i> ${badge.text}
+            </span>
+            ${isEquipped 
+                ? `<button class="equip-btn" style="background:#555; cursor:default;">ECHIPAT</button>`
+                : `<button class="equip-btn" onclick="equipBadge('${badge.id}', '${badge.text}', '${badge.color}', '${badge.icon}')">ECHIPEAZĂ</button>`
+            }
+        `;
+        list.appendChild(item);
+    });
+}
 else if (type === 'banners') {
         const ownedIds = data.ownedBanners || [];
         const equipped = data.equippedBanner?.id || null;
