@@ -4808,6 +4808,110 @@ window.toggleRewardsModal = (show) => {
 // Updated Physics Engine for Perfect Landing
 // --- MODIFIED ANIMATION (ACCEPTS TARGET) ---
 // --- MODIFICARE ÎN startSpin ---
+async function startSpin(forcedIndex = null, speedOverride = null) {
+    if (isSpinning) return;
+    isSpinning = true;
+
+    // Folosim viteza primită (de la Firebase) sau cea locală (dacă e spin privat)
+    const speedMultiplier = speedOverride || parseFloat(document.getElementById('multiSpinSpeed')?.value || 1);
+    
+    const rewardIdx = (forcedIndex !== null) ? forcedIndex : pickRewardIndex();
+    const sliceWidth = 360 / 16;
+    const landingRotation = (360 - (rewardIdx * sliceWidth + sliceWidth / 2) + 270) % 360;
+    
+    const extraSpins = 360 * 8; 
+    const totalTargetRotation = extraSpins + landingRotation;
+    
+    const startTime = performance.now();
+    const duration = 5000 / speedMultiplier; // Durata se scurtează în funcție de viteză
+
+    function animate(currentTime) {
+        let elapsed = currentTime - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+        let ease = 1 - Math.pow(1 - progress, 4);
+        rotation = (totalTargetRotation * ease) * (Math.PI / 180);
+        
+        drawWheel();
+        if (progress < 1) requestAnimationFrame(animate);
+        else finalizeSpin(rewardIdx);
+    }
+    requestAnimationFrame(animate);
+}
+
+async function attemptSpin() {
+    if (isSpinning) return;
+    if (!auth.currentUser) return alert("Trebuie să fii logat!");
+
+    const userRef = doc(db, "accounts", auth.currentUser.uid);
+    const snap = await getDoc(userRef);
+    const data = snap.data();
+    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
+
+    if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
+
+    let rewardIdx = pickRewardIndex(); 
+
+    // CASE 1: ADMIN IS SPINNING FOR AN EVENT
+    if (isEventModeActive && isAdmin) {
+        if (!eventSelectedUser) return alert("Alege un participant din listă mai întâi!");
+        
+        const forcedVal = parseInt(document.getElementById('adminForcedReward').value);
+        if (forcedVal !== -1) rewardIdx = forcedVal;
+
+        await updateDoc(userRef, { diamonds: increment(-1) });
+
+        // Broadcast global spin
+        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
+            spinAction: {
+                index: rewardIdx,
+                timestamp: Date.now(),
+                adminId: auth.currentUser.uid,
+                speed: parseFloat(document.getElementById('multiSpinSpeed')?.value || 1)
+            }
+        }); 
+        return; 
+    }
+
+    // CASE 2: PRIVATE SPIN
+    await updateDoc(userRef, { diamonds: increment(-1) });
+
+    currentSpinAdminId = auth.currentUser.uid;
+    
+    startSpin(rewardIdx, parseFloat(document.getElementById('multiSpinSpeed')?.value || 1));
+}
+
+document.getElementById('paidSpinBtn').onclick = () => attemptSpin();
+// Replace the existing autoSpinBtn logic with this:
+
+// Request animation frame to make bulbs blink
+function animateWheelStatic() { 
+    if(!isSpinning) drawWheel();
+    requestAnimationFrame(animateWheelStatic);
+}
+animateWheelStatic();
+
+// Logic to pick a reward based on percentage chances
+// Improved logic: Sums up total chances automatically so you don't need exactly 100%
+function pickRewardIndex() {
+    // 1. Calculate the total weight of all items
+    let totalWeight = 0;
+    for (let i = 0; i < REWARDS.length; i++) {
+        totalWeight += REWARDS[i].chance;
+    }
+
+    // 2. Pick a random number between 0 and totalWeight
+    let rand = Math.random() * totalWeight;
+
+    // 3. Find which item corresponds to that random number
+    let cumulative = 0;
+    for (let i = 0; i < REWARDS.length; i++) {
+        cumulative += REWARDS[i].chance;
+        if (rand < cumulative) return i;
+    }
+    
+    return 0; // Fallback to first item
+}
+
 async function finalizeSpin(idx) {
     // Safety check to prevent double execution
     if (!isSpinning) return; 
@@ -4948,262 +5052,6 @@ async function finalizeSpin(idx) {
                     // Trigger XP Modal explicitly here
                     const xpModal = document.getElementById('xpCompleteModal');
                     if (xpModal) xpModal.classList.add('active');
-                } else {
-                    updateObj.wheelXP = nextXP;
-                }
-            } 
-            // Handle Currency (Coins/Diamonds)
-            else if (reward.type === "coins") {
-                updateObj.coins = increment(reward.val);
-                updateObj["wheelStats.coins"] = increment(reward.val);
-            } 
-            else if (reward.type === "diamonds") {
-                updateObj.diamonds = increment(reward.val);
-                updateObj["wheelStats.diamonds"] = increment(reward.val);
-            } 
-            // Handle Items (Badge/Banner)
-            else if (reward.type === "badge") {
-                updateObj.ownedBadges = arrayUnion(reward.val);
-            } 
-            else if (reward.type === "banner") {
-                updateObj.ownedBanners = arrayUnion(reward.val);
-            }
-            else if (reward.type === "frame") {
-                updateObj.ownedFrames = arrayUnion(reward.val);
-            }
-
-            // Execute the batch update
-            await updateDoc(targetRef, updateObj);
-
-            // Log the transaction
-            await logTransaction(reward.val, reward.type.toUpperCase(), `Spin Wheel: ${reward.label}`);
-
-            // Global Jackpot history
-            if (reward.jackpot) {
-                await addDoc(collection(db, "wheel_jackpot_history"), {
-                    username: targetName, 
-                    userPhoto: targetPhoto,
-                    rewardLabel: reward.label, 
-                    rewardType: reward.type, 
-                    timestamp: serverTimestamp()
-                });
-            }
-        } catch (e) { 
-            console.error("Critical DB Update Error:", e); 
-        }
-    }
-}
-
-async function attemptSpin() {
-    if (isSpinning) return;
-    if (!auth.currentUser) return alert("Trebuie să fii logat!");
-
-    const userRef = doc(db, "accounts", auth.currentUser.uid);
-    const snap = await getDoc(userRef);
-    const data = snap.data();
-    const isAdmin = ADMIN_EMAILS.includes(auth.currentUser.email);
-
-    if ((data.diamonds || 0) < 1) return alert("Nu ai diamante!");
-
-    let rewardIdx = pickRewardIndex(); 
-
-    // CASE 1: ADMIN IS SPINNING FOR AN EVENT
-    if (isEventModeActive && isAdmin) {
-        if (!eventSelectedUser) return alert("Alege un participant din listă mai întâi!");
-        
-        const forcedVal = parseInt(document.getElementById('adminForcedReward').value);
-        if (forcedVal !== -1) rewardIdx = forcedVal;
-
-        await updateDoc(userRef, { diamonds: increment(-1) });
-
-        // Broadcast global spin
-        await updateDoc(doc(db, "site_metadata", "wheel_event"), {
-            spinAction: {
-                index: rewardIdx,
-                timestamp: Date.now(),
-                adminId: auth.currentUser.uid,
-                speed: parseFloat(document.getElementById('multiSpinSpeed')?.value || 1)
-            }
-        }); 
-        return; 
-    }
-
-    // CASE 2: PRIVATE SPIN
-    await updateDoc(userRef, { diamonds: increment(-1) });
-
-    currentSpinAdminId = auth.currentUser.uid;
-    
-    startSpin(rewardIdx, parseFloat(document.getElementById('multiSpinSpeed')?.value || 1));
-}
-
-document.getElementById('paidSpinBtn').onclick = () => attemptSpin();
-// Replace the existing autoSpinBtn logic with this:
-
-// Request animation frame to make bulbs blink
-function animateWheelStatic() { 
-    if(!isSpinning) drawWheel();
-    requestAnimationFrame(animateWheelStatic);
-}
-animateWheelStatic();
-
-// Logic to pick a reward based on percentage chances
-// Improved logic: Sums up total chances automatically so you don't need exactly 100%
-function pickRewardIndex() {
-    // 1. Calculate the total weight of all items
-    let totalWeight = 0;
-    for (let i = 0; i < REWARDS.length; i++) {
-        totalWeight += REWARDS[i].chance;
-    }
-
-    // 2. Pick a random number between 0 and totalWeight
-    let rand = Math.random() * totalWeight;
-
-    // 3. Find which item corresponds to that random number
-    let cumulative = 0;
-    for (let i = 0; i < REWARDS.length; i++) {
-        cumulative += REWARDS[i].chance;
-        if (rand < cumulative) return i;
-    }
-    
-    return 0; // Fallback to first item
-}
-
-async function finalizeSpin(idx) {
-    // Safety check to prevent double execution
-    if (!isSpinning) return; 
-    isSpinning = false; 
-
-    // Create a local copy of the reward to modify if it's a duplicate
-    let reward = { ...REWARDS[idx] }; 
-    const isMuted = localStorage.getItem('siteMuted') === 'true';
-
-    // 1. DETERMINE TARGET USER
-    let targetUid = auth.currentUser.uid;
-    if (isEventModeActive && eventSelectedUser) {
-        targetUid = eventSelectedUser.uid;
-    }
-
-    // 2. CHECK AUTHORITY
-    // Only the person who physically clicked "Spin" (Admin or paid user) updates the DB
-    const iAmTheSpinner = (auth.currentUser.uid === currentSpinAdminId);
-    
-    // Fetch target's latest data
-    const targetRef = doc(db, "accounts", targetUid);
-    const targetSnap = await getDoc(targetRef);
-    const targetData = targetSnap.exists() ? targetSnap.data() : {};
-
-    const targetName = targetData.username || "Jucator";
-    
-    // IMAGE PRIORITY for Modals
-    const targetPhoto = targetData.image || targetData.photoURL || "https://iili.io/fXks1Dv.png";
-
-    // --- 3. DUPLICATE & COMPENSATION LOGIC ---
-    // Note: The Snapshot listener already swaps unowned items onto the wheel.
-    // This check remains as a final safety measure.
-    let isDuplicate = false;
-    if (reward.type === "badge" && (targetData.ownedBadges || []).includes(reward.val)) {
-        isDuplicate = true;
-    }
-    if (reward.type === "banner" && (targetData.ownedBanners || []).includes(reward.val)) {
-        isDuplicate = true;
-    }
-    if (reward.type === "frame" && (targetData.ownedFrames || []).includes(reward.val)) {
-        isDuplicate = true;
-    }
-
-    if (isDuplicate) {
-        reward.label = "5000 COINS";
-        reward.val = 5000;
-        reward.type = "coins";
-        reward.jackpot = false; 
-    }
-
-    // --- 4. SHOW MODALS (UI LOGIC) ---
-    if (isEventModeActive) {
-        // EVENT MODE: Show the Big Square Golden Modal to EVERYONE watching
-        const adminModal = document.getElementById('adminSpinResultModal');
-        const adminUserImg = document.getElementById('adminSpinUserImg');
-        const adminUserName = document.getElementById('adminSpinUserName');
-        const adminRewardDisplay = document.getElementById('adminRewardDisplay');
-
-        if (adminModal && adminUserImg && adminUserName && adminRewardDisplay) {
-            adminUserImg.src = targetPhoto;
-            adminUserName.innerText = targetName;
-            
-            let displayContent = "";
-            if (reward.type === "badge" || reward.type === "banner") {
-                displayContent = `<i class="fas fa-crown" style="color:#ffd700; font-size:30px;"></i> ${reward.label}`;
-            } else {
-                let icon = reward.type === "diamonds" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-                displayContent = `<img src="${icon}" style="width:40px;"> ${reward.label}`;
-            }
-            adminRewardDisplay.innerHTML = displayContent;
-            
-            if (!isMuted) audioAdminCheer.play().catch(() => {});
-            adminModal.classList.add('active');
-        }
-    } else if (auth.currentUser.uid === targetUid) {
-        // PRIVATE MODE: Show standard reward modal only to the player who spun
-        const modal = document.getElementById('questRewardModal');
-        const coinsBox = modal.querySelector('.reward-coins-box');
-        const labelP = document.getElementById('modalRewardTypeLabel');
-        const modalVal = document.getElementById('modalRewardVal');
-        const modalIcon = document.getElementById('modalIconImg');
-        
-        if (modal && coinsBox) {
-            let innerHtml = "";
-            
-            if (reward.type === "badge") {
-                const b = BADGES_DB.find(x => x.id === reward.val) || { color: "#ffd700", text: reward.label, icon: "fa-crown" };
-                innerHtml = `<span class="badge-wheel-god" style="background:${b.color}; color:#000; border:2.5px solid #fff; box-shadow:0 0 20px #ffd700; padding:10px 25px; font-size:14px;"><i class="fas ${b.icon}"></i> ${b.text}</span>`;
-                labelP.innerText = "NOUA INSIGNA DEBLOCATA";
-                coinsBox.innerHTML = innerHtml;
-            } 
-            else if (reward.type === "banner") {
-                const bn = BANNERS_DB.find(x => x.id === reward.val) || { cssClass: "bubble-jackpot", name: reward.label };
-                innerHtml = `<div class="${bn.cssClass}" style="height:60px; width:220px; font-size:12px; border:2px solid #fff; box-shadow:0 0 25px #7000ff;">${bn.name}</div>`;
-                labelP.innerText = "NOU BANNER DEBLOCAT";
-                coinsBox.innerHTML = innerHtml;
-            }
-            else if (reward.type === "xp") {
-                modalIcon.src = "https://i.ibb.co/Xz9Z4Y6/xp-icon.png";
-                modalVal.innerText = "+15 XP";
-                labelP.innerText = "EXPERIENTA ACUMULATA";
-                // No coinsBox override here to keep structural layout
-            }
-            else {
-                let iconUrl = reward.type === "diamonds" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-                modalIcon.src = iconUrl;
-                modalVal.innerText = reward.label;
-                labelP.innerText = (reward.type === "diamonds" ? "GEMS" : "KSDA COINS");
-            }
-            
-            if (reward.type !== "xp") {
-                launchConfetti();
-                if (!isMuted) audioReward.play().catch(() => {});
-            } else {
-                if (!isMuted) audioFail.play().catch(() => {});
-            }
-            modal.classList.add('active');
-        }
-    }
-
-    // --- 5. DATABASE UPDATES (STRICT AUTHORITY) ---
-    if (iAmTheSpinner) {
-        try {
-            let updateObj = {};
-            
-            // Handle XP / Loss Protection
-            if (reward.type === "xp" && !isEventModeActive) {
-                let currentXP = targetData.wheelXP || 0;
-                let nextXP = currentXP + 15;
-                updateObj["wheelStats.xpLandings"] = increment(1);
-                
-                if (nextXP >= 100) {
-                    updateObj.wheelXP = 0;
-                    updateObj.diamonds = increment(5);
-                    // UI trigger for XP Completion
-                    document.getElementById('xpCompleteModal').classList.add('active');
                 } else {
                     updateObj.wheelXP = nextXP;
                 }
