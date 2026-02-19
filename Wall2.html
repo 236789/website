@@ -4674,15 +4674,16 @@ function drawWheel() {
         const midAngle = sliceAngle + arc / 2;
 
         ctx.save();
+        
+        // Define slice path
         ctx.beginPath();
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 230, sliceAngle, sliceAngle + arc);
         ctx.closePath();
 
-        // Slice Background
+        // Slice Background (Radial Gradient)
         let g = ctx.createRadialGradient(250, 250, 50, 250, 250, 230);
         if (rew.jackpot) {
-            // Quantum Void Style for all Jackpots
             g.addColorStop(0, "#050b14"); 
             g.addColorStop(0.5, "#7000ff");
             g.addColorStop(1, "#29f3ff");
@@ -4693,7 +4694,7 @@ function drawWheel() {
         ctx.fillStyle = g;
         ctx.fill();
 
-        // Border
+        // Consistent Gold Outline
         let grad = ctx.createLinearGradient(
             250 + 180 * Math.cos(midAngle - 0.5), 250 + 180 * Math.sin(midAngle - 0.5),
             250 + 230 * Math.cos(midAngle + 0.5), 250 + 230 * Math.sin(midAngle + 0.5)
@@ -4706,6 +4707,7 @@ function drawWheel() {
 
         ctx.strokeStyle = grad;
         ctx.lineWidth = rew.jackpot ? 4 : 2; 
+        ctx.lineJoin = "round";
         ctx.stroke();
         ctx.restore();
 
@@ -4736,6 +4738,7 @@ function drawWheel() {
 
         ctx.save();
         ctx.translate(170, 0); 
+
         const cleanAngle = (midAngle % (Math.PI * 2));
         const shouldFlip = (cleanAngle > Math.PI / 2 && cleanAngle < (Math.PI * 3) / 2);
         if (shouldFlip) ctx.rotate(Math.PI);
@@ -4748,12 +4751,15 @@ function drawWheel() {
         ctx.shadowColor = "black";
         ctx.fillText(rew.label, 0, 0);
         ctx.restore();
+
         ctx.restore();
     });
 
-    // 4. CENTER HUB
+    // 4. CENTER HUB WITH PERFECTLY CENTERED HOLOGRAM
     ctx.save();
     ctx.translate(250, 250);
+    
+    // Hub Rim
     ctx.beginPath();
     ctx.arc(0, 0, 48, 0, Math.PI * 2);
     ctx.fillStyle = "#050b14";
@@ -4761,6 +4767,73 @@ function drawWheel() {
     ctx.strokeStyle = "#ffd700";
     ctx.lineWidth = 3;
     ctx.stroke();
+    
+    // Clip area inside hub
+    ctx.beginPath();
+    ctx.arc(0, 0, 48, 0, Math.PI * 2);
+    ctx.clip();
+
+    const hologramInterval = 2000;
+    const timeSeed = Math.floor(Date.now() / hologramInterval);
+    const validRewards = REWARDS.filter(r => r.type !== "frame");
+    const hIndex = (timeSeed * 7) % validRewards.length;
+    const hRew = validRewards[hIndex];
+
+    ctx.save();
+    ctx.globalAlpha = 0.7 + Math.sin(Date.now() / 250) * 0.2; 
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#29f3ff";
+
+    if (hRew.type === "xp") {
+        ctx.fillStyle = "#29f3ff";
+        ctx.font = '900 28px "Font Awesome 6 Free"';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText('\uf0e7', 0, 0);
+    } else if (hRew.type === "coins" || hRew.type === "diamonds") {
+        let hImg = (hRew.type === "diamonds") ? diamImg : coinImg;
+        if (hImg.complete) {
+            ctx.drawImage(hImg, -18, -18, 36, 36);
+        }
+    } else if (hRew.type === "badge") {
+        const bData = BADGES_DB.find(x => x.id === hRew.val);
+        if (bData) {
+            ctx.beginPath();
+            ctx.roundRect(-35, -10, 70, 20, 5);
+            ctx.fillStyle = bData.color.includes('gradient') ? "#ffd700" : bData.color;
+            ctx.fill();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.fillStyle = "#000";
+            ctx.font = "900 8px Orbitron";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(bData.text, 0, 0);
+        }
+    } else if (hRew.type === "banner") {
+        const bnData = BANNERS_DB.find(x => x.id === hRew.val);
+        if (bnData) {
+            ctx.beginPath();
+            ctx.rect(-38, -12, 76, 24);
+            let grad = ctx.createLinearGradient(-38, 0, 38, 0);
+            grad.addColorStop(0, "#050b14");
+            grad.addColorStop(0.5, "#7000ff");
+            grad.addColorStop(1, "#050b14");
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = "#29f3ff";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.fillStyle = "#fff";
+            ctx.font = "900 7px Orbitron";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(bnData.name, 0, 0);
+        }
+    }
+
+    ctx.restore();
     ctx.restore();
 }
 window.toggleRewardsModal = (show) => {
@@ -4793,7 +4866,8 @@ window.toggleRewardsModal = (show) => {
             visual = `<img src="https://iili.io/fv5bmtj.png" width="28"> <span style="color:#00ffcc; font-weight:900; font-size:16px;">${r.label}</span>`;
         } 
         else if (r.type === "badge") {
-            visual = `<span class="badge-wheel-god" style="font-size:10px;">${r.label}</span>`;
+            const bClass = r.val === 'b_wheel_god' ? 'badge-wheel-god' : r.val.replace('b_', 'badge-').replace(/_/g, '-');
+            visual = `<span class="${bClass}" style="font-size:10px;">${r.label}</span>`;
         } 
         else if (r.type === "banner") {
             const bn = BANNERS_DB.find(x => x.id === r.val) || { cssClass: "bubble-jackpot" };
@@ -4804,6 +4878,7 @@ window.toggleRewardsModal = (show) => {
 
     modal.classList.toggle('active', show);
 };
+
 
 // Updated Physics Engine for Perfect Landing
 // --- MODIFIED ANIMATION (ACCEPTS TARGET) ---
@@ -4913,37 +4988,41 @@ function pickRewardIndex() {
 }
 
 async function finalizeSpin(idx) {
-    // Safety check to prevent double execution
+    // Safety check to prevent double execution or ghost spins
     if (!isSpinning) return; 
     isSpinning = false; 
 
-    // Create a local copy of the reward to modify if it's a duplicate
+    // Create a local copy of the reward to modify if it's a duplicate item
+    // This allows us to offer compensation without altering the global REWARDS array
     let reward = { ...REWARDS[idx] }; 
     const isMuted = localStorage.getItem('siteMuted') === 'true';
 
     // 1. DETERMINE TARGET USER
+    // In Event Mode, the admin spins for someone else. 
+    // In Private Mode, the current user is the winner.
     let targetUid = auth.currentUser.uid;
     if (isEventModeActive && eventSelectedUser) {
         targetUid = eventSelectedUser.uid;
     }
 
     // 2. CHECK AUTHORITY
-    // Only the person who physically clicked "Spin" (Admin or paid user) updates the DB
+    // Only the person who physically clicked "Spin" (Admin or paid user) handles the database write
+    // This prevents 50 users in a room from all trying to increment the winner's coins at once.
     const iAmTheSpinner = (auth.currentUser.uid === currentSpinAdminId);
     
-    // Fetch target's latest data
+    // Fetch the latest data for the winner to check for owned items
     const targetRef = doc(db, "accounts", targetUid);
     const targetSnap = await getDoc(targetRef);
     const targetData = targetSnap.exists() ? targetSnap.data() : {};
 
     const targetName = targetData.username || "Jucator";
     
-    // IMAGE PRIORITY for Modals
+    // IMAGE PRIORITY for the Win Card Modals
+    // Fallback to placeholder if no image is found in account data
     const targetPhoto = targetData.image || targetData.photoURL || "https://iili.io/fXks1Dv.png";
 
     // --- 3. DUPLICATE & COMPENSATION LOGIC ---
-    // Note: The Snapshot listener already swaps unowned items onto the wheel.
-    // This check remains as a final safety measure.
+    // If the wheel lands on a cosmetic item the user already owns, we convert it to currency.
     let isDuplicate = false;
     if (reward.type === "badge" && (targetData.ownedBadges || []).includes(reward.val)) {
         isDuplicate = true;
@@ -4955,6 +5034,7 @@ async function finalizeSpin(idx) {
         isDuplicate = true;
     }
 
+    // Compensation: 5000 Coins instead of a redundant cosmetic
     if (isDuplicate) {
         reward.label = "5000 COINS";
         reward.val = 5000;
@@ -4963,8 +5043,9 @@ async function finalizeSpin(idx) {
     }
 
     // --- 4. SHOW MODALS (UI LOGIC) ---
+    // This part runs for everyone watching the spin in Event Mode
     if (isEventModeActive) {
-        // EVENT MODE: Show the Big Square Golden Modal to EVERYONE watching
+        // EVENT MODE: Show the Big Square Golden Modal (AdminWinCard style)
         const adminModal = document.getElementById('adminSpinResultModal');
         const adminUserImg = document.getElementById('adminSpinUserImg');
         const adminUserName = document.getElementById('adminSpinUserName');
@@ -4975,14 +5056,16 @@ async function finalizeSpin(idx) {
             adminUserName.innerText = targetName;
             
             let displayContent = "";
+            // Use the actual CSS styles for exclusive badges and banners
             if (reward.type === "badge") {
-                displayContent = `<span class="badge-wheel-god">${reward.label}</span>`;
+                const bClass = reward.val === 'b_wheel_god' ? 'badge-wheel-god' : reward.val.replace('b_', 'badge-').replace(/_/g, '-');
+                displayContent = `<span class="${bClass}" style="transform: scale(1.2);">${reward.label}</span>`;
             } else if (reward.type === "banner") {
                 const bn = BANNERS_DB.find(x => x.id === reward.val) || { cssClass: "bubble-jackpot", name: reward.label };
                 displayContent = `<div class="${bn.cssClass}" style="height:60px; width:220px; font-size:12px; display:flex; align-items:center; justify-content:center; border:2px solid #fff;">${bn.name}</div>`;
             } else {
                 let icon = reward.type === "diamonds" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
-                displayContent = `<img src="${icon}" style="width:40px;"> ${reward.label}`;
+                displayContent = `<img src="${icon}" style="width:40px;"> <span style="font-size:32px;">${reward.label}</span>`;
             }
             adminRewardDisplay.innerHTML = displayContent;
             
@@ -4990,41 +5073,45 @@ async function finalizeSpin(idx) {
             adminModal.classList.add('active');
         }
     } else if (auth.currentUser.uid === targetUid) {
-        // PRIVATE MODE: Show standard reward modal only to the player who spun
+        // PRIVATE MODE: Show standard reward modal only to the specific player
         const modal = document.getElementById('questRewardModal');
-        const coinsBox = modal.querySelector('.reward-coins-box');
+        const coinsBox = modal ? modal.querySelector('.reward-coins-box') : null;
         const labelP = document.getElementById('modalRewardTypeLabel');
         
+        // Critical: Ensure elements exist to avoid console errors
         if (modal && coinsBox) {
-            // FIX for "Cannot set properties of null (setting 'src')"
-            // We clear the box and rebuild rather than targeting internal IDs that might not exist for every reward type
+            // Wipe the box clean and rebuild HTML to avoid null property errors for internal elements
             coinsBox.innerHTML = "";
             
             if (reward.type === "badge") {
-                coinsBox.innerHTML = `<span class="badge-wheel-god" style="padding:12px 30px; font-size:16px;">${reward.label}</span>`;
-                labelP.innerText = "NOUA INSIGNA DEBLOCATA";
+                const bClass = reward.val === 'b_wheel_god' ? 'badge-wheel-god' : reward.val.replace('b_', 'badge-').replace(/_/g, '-');
+                coinsBox.innerHTML = `<span class="${bClass}" style="padding:15px 35px; font-size:18px;">${reward.label}</span>`;
+                if (labelP) labelP.innerText = "NOUA INSIGNA DEBLOCATA";
             } 
             else if (reward.type === "banner") {
                 const bn = BANNERS_DB.find(x => x.id === reward.val) || { cssClass: "bubble-jackpot", name: reward.label };
-                coinsBox.innerHTML = `<div class="${bn.cssClass}" style="height:70px; width:240px; font-size:14px; display:flex; align-items:center; justify-content:center; border:2.5px solid #fff; box-shadow: 0 0 20px rgba(255,255,255,0.2);">${bn.name}</div>`;
-                labelP.innerText = "NOU BANNER DEBLOCAT";
+                coinsBox.innerHTML = `<div class="${bn.cssClass}" style="height:80px; width:260px; font-size:16px; display:flex; align-items:center; justify-content:center; border:2.5px solid #fff; box-shadow: 0 0 25px rgba(255,255,255,0.3);">${bn.name}</div>`;
+                if (labelP) labelP.innerText = "NOU BANNER DEBLOCAT";
             }
             else if (reward.type === "xp") {
+                // Use the updated XP icon and large text
                 coinsBox.innerHTML = `
-                    <img src="https://i.ibb.co/Xz9Z4Y6/xp-icon.png" style="width:70px; height:70px; object-fit:contain;">
-                    <span style="font-size: 45px; font-weight: 900; color: #fff; font-family: 'Orbitron'; text-shadow: 0 0 15px rgba(255,255,255,0.3);">+15 XP</span>
+                    <img src="https://i.ibb.co/Xz9Z4Y6/xp-icon.png" style="width:80px; height:80px; object-fit:contain;">
+                    <span style="font-size: 50px; font-weight: 900; color: #fff; font-family: 'Orbitron'; text-shadow: 0 0 15px rgba(255,255,255,0.4);">+15 XP</span>
                 `;
-                labelP.innerText = "EXPERIENTA ACUMULATA";
+                if (labelP) labelP.innerText = "EXPERIENTA ACUMULATA";
             }
             else {
+                // Currency logic (Coins / Diamonds / 5k Compensation)
                 let iconUrl = reward.type === "diamonds" ? "https://iili.io/fv5bmtj.png" : "https://iili.io/fhc1SKQ.png";
                 coinsBox.innerHTML = `
-                    <img src="${iconUrl}" style="width:65px; height:65px; object-fit:contain;">
-                    <span style="font-size: 45px; font-weight: 900; color: #fff; font-family: 'Orbitron'; text-shadow: 0 0 15px rgba(255,255,255,0.3);">${reward.label}</span>
+                    <img src="${iconUrl}" style="width:70px; height:70px; object-fit:contain;">
+                    <span style="font-size: 50px; font-weight: 900; color: #fff; font-family: 'Orbitron'; text-shadow: 0 0 15px rgba(255,255,255,0.4);">${reward.label}</span>
                 `;
-                labelP.innerText = (reward.type === "diamonds" ? "GEMS" : "KSDA COINS");
+                if (labelP) labelP.innerText = (reward.type === "diamonds" ? "GEMS" : "KSDA COINS");
             }
             
+            // Trigger visual and audio feedback
             if (reward.type !== "xp") {
                 launchConfetti();
                 if (!isMuted) audioReward.play().catch(() => {});
@@ -5036,27 +5123,29 @@ async function finalizeSpin(idx) {
     }
 
     // --- 5. DATABASE UPDATES (STRICT AUTHORITY) ---
+    // This block only executes for the user who initiated the spin action
     if (iAmTheSpinner) {
         try {
             let updateObj = {};
             
-            // Handle XP / Loss Protection
+            // Handle XP / Loss Protection (Only in Private Mode)
             if (reward.type === "xp" && !isEventModeActive) {
                 let currentXP = targetData.wheelXP || 0;
                 let nextXP = currentXP + 15;
                 updateObj["wheelStats.xpLandings"] = increment(1);
                 
+                // When XP reaches 100%, reset and give 5 Diamonds
                 if (nextXP >= 100) {
                     updateObj.wheelXP = 0;
                     updateObj.diamonds = increment(5);
-                    // Trigger XP Modal explicitly here
+                    // Explicitly show the XP consolidation modal
                     const xpModal = document.getElementById('xpCompleteModal');
                     if (xpModal) xpModal.classList.add('active');
                 } else {
                     updateObj.wheelXP = nextXP;
                 }
             } 
-            // Handle Currency (Coins/Diamonds)
+            // Handle Currency Updates
             else if (reward.type === "coins") {
                 updateObj.coins = increment(reward.val);
                 updateObj["wheelStats.coins"] = increment(reward.val);
@@ -5065,7 +5154,7 @@ async function finalizeSpin(idx) {
                 updateObj.diamonds = increment(reward.val);
                 updateObj["wheelStats.diamonds"] = increment(reward.val);
             } 
-            // Handle Items (Badge/Banner)
+            // Handle Cosmetic Additions to the user's arrays
             else if (reward.type === "badge") {
                 updateObj.ownedBadges = arrayUnion(reward.val);
             } 
@@ -5076,13 +5165,13 @@ async function finalizeSpin(idx) {
                 updateObj.ownedFrames = arrayUnion(reward.val);
             }
 
-            // Execute the batch update
+            // Perform the write to Firestore
             await updateDoc(targetRef, updateObj);
 
-            // Log the transaction
+            // Log the transaction for the global ledger
             await logTransaction(reward.val, reward.type.toUpperCase(), `Spin Wheel: ${reward.label}`);
 
-            // Global Jackpot history
+            // Add entry to the global Jackpot history if applicable
             if (reward.jackpot) {
                 await addDoc(collection(db, "wheel_jackpot_history"), {
                     username: targetName, 
@@ -5093,7 +5182,7 @@ async function finalizeSpin(idx) {
                 });
             }
         } catch (e) { 
-            console.error("Critical DB Update Error:", e); 
+            console.error("Critical DB Update Error in finalizeSpin:", e); 
         }
     }
 }
