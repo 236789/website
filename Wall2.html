@@ -5384,7 +5384,7 @@ function updateWheelRewardsFromInventory(data) {
 
 // --- MAIN AUTH & REAL-TIME LOGIC ---
 onAuthStateChanged(auth, user => {
-        if (user) {
+    if (user) {
         // --- 🔴 ADD THIS: LINK ONESIGNAL ---
         if (window.OneSignalDeferred) {
             window.OneSignalDeferred.push(function(OneSignal) {
@@ -5392,6 +5392,8 @@ onAuthStateChanged(auth, user => {
             });
         }
         // --- 🔴 END ADDITION ---
+        
+        const userRef = doc(db, "accounts", user.uid); // Defined here to prevent ReferenceError
         const wheelWall = document.getElementById('wheelLoginWall');
         const wheelGame = document.getElementById('wheelGameContainer');
         if (wheelWall) wheelWall.style.display = 'none';
@@ -5404,7 +5406,7 @@ onAuthStateChanged(auth, user => {
         let currentSelectedId = null;
 
         // --- 1. EVENT METADATA LISTENER ---
-onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
+        onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
             const data = snap.exists() ? snap.data() : { 
                 isActive: false, 
                 selectedUserId: null, 
@@ -5527,8 +5529,8 @@ onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
             }
         });
 
-// --- CURRENT USER LISTENER (MY DATA) ---
-onSnapshot(userRef, async (uSnap) => {
+        // --- CURRENT USER LISTENER (MY DATA) ---
+        onSnapshot(userRef, async (uSnap) => {
             if (!uSnap.exists()) return;
             const data = uSnap.data();
 
@@ -5585,14 +5587,19 @@ onSnapshot(userRef, async (uSnap) => {
 
             window.currentUserStack = data.freeSpinStack || 0;
             window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : Date.now();
+            
+            // Check for Daily Resets (Streak, Quests etc)
+            resetUserQuests(userRef, data);
         });
-        
-
-
+            
+        updateOnlineStatus();
     } else {
         document.getElementById('wheelLoginWall').style.display = 'flex';
         document.getElementById('wheelGameContainer').style.display = 'none';
-    }
+        headerLoginText.innerText = "LOGIN";
+        headerUserImg.style.display = "none";
+        if(mobileLoginBtn) mobileLoginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Autentificare';
+    } 
 });
 
 
