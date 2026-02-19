@@ -4936,7 +4936,6 @@ window.toggleRewardsModal = (show) => {
     const modal = document.getElementById('rewardsInfoModal');
     if (!list || !modal) return;
 
-    // Helper to parse labels like "2.5k" or "1" into numbers for sorting
     const parseLabel = (label) => {
         let l = label.toLowerCase();
         if (l.includes('k')) return parseFloat(l) * 1000;
@@ -4944,28 +4943,43 @@ window.toggleRewardsModal = (show) => {
         return isNaN(n) ? 0 : n;
     };
 
-    // Sort: XP -> Coins (low to high label) -> Diamonds (low to high label) -> Badge/Banner/Frame
     const typeOrder = { "xp": 0, "coins": 1, "diamonds": 2, "badge": 3, "banner": 4, "frame": 5 };
     
+    // 1. Sort rewards
     const sortedRewards = [...REWARDS].sort((a, b) => {
         if (typeOrder[a.type] !== typeOrder[b.type]) {
             return typeOrder[a.type] - typeOrder[b.type];
         }
-        // Within the same type, sort by the numeric value shown on the label
         return parseLabel(a.label) - parseLabel(b.label);
     });
 
-    list.innerHTML = sortedRewards.map(r => {
+    // 2. Filter duplicates (Fix for 5000 showing twice)
+    const uniqueRewards = [];
+    const seen = new Set();
+    
+    sortedRewards.forEach(r => {
+        // Create a unique key based on type and value
+        const key = `${r.type}_${r.val}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueRewards.push(r);
+        }
+    });
+
+    list.innerHTML = uniqueRewards.map(r => {
         let visual = "";
+        // Fix for "5k" formatting
+        let displayLabel = r.label;
+        if(displayLabel === "5000") displayLabel = "5k";
         
         if (r.type === "xp") {
             visual = `<i class="fas fa-bolt" style="font-size:20px; color:#29f3ff;"></i> <span style="color:#aaa; font-weight:900; font-size:14px; margin-left:5px;">EXPERIENȚĂ</span>`;
         } 
         else if (r.type === "coins") {
-            visual = `<img src="https://iili.io/fhc1SKQ.png" width="28"> <span style="color:#fff; font-weight:900; font-size:16px;">${r.label}</span>`;
+            visual = `<img src="https://iili.io/fhc1SKQ.png" width="28"> <span style="color:#fff; font-weight:900; font-size:16px;">${displayLabel}</span>`;
         } 
         else if (r.type === "diamonds") {
-            visual = `<img src="https://iili.io/fv5bmtj.png" width="28"> <span style="color:#00ffcc; font-weight:900; font-size:16px;">${r.label}</span>`;
+            visual = `<img src="https://iili.io/fv5bmtj.png" width="28"> <span style="color:#00ffcc; font-weight:900; font-size:16px;">${displayLabel}</span>`;
         } 
         else if (r.type === "badge") {
             visual = `<span class="badge-wheel-god" style="padding:5px 12px; border-radius:50px; font-size:10px;">[EXCLUSIVE BADGE]</span>`;
@@ -5328,6 +5342,46 @@ function updatePillVisuals(userData, isDefault = false) {
     }
 }
 
+
+
+function updateWheelRewardsFromInventory(data) {
+    if (!data) return;
+
+    const ownedBadges = data.ownedBadges || [];
+    const ownedBanners = data.ownedBanners || [];
+
+    const wheelBadgesPool = ['b_wheel_god', 'b_immortal', 'b_celestial', 'b_cyber_ghost', 'b_demon_slayer', 'b_void_master'];
+    const wheelBannersPool = ['bub_jackpot', 'bub_dragon', 'bub_carbon', 'bub_biohazard', 'bub_cybercity', 'bub_abyss', 'anim_quantum', 'anim_overdrive', 'anim_inferno_v2', 'anim_glitch_v2', 'anim_aurora'];
+
+    // Find first unowned badge
+    const nextBadgeId = wheelBadgesPool.find(id => !ownedBadges.includes(id));
+    if (nextBadgeId) {
+        const badgeObj = BADGES_DB.find(b => b.id === nextBadgeId);
+        REWARDS[3].label = badgeObj.text;
+        REWARDS[3].val = badgeObj.id;
+        REWARDS[3].type = "badge";
+    } else {
+        REWARDS[3].label = "5000";
+        REWARDS[3].val = 5000;
+        REWARDS[3].type = "coins";
+    }
+
+    // Find first unowned banner
+    const nextBannerId = wheelBannersPool.find(id => !ownedBanners.includes(id));
+    if (nextBannerId) {
+        const bannerObj = BANNERS_DB.find(b => b.id === nextBannerId);
+        REWARDS[7].label = bannerObj.name;
+        REWARDS[7].val = bannerObj.id;
+        REWARDS[7].type = "banner";
+    } else {
+        REWARDS[7].label = "5000";
+        REWARDS[7].val = 5000;
+        REWARDS[7].type = "coins";
+    }
+
+    if (!isSpinning) drawWheel();
+}
+
 // --- MAIN AUTH & REAL-TIME LOGIC ---
 onAuthStateChanged(auth, user => {
         if (user) {
@@ -5350,44 +5404,34 @@ onAuthStateChanged(auth, user => {
         let currentSelectedId = null;
 
         // --- 1. EVENT METADATA LISTENER ---
-// --- 1. EVENT METADATA LISTENER ---
-        onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
+onSnapshot(doc(db, "site_metadata", "wheel_event"), async (snap) => {
             const data = snap.exists() ? snap.data() : { 
-
-
-
-
-              
                 isActive: false, 
                 selectedUserId: null, 
                 participants: [], 
                 spinAction: null 
             };
 
-
-  // --- MASTER PFP SYNC ---
-    const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+            // --- MASTER PFP SYNC ---
+            const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
     
-    if (headerUserImg) headerUserImg.src = finalProfilePic;
-    if (document.getElementById('popUserImg')) document.getElementById('popUserImg').src = finalProfilePic;
-    // Update the Stats Pill as well
-    if (document.getElementById('wheelStatsPfp')) document.getElementById('wheelStatsPfp').src = finalProfilePic;
+            if (headerUserImg) headerUserImg.src = finalProfilePic;
+            if (document.getElementById('popUserImg')) document.getElementById('popUserImg').src = finalProfilePic;
+            // Note: We do NOT update wheelStatsPfp here blindly anymore, to fix the flickering bug.
 
-                // 3. Force Update Account Modal Image
-                const popImg = document.getElementById('popUserImg');
-                if (popImg) popImg.src = finalProfilePic;
-                // --- END FIX ---
+            // 3. Force Update Account Modal Image
+            const popImg = document.getElementById('popUserImg');
+            if (popImg) popImg.src = finalProfilePic;
             
             isEventModeActive = data.isActive;
             eventParticipants = data.participants || [];
             const selectedId = data.selectedUserId;
             const spinAction = data.spinAction;
 
-            // Update Switch-ul din interiorul panoului
             const toggle = document.getElementById('eventModeToggle');
             if(toggle) toggle.checked = isEventModeActive;
 
-            // Rewards logic (Modificăm prima felie a roții)
+            // Rewards logic for index 0
             if(isEventModeActive) {
                 REWARDS[0] = { label: "500", val: 500, type: "coins", color: "#e91e63", chance: 25 };
             } else {
@@ -5395,7 +5439,6 @@ onAuthStateChanged(auth, user => {
             }
             if(!isSpinning) drawWheel();
 
-            // --- ADMIN UI LOGIC (REPARAT PENTRU TOGGLE) ---
             const isAdmin = ADMIN_EMAILS.includes(user.email);
             const adminPanel = document.getElementById('adminPanelLeft');
             const adminToggleBtn = document.getElementById('adminToggleBtn'); 
@@ -5405,11 +5448,7 @@ onAuthStateChanged(auth, user => {
             const statusTxt = document.getElementById('eventStatusText');
 
             if (isAdmin) {
-                // Arătăm butonul de Toggle (ca la sound)
                 if (adminToggleBtn) adminToggleBtn.style.display = 'flex';
-                
-                // IMPORTANȚĂ: Nu mai forțăm .style.display sau .style.left pe adminPanel aici!
-                // Altfel, JS-ul va suprascrie butonul tău de toggle la fiecare secundă.
                 if (adminPanel) adminPanel.style.display = 'flex'; 
             } else {
                 if (adminToggleBtn) adminToggleBtn.style.display = 'none';
@@ -5445,6 +5484,9 @@ onAuthStateChanged(auth, user => {
                             if (uSnap.exists()) {
                                 const uData = uSnap.data();
                                 eventSelectedUser = { uid: uSnap.id, ...uData };
+                                
+                                // FIX BUG 3 & 1: Update Rewards and Pill based on SELECTED user
+                                updateWheelRewardsFromInventory(uData);
                                 updatePillVisuals(eventSelectedUser);
                             }
                         });
@@ -5471,57 +5513,79 @@ onAuthStateChanged(auth, user => {
             }
 
             // Sync Spin
-// Inside onSnapshot(doc(db, "site_metadata", "wheel_event")...
-if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
-    lastProcessedSpinTime = spinAction.timestamp;
-    
-    // Check if this is an Event Spin
-    // Only trigger the wheel for everyone IF Event Mode is on
-    if (isEventModeActive) {
-        // FIX: Sync currentSpinAdminId so finalizeSpin works for everyone watching
-        currentSpinAdminId = spinAction.adminId;
-        
-        if (Date.now() - spinAction.timestamp < 10000) {
-            isSpinning = false; 
-            const isMuted = localStorage.getItem('siteMuted') === 'true';
-            if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
-            startSpin(spinAction.index, spinAction.speed || 1); 
-        }
-    }
-}
+            if (spinAction && spinAction.timestamp && spinAction.timestamp > lastProcessedSpinTime) {
+                lastProcessedSpinTime = spinAction.timestamp;
+                if (isEventModeActive) {
+                    currentSpinAdminId = spinAction.adminId;
+                    if (Date.now() - spinAction.timestamp < 10000) {
+                        isSpinning = false; 
+                        const isMuted = localStorage.getItem('siteMuted') === 'true';
+                        if(!isMuted) { audioSpin.currentTime = 0; audioSpin.play().catch(()=>{}); }
+                        startSpin(spinAction.index, spinAction.speed || 1); 
+                    }
+                }
+            }
         });
 
 // --- CURRENT USER LISTENER (MY DATA) ---
-onSnapshot(doc(db, "accounts", user.uid), (docSnap) => {
-    if (docSnap.exists()) {
-        const data = docSnap.data();
-        
-        // 1. Logica pentru Bara XP (Rămâne mereu a ta, personală)
-        const xpWrapper = document.getElementById('xpBarWrapper');
-        const xpFill = document.getElementById('xpBarFill');
-        const xpText = document.getElementById('xpPercent');
+onSnapshot(userRef, async (uSnap) => {
+            if (!uSnap.exists()) return;
+            const data = uSnap.data();
 
-        if (xpWrapper && xpFill && xpText) {
-            if (isEventModeActive) {
-                xpWrapper.style.display = 'none'; 
-            } else {
-                xpWrapper.style.display = 'block'; 
-                const currentXP = data.wheelXP || 0;
-                xpFill.style.width = currentXP + '%';
-                xpText.innerText = currentXP + '%';
+            // 1. XP Bar (Personal)
+            const xpWrapper = document.getElementById('xpBarWrapper');
+            const xpFill = document.getElementById('xpBarFill');
+            const xpText = document.getElementById('xpPercent');
+
+            if (xpWrapper && xpFill && xpText) {
+                if (isEventModeActive) {
+                    xpWrapper.style.display = 'none'; 
+                } else {
+                    xpWrapper.style.display = 'block'; 
+                    const currentXP = data.wheelXP || 0;
+                    xpFill.style.width = currentXP + '%';
+                    xpText.innerText = currentXP + '%';
+                }
             }
-        }
 
-        // 2. LOGICA PENTRU PILL (Cine apare în casetă)
-        // Dacă NU e event, punem datele tale. Dacă E event, tăcem și lăsăm celălalt listener să se ocupe.
-        if (!isEventModeActive) {
-            // Trimitem un obiect curat care conține și UID-ul tău (necesar pentru logica de PFP/Glow)
-            updatePillVisuals({ uid: user.uid, ...data });
-        }
+            // 2. PILL & REWARDS UPDATE
+            // CRITICAL FIX: Only update visual elements if NOT in event mode
+            if (!isEventModeActive) {
+                updateWheelRewardsFromInventory(data);
+                updatePillVisuals({ uid: user.uid, ...data });
+            }
 
-        // 3. Update-uri necesare pentru restul site-ului (Free Spins, etc)
-    }
-});
+            // 3. Header & Modal Visuals (Always update for user context)
+            const finalProfilePic = data.image || user.photoURL || "https://i.ibb.co/4pGm9S2/user-placeholder.png";
+            if (headerUserImg) {
+                headerUserImg.src = finalProfilePic;
+                headerUserImg.style.display = "block";
+            }
+            if (headerLoginText) {
+                headerLoginText.innerText = (data.username || "ACCOUNT").toUpperCase();
+            }
+            const popImg = document.getElementById('popUserImg');
+            if (popImg) popImg.src = finalProfilePic;
+            
+            const popNameEl = document.getElementById('popUserName');
+            if (popNameEl) {
+                if (data.equippedText && data.equippedText.cssClass) {
+                    popNameEl.innerHTML = `<span class="${data.equippedText.cssClass}">${data.username}</span>`;
+                } else {
+                    popNameEl.innerText = data.username;
+                }
+            }
+
+            if (document.getElementById('popUserCoins')) {
+                document.getElementById('popUserCoins').innerText = formatCurrency(data.coins || 0);
+            }
+            if (document.getElementById('popUserDiamonds')) {
+                document.getElementById('popUserDiamonds').innerText = formatCurrency(data.diamonds || 0);
+            }
+
+            window.currentUserStack = data.freeSpinStack || 0;
+            window.lastAccrualTime = data.lastFreeSpinAccrual ? data.lastFreeSpinAccrual.toMillis() : Date.now();
+        });
         
 
 
