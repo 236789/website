@@ -4879,19 +4879,18 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 
-
-/* Efect de strălucire și aducere în față pentru butonul de chat în timpul tutorialului */
-.chat-tutorial-highlight {
+/* Efect de strălucire și aducere în față pentru elementele evidențiate pe pagină */
+.tutorial-item-glow {
     z-index: 200005 !important; /* Peste overlay-ul botului */
-    box-shadow: 0 0 30px #29f3ff, 0 0 60px #29f3ff !important;
-    animation: pulseChat 1s infinite alternate !important;
+    box-shadow: 0 0 30px #29f3ff, 0 0 60px rgba(41, 243, 255, 0.4) !important;
+    animation: pulseGlowItem 1.2s infinite alternate !important;
+    position: relative !important;
 }
 
-@keyframes pulseChat {
-    from { transform: scale(1); }
-    to { transform: scale(1.2); }
+@keyframes pulseGlowItem {
+    from { transform: scale(1); filter: brightness(1); }
+    to { transform: scale(1.05); filter: brightness(1.3); }
 }
-
   </style>
 </head>
 <body>
@@ -12516,13 +12515,15 @@ const speak = (msg, callback) => {
     };
 
 const setFocus = (selector) => {
-        document.querySelectorAll('.tutorial-focus').forEach(el => el.classList.remove('tutorial-focus'));
-        document.getElementById('botBtn').classList.remove('chat-tutorial-highlight');
+        // Resetăm stările anterioare
+        document.querySelectorAll('.tutorial-focus, .tutorial-item-glow').forEach(el => {
+            el.classList.remove('tutorial-focus', 'tutorial-item-glow');
+        });
         
         const target = document.querySelector(selector);
         if (!target) return;
 
-        // 1. Elementele care primesc contur roșu (doar în modal)
+        // 1. Contur roșu (Doar pentru interiorul modalului Account)
         const needsRedBorder = [
             "#accountModal", "#popUserCoins", "#popUserDiamonds", 
             "#openCosmeticsBtn", "#openEditProfileBtn", "#inviteFriendBtn",
@@ -12532,19 +12533,34 @@ const setFocus = (selector) => {
             "a[href='UpdateLogs.html']", "a[href='Vot.html']"
         ];
 
+        // 2. Glow Cyan (Butoane pagină și Echipa)
+        const needsCyanGlow = [
+            "#botBtn", 
+            "a[href='noutati.html']", 
+            "a[href='recenzii.html']", 
+            "a[href='Feedback.html']",
+            ".team-card" // Include imaginile și textele lor
+        ];
+
         if (needsRedBorder.includes(selector)) {
             target.classList.add('tutorial-focus');
+        } else if (needsCyanGlow.includes(selector) || target.closest('.team-card')) {
+            // Dacă e un team-card sau ceva din lista de glow
+            const glowTarget = target.closest('.team-card') || target;
+            glowTarget.classList.add('tutorial-item-glow');
         }
 
-        // 2. Logica specială pentru butonul de chat (Glow în loc de Red Border)
-        if (selector === "#botBtn") {
-            target.classList.add('chat-tutorial-highlight');
-        }
-
-        // 3. Facem scroll la secțiunile mari de pe pagină
-        const sectionsToScroll = [".hero-btns", ".team-section", ".wall-promo-wrapper", "a[href='Feedback.html']"];
-        if (sectionsToScroll.includes(selector)) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 3. Scroll inteligent (fixat pentru Recenzii)
+        if (selector === ".wall-promo-wrapper") {
+            // Scroll special pentru recenzii (offset pentru a nu vedea stats)
+            const yOffset = -100; 
+            const y = target.getBoundingClientRect().top + window.pageYOffset + yOffset;
+            window.scrollTo({top: y, behavior: 'smooth'});
+        } else {
+            const sectionsToScroll = [".hero-btns", ".team-section", "a[href='Feedback.html']"];
+            if (sectionsToScroll.includes(selector)) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
     };
 
@@ -12562,6 +12578,7 @@ const tutorialSteps = [
                 overlay.style.padding = "0";
                 botImg.style.height = "320px";
                 bubble.style.maxWidth = "320px";
+                overlay.style.fontSize = "13px";
                 overlay.style.background = "rgba(5, 11, 20, 0.85)";
             }
         },
@@ -12574,6 +12591,7 @@ const tutorialSteps = [
             text: "Daca vreodata te simti singur sau ai nevoie de ajutor rapid, ma gasesti mereu aici, in butonul de chat. Te pot ajuta cu informatii sau doar cu o barfa mica.", 
             img: assets.pointing,
             action: () => {
+                // Mutăm botul în colț
                 overlay.style.justifyContent = "flex-end";
                 overlay.style.alignItems = "flex-end";
                 overlay.style.padding = "25px";
@@ -12589,9 +12607,6 @@ const tutorialSteps = [
             action: () => {
                 document.getElementById('accountModal').classList.add('active');
                 overlay.style.background = "rgba(5, 11, 20, 0.4)";
-                // Rămâne în colț
-                overlay.style.justifyContent = "flex-end";
-                overlay.style.alignItems = "flex-end";
             }
         },
         { element: "#popUserCoins", text: "Aici sunt KSDA Coins. Sunt banii tai virtuali pe care ii castigi fiind activ pe site. Ii poti folosi in magazin.", img: assets.explaining },
@@ -12608,18 +12623,13 @@ const tutorialSteps = [
         { element: "a[href='Vot.html']", text: "Vocea ta conteaza! Mergi la Votes si ajuta-ne sa decidem viitorul site-ului prin votul tau.", img: assets.idea },
         { element: "#inviteFriendBtn", text: "Vrei 1000 de monede rapid? Invita un prieten folosind link-ul tau unic si amandoi primiti bonusul.", img: assets.happy },
         { 
-            element: ".hero-btns", 
+            element: "a[href='noutati.html']", 
             text: "Aici poti vedea cele mai noi Anunturi si Noutati. Kevin are grija sa te tina la curent cu orice miscare din universul KSDA.", 
             img: assets.idea,
             action: () => {
                 document.getElementById('accountModal').classList.remove('active');
-                overlay.style.background = "rgba(5, 11, 20, 0.6)";
-                // Păstrăm botul în colț pentru restul pașilor de pe pagină
-                overlay.style.justifyContent = "flex-end";
-                overlay.style.alignItems = "flex-end";
-                overlay.style.padding = "25px";
-                botImg.style.height = "160px";
-                bubble.style.maxWidth = "200px";
+                overlay.style.background = "rgba(5, 11, 20, 0.85)";
+                // Botul rămâne în colț pentru restul pașilor de pagină
             }
         },
         { 
@@ -12628,7 +12638,7 @@ const tutorialSteps = [
             img: assets.thinking
         },
         { 
-            element: ".wall-promo-wrapper", 
+            element: "a[href='recenzii.html']", 
             text: "Ne pasa de parerea ta! Aici poti vedea ce zic ceilalti sau poti sa ne lasi si tu o recenzie despre serviciile noastre.", 
             img: assets.explaining
         },
@@ -12643,8 +12653,10 @@ const tutorialSteps = [
 
 const runStep = () => {
         if (stepIdx >= tutorialSteps.length) {
-            removeFocus();
-            document.getElementById('botBtn').classList.remove('chat-tutorial-highlight');
+            // Eliminăm orice highlight sau glow rămas
+            document.querySelectorAll('.tutorial-focus, .tutorial-item-glow').forEach(el => {
+                el.classList.remove('tutorial-focus', 'tutorial-item-glow');
+            });
             
             // Revenire la centru pentru mesajul de final
             overlay.style.justifyContent = "center";
@@ -12666,7 +12678,7 @@ const runStep = () => {
             });
             return;
         }
-        // ... restul funcției runStep
+        // ... restul funcției
 
         const s = tutorialSteps[stepIdx];
         if (s.action) s.action();
