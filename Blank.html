@@ -2513,6 +2513,142 @@
 }
 
 
+
+/* --- PUZZLE GAME STYLES --- */
+    .puzzle-container {
+        width: 100%;
+        max-width: 600px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        animation: fadeIn 0.5s ease;
+    }
+
+    /* Menu Buttons */
+    .puzzle-menu-btn {
+        width: 100%;
+        padding: 20px;
+        background: rgba(41, 243, 255, 0.05);
+        border: 1px solid var(--primary);
+        color: #fff;
+        font-family: 'Orbitron';
+        font-size: 16px;
+        font-weight: 800;
+        cursor: pointer;
+        transition: 0.3s;
+        border-radius: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+        text-transform: uppercase;
+    }
+    .puzzle-menu-btn:hover {
+        background: var(--primary);
+        color: #000;
+        box-shadow: 0 0 20px var(--primary);
+        transform: scale(1.02);
+    }
+    .puzzle-menu-btn.secondary {
+        border-color: #d63384;
+        color: #ff85c2;
+        background: rgba(214, 51, 132, 0.05);
+    }
+    .puzzle-menu-btn.secondary:hover {
+        background: #d63384;
+        color: #fff;
+        box-shadow: 0 0 20px #d63384;
+    }
+
+    /* Game Board */
+    .puzzle-board {
+        display: grid;
+        gap: 2px;
+        background: #000;
+        border: 2px solid var(--primary);
+        box-shadow: 0 0 30px rgba(41, 243, 255, 0.2);
+        margin-bottom: 20px;
+        position: relative;
+    }
+
+    .puzzle-tile {
+        background-repeat: no-repeat;
+        cursor: pointer;
+        transition: transform 0.2s, filter 0.2s;
+        position: relative;
+    }
+    
+    .puzzle-tile:hover {
+        filter: brightness(1.2);
+        z-index: 2;
+    }
+
+    .puzzle-tile.selected {
+        outline: 2px solid #ffd700;
+        box-shadow: 0 0 15px #ffd700;
+        z-index: 10;
+        transform: scale(0.95);
+    }
+
+    .puzzle-tile.correct-pos {
+        /* Optional: Visual hint for correct position */
+        /* filter: sepia(1) hue-rotate(90deg); */
+    }
+
+    /* Reference Image (Preview) */
+    .puzzle-preview {
+        width: 150px;
+        height: 150px;
+        object-fit: cover;
+        border: 2px solid #555;
+        border-radius: 10px;
+        opacity: 0.7;
+        transition: 0.3s;
+    }
+    .puzzle-preview:hover {
+        opacity: 1;
+        transform: scale(2);
+        z-index: 100;
+        border-color: #fff;
+    }
+
+    /* Difficulty Pills */
+    .diff-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+    .diff-btn {
+        padding: 15px;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid #555;
+        color: #aaa;
+        font-family: 'Orbitron';
+        cursor: pointer;
+        border-radius: 10px;
+    }
+    .diff-btn:hover, .diff-btn.active {
+        border-color: var(--primary);
+        color: #fff;
+        background: rgba(41, 243, 255, 0.1);
+    }
+
+    /* Hidden inputs */
+    #customImgInput { display: none; }
+
+    /* Stats bar during game */
+    .puzzle-stats {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        font-family: 'Orbitron';
+        font-size: 12px;
+        color: var(--primary);
+        margin-bottom: 10px;
+        background: rgba(0,0,0,0.5);
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid var(--glass-border);
+    }
+
+
   </style>
 </head>
 <body>
@@ -2932,12 +3068,73 @@
 </aside>
 
 
-<!-- MAIN CONTENT AREA START -->
 <main class="blank-main-container">
     
 
+    <!-- 1. LOGIN WALL (Shown if not logged in) -->
+    <div id="puzzleLoginWall" class="login-wall-card">
+        <div class="lock-icon"><i class="fas fa-lock"></i></div>
+        <div class="login-wall-title">ACCES RESTRICȚIONAT</div>
+        <div class="login-wall-desc">Trebuie să fii autentificat pentru a juca, a salva progresul și a primi recompense.</div>
+        <button class="google-btn-wall" onclick="document.getElementById('accountModal').classList.add('active')">
+            <i class="fas fa-sign-in-alt"></i> AUTENTIFICARE
+        </button>
+    </div>
 
+    <!-- 2. GAME CONTAINER (Hidden by default) -->
+    <div id="puzzleGameContainer" class="puzzle-container" style="display: none;">
+        
+        <!-- A. MAIN MENU -->
+        <div id="puzzleMenu" style="width: 100%; display: flex; flex-direction: column; gap: 15px;">
+            <div id="resumeBtnContainer" style="display:none;">
+                <button class="puzzle-menu-btn secondary" onclick="resumeGame()">
+                    <i class="fas fa-play"></i> CONTINUĂ JOCUL SALVAT
+                </button>
+                <div style="text-align: center; font-size: 10px; color: #aaa;">Ai un puzzle neterminat salvat.</div>
+            </div>
 
+            <button class="puzzle-menu-btn" onclick="showDifficulty('random')">
+                <i class="fas fa-random"></i> RANDOM IMAGE
+            </button>
+            
+            <button class="puzzle-menu-btn" onclick="document.getElementById('customImgInput').click()">
+                <i class="fas fa-upload"></i> CUSTOM IMAGE
+            </button>
+            <input type="file" id="customImgInput" accept="image/*" onchange="handleCustomImage(this)">
+        </div>
+
+        <!-- B. DIFFICULTY SELECT -->
+        <div id="puzzleDifficulty" style="width: 100%; display: none; flex-direction: column; gap: 15px;">
+            <h3 style="text-align: center; color: #fff; font-family: 'Orbitron';">SELECTEAZĂ DIFICULTATEA</h3>
+            <div class="diff-grid">
+                <button class="diff-btn" onclick="startGame(3)">EASY<br><span style="font-size:9px">3x3 (Low Reward)</span></button>
+                <button class="diff-btn" onclick="startGame(4)">MEDIUM<br><span style="font-size:9px">4x4 (Med Reward)</span></button>
+                <button class="diff-btn" onclick="startGame(5)">HARD<br><span style="font-size:9px">5x5 (High Reward)</span></button>
+            </div>
+            <button class="btn-nav-v6 btn-nav-back" onclick="resetToMenu()">ÎNAPOI</button>
+        </div>
+
+        <!-- C. GAME BOARD AREA -->
+        <div id="puzzleActiveArea" style="display: none; width: 100%; flex-direction: column; align-items: center;">
+            <div class="puzzle-stats">
+                <span id="moveCounter">Moves: 0</span>
+                <span id="difficultyLabel">Mode: 3x3</span>
+            </div>
+
+            <div id="board" class="puzzle-board"></div>
+
+            <div style="display: flex; gap: 20px; align-items: center; margin-top: 15px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 10px; margin-bottom: 5px;">PREVIEW (Hover)</div>
+                    <img id="previewImage" class="puzzle-preview" src="">
+                </div>
+                <button class="btn-logout-pop" onclick="saveAndExit()">
+                    <i class="fas fa-save"></i> SAVE & EXIT
+                </button>
+            </div>
+        </div>
+
+    </div>
 
 </main>
 <!-- MAIN CONTENT AREA END -->
@@ -4084,6 +4281,264 @@ window.flyDiamond = () => {
 document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
 
+
+// --- PUZZLE GAME LOGIC ---
+
+    // Game State Variables
+    let puzzleState = {
+        isPlaying: false,
+        gridSize: 3, // 3x3, 4x4, 5x5
+        moves: 0,
+        tiles: [], // Current order [0, 5, 2, ...]
+        correctOrder: [], // [0, 1, 2, ...]
+        imageUrl: "",
+        isCustom: false,
+        selectedTileIndex: -1 // For swapping
+    };
+
+    const RANDOM_IMAGES = [
+        "https://images.unsplash.com/photo-1555680202-c86f0e12f086?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", // Cyberpunk City
+        "https://images.unsplash.com/photo-1614728853913-1e22ba863077?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", // Neon Samurai
+        "https://images.unsplash.com/photo-1563089145-599997674d42?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", // Neon Sign
+        "https://images.unsplash.com/photo-1535905557558-afc4877a26fc?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", // Sci-fi Book
+        "https://i.pinimg.com/736x/8e/3a/0d/8e3a0d52487693d8b54930263309a633.jpg" // Cool Art
+    ];
+
+    // 1. Auth Listener for Puzzle
+    onAuthStateChanged(auth, async (user) => {
+        const wall = document.getElementById('puzzleLoginWall');
+        const game = document.getElementById('puzzleGameContainer');
+        
+        if (user) {
+            if(wall) wall.style.display = 'none';
+            if(game) game.style.display = 'flex';
+            checkSavedGame(user.uid);
+        } else {
+            if(wall) wall.style.display = 'flex';
+            if(game) game.style.display = 'none';
+        }
+    });
+
+    // 2. Check Saved Game
+    async function checkSavedGame(uid) {
+        try {
+            const docSnap = await getDoc(doc(db, "accounts", uid));
+            if (docSnap.exists() && docSnap.data().puzzleSave) {
+                document.getElementById('resumeBtnContainer').style.display = 'block';
+            } else {
+                document.getElementById('resumeBtnContainer').style.display = 'none';
+            }
+        } catch(e) { console.error("Save check error", e); }
+    }
+
+    // 3. Image Handling
+    window.handleCustomImage = (input) => {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                puzzleState.imageUrl = e.target.result;
+                puzzleState.isCustom = true;
+                showDifficulty();
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    window.showDifficulty = (mode) => {
+        if (mode === 'random') {
+            puzzleState.imageUrl = RANDOM_IMAGES[Math.floor(Math.random() * RANDOM_IMAGES.length)];
+            puzzleState.isCustom = false;
+        }
+        document.getElementById('puzzleMenu').style.display = 'none';
+        document.getElementById('puzzleDifficulty').style.display = 'flex';
+    };
+
+    window.resetToMenu = () => {
+        document.getElementById('puzzleMenu').style.display = 'flex';
+        document.getElementById('puzzleDifficulty').style.display = 'none';
+        document.getElementById('puzzleActiveArea').style.display = 'none';
+        puzzleState.isPlaying = false;
+    };
+
+    // 4. Start Game (New)
+    window.startGame = (size) => {
+        puzzleState.gridSize = size;
+        puzzleState.moves = 0;
+        puzzleState.isPlaying = true;
+        
+        // Generate Tiles
+        const totalTiles = size * size;
+        puzzleState.correctOrder = Array.from({length: totalTiles}, (_, i) => i);
+        
+        // Shuffle (Solvable Shuffle for swapping mechanic is just random array)
+        let shuffled = [...puzzleState.correctOrder];
+        // Fisher-Yates Shuffle
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        
+        // Ensure it's not solved by accident (highly unlikely but possible)
+        if(JSON.stringify(shuffled) === JSON.stringify(puzzleState.correctOrder)) {
+             [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
+        }
+
+        puzzleState.tiles = shuffled;
+
+        renderGame();
+        saveProgress(); // Initial save
+    };
+
+    // 5. Resume Game
+    window.resumeGame = async () => {
+        if(!auth.currentUser) return;
+        const snap = await getDoc(doc(db, "accounts", auth.currentUser.uid));
+        const save = snap.data().puzzleSave;
+        
+        if (save) {
+            puzzleState = save;
+            renderGame();
+        }
+    };
+
+    // 6. Render Board
+    function renderGame() {
+        document.getElementById('puzzleDifficulty').style.display = 'none';
+        document.getElementById('puzzleMenu').style.display = 'none';
+        document.getElementById('puzzleActiveArea').style.display = 'flex';
+
+        const board = document.getElementById('board');
+        board.innerHTML = '';
+        const size = puzzleState.gridSize;
+        
+        // Set CSS Grid
+        board.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+        const tileSize = 300 / size; // Assuming 300px max width for mobile friendliness
+        board.style.width = '300px';
+        board.style.height = '300px';
+
+        document.getElementById('previewImage').src = puzzleState.imageUrl;
+        document.getElementById('moveCounter').innerText = `Moves: ${puzzleState.moves}`;
+        document.getElementById('difficultyLabel').innerText = `Mode: ${size}x${size}`;
+
+        puzzleState.tiles.forEach((tileValue, index) => {
+            const tile = document.createElement('div');
+            tile.className = 'puzzle-tile';
+            if (index === puzzleState.selectedTileIndex) tile.classList.add('selected');
+
+            // Calculate background position based on the CORRECT value (tileValue)
+            // e.g., in 3x3: Tile 0 is 0,0. Tile 1 is 33%,0. Tile 2 is 66%,0.
+            const row = Math.floor(tileValue / size);
+            const col = tileValue % size;
+            
+            const pct = 100 / (size - 1);
+
+            tile.style.width = `${tileSize}px`;
+            tile.style.height = `${tileSize}px`;
+            tile.style.backgroundImage = `url(${puzzleState.imageUrl})`;
+            tile.style.backgroundSize = `300px 300px`;
+            tile.style.backgroundPosition = `${col * pct}% ${row * pct}%`;
+            
+            tile.onclick = () => handleTileClick(index);
+            board.appendChild(tile);
+        });
+    }
+
+    // 7. Game Logic (Swap)
+    function handleTileClick(index) {
+        if (puzzleState.selectedTileIndex === -1) {
+            // Select first tile
+            puzzleState.selectedTileIndex = index;
+            renderGame(); // Re-render to show selection
+        } else if (puzzleState.selectedTileIndex === index) {
+            // Deselect
+            puzzleState.selectedTileIndex = -1;
+            renderGame();
+        } else {
+            // Swap
+            const idx1 = puzzleState.selectedTileIndex;
+            const idx2 = index;
+
+            // Perform swap in array
+            [puzzleState.tiles[idx1], puzzleState.tiles[idx2]] = [puzzleState.tiles[idx2], puzzleState.tiles[idx1]];
+            
+            puzzleState.moves++;
+            puzzleState.selectedTileIndex = -1;
+            
+            renderGame();
+            checkWin();
+            
+            // Auto-save every 3 moves to prevent excessive writes
+            if(puzzleState.moves % 3 === 0) saveProgress();
+        }
+    }
+
+    // 8. Save Progress
+    async function saveProgress() {
+        if (!auth.currentUser) return;
+        try {
+            await updateDoc(doc(db, "accounts", auth.currentUser.uid), {
+                puzzleSave: puzzleState
+            });
+        } catch(e) { console.log("Auto-save failed"); }
+    }
+
+    // 9. Manual Save & Exit
+    window.saveAndExit = async () => {
+        await saveProgress();
+        alert("Progres salvat! Poți reveni oricând.");
+        resetToMenu();
+        checkSavedGame(auth.currentUser.uid); // Refresh menu state
+    };
+
+    // 10. Win Condition
+    async function checkWin() {
+        // Check if current tiles array matches correct order
+        const isWin = puzzleState.tiles.every((val, index) => val === index);
+        
+        if (isWin) {
+            puzzleState.isPlaying = false;
+            
+            // Calculate Rewards
+            let coins = 0;
+            let diamonds = 0;
+            
+            if (puzzleState.gridSize === 3) coins = 150; // Easy
+            if (puzzleState.gridSize === 4) { coins = 300; diamonds = 0; } // Medium
+            if (puzzleState.gridSize === 5) { coins = 500; diamonds = 1; } // Hard
+
+            // Update Firebase (Give reward + Delete save)
+            const userRef = doc(db, "accounts", auth.currentUser.uid);
+            
+            await updateDoc(userRef, {
+                coins: increment(coins),
+                diamonds: increment(diamonds),
+                puzzleSave: deleteField() // Remove the save
+            });
+
+            // If it was a Custom image, "upload" to public pool (Logic only, since we don't use Storage)
+            // If random, we just log it.
+            if (!puzzleState.isCustom) {
+                // Here we would add to public_puzzles if we wanted to track solved images
+                // await addDoc(collection(db, "public_puzzles"), { url: puzzleState.imageUrl, solver: auth.currentUser.uid });
+            }
+
+            // Show Reward Modal (Reuse your existing one or simple alert)
+            // Using Quest Reward Modal style for consistency
+            const qModal = document.getElementById('questRewardModal');
+            qModal.querySelector('h2').innerHTML = "PUZZLE SOLVED!";
+            qModal.querySelector('p').innerHTML = `Ai rezolvat puzzle-ul ${puzzleState.gridSize}x${puzzleState.gridSize}!`;
+            qModal.querySelector('.reward-coins-box span').innerText = coins;
+            qModal.classList.add('active');
+
+            resetToMenu();
+            checkSavedGame(auth.currentUser.uid);
+        } 
+    }
+    
+    // Helper needed for deleteField
+    import { deleteField } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
   </script>
 </body>
-</html>
+</html> 
