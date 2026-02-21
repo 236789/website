@@ -2600,39 +2600,44 @@
     .zone-pieces::-webkit-scrollbar { width: 5px; background: #000; }
     .zone-pieces::-webkit-scrollbar-thumb { background: var(--primary); }
 
-    /* --- THE PUZZLE PIECE --- */
+/* --- THE SQUARE PIECE (FIXED) --- */
     .jig-piece {
-        position: absolute; /* Needed for dragging */
+        position: absolute;
         cursor: grab;
         z-index: 10;
-        filter: drop-shadow(0 0 2px #000);
+        
+        /* Visual Style: Data Chip */
+        border: 1px solid rgba(41, 243, 255, 0.3); /* Subtle Cyan Border */
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);     /* Drop Shadow */
         transition: transform 0.1s;
-        /* The Shape: A CSS Clip Path for a "Jigsaw" look (generic tab) */
-        /* Note: Real generated jigsaw shapes need complex Canvas. This is a stylized shape. */
-        clip-path: polygon(
-            20% 0%, 40% 0%, 40% 10%, 60% 10%, 60% 0%, 80% 0%, 
-            100% 20%, 100% 40%, 90% 40%, 90% 60%, 100% 60%, 100% 80%, 
-            80% 100%, 60% 100%, 60% 90%, 40% 90%, 40% 100%, 20% 100%, 
-            0% 80%, 0% 60%, 10% 60%, 10% 40%, 0% 40%, 0% 20%
-        );
-        /* Scale it up slightly so pieces overlap to hide gaps */
-        transform: scale(1.15); 
+        
+        /* NO CLIP-PATH (Just Squares) */
+        background-repeat: no-repeat;
     }
     
     .jig-piece.in-tray {
-        position: relative; /* Static in the tray */
-        transform: scale(1);
+        position: relative;
+        transform: scale(0.9); /* Slight shrink in tray to see borders */
         top: auto !important;
         left: auto !important;
         margin: 5px;
     }
 
-    .jig-piece:active { cursor: grabbing; z-index: 100; transform: scale(1.25); filter: drop-shadow(0 0 10px var(--primary)); }
+    .jig-piece:active { 
+        cursor: grabbing; 
+        z-index: 1000; 
+        transform: scale(1.05); 
+        border-color: #fff;
+        box-shadow: 0 0 15px var(--primary); 
+    }
+    
     .jig-piece.locked {
         z-index: 1;
         cursor: default;
-        filter: brightness(1.1);
-        pointer-events: none; /* Can't move it once locked */
+        pointer-events: none;
+        border: none; /* Seamless join when locked */
+        box-shadow: none;
+        filter: brightness(1.0);
     }
 
     /* --- MOBILE LAYOUT OVERRIDES --- */
@@ -4422,7 +4427,7 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         }
     }
 
-    // 5. Setup Board & Generate DOM
+// 5. Setup Board & Generate DOM (SQUARES VERSION)
     function setupBoardUI(isLoad = false) {
         document.getElementById('puzzleMenuContainer').style.display = 'none';
         const arena = document.getElementById('jigsawArena');
@@ -4440,24 +4445,25 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         tray.innerHTML = '';
         gridBox.innerHTML = '';
 
-        // Determine max piece size that fits in the middle area
-        // We assume max board size is 80% of container or 300-500px
+        // 1. Calculate Grid Sizes
+        // We subtract padding to ensure it fits comfortably
         const maxBoardW = Math.min(boardContainer.clientWidth, boardContainer.clientHeight) - 20;
-        const totalSize = maxBoardW;
-        const pieceSize = Math.floor(totalSize / jigState.cols);
-        jigState.pieceSize = pieceSize;
-
-        // Setup Drop Grid (The visual guide)
-        gridBox.style.width = `${pieceSize * jigState.cols}px`;
-        gridBox.style.height = `${pieceSize * jigState.rows}px`;
-        gridBox.style.gridTemplateColumns = `repeat(${jigState.cols}, 1fr)`;
-        gridBox.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url(${jigState.imgUrl})`;
-        gridBox.style.backgroundSize = 'cover';
-
-        // Create DOM Elements for Pieces
-        // We iterate based on the ID order (0 to N) to calculate background positions correctly
-        // But we append them based on their state (Tray vs Board)
         
+        // baseSize is the exact size of one square tile
+        const baseSize = Math.floor(maxBoardW / jigState.cols);
+        jigState.pieceSize = baseSize; // Used for snapping math
+
+        // 2. Setup Drop Grid (The invisible skeleton)
+        const totalW = baseSize * jigState.cols;
+        const totalH = baseSize * jigState.rows;
+
+        gridBox.style.width = `${totalW}px`;
+        gridBox.style.height = `${totalH}px`;
+        // Faded background hint
+        gridBox.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.9), rgba(0,0,0,0.9)), url(${jigState.imgUrl})`;
+        gridBox.style.backgroundSize = `${totalW}px ${totalH}px`;
+
+        // 3. Generate Square Pieces
         const sortedById = [...jigState.pieces].sort((a,b) => a.id - b.id);
 
         sortedById.forEach((pData) => {
@@ -4465,32 +4471,34 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
             piece.className = 'jig-piece';
             piece.id = `p-${pData.id}`;
             
-            // Size & Background
-            piece.style.width = `${pieceSize}px`;
-            piece.style.height = `${pieceSize}px`;
-            piece.style.backgroundImage = `url(${jigState.imgUrl})`;
-            piece.style.backgroundSize = `${pieceSize * jigState.cols}px ${pieceSize * jigState.rows}px`;
+            // Exact sizing
+            piece.style.width = `${baseSize}px`;
+            piece.style.height = `${baseSize}px`;
             
-            // Calculate Background Position
+            // Image Mapping
+            piece.style.backgroundImage = `url(${jigState.imgUrl})`;
+            piece.style.backgroundSize = `${totalW}px ${totalH}px`;
+            
+            // Calculate which part of the image to show
             const row = Math.floor(pData.id / jigState.cols);
             const col = pData.id % jigState.cols;
-            piece.style.backgroundPosition = `-${col * pieceSize}px -${row * pieceSize}px`;
+            piece.style.backgroundPosition = `-${col * baseSize}px -${row * baseSize}px`;
 
             // Logic: Is it in tray or on board?
-            const runtimePiece = jigState.pieces.find(p => p.id === pData.id); // Get current state object
+            const runtimePiece = jigState.pieces.find(p => p.id === pData.id);
 
             if (runtimePiece.isLocked) {
                 // Locked on grid
                 piece.classList.add('locked');
-                piece.style.left = `${col * pieceSize}px`;
-                piece.style.top = `${row * pieceSize}px`;
-                gridBox.appendChild(piece); // Append to grid container so it sits relatively
+                piece.style.left = `${col * baseSize}px`;
+                piece.style.top = `${row * baseSize}px`;
+                gridBox.appendChild(piece); 
             } else if (runtimePiece.inTray) {
-                // In Scrollable Tray
+                // In Tray
                 piece.classList.add('in-tray');
                 tray.appendChild(piece);
             } else {
-                // Loose on board (Saved unsnapped position)
+                // Loose on board
                 piece.style.left = `${runtimePiece.currentX}px`;
                 piece.style.top = `${runtimePiece.currentY}px`;
                 gridBox.appendChild(piece);
