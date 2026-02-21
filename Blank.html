@@ -2666,8 +2666,15 @@
         padding: 0 15px; 
     }
     
-    .mini-preview { width: 40px; height: 40px; margin: 0; }
-    
+.mini-preview {
+    width: 100%;
+    height: 100%; /* Fill the box */
+    max-height: 150px; /* Limit height on mobile */
+    object-fit: contain; /* SHOWS FULL IMAGE (No cropping) */
+    border: 2px solid #555;
+    border-radius: 10px;
+    background: #000; /* Black background for non-square images */
+}    
     .zone-board { 
         flex: 1; 
         width: 100%; 
@@ -4600,13 +4607,14 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 /* --- UPGRADED JIGSAW PUZZLE LOGIC (POINTER EVENTS) --- */
 
 /* --- UPGRADED JIGSAW PUZZLE LOGIC (POINTER EVENTS) --- */
+/* --- FIXED JIGSAW PUZZLE LOGIC (SAFETY DELAY ADDED) --- */
 
 let jigState = {
     isPlaying: false,
     rows: 3,
     cols: 3,
     imgUrl: "",
-    pieces: [], // { id, currentX, currentY, isLocked, inTray }
+    pieces: [], 
     isCustom: false,
     pieceSize: 0,
     totalW: 0,
@@ -4670,7 +4678,6 @@ window.resetToMenu = () => {
     document.getElementById('puzzleMainMenu').style.display = 'flex';
     document.getElementById('puzzleDiffMenu').style.display = 'none';
     document.getElementById('jigsawArena').style.display = 'none';
-    if(window.innerWidth >= 900) document.getElementById('jigsawArena').style.display = 'none';
 };
 
 // 3. Initialize Game State
@@ -4704,145 +4711,148 @@ window.resumeGame = async () => {
     }
 }
 
-// 4. Build Board (DOM Generation)
+// 4. Build Board (WITH SAFETY DELAY)
 function setupBoardUI(isLoad = false) {
     document.getElementById('puzzleMenuContainer').style.display = 'none';
-    const arena = document.getElementById('jigsawArena');
     
-    // Proper display toggle based on screen size
+    const arena = document.getElementById('jigsawArena');
+    // FORCE DISPLAY ON before calculating sizes
     arena.style.display = (window.innerWidth >= 900) ? 'grid' : 'flex';
     
     document.getElementById('gamePreviewImg').src = jigState.imgUrl;
-    
-    const boardContainer = document.getElementById('boardContainer');
-    const tray = document.getElementById('pieceTray');
-    const gridBox = document.getElementById('dropGrid');
-    
-    tray.innerHTML = '';
-    gridBox.innerHTML = '';
 
-    // Calculate dimensions based on container
-    // Subtract 20px for padding to prevent overflow
-    const maxW = boardContainer.clientWidth - 20; 
-    const maxH = boardContainer.clientHeight - 20;
-    
-    // Determine piece size to fit in the box
-    const aspect = 1; // Square images for simplicity, or calc from image
-    const baseSize = Math.floor(Math.min(maxW / jigState.cols, maxH / jigState.rows));
-    
-    jigState.pieceSize = baseSize;
-    jigState.totalW = baseSize * jigState.cols;
-    jigState.totalH = baseSize * jigState.rows;
-
-    // Apply grid styles
-    gridBox.style.width = `${jigState.totalW}px`;
-    gridBox.style.height = `${jigState.totalH}px`;
-    gridBox.style.gridTemplateColumns = `repeat(${jigState.cols}, 1fr)`;
-    gridBox.style.gridTemplateRows = `repeat(${jigState.rows}, 1fr)`;
-    
-    // Ghost image on board
-    gridBox.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url(${jigState.imgUrl})`;
-    gridBox.style.backgroundSize = `${jigState.totalW}px ${jigState.totalH}px`;
-
-    // Visual Grid Lines
-    for(let i=0; i<(jigState.rows * jigState.cols); i++) {
-        let guide = document.createElement('div');
-        guide.className = 'grid-guide-cell';
-        gridBox.appendChild(guide);
-    }
-
-    // Generate Pieces
-    const sortedPieces = [...jigState.pieces].sort((a,b) => a.id - b.id);
-
-    sortedPieces.forEach((pData) => {
-        const piece = document.createElement('div');
-        piece.className = 'jig-piece';
-        piece.id = `p-${pData.id}`;
+    // WAIT 50ms for the browser to render the div, then calculate
+    setTimeout(() => {
+        const boardContainer = document.getElementById('boardContainer');
+        const tray = document.getElementById('pieceTray');
+        const gridBox = document.getElementById('dropGrid');
         
-        piece.style.width = `${baseSize}px`;
-        piece.style.height = `${baseSize}px`;
-        piece.style.backgroundImage = `url(${jigState.imgUrl})`;
-        piece.style.backgroundSize = `${jigState.totalW}px ${jigState.totalH}px`;
+        tray.innerHTML = '';
+        gridBox.innerHTML = '';
+
+        // Calculate dimensions
+        // Use a minimum of 300px if calculation fails to prevent invisible pieces
+        let containerW = boardContainer.clientWidth || 300;
+        let containerH = boardContainer.clientHeight || 300;
+
+        const maxW = containerW - 20; 
+        const maxH = containerH - 20;
         
-        // Calculate sprite position
-        const row = Math.floor(pData.id / jigState.cols);
-        const col = pData.id % jigState.cols;
-        piece.style.backgroundPosition = `-${col * baseSize}px -${row * baseSize}px`;
+        const baseSize = Math.floor(Math.min(maxW / jigState.cols, maxH / jigState.rows));
+        
+        jigState.pieceSize = baseSize;
+        jigState.totalW = baseSize * jigState.cols;
+        jigState.totalH = baseSize * jigState.rows;
 
-        const runtimePiece = jigState.pieces.find(p => p.id === pData.id);
+        // Apply grid styles
+        gridBox.style.width = `${jigState.totalW}px`;
+        gridBox.style.height = `${jigState.totalH}px`;
+        gridBox.style.gridTemplateColumns = `repeat(${jigState.cols}, 1fr)`;
+        gridBox.style.gridTemplateRows = `repeat(${jigState.rows}, 1fr)`;
+        
+        // Ghost image on board
+        gridBox.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url(${jigState.imgUrl})`;
+        gridBox.style.backgroundSize = `${jigState.totalW}px ${jigState.totalH}px`;
 
-        if (runtimePiece.isLocked) {
-            piece.classList.add('locked');
-            piece.style.left = `${col * baseSize}px`;
-            piece.style.top = `${row * baseSize}px`;
-            gridBox.appendChild(piece);
-        } else if (runtimePiece.inTray) {
-            piece.classList.add('in-tray');
-            tray.appendChild(piece);
-        } else {
-            piece.style.left = `${runtimePiece.currentX}px`;
-            piece.style.top = `${runtimePiece.currentY}px`;
-            gridBox.appendChild(piece);
+        // Visual Grid Lines
+        for(let i=0; i<(jigState.rows * jigState.cols); i++) {
+            let guide = document.createElement('div');
+            guide.className = 'grid-guide-cell';
+            gridBox.appendChild(guide);
         }
 
-        // Attach the robust drag handler
-        if (!runtimePiece.isLocked) {
-            enablePointerDrag(piece, pData.id);
-        }
-    });
+        // Generate Pieces
+        const sortedPieces = [...jigState.pieces].sort((a,b) => a.id - b.id);
 
-    updateCount();
-    if(!isLoad) saveProgress();
+        sortedPieces.forEach((pData) => {
+            const piece = document.createElement('div');
+            piece.className = 'jig-piece';
+            piece.id = `p-${pData.id}`;
+            
+            piece.style.width = `${baseSize}px`;
+            piece.style.height = `${baseSize}px`;
+            piece.style.backgroundImage = `url(${jigState.imgUrl})`;
+            piece.style.backgroundSize = `${jigState.totalW}px ${jigState.totalH}px`;
+            
+            // Calculate sprite position
+            const row = Math.floor(pData.id / jigState.cols);
+            const col = pData.id % jigState.cols;
+            piece.style.backgroundPosition = `-${col * baseSize}px -${row * baseSize}px`;
+
+            const runtimePiece = jigState.pieces.find(p => p.id === pData.id);
+
+            // Positioning Logic
+            if (runtimePiece.isLocked) {
+                piece.classList.add('locked');
+                piece.style.left = `${col * baseSize}px`;
+                piece.style.top = `${row * baseSize}px`;
+                gridBox.appendChild(piece);
+            } else if (runtimePiece.inTray) {
+                piece.classList.add('in-tray');
+                tray.appendChild(piece);
+            } else {
+                piece.style.left = `${runtimePiece.currentX}px`;
+                piece.style.top = `${runtimePiece.currentY}px`;
+                gridBox.appendChild(piece);
+            }
+
+            if (!runtimePiece.isLocked) {
+                enablePointerDrag(piece, pData.id);
+            }
+        });
+
+        updateCount();
+        if(!isLoad) saveProgress();
+        
+    }, 100); // 100ms delay to ensure layout is ready
 }
 
-// 5. THE ROBUST DRAG ENGINE (POINTER EVENTS)
+// 5. THE DRAG ENGINE (Fixed Coordinates)
 function enablePointerDrag(el, id) {
     let isDragging = false;
     let offsetX = 0;
     let offsetY = 0;
     
-    // Pointer Down (Touch Start / Mouse Down)
     el.addEventListener('pointerdown', (e) => {
-        // Prevent default touch actions (scrolling)
-        e.preventDefault(); 
+        e.preventDefault(); // Stop scrolling
         if (el.classList.contains('locked')) return;
 
         isDragging = true;
-        el.setPointerCapture(e.pointerId); // Capture events even if moving fast outside div
+        el.setPointerCapture(e.pointerId);
         el.classList.add('is-dragging');
 
         const gridBox = document.getElementById('dropGrid');
         const gridRect = gridBox.getBoundingClientRect();
-        const pieceRect = el.getBoundingClientRect();
-
-        // LOGIC FIX: MOVING FROM TRAY TO BOARD
+        
+        // If getting clicked in Tray, move to Board immediately
         if (el.classList.contains('in-tray')) {
+            const pieceRect = el.getBoundingClientRect(); // Get CURRENT spot on screen
+            
             el.classList.remove('in-tray');
-            gridBox.appendChild(el); // Move to board DOM
+            gridBox.appendChild(el); 
 
-            // Calculate position relative to grid instantly so it doesn't jump
-            // Mouse X relative to Grid Left - (Mouse X relative to Piece Left)
-            const relativeX = (e.clientX - gridRect.left) - (e.clientX - pieceRect.left);
-            const relativeY = (e.clientY - gridRect.top) - (e.clientY - pieceRect.top);
+            // Calculate EXACT position relative to the grid
+            const startLeft = pieceRect.left - gridRect.left;
+            const startTop = pieceRect.top - gridRect.top;
             
-            el.style.left = relativeX + 'px';
-            el.style.top = relativeY + 'px';
+            el.style.left = startLeft + 'px';
+            el.style.top = startTop + 'px';
             
-            // Update offset for smooth dragging
-            offsetX = e.clientX - gridRect.left - relativeX;
-            offsetY = e.clientY - gridRect.top - relativeY;
+            // Calculate offset so piece doesn't jump to top-left corner of mouse
+            offsetX = e.clientX - pieceRect.left;
+            offsetY = e.clientY - pieceRect.top;
 
             // Update State
             const pState = jigState.pieces.find(p => p.id === id);
             pState.inTray = false;
         } else {
-            // Already on board, calculate offset relative to current left/top
-            offsetX = e.clientX - gridRect.left - parseFloat(el.style.left);
-            offsetY = e.clientY - gridRect.top - parseFloat(el.style.top);
+            // Already on board
+            const pieceRect = el.getBoundingClientRect();
+            offsetX = e.clientX - pieceRect.left;
+            offsetY = e.clientY - pieceRect.top;
         }
     });
 
-    // Pointer Move (Drag)
     el.addEventListener('pointermove', (e) => {
         if (!isDragging) return;
         e.preventDefault();
@@ -4850,49 +4860,43 @@ function enablePointerDrag(el, id) {
         const gridBox = document.getElementById('dropGrid');
         const gridRect = gridBox.getBoundingClientRect();
 
-        // Calculate new X/Y relative to grid
+        // New Position = Mouse Pos - Grid Pos - Mouse Offset inside piece
         const newX = e.clientX - gridRect.left - offsetX;
         const newY = e.clientY - gridRect.top - offsetY;
 
         el.style.left = `${newX}px`;
         el.style.top = `${newY}px`;
 
-        // Magnet Hint Check (Visual Only)
         checkMagnetHint(el, id, newX, newY);
     });
 
-    // Pointer Up (Drop)
     el.addEventListener('pointerup', (e) => {
         if (!isDragging) return;
         isDragging = false;
         el.releasePointerCapture(e.pointerId);
         el.classList.remove('is-dragging');
-        el.classList.remove('magnet-active'); // Remove glow
+        el.classList.remove('magnet-active');
 
         const pSize = jigState.pieceSize;
         const pState = jigState.pieces.find(p => p.id === id);
 
-        // Calculate Target Position
         const targetCol = id % jigState.cols;
         const targetRow = Math.floor(id / jigState.cols);
         const targetX = targetCol * pSize;
         const targetY = targetRow * pSize;
 
-        // Get Current Position
         const currentX = parseFloat(el.style.left);
         const currentY = parseFloat(el.style.top);
 
-        // Distance Check
         const dist = Math.sqrt(Math.pow(targetX - currentX, 2) + Math.pow(targetY - currentY, 2));
-        const snapDistance = pSize * 0.4; // 40% forgiveness
-
-        if (dist < snapDistance) {
-            // SNAP!
+        
+        // Snap if close (40% of piece size)
+        if (dist < (pSize * 0.4)) {
             el.style.left = `${targetX}px`;
             el.style.top = `${targetY}px`;
             el.classList.add('locked');
             
-            // Success Flash
+            // Flash Effect
             const flash = document.createElement('div');
             flash.style.position = 'absolute';
             flash.style.inset = '0';
@@ -4905,7 +4909,6 @@ function enablePointerDrag(el, id) {
             pState.isLocked = true;
             updateCount();
         } else {
-            // Save current floating position
             pState.currentX = currentX;
             pState.currentY = currentY;
         }
@@ -4914,7 +4917,6 @@ function enablePointerDrag(el, id) {
     });
 }
 
-// 6. Visual Magnet Hint
 function checkMagnetHint(el, id, currX, currY) {
     const pSize = jigState.pieceSize;
     const targetCol = id % jigState.cols;
@@ -4931,7 +4933,6 @@ function checkMagnetHint(el, id, currX, currY) {
     }
 }
 
-// 7. Helpers: Count, Win, Save
 function updateCount() {
     const locked = jigState.pieces.filter(p => p.isLocked).length;
     const total = jigState.pieces.length;
@@ -4939,7 +4940,6 @@ function updateCount() {
     
     if(locked === total) {
         document.getElementById('dropGrid').classList.add('win-glow');
-        // Make image fully visible
         document.getElementById('dropGrid').style.backgroundImage = `url(${jigState.imgUrl})`;
         document.querySelectorAll('.grid-guide-cell').forEach(c => c.style.borderColor = 'transparent');
         setTimeout(doWin, 1500);
@@ -4965,8 +4965,6 @@ import { deleteField } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 
 async function doWin() {
     jigState.isPlaying = false;
-    
-    // Rewards Logic
     let coins = (jigState.rows === 3) ? 200 : (jigState.rows === 4) ? 400 : 700;
     let diamonds = (jigState.rows === 5) ? 1 : 0;
 
