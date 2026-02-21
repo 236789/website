@@ -2753,7 +2753,116 @@
     .puzzle-menu-btn:hover { background: var(--primary); color: #000; }
     #customImgInput { display: none; }
 
+/* --- JIGSAW ARENA (Responsive) --- */
+    .jigsaw-arena {
+        display: none; /* Toggled by JS */
+        width: 100%;
+        height: 600px;
+        background: #02050a;
+        border: 2px solid var(--primary);
+        border-radius: 20px;
+        box-shadow: 0 0 40px rgba(41, 243, 255, 0.1);
+        position: relative;
+        overflow: hidden;
+    }
 
+    @media (min-width: 900px) {
+        .jigsaw-arena { grid-template-columns: 200px 1fr 200px; gap: 10px; padding: 20px; }
+    }
+
+    /* PANELS */
+    .zone-left, .zone-pieces {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .zone-pieces { 
+        overflow-y: auto; 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 5px; 
+        justify-content: center; 
+        align-content: flex-start; 
+        padding: 10px;
+    }
+
+    .zone-board {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: radial-gradient(circle, #151515 0%, #000 100%);
+        overflow: hidden; 
+    }
+
+    /* THE GRID (Visual Guide) */
+    .drop-target-grid {
+        display: grid;
+        box-shadow: 0 0 30px #000;
+        border: 1px solid rgba(255,255,255,0.1);
+        position: relative; /* Anchor for pieces */
+    }
+    
+    .grid-guide-cell {
+        border: 1px dashed rgba(255,255,255,0.1);
+        box-sizing: border-box;
+    }
+
+    /* --- PIECES --- */
+    .jig-piece {
+        position: absolute;
+        cursor: grab;
+        z-index: 10;
+        /* Visuals */
+        border: 1px solid rgba(41, 243, 255, 0.3);
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.8);
+        background-repeat: no-repeat;
+        /* PERFORMANCE FIX: Only animate transform when NOT dragging */
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    
+    /* When dragging, remove transition to kill lag */
+    .jig-piece.is-dragging {
+        transition: none !important;
+        cursor: grabbing;
+        z-index: 1000;
+        box-shadow: 0 0 25px var(--primary);
+        border-color: #fff;
+        opacity: 0.9;
+    }
+
+    .jig-piece.in-tray {
+        position: relative; /* Flow normally in sidebar */
+        transform: scale(0.85);
+        top: auto !important; 
+        left: auto !important;
+        margin: 2px;
+    }
+
+    /* LOCKED STATE (Permanent) */
+    .jig-piece.locked {
+        z-index: 5;
+        cursor: default;
+        pointer-events: none; /* CANNOT BE CLICKED AGAIN */
+        border: none; /* Seamless image */
+        box-shadow: none;
+        transition: all 0.3s;
+        filter: brightness(1.0);
+    }
+
+    /* FLASH ANIMATION ON CONNECT */
+    @keyframes snapFlash {
+        0% { filter: brightness(2.5) drop-shadow(0 0 20px #fff); z-index: 20; }
+        100% { filter: brightness(1); z-index: 5; }
+    }
+    .snap-anim { animation: snapFlash 0.4s ease-out forwards; }
+    
+    /* WIN GLOW */
+    .win-glow {
+        animation: borderPulse 2s infinite;
+        border-color: #00ff88 !important;
+    }
+    @keyframes borderPulse { 0% { box-shadow: 0 0 10px #00ff88; } 50% { box-shadow: 0 0 40px #00ff88; } 100% { box-shadow: 0 0 10px #00ff88; } }
   </style>
 </head>
 <body>
@@ -4493,7 +4602,7 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         }
     }
 
-// 5. Setup Board & Generate DOM (SMART SNAP VERSION)
+// 5. Setup Board & Generate DOM (PERFORMANCE & MAGNET UPDATE)
     function setupBoardUI(isLoad = false) {
         document.getElementById('puzzleMenuContainer').style.display = 'none';
         const arena = document.getElementById('jigsawArena');
@@ -4508,12 +4617,12 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         tray.innerHTML = '';
         gridBox.innerHTML = '';
 
-        // 1. Calculate Grid Sizes
+        // 1. Calculate Sizes
         const maxBoardW = Math.min(boardContainer.clientWidth, boardContainer.clientHeight) - 20;
         const baseSize = Math.floor(maxBoardW / jigState.cols);
         jigState.pieceSize = baseSize;
 
-        // 2. Setup Drop Grid & Visual Guides
+        // 2. Setup Drop Grid
         const totalW = baseSize * jigState.cols;
         const totalH = baseSize * jigState.rows;
 
@@ -4521,19 +4630,17 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         gridBox.style.height = `${totalH}px`;
         gridBox.style.gridTemplateColumns = `repeat(${jigState.cols}, 1fr)`;
         gridBox.style.gridTemplateRows = `repeat(${jigState.rows}, 1fr)`;
-        
-        // Faded background hint (Ghost Image)
-        gridBox.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url(${jigState.imgUrl})`;
+        gridBox.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url(${jigState.imgUrl})`;
         gridBox.style.backgroundSize = `${totalW}px ${totalH}px`;
 
-        // GENERATE VISUAL GUIDES (The dashed lines)
+        // Create Grid Cells (Visual Only)
         for(let i=0; i<(jigState.rows * jigState.cols); i++) {
             let guide = document.createElement('div');
             guide.className = 'grid-guide-cell';
             gridBox.appendChild(guide);
         }
 
-        // 3. Generate Square Pieces
+        // 3. Generate Pieces
         const sortedById = [...jigState.pieces].sort((a,b) => a.id - b.id);
 
         sortedById.forEach((pData) => {
@@ -4543,7 +4650,6 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
             
             piece.style.width = `${baseSize}px`;
             piece.style.height = `${baseSize}px`;
-            
             piece.style.backgroundImage = `url(${jigState.imgUrl})`;
             piece.style.backgroundSize = `${totalW}px ${totalH}px`;
             
@@ -4553,11 +4659,12 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
 
             const runtimePiece = jigState.pieces.find(p => p.id === pData.id);
 
+            // Restore State
             if (runtimePiece.isLocked) {
                 piece.classList.add('locked');
                 piece.style.left = `${col * baseSize}px`;
                 piece.style.top = `${row * baseSize}px`;
-                gridBox.appendChild(piece); // Add to grid
+                gridBox.appendChild(piece);
             } else if (runtimePiece.inTray) {
                 piece.classList.add('in-tray');
                 tray.appendChild(piece);
@@ -4567,6 +4674,7 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
                 gridBox.appendChild(piece);
             }
 
+            // Attach Logic (Only if not locked)
             if (!runtimePiece.isLocked) {
                 addDragLogic(piece, pData.id);
             }
@@ -4581,24 +4689,28 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         const total = jigState.pieces.length;
         document.getElementById('piecesCount').innerText = `Fixed: ${locked}/${total}`;
         
-        // WIN CONDITION
         if(locked === total) {
-            document.getElementById('dropGrid').classList.add('win-glow'); // Flash grid
-            document.getElementById('dropGrid').style.backgroundImage = `url(${jigState.imgUrl})`; // Remove fade
-            document.querySelectorAll('.grid-guide-cell').forEach(c => c.style.border = 'none'); // Remove lines
-            setTimeout(doWin, 1500); // Wait for animation before showing modal
+            document.getElementById('dropGrid').classList.add('win-glow');
+            document.getElementById('dropGrid').style.backgroundImage = `url(${jigState.imgUrl})`;
+            // Hide grid lines
+            document.querySelectorAll('.grid-guide-cell').forEach(el => el.style.border = 'none');
+            setTimeout(doWin, 2000);
         }
     }
 
-    // 6. DRAG & DROP ENGINE (IMPROVED SNAP)
+    // 6. DRAG LOGIC (LAG-FREE + MAGNET)
     function addDragLogic(el, id) {
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
 
         const startDrag = (e) => {
+            // Safety check: Never drag a locked piece
             if (el.classList.contains('locked')) return;
-            isDragging = true;
             
+            isDragging = true;
+            el.classList.add('is-dragging'); // Removes CSS transition for performance
+
+            // Move from Tray to Board if needed
             if (el.classList.contains('in-tray')) {
                 const rect = el.getBoundingClientRect();
                 const gridRect = document.getElementById('dropGrid').getBoundingClientRect();
@@ -4606,7 +4718,7 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
                 el.classList.remove('in-tray');
                 document.getElementById('dropGrid').appendChild(el);
                 
-                // Center the piece under the finger/mouse
+                // Snap to mouse pos relative to grid
                 el.style.left = (rect.left - gridRect.left) + 'px';
                 el.style.top = (rect.top - gridRect.top) + 'px';
                 
@@ -4621,79 +4733,65 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
             startY = clientY;
             initialLeft = parseFloat(el.style.left) || 0;
             initialTop = parseFloat(el.style.top) || 0;
-            
-            el.style.zIndex = 100;
         };
 
         const doDrag = (e) => {
             if (!isDragging) return;
             e.preventDefault(); 
-            
+
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
 
             const dx = clientX - startX;
             const dy = clientY - startY;
 
-            const newLeft = initialLeft + dx;
-            const newTop = initialTop + dy;
-
-            el.style.left = `${newLeft}px`;
-            el.style.top = `${newTop}px`;
-
-            // --- PROXIMITY CHECK (GREEN GLOW) ---
-            const pSize = jigState.pieceSize;
-            const targetCol = id % jigState.cols;
-            const targetRow = Math.floor(id / jigState.cols);
-            
-            const targetX = targetCol * pSize;
-            const targetY = targetRow * pSize;
-
-            const dist = Math.sqrt(Math.pow(targetX - newLeft, 2) + Math.pow(targetY - newTop, 2));
-            const snapThreshold = pSize * 0.45; // 45% leeway (Very Forgiving)
-
-            if (dist < snapThreshold) {
-                el.classList.add('hover-correct'); // Turn Green
-            } else {
-                el.classList.remove('hover-correct');
-            }
+            // Direct DOM update (Fastest way)
+            el.style.left = `${initialLeft + dx}px`;
+            el.style.top = `${initialTop + dy}px`;
         };
 
         const stopDrag = () => {
             if (!isDragging) return;
             isDragging = false;
-            el.style.zIndex = 10;
-            el.classList.remove('hover-correct'); // Remove glow
+            el.classList.remove('is-dragging');
 
-            // SNAP LOGIC
+            // --- MAGNET LOGIC ---
             const pSize = jigState.pieceSize;
+            
+            // Calculate Correct Coordinates based on ID
             const targetCol = id % jigState.cols;
             const targetRow = Math.floor(id / jigState.cols);
-            
             const targetX = targetCol * pSize;
             const targetY = targetRow * pSize;
             
+            // Current Drop Coordinates
             const currentX = parseFloat(el.style.left);
             const currentY = parseFloat(el.style.top);
 
+            // Distance from Target
             const dist = Math.sqrt(Math.pow(targetX - currentX, 2) + Math.pow(targetY - currentY, 2));
-            const snapThreshold = pSize * 0.45; // Same 45% Threshold
+            
+            // Threshold: 50% of piece size (Very Generous)
+            const snapThreshold = pSize * 0.5; 
 
             const pState = jigState.pieces.find(p => p.id === id);
 
-            if (dist < snapThreshold) { 
-                // AUTO SNAP TO EXACT PIXEL
+            if (dist < snapThreshold) {
+                // SNAP!
                 el.style.left = `${targetX}px`;
                 el.style.top = `${targetY}px`;
+                
                 el.classList.add('locked');
+                el.classList.add('snap-anim'); // Flash effect
                 
-                // Add Flash Animation
-                el.classList.add('snap-anim');
-                
+                // Update Data
                 pState.isLocked = true;
+                
+                // Trigger save
                 saveProgress();
                 updateCount();
             } else {
+                // Just update position
                 pState.currentX = currentX;
                 pState.currentY = currentY;
             }
@@ -4706,8 +4804,6 @@ document.getElementById('claimStreakBtn').onclick = window.flyDiamond;
         window.addEventListener('mouseup', stopDrag);
         window.addEventListener('touchend', stopDrag);
     }
-
-
     // 7. Save & Win
     async function saveProgress() {
         if (!auth.currentUser) return;
