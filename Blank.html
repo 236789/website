@@ -2974,7 +2974,7 @@
 
 
 
-/* --- FIXED JIGSAW CSS --- */
+/* --- FIXED JIGSAW & PREVIEW CSS --- */
 .jigsaw-arena {
     display: none; 
     width: 100%;
@@ -2985,30 +2985,37 @@
     position: relative;
     overflow: hidden;
     user-select: none;
-    touch-action: none; /* CRITICAL for mobile drag */
+    touch-action: none; /* CRITICAL: Allows dragging on mobile */
 }
 
-/* PREVIEW IMAGE FIX */
+/* FIX PREVIEW IMAGE */
+.zone-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+}
+
 .mini-preview {
     width: 100%;
-    height: 100%;
-    min-height: 120px; /* Forces height so image is visible */
-    object-fit: contain;
+    height: auto;
+    max-height: 150px; /* Limits height so it doesn't overflow */
+    object-fit: contain; /* Prevents stretching/distortion */
     background: #000;
     border: 1px solid #333;
     border-radius: 8px;
+    margin-bottom: 10px;
 }
 
-/* PIECE STYLES */
+/* PIECE LOGIC */
 .jig-piece {
-    position: absolute; /* Default state for board */
+    position: absolute; 
     cursor: grab;
     z-index: 100;
     background-repeat: no-repeat;
     box-sizing: border-box;
-    /* Smooth snap only when dropping, NOT dragging */
-    transition: transform 0.2s, box-shadow 0.2s; 
-    touch-action: none;
+    touch-action: none; /* REQUIRED for touch dragging */
 }
 
 /* TRAY STATE */
@@ -3020,6 +3027,7 @@
     transform: scale(0.9);
     border: 1px solid rgba(255,255,255,0.2);
     box-shadow: 0 0 5px rgba(0,0,0,0.5);
+    float: left; /* Helps them stack nicely */
 }
 
 /* DRAGGING STATE */
@@ -3030,20 +3038,6 @@
     transform: scale(1.1);
     box-shadow: 0 10px 20px rgba(0,0,0,0.5);
     border: 2px solid var(--primary);
-    pointer-events: none; /* Allows pointer events to pass through to grid for calculation */
-}
-/* Re-enable pointer events on the element itself for capture */
-.jig-piece.is-dragging {
-    pointer-events: auto !important; 
-}
-
-/* LOCKED STATE */
-.jig-piece.locked {
-    z-index: 10;
-    cursor: default;
-    border: none;
-    pointer-events: none;
-    filter: brightness(1.0);
 }
 
 /* MOBILE ADJUSTMENTS */
@@ -3053,9 +3047,16 @@
         display: none; 
         flex-direction: column; 
     }
+    .zone-left {
+        flex-direction: row;
+        justify-content: space-between;
+        height: auto;
+        padding: 5px;
+    }
     .mini-preview {
-        max-height: 80px; 
-        min-height: 80px;
+        width: 80px; /* Fixed small size for mobile */
+        height: 80px;
+        margin-bottom: 0;
     }
 }
   </style>
@@ -4905,45 +4906,48 @@ function setupBoardUI(isLoad = false) {
     }, 150); // Increased delay slightly for safety
 }
 
-/* --- FIXED DRAG LOGIC (POINTER CAPTURE) --- */
+/* --- FIXED DRAG LOGIC (Paste this into your script) --- */
 function enablePointerDrag(el, id) {
     let isDragging = false;
     let startMouseX, startMouseY;
     let startElLeft, startElTop;
+    const pSize = jigState.pieceSize;
 
     // POINTER DOWN
     el.addEventListener('pointerdown', (e) => {
         if (el.classList.contains('locked')) return;
         
-        e.preventDefault(); // Stop text selection/scrolling
+        e.preventDefault(); 
         isDragging = true;
-        el.setPointerCapture(e.pointerId); // Crucial: Keeps drag active even if mouse moves fast
+        el.setPointerCapture(e.pointerId); // Keeps dragging even if mouse moves fast
         el.classList.add('is-dragging');
 
         const gridBox = document.getElementById('dropGrid');
         const gridRect = gridBox.getBoundingClientRect();
-        
-        // HANDLING TRAY-TO-BOARD TRANSITION
+
+        // --- FIX FOR VANISHING PIECES ---
+        // If piece is in tray, we must calculate its position relative to the BOARD immediately
         if (el.classList.contains('in-tray')) {
-            const rect = el.getBoundingClientRect();
-            
-            // 1. Move to Grid DOM immediately
             el.classList.remove('in-tray');
-            gridBox.appendChild(el);
+            gridBox.appendChild(el); // Move DOM element to board container
             
-            // 2. Calculate position relative to Grid
-            const relativeLeft = rect.left - gridRect.left;
-            const relativeTop = rect.top - gridRect.top;
+            // Calculate where the mouse is inside the board
+            const mouseXInBoard = e.clientX - gridRect.left;
+            const mouseYInBoard = e.clientY - gridRect.top;
+
+            // Center the piece on the mouse cursor
+            const centeredLeft = mouseXInBoard - (pSize / 2);
+            const centeredTop = mouseYInBoard - (pSize / 2);
+
+            el.style.left = `${centeredLeft}px`;
+            el.style.top = `${centeredTop}px`;
             
-            el.style.left = `${relativeLeft}px`;
-            el.style.top = `${relativeTop}px`;
-            
-            // Update State
+            // Update internal state
             const pState = jigState.pieces.find(p => p.id === id);
             pState.inTray = false;
         }
 
-        // Record Initial Positions
+        // Record Initial Positions for the drag math
         startMouseX = e.clientX;
         startMouseY = e.clientY;
         startElLeft = parseFloat(el.style.left) || 0;
@@ -4955,18 +4959,12 @@ function enablePointerDrag(el, id) {
         if (!isDragging) return;
         e.preventDefault();
 
-        // Calculate Delta
+        // Calculate Movement
         const dx = e.clientX - startMouseX;
         const dy = e.clientY - startMouseY;
 
-        const newLeft = startElLeft + dx;
-        const newTop = startElTop + dy;
-
-        el.style.left = `${newLeft}px`;
-        el.style.top = `${newTop}px`;
-
-        // Magnet Hint Visual
-        checkMagnetHint(el, id, newLeft, newTop);
+        el.style.left = `${startElLeft + dx}px`;
+        el.style.top = `${startElTop + dy}px`;
     });
 
     // POINTER UP
@@ -4975,12 +4973,9 @@ function enablePointerDrag(el, id) {
         isDragging = false;
         el.releasePointerCapture(e.pointerId);
         el.classList.remove('is-dragging');
-        el.classList.remove('magnet-active');
 
         // Snap Logic
-        const pSize = jigState.pieceSize;
         const pState = jigState.pieces.find(p => p.id === id);
-
         const targetCol = id % jigState.cols;
         const targetRow = Math.floor(id / jigState.cols);
         const targetX = targetCol * pSize;
@@ -4989,16 +4984,17 @@ function enablePointerDrag(el, id) {
         const currentX = parseFloat(el.style.left);
         const currentY = parseFloat(el.style.top);
 
+        // Distance formula
         const dist = Math.sqrt(Math.pow(targetX - currentX, 2) + Math.pow(targetY - currentY, 2));
 
-        // Snap distance (40% of piece size)
+        // Snap distance (Sensitive: 40% of piece size)
         if (dist < (pSize * 0.4)) {
             // SNAP!
             el.style.left = `${targetX}px`;
             el.style.top = `${targetY}px`;
             el.classList.add('locked');
             
-            // Play Flash Animation
+            // Flash Effect
             const flash = document.createElement('div');
             flash.className = 'snap-anim';
             flash.style.position = 'absolute';
@@ -5008,9 +5004,9 @@ function enablePointerDrag(el, id) {
             setTimeout(() => flash.remove(), 500);
 
             pState.isLocked = true;
-            updateCount();
+            updateCount(); // Updates score
         } else {
-            // Just update position
+            // Update Position in memory so it doesn't reset on reload
             pState.currentX = currentX;
             pState.currentY = currentY;
         }
